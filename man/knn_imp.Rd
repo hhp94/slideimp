@@ -10,11 +10,12 @@ knn_imp(
   colmax = 0.9,
   rowmax = 0.9,
   method = c("euclidean", "manhattan", "impute.knn"),
-  cores = 1
+  cores = 1,
+  post_imp = TRUE
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
 
 \item{k}{An integer specifying the number of nearest neighbors to use for
 imputation. Must be between 1 and the number of columns.}
@@ -29,28 +30,36 @@ exceeds this threshold, the function will stop with an error.}
 
 \item{method}{A character string specifying the distance metric for k-NN.
 Acceptable values are `"euclidean"`, `"manhattan"`, or `"impute.knn"`.
-Defaults to `"euclidean"`. See [knn_imp()].}
+Defaults to `"euclidean"`. See details.}
 
-\item{cores}{Number of cores to parallelize calculations of distances over. Note: if .parallel is TRUE and cores = n, then each mirai::daemons() process will spawn n cores.}
+\item{cores}{Number of cores to parallelize calculations of distances over. Note: if \code{.parallel} is TRUE and cores = n, then each [mirai::daemons()] process will spawn n cores.}
+
+\item{post_imp}{KNN impute can fail. Retry with mean imputation or not? Default is TRUE.}
 }
 \value{
-A numeric matrix of the same dimensions as `obj` with missing values
-  imputed.
+A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
 This function imputes missing values in a numeric matrix using the k-Nearest
 Neighbors algorithm. It follows a two-stage process. First, it imputes
 columns with a proportion of missing values below `colmax` using k-NN.
-Second, any remaining missing values (including those in columns that
-exceeded `colmax`) are imputed using the column mean.
+Second, if requested, any remaining missing values are imputed using the column mean.
 }
 \details{
+This implementation calculates the distances for neighbors column-wise. This is an
+\strong{extremely} important detail. Outside of microarray data, most datasets have
+people in columns and features (e.g., weight, height, etc.) in rows for imputation
+However, in microarray data, genes or CpG sites for the same sample that are
+spatially closer together carry mutual information, so you can place genes in columns
+and samples in rows; the algorithm will then impute values based on nearby genes
+for the same sample.
+
 The distance calculation between columns for identifying nearest neighbors is
 scaled based on the number of non-missing value pairs. Specifically, the
 raw distance is penalized by scaling it up for columns that have fewer
 overlapping observations. This penalizes distances for columns with very few
 shared observations used for distance calculations. The
-`impute.knn` method averages the distances over the number of matching positions,
+\code{impute.knn} method averages the distances over the number of matching positions,
 so a column with only one matching value to calculate distance from might have a lower
 raw distance than a column with many matched values. See also [stats::dist()].
 }

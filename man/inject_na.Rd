@@ -7,7 +7,7 @@
 inject_na(obj, num_na = 100, rowmax = 0.9, colmax = 0.9, max_iter = 1000)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
 
 \item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
 

@@ -218,7 +218,7 @@ arma::vec distance_vector(
   // First iterate through all the missing column. Missing columns has 3 parts: 1) i < index
   // if the current column is < index, then the value has already been calculated, fetch from cache.
   // This will run from 0 to right before index
-  for (arma::uword i = 0; i < index; i++)
+  for (arma::uword i = 0; i < index; ++i)
   {
     dist_vec(i) = cache(index, i);
   }
@@ -227,14 +227,14 @@ arma::vec distance_vector(
   dist_vec(index) = arma::datum::inf;
   // 3) then from index to index_miss.n_elem, we calculate and cache the values. Automatically
   // skiped for last missing column where all values are fetched from cache
-  for (arma::uword i = index + 1; i < index_miss.n_elem; i++)
+  for (arma::uword i = index + 1; i < index_miss.n_elem; ++i)
   {
     dist_vec(i) = cache(i, index);
   }
   // Compute the remaining part of the vector (distance from missing to non missing columns).
   // If all columns have missing values (i.e., the matrix is square with
   // obj.n_cols == index_miss.n_elem), this loop is automatically skipped.
-  for (arma::uword i = index_miss.n_elem; i < obj.n_cols; i++)
+  for (arma::uword i = index_miss.n_elem; i < obj.n_cols; ++i)
   {
     // Offset i to index into index_not_miss from 0
     dist_vec(i) = calc_dist(obj, miss, index_miss(index), index_not_miss(i - index_miss.n_elem), total_rows);
@@ -329,9 +329,9 @@ arma::mat impute_knn_naive(
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
-  for (arma::uword row = 1; row < col_index_miss.n_elem; row++)
+  for (arma::uword row = 1; row < col_index_miss.n_elem; ++row)
   {
-    for (arma::uword col = 0; col < row; col++)
+    for (arma::uword col = 0; col < row; ++col)
     {
       double dist = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col), total_rows);
       cache(row, col) = dist;
@@ -341,7 +341,7 @@ arma::mat impute_knn_naive(
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
-  for (arma::uword i = 0; i < col_index_miss.n_elem; i++)
+  for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
   {
     arma::vec dist_vec = distance_vector(
         obj, miss, i, col_index_miss, col_index_non_miss, cache, calc_dist);
@@ -368,7 +368,7 @@ arma::mat impute_knn_naive(
       arma::uword count = 0;
 
 #if defined(_OPENMP)
-#pragma omp simd reduction(+ : sum) reduction(+ : count)
+#pragma omp simd reduction(+:sum) reduction(+:count)
 #endif
       for (arma::uword neighbor_col_idx : nn_columns)
       {

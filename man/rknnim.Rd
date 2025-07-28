@@ -6,23 +6,24 @@
 \usage{
 rknnim(
   obj,
-  n.feat,
-  n.overlap = 10,
+  n_feat,
+  n_overlap = 10,
   k = 10,
   rowmax = 0.9,
   colmax = 0.9,
   cores = 1,
   method = c("euclidean", "manhattan", "impute.knn"),
+  post_imp = TRUE,
   .progress = FALSE,
   .parallel = FALSE
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
 
-\item{n.feat}{Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.}
+\item{n_feat}{Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.}
 
-\item{n.overlap}{Integer specifying the overlap between consecutive windows. Default is 10. Must be between 0 and \code{n.feat - 1}.}
+\item{n_overlap}{Integer specifying the overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.}
 
 \item{k}{An integer specifying the number of nearest neighbors to use for
 imputation. Must be between 1 and the number of columns.}
@@ -35,11 +36,13 @@ exceeds this threshold, the function will stop with an error.}
 proportion of missing values in a column. Columns exceeding this
 threshold will be imputed using the column mean instead of k-NN.}
 
-\item{cores}{Number of cores to parallelize calculations of distances over. Note: if .parallel is TRUE and cores = n, then each mirai::daemons() process will spawn n cores.}
+\item{cores}{Number of cores to parallelize calculations of distances over. Note: if \code{.parallel} is TRUE and cores = n, then each [mirai::daemons()] process will spawn n cores.}
 
 \item{method}{A character string specifying the distance metric for k-NN.
 Acceptable values are `"euclidean"`, `"manhattan"`, or `"impute.knn"`.
-Defaults to `"euclidean"`. See [knn_imp()].}
+Defaults to `"euclidean"`. See details.}
+
+\item{post_imp}{KNN impute can fail. Retry with mean imputation or not? Default is TRUE.}
 
 \item{.progress}{Logical indicating whether to show a progress bar. Default is FALSE.}
 
@@ -53,10 +56,13 @@ Performs rolling window KNN imputation on a numeric matrix to handle missing val
 The matrix is divided into overlapping windows, and imputation is applied to each window.
 Overlapping regions are averaged to produce the final imputed matrix.
 }
+\details{
+See [knn_imp()] for details about the implementation.
+}
 \examples{
 \dontrun{
 data(khanmiss1)
-imputed <- rknnim(t(khanmiss1), k = 10, n.feat = 100, n.overlap = 10)
+imputed <- rknnim(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
 }
 
 }
