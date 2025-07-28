@@ -1,7 +1,7 @@
 Package: SlideKnn
 Type: Package
 Title: KNN Imputation of Numeric Data and Sliding KNN Imputation of Micro Array Data
-Version: 0.2.0
+Version: 0.3.0
 Authors@R: c(
     person(
       "Hung", "Pham",
