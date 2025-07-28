@@ -82,11 +82,11 @@ inject_na <- function(
 #'
 #' This function tunes the parameters for the [rknnim()]/[knn_imp()] imputation method by injecting missing values
 #' into the dataset multiple times and evaluating the imputation performance for different parameter
-#' combinations. Set \code{n.feat = ncol(obj)} and \code{n.overlap = 0} to tune [knn_imp()]
+#' combinations. Set \code{n_feat = ncol(obj)} and \code{n_overlap = 0} to tune [knn_imp()]
 #'
 #' @inheritParams rknnim
 #' @param parameters A data frame specifying the parameter combinations to tune. Must include columns
-#'   `n.feat`, `k`, `n.overlap` and `method`. Duplicate rows are automatically removed.
+#'   `n_feat`, `k`, `n_overlap` and `method`. Duplicate rows are automatically removed.
 #' @param rep The number of repetitions for injecting missing values and evaluating parameters.
 #'   Default is 1.
 #' @param verbose Print out progress? Default is TRUE.
@@ -97,7 +97,7 @@ inject_na <- function(
 #'   \itemize{
 #'     \item `rep`: The repetition number.
 #'     \item `param_id`: The ID of the parameter combination.
-#'     \item `n.feat`, `k`, `n.overlap`, `method`: The parameter values used.
+#'     \item `n_feat`, `k`, `n_overlap`, `method`: The parameter values used.
 #'     \item `result`: A nested tibble with columns `truth` (original values) and `estimate`
 #'       (imputed values) for the injected NAs.
 #'   }
@@ -107,9 +107,9 @@ inject_na <- function(
 #' data(khanmiss1)
 #'
 #' parameters <- dplyr::tibble(
-#'   n.feat = c(100, 100, 100),
+#'   n_feat = c(100, 100, 100),
 #'   k = c(5, 10, 10),
-#'   n.overlap = c(10, 10, 10),
+#'   n_overlap = c(10, 10, 10),
 #'   method = "euclidean"
 #' )
 #'
@@ -158,9 +158,9 @@ tune_rknnim <- function(
   )
   checkmate::assert_count(rep, positive = TRUE)
   checkmate::assert_logical(verbose, any.missing = FALSE, len = 1)
-  stopifnot(all(c("n.feat", "k", "n.overlap", "method") %in% names(parameters)))
+  stopifnot(all(c("n_feat", "k", "n_overlap", "method") %in% names(parameters)))
   # de-dup the parameter
-  parameters <- unique(subset(parameters, select = c("n.feat", "k", "n.overlap", "method")))
+  parameters <- unique(subset(parameters, select = c("n_feat", "k", "n_overlap", "method")))
   na_loc <- replicate(
     n = rep,
     inject_na(
@@ -196,9 +196,9 @@ tune_rknnim <- function(
       # Imputation
       imputed_vec <- rknnim(
         obj = pre,
-        n.feat = current_params$n.feat,
+        n_feat = current_params$n_feat,
         k = current_params$k,
-        n.overlap = current_params$n.overlap,
+        n_overlap = current_params$n_overlap,
         method = current_params$method,
         rowmax = rowmax,
         colmax = colmax,
@@ -211,9 +211,9 @@ tune_rknnim <- function(
       run_result <- tibble::tibble(
         rep = i,
         param_id = j,
-        n.feat = current_params$n.feat,
+        n_feat = current_params$n_feat,
         k = current_params$k,
-        n.overlap = current_params$n.overlap,
+        n_overlap = current_params$n_overlap,
         result = list(tibble::tibble(truth = truth_vec, estimate = imputed_vec))
       )
       results_list[[z]] <- run_result

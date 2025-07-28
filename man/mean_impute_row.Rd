@@ -7,12 +7,12 @@
 mean_impute_row(obj)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
 }
 \value{
 The matrix with NA values replaced by row means.
 }
 \description{
 Imputes missing values (NA) in a matrix by replacing them with the mean of their
-respective rows, computed excluding NA values.
+respective rows.
 }
