@@ -21,7 +21,7 @@ knitr::opts_chunk$set(
 The [`impute`](https://www.bioconductor.org/packages/release/bioc/html/impute.html) package available on Bioconductor is the go-to solution for k-nearest neighbors (KNN) imputation in R. It is extremely fast and battle-tested. However, the package has certain quirks:
 
 <ul>
-<li>The data is expected to be in genes-by-samples format, and the clustering is done row-wise (i.e., finding genes that are close to each other for imputation). But in the final step, missing values that fail KNN imputation are imputed column-wise (i.e., using the mean value of a gene per person). This might not be the expected behavior, as the mean value of a gene across the population makes more sense, whereas the mean value of all genes in one person doesn't really have a biological meaning.</li>
+<li>The data is expected to be in genes-by-samples format, and the clustering is done row-wise (i.e., finding genes that are close to each other for imputation). But in the final step, missing values that fail KNN imputation are imputed column-wise (i.e., using the mean value of all genes of a person). This might not be the expected behavior, as the mean value of a gene across the population makes more sense, whereas the mean value of all genes in one person doesn't really have a biological meaning.</li>
 <li>The default `maxp` argument and how the package recursively breaks the data down using two-mean clustering until this size is reached before KNN imputation can be tricky to understand. This is done to save computation time but might not have the best results compared to a full KNN imputation.</li>
 <li>For really high dimensional data, this strategy is still very slow and the full KNN imputation is almost intractable.
   <ul>

@@ -20,10 +20,10 @@ However, the package has certain quirks:
 The data is expected to be in genes-by-samples format, and the
 clustering is done row-wise (i.e., finding genes that are close to each
 other for imputation). But in the final step, missing values that fail
-KNN imputation are imputed column-wise (i.e., using the mean value of a
-gene per person). This might not be the expected behavior, as the mean
-value of a gene across the population makes more sense, whereas the mean
-value of all genes in one person doesn’t really have a biological
+KNN imputation are imputed column-wise (i.e., using the mean value of
+all genes of a person). This might not be the expected behavior, as the
+mean value of a gene across the population makes more sense, whereas the
+mean value of all genes in one person doesn’t really have a biological
 meaning.
 </li>
 
@@ -158,7 +158,7 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
 )
 #>    user  system elapsed 
-#>    0.04    0.00    0.03
+#>    0.03    0.00    0.03
 ```
 
 Importantly, we can speed this up using multiple cores:
@@ -168,7 +168,7 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 4)
 )
 #>    user  system elapsed 
-#>    0.00    0.00    0.01
+#>    0.00    0.02    0.02
 ```
 
 ## Parameter Tuning
@@ -238,10 +238,10 @@ head(tidyr::unnest(dplyr::select(results, -result), cols = "metrics"))
 #> # A tibble: 6 × 8
 #>     rep param_id n_feat     k n_overlap .metric .estimator .estimate
 #>   <int>    <int>  <dbl> <dbl>     <dbl> <chr>   <chr>          <dbl>
-#> 1     1        1    100     5        10 mae     standard     389.   
-#> 2     1        1    100     5        10 rmse    standard     488.   
-#> 3     1        1    100     5        10 rsq     standard       0.317
-#> 4     1        2    200    10        20 mae     standard     386.   
-#> 5     1        2    200    10        20 rmse    standard     475.   
-#> 6     1        2    200    10        20 rsq     standard       0.348
+#> 1     1        1    100     5        10 mae     standard     399.   
+#> 2     1        1    100     5        10 rmse    standard     501.   
+#> 3     1        1    100     5        10 rsq     standard       0.264
+#> 4     1        2    200    10        20 mae     standard     404.   
+#> 5     1        2    200    10        20 rmse    standard     497.   
+#> 6     1        2    200    10        20 rsq     standard       0.273
 ```
