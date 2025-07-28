@@ -1,0 +1,115 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# SlideKnn
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+The [`impute`](https://www.bioconductor.org/packages/release/bioc/html/impute.html) package available on Bioconductor is the go-to solution for k-nearest neighbors (KNN) imputation in R. It is extremely fast and battle-tested. However, the package has certain quirks:
+
+<ul>
+<li>The data is expected to be in genes-by-samples format, and the clustering is done row-wise (i.e., finding genes that are close to each other for imputation). But in the final step, missing values that fail KNN imputation are imputed column-wise (i.e., using the mean value of a gene per person). This might not be the expected behavior, as the mean value of a gene across the population makes more sense, whereas the mean value of all genes in one person doesn't really have a biological meaning.</li>
+<li>The default `maxp` argument and how the package recursively breaks the data down using two-mean clustering until this size is reached before KNN imputation can be tricky to understand. This is done to save computation time but might not have the best results compared to a full KNN imputation.</li>
+<li>For really high dimensional data, this strategy is still very slow and the full KNN imputation is almost intractable.
+  <ul>
+  <li>For these data, the distance calculation is embarrassingly parallelizable, so you can speed up things massively with multiple cores.</li>
+  <li>Modern KNN methods for high dimensional data using tree based methods might not work properly because the distance that takes into consideration missing may not satisfy the triangle inequality. This makes it so that we have to rely on brute-force imputation which is slower.</li>
+  <li>For methylation data or any other data where features closer to each other spatially may be highly correlated, we don't have to do a full KNN imputation over the full set of features. We can just impute features closer to each other within a predefined window of distance, move the window over, and iterate until we've imputed everything. This enables imputation of even very high-dimensional data.</li>
+  </ul>
+</li>
+<li>The distance calculation between two rows in `impute.knn` is divided by the number of matching coordinates between the rows. This can potentially make rows that only have one matching coordinate with other rows (which should have higher uncertainty in calling neighbors) be judged as closer to rows with higher matching. The `dist` function from the `stats` package appropriately penalizes the distance between neighbors with missing values by scaling the distance up relative to the number of missing coordinates.</li>
+<li>Only Euclidean distance is available.</li>
+</ul>
+
+Key features:
+
+<ul>
+<li>Sliding window KNN imputation (`SlideKnn()`).</li>
+<li>Standard KNN imputation (`knn_imp()`) with multiple cores parallelization over numbers of columns with missing (`knn_imp(cores = 4)`).</li>
+<li>Parameter tuning with artificial NA injection (`tune_knn()` and `inject_na()`).</li>
+<li>Mean imputation fallbacks (`mean_impute_row()`, `mean_impute_col()`).</li>
+<li>Support for Euclidean, Manhattan, or `impute.knn`-style distances.</li>
+</ul>
+
+## Installation
+
+You can install the development version of SlideKnn from [GitHub](https://github.com/hhp94/SlideKnn) with:
+
+``` r
+# install.packages("remotes")
+remotes::install_github("hhp94/SlideKnn")
+```
+
+## Example
+
+This is a basic example using the `SlideKnn` function on the `khanmiss1` data. See `?khanmiss1`
+
+```{r example}
+library(SlideKnn)
+
+data(khanmiss1)
+
+# Transpose for samples in rows, features in columns
+imputed <- SlideKnn(t(khanmiss1), n_feat = 100, n_overlap = 10, k = 10)
+sum(is.na(imputed))  # Should be 0
+```
+
+For full matrix KNN imputation without sliding windows:
+
+```{r}
+system.time(
+  imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
+)
+```
+
+Importantly, we can speed this up using multiple cores:
+```{r}
+system.time(
+  imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 4)
+)
+```
+
+## Parameter Tuning
+
+Use `tune_knn()` to estimate the predictive performance of different parameter combinations by injecting artificial NAs into the data and measuring imputation accuracy. The `parameters` data.frame must have the following columns:
+
+<ul>
+<li><code>n_feat</code>: number of features in a sliding window. Use <code>ncol(data)</code> to do KNN over the full set of features.</li>
+<li><code>k</code>: number of neighbors.</li>
+<li><code>n_overlap</code>: when the number of features is smaller than the total number of features, the number of features in the overlap region to slide the window over.</li>
+<li><code>method</code>: one of "euclidean", "manhattan", or "impute.knn" (for the <code>impute::impute.knn</code> implementation of distance).</li>
+<li><code>post_imp</code>: whether values that failed KNN imputation should be filled with the mean of the feature or not.</li>
+</ul>
+
+```{r}
+parameters <- dplyr::tibble(
+  n_feat = c(100, 200),
+  k = c(5, 10),
+  n_overlap = c(10, 20),
+  method = "euclidean",
+  post_imp = TRUE
+)
+
+results <- tune_knn(t(khanmiss1), parameters, rep = 3, num_na = 50)
+```
+
+You can then use [`{yardstick}`](https://yardstick.tidymodels.org/) to calculate the prediction metrics.
+```{r}
+library(yardstick)
+met_set <- metric_set(mae, rmse, rsq)
+results$metrics <- lapply(results$result, function(x) met_set(x, truth = truth, estimate = estimate))
+head(tidyr::unnest(dplyr::select(results, -result), cols = "metrics"))
+```
