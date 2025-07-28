@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(rknnim)
+library(SlideKnn)
 
-test_check("rknnim")
+test_check("SlideKnn")

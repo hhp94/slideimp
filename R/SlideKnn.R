@@ -1,6 +1,6 @@
-#' Rolling KNN Imputation
+#' Sliding KNN Imputation
 #'
-#' Performs rolling window KNN imputation on a numeric matrix to handle missing values.
+#' Performs sliding window KNN imputation on a numeric matrix to handle missing values.
 #' The matrix is divided into overlapping windows, and imputation is applied to each window.
 #' Overlapping regions are averaged to produce the final imputed matrix.
 #'
@@ -31,11 +31,11 @@
 #' @examples
 #' \dontrun{
 #' data(khanmiss1)
-#' imputed <- rknnim(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
+#' imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
 #' }
 #'
 #' @export
-rknnim <- function(
+SlideKnn <- function(
     obj,
     n_feat,
     n_overlap = 10,
@@ -77,7 +77,7 @@ rknnim <- function(
   end[corrected_length] <- ncol(obj)
   # width <- end - start + 1
 
-  # Rolling Imputation
+  # sliding Imputation
   # Set up the function for mapping (either parallel or sequential).
   if (.parallel) {
     mirai::require_daemons()
@@ -159,7 +159,7 @@ rknnim <- function(
 #' Rows with missing proportions exceeding \code{rowmax} are not imputed in this step to avoid
 #' throwing exceptions in [knn_imp()].
 #'
-#' @inheritParams rknnim
+#' @inheritParams SlideKnn
 #'
 #' @return The imputed matrix, with only qualifying rows imputed via KNN; others remain unchanged.
 #'
@@ -220,9 +220,9 @@ impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp = TRUE) {
 #' so a column with only one matching value to calculate distance from might have a lower
 #' raw distance than a column with many matched values. See also [stats::dist()].
 #'
-#' @inheritParams rknnim
+#' @inheritParams SlideKnn
 #'
-#' @inherit rknnim return
+#' @inherit SlideKnn return
 #'
 #' @export
 #'
@@ -318,7 +318,7 @@ knn_imp <- function(
 #' Imputes missing values (NA) in a matrix by replacing them with the mean of their
 #' respective rows.
 #'
-#' @inheritParams rknnim
+#' @inheritParams SlideKnn
 #'
 #' @return The matrix with NA values replaced by row means.
 #'
@@ -336,7 +336,7 @@ mean_impute_row <- function(obj) {
 #' Imputes missing values (NA) in a matrix by replacing them with the mean of their
 #' respective cols.
 #'
-#' @inheritParams rknnim
+#' @inheritParams SlideKnn
 #'
 #' @return The matrix with NA values replaced by col means.
 #'

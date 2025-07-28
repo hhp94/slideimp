@@ -1,6 +1,6 @@
-Package: rknnim
+Package: SlideKnn
 Type: Package
-Title: KNN Imputation and Rolling KNN Imputation of Methylation Data
+Title: KNN Imputation of Numeric Data and Sliding KNN Imputation of Micro Array Data
 Version: 0.2.0
 Authors@R: c(
     person(
@@ -9,7 +9,7 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: Impute methylation beta/m-values matrix using KNN imputation.
+Description: Impute numeric data with KNN imputation or micro array data using sliding KNN imputation.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -36,5 +36,5 @@ Remotes:
     bioc::release/impute
 Depends: 
     R (>= 3.5)
-URL: https://github.com/hhp94/rknnim
-BugReports: https://github.com/hhp94/rknnim/issues
+URL: https://github.com/hhp94/SlideKnn
+BugReports: https://github.com/hhp94/SlideKnn/issues

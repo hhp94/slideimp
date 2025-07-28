@@ -4,7 +4,7 @@
 #' ensuring that the injection does not exceed specified missingness thresholds for rows and columns.
 #' It attempts to find a valid set of positions within a maximum number of iterations.
 #'
-#' @inheritParams rknnim
+#' @inheritParams SlideKnn
 #' @param num_na The number of missing values used to estimate prediction quality. Must be a positive integer.
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
 #'
@@ -78,13 +78,13 @@ inject_na <- function(
   return(na_loc)
 }
 
-#' Tune Parameters for [rknnim()]/[knn_imp()] Imputation
+#' Tune Parameters for [SlideKnn()]/[knn_imp()] Imputation
 #'
-#' This function tunes the parameters for the [rknnim()]/[knn_imp()] imputation method by injecting missing values
+#' This function tunes the parameters for the [SlideKnn()]/[knn_imp()] imputation method by injecting missing values
 #' into the dataset multiple times and evaluating the imputation performance for different parameter
 #' combinations. Set \code{n_feat = ncol(obj)} and \code{n_overlap = 0} to tune [knn_imp()]
 #'
-#' @inheritParams rknnim
+#' @inheritParams SlideKnn
 #' @param parameters A data frame specifying the parameter combinations to tune. Must include columns
 #'   `n_feat`, `k`, `n_overlap` and `method`. Duplicate rows are automatically removed.
 #' @param rep The number of repetitions for injecting missing values and evaluating parameters.
@@ -115,7 +115,7 @@ inject_na <- function(
 #'
 #' set.seed(1234)
 #'
-#' results <- tune_rknnim(
+#' results <- tune_knn(
 #'   khanmiss1,
 #'   parameters,
 #'   rep = 5
@@ -139,7 +139,7 @@ inject_na <- function(
 #' }
 #'
 #' @export
-tune_rknnim <- function(
+tune_knn <- function(
     obj,
     parameters,
     rep = 1,
@@ -194,7 +194,7 @@ tune_rknnim <- function(
       current_params <- parameters[j, ]
 
       # Imputation
-      imputed_vec <- rknnim(
+      imputed_vec <- SlideKnn(
         obj = pre,
         n_feat = current_params$n_feat,
         k = current_params$k,

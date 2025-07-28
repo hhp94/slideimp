@@ -17,6 +17,6 @@
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix with imputed values where missing values were present.
 impute_knn_naive <- function(obj, miss, k, n_col_miss, method, cores = 1L) {
-    .Call(`_rknnim_impute_knn_naive`, obj, miss, k, n_col_miss, method, cores)
+    .Call(`_SlideKnn_impute_knn_naive`, obj, miss, k, n_col_miss, method, cores)
 }
 
