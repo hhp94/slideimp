@@ -2,7 +2,7 @@
 % Please edit documentation in R/tune_knn.R
 \name{tune_knn}
 \alias{tune_knn}
-\title{Tune Parameters for [SlideKnn()]/[knn_imp()] Imputation}
+\title{Tune Parameters for \code{SlideKnn}/\code{knn_imp} Imputation}
 \usage{
 tune_knn(
   obj,
@@ -21,10 +21,10 @@ tune_knn(
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
 
 \item{parameters}{A data frame specifying the parameter combinations to tune. Must include columns
-`n_feat`, `k`, `n_overlap` and `method`. Duplicate rows are automatically removed.}
+`n_feat`, `k`, `n_overlap`, `method` and `post_imp`. Duplicate rows are automatically removed.
+See [knn_imp()] or [SlideKnn()] for details about the parameters.}
 
-\item{rep}{The number of repetitions for injecting missing values and evaluating parameters.
-Default is 1.}
+\item{rep}{The number of repetitions for injecting missing values and evaluating parameters. Default is 1.}
 
 \item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
 
@@ -50,7 +50,7 @@ A tibble containing the tuning results. Each row corresponds to a specific repet
   \itemize{
     \item `rep`: The repetition number.
     \item `param_id`: The ID of the parameter combination.
-    \item `n_feat`, `k`, `n_overlap`, `method`: The parameter values used.
+    \item `n_feat`, `k`, `n_overlap`, `method`, `post_imp`: The parameter values used.
     \item `result`: A nested tibble with columns `truth` (original values) and `estimate`
       (imputed values) for the injected NAs.
   }
@@ -68,13 +68,14 @@ parameters <- dplyr::tibble(
   n_feat = c(100, 100, 100),
   k = c(5, 10, 10),
   n_overlap = c(10, 10, 10),
-  method = "euclidean"
+  method = "euclidean",
+  post_imp = TRUE
 )
 
 set.seed(1234)
 
 results <- tune_knn(
-  khanmiss1,
+  t(khanmiss1),
   parameters,
   rep = 5
 )
@@ -96,4 +97,7 @@ tidyr::unnest(dplyr::select(results, -result), cols = "metrics")
 results$metrics[[1]]
 }
 
+}
+\seealso{
+[knn_imp()] or [SlideKnn()] for parameters details.
 }

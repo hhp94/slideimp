@@ -78,7 +78,7 @@ inject_na <- function(
   return(na_loc)
 }
 
-#' Tune Parameters for [SlideKnn()]/[knn_imp()] Imputation
+#' Tune Parameters for \code{SlideKnn}/\code{knn_imp} Imputation
 #'
 #' This function tunes the parameters for the [SlideKnn()]/[knn_imp()] imputation method by injecting missing values
 #' into the dataset multiple times and evaluating the imputation performance for different parameter
@@ -86,9 +86,9 @@ inject_na <- function(
 #'
 #' @inheritParams SlideKnn
 #' @param parameters A data frame specifying the parameter combinations to tune. Must include columns
-#'   `n_feat`, `k`, `n_overlap` and `method`. Duplicate rows are automatically removed.
-#' @param rep The number of repetitions for injecting missing values and evaluating parameters.
-#'   Default is 1.
+#' `n_feat`, `k`, `n_overlap`, `method` and `post_imp`. Duplicate rows are automatically removed.
+#' See [knn_imp()] or [SlideKnn()] for details about the parameters.
+#' @param rep The number of repetitions for injecting missing values and evaluating parameters. Default is 1.
 #' @param verbose Print out progress? Default is TRUE.
 #' @inheritParams inject_na
 #'
@@ -97,10 +97,12 @@ inject_na <- function(
 #'   \itemize{
 #'     \item `rep`: The repetition number.
 #'     \item `param_id`: The ID of the parameter combination.
-#'     \item `n_feat`, `k`, `n_overlap`, `method`: The parameter values used.
+#'     \item `n_feat`, `k`, `n_overlap`, `method`, `post_imp`: The parameter values used.
 #'     \item `result`: A nested tibble with columns `truth` (original values) and `estimate`
 #'       (imputed values) for the injected NAs.
 #'   }
+#'
+#' @seealso [knn_imp()] or [SlideKnn()] for parameters details.
 #'
 #' @examples
 #' \dontrun{
@@ -110,13 +112,14 @@ inject_na <- function(
 #'   n_feat = c(100, 100, 100),
 #'   k = c(5, 10, 10),
 #'   n_overlap = c(10, 10, 10),
-#'   method = "euclidean"
+#'   method = "euclidean",
+#'   post_imp = TRUE
 #' )
 #'
 #' set.seed(1234)
 #'
 #' results <- tune_knn(
-#'   khanmiss1,
+#'   t(khanmiss1),
 #'   parameters,
 #'   rep = 5
 #' )
@@ -158,9 +161,9 @@ tune_knn <- function(
   )
   checkmate::assert_count(rep, positive = TRUE)
   checkmate::assert_logical(verbose, any.missing = FALSE, len = 1)
-  stopifnot(all(c("n_feat", "k", "n_overlap", "method") %in% names(parameters)))
+  stopifnot(all(c("n_feat", "k", "n_overlap", "method", "post_imp") %in% names(parameters)))
   # de-dup the parameter
-  parameters <- unique(subset(parameters, select = c("n_feat", "k", "n_overlap", "method")))
+  parameters <- unique(subset(parameters, select = c("n_feat", "k", "n_overlap", "method", "post_imp")))
   na_loc <- replicate(
     n = rep,
     inject_na(
@@ -200,6 +203,7 @@ tune_knn <- function(
         k = current_params$k,
         n_overlap = current_params$n_overlap,
         method = current_params$method,
+        post_imp = current_params$post_imp,
         rowmax = rowmax,
         colmax = colmax,
         .progress = .progress,
@@ -214,6 +218,8 @@ tune_knn <- function(
         n_feat = current_params$n_feat,
         k = current_params$k,
         n_overlap = current_params$n_overlap,
+        method = current_params$method,
+        post_imp = current_params$post_imp,
         result = list(tibble::tibble(truth = truth_vec, estimate = imputed_vec))
       )
       results_list[[z]] <- run_result
@@ -222,3 +228,4 @@ tune_knn <- function(
   }
   return(do.call(rbind, results_list))
 }
+
