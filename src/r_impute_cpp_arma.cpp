@@ -109,8 +109,7 @@ double calc_distance_sqeuclid(
     return arma::datum::inf;
   }
 
-  const double nn = static_cast<double>(n_valid);
-  dist *= (total_rows / nn);
+  dist *= (total_rows / n_valid);
 
   return dist;
 }
@@ -148,8 +147,7 @@ double calc_distance_manhattan(
     return arma::datum::inf;
   }
 
-  const double nn = static_cast<double>(n_valid);
-  dist *= (total_rows / nn);
+  dist *= (total_rows / n_valid);
 
   return dist;
 }
@@ -185,8 +183,8 @@ double calc_distance_knn(
   {
     return arma::datum::inf;
   }
-  const double nn = static_cast<double>(n_valid);
-  dist /= nn;
+
+  dist /= n_valid;
   return dist;
 }
 
@@ -198,13 +196,13 @@ using dist_func_t = double (*)(
     const double);
 
 arma::vec distance_vector(
-    const arma::mat &obj,               // data with missing
-    const arma::umat &miss,             // miss matrix correspond to full data
-    const arma::uword &index,           // index of `index_miss`, not the obj
-    const arma::uvec &index_miss,       // actual index of all missing columns, refers to the obj
-    const arma::uvec &index_not_miss,   // actual index of all non missing columns, refers to the obj
-    StrictLowerTriangularMatrix &cache, // cache of value using lower triangular matrix
-    dist_func_t calc_dist)
+    const arma::mat &obj,                     // data with missing
+    const arma::umat &miss,                   // miss matrix correspond to full data
+    const arma::uword &index,                 // index of `index_miss`, not the obj
+    const arma::uvec &index_miss,             // actual index of all missing columns, refers to the obj
+    const arma::uvec &index_not_miss,         // actual index of all non missing columns, refers to the obj
+    const StrictLowerTriangularMatrix &cache, // cache of value using lower triangular matrix
+    const dist_func_t calc_dist)
 {
   // Each missing column needs a vector of distance to all other columns. We iterate
   // column wise instead of calculating all the distances upfront because the distance
@@ -327,14 +325,13 @@ arma::mat impute_knn_naive(
 #endif
   // Fill the cache upfront with pairwise distances between missing columns
 #if defined(_OPENMP)
-#pragma omp parallel for
+#pragma omp parallel for schedule(dynamic)
 #endif
   for (arma::uword row = 1; row < col_index_miss.n_elem; ++row)
   {
     for (arma::uword col = 0; col < row; ++col)
     {
-      double dist = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col), total_rows);
-      cache(row, col) = dist;
+      cache(row, col) = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col), total_rows);
     }
   }
   // Loop through only missing columns
@@ -366,9 +363,8 @@ arma::mat impute_knn_naive(
     {
       double sum = 0.0;
       arma::uword count = 0;
-
 #if defined(_OPENMP)
-#pragma omp simd reduction(+:sum) reduction(+:count)
+#pragma omp simd reduction(+ : sum) reduction(+ : count)
 #endif
       for (arma::uword neighbor_col_idx : nn_columns)
       {
