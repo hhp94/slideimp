@@ -64,7 +64,7 @@ data(khanmiss1)
 
 # Transpose for samples in rows, features in columns
 imputed <- SlideKnn(t(khanmiss1), n_feat = 100, n_overlap = 10, k = 10)
-sum(is.na(imputed))  # Should be 0
+sum(is.na(imputed)) # Should be 0
 ```
 
 For full matrix KNN imputation without sliding windows:

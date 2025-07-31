@@ -228,4 +228,3 @@ tune_knn <- function(
   }
   return(do.call(rbind, results_list))
 }
-

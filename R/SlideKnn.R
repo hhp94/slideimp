@@ -46,16 +46,50 @@ SlideKnn <- function(
     method = c("euclidean", "manhattan", "impute.knn"),
     post_imp = TRUE,
     .progress = FALSE,
-    .parallel = FALSE) {
+    output = NULL,
+    block = 1000) {
   # Pre-conditioning
   method <- match.arg(method)
-  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE)
-  checkmate::assert_true(sum(is.infinite(obj)) == 0)
   checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE)
   checkmate::assert_integerish(n_overlap, lower = 0, upper = n_feat - 1, len = 1, null.ok = FALSE)
-  # Warning for parallel core usage with mirai.
-  if (cores > 1 && .parallel) {
-    message("Each parallel core used by mirai daemon will spawn additional cores. If this is not intended, set cores = 1 or .parallel = FALSE and cores = N.")
+
+  # Handle obj as bigmemory or path
+  is_big <- if (is.character(obj)) {
+    if (!file.exists(obj)) {
+      stop("The bigstatsr .rds file provided is not found.")
+    }
+    obj <- bigstatsr::big_attach(obj)
+    TRUE
+  } else if (inherits(obj, "FBM")) {
+    TRUE
+  } else if (is.matrix(obj) && is.numeric(obj)) {
+    FALSE
+  } else {
+    stop("obj must either be an .rds file to the bigstatsr::FBM object, an FBM object, or a numeric matrix")
+  }
+
+  if (is_big && is.null(output)) {
+    stop("output path must be provided if obj is an FBM/path to FBM object")
+  }
+
+  if (!is.null(output) && grepl("\\.rds$", output)) {
+    backing_path <- sub("\\.rds$", "", output)
+  } else {
+    backing_path <- output
+  }
+
+  if (!is.null(output)) {
+    tryCatch(
+      {
+        file.create(output)
+        if (!file.exists(output)) {
+          stop("Failed to write output. Check if this path exists/writable")
+        }
+      },
+      error = function(e) {
+        message("Error creating file: ", e$message)
+      }
+    )
   }
 
   # Windowing Logic
@@ -79,78 +113,134 @@ SlideKnn <- function(
 
   # sliding Imputation
   # Set up the function for mapping (either parallel or sequential).
-  if (.parallel) {
+  # Initialize final_imputed and counts
+  nr <- nrow(obj)
+  nc <- ncol(obj)
+  if (is_big) {
+    final_imputed <- bigstatsr::FBM(
+      nrow = nr,
+      ncol = nc,
+      type = "double",
+      init = 0.0,
+      backingfile = withr::local_tempfile(pattern = "final_imputed")
+    )
+    counts <- bigstatsr::FBM(
+      nrow = nr,
+      ncol = nc,
+      type = "double",
+      init = 0.0,
+      backingfile = withr::local_tempfile(pattern = "counts")
+    )
+    final_output <- bigstatsr::FBM(
+      nrow = nr,
+      ncol = nc,
+      type = "double",
+      init = 0.0,
+      backingfile = backing_path
+    )
+  } else {
+    final_imputed <- matrix(0, nrow = nr, ncol = nc)
+    counts <- matrix(0, nrow = nr, ncol = nc)
+  }
+
+  # Sliding Imputation with walk (sequential, direct accumulation). Realize in
+  # memory because each window size would be small
+  purrr::walk(
+    seq_along(start),
+    function(i) {
+      window_cols <- start[i]:end[i]
+      imp <- impute_knn(
+        obj = obj[, window_cols, drop = FALSE],
+        k = k,
+        rowmax = rowmax,
+        colmax = colmax,
+        cores = cores,
+        method = method,
+        post_imp = post_imp
+      )
+      final_imputed[, window_cols] <- final_imputed[, window_cols] + imp
+      counts[, window_cols] <- counts[, window_cols] + 1
+    },
+    .progress = .progress
+  )
+
+  # Block is the size of the block of columns to process the data by
+  w_start <- seq(1, nc, by = block)
+  w_end <- c(w_start[-1] - 1, nc)
+
+  if (cores > 1) {
     mirai::require_daemons()
     fn <- purrr::in_parallel
+    .parallel <- TRUE
   } else {
     fn <- function(x, ...) {
       x
     }
+    .parallel <- FALSE
   }
 
-  # Perform imputation for each window using purrr::map.
-  # The anonymous function (function(i) { ... }) is applied to each window index.
-  # Necessary variables are explicitly passed to the parallel environment.
-  imputed <- purrr::map(
-    seq_along(start), # Iterate over the indices of the windows
-    fn(
-      function(i) {
-        impute_knn(
-          obj = obj[, start[i]:end[i], drop = FALSE],
-          k = k,
-          rowmax = rowmax,
-          colmax = colmax,
-          cores = cores,
-          method = method,
-          post_imp = post_imp
-        )
-      },
-      # Pass all required objects to the parallel function's environment.
-      impute_knn = impute_knn,
-      obj = obj,
-      start = start,
-      end = end,
-      k = k,
-      rowmax = rowmax,
-      colmax = colmax,
-      cores = cores,
-      method = method,
-      post_imp = post_imp
-    ),
-    .progress = .progress
-  )
-
-  # Combine Imputed Windows
-  # Initialize a zero matrix to accumulate the imputed values.
-  final_imputed <- matrix(0, nrow = nrow(obj), ncol = ncol(obj))
-  # Initialize a matrix to count how many times each cell has been imputed (for averaging).
-  counts <- matrix(0, nrow = nrow(obj), ncol = ncol(obj))
-  # Loop through each imputed window to combine the results.
-  for (i in seq_along(imputed)) {
-    # Define the column range for the current window.
-    cols_to_update <- start[i]:end[i]
-
-    # Add the imputed values from the current window to the accumulator matrix.
-    final_imputed[, cols_to_update] <- final_imputed[, cols_to_update] + imputed[[i]]
-
-    # Increment the count for these columns, indicating they've been imputed.
-    counts[, cols_to_update] <- counts[, cols_to_update] + 1
+  if (is_big) {
+    purrr::walk(
+      seq_along(w_start),
+      fn(
+        function(i) {
+          window_cols <- w_start[i]:w_end[i]
+          final_output[, window_cols] <- final_imputed[, window_cols] / counts[, window_cols]
+        },
+        w_start = w_start,
+        w_end = w_end,
+        final_output = final_output,
+        final_imputed = final_imputed,
+        counts = counts
+      ),
+      .progress = .progress,
+      .parallel = .parallel
+    )
+  } else {
+    final_output <- final_imputed / counts
   }
 
-  # Average the values by dividing the accumulated sums by their respective counts.
-  # This handles overlapping regions by averaging their contributions.
-  final_imputed <- final_imputed / counts
-
+  # Post-imputation
   if (post_imp) {
-    if (anyNA(final_imputed)) {
-      final_imputed <- mean_impute_col(final_imputed)
+    if (is_big) {
+      purrr::walk(
+        seq_along(w_start),
+        fn(
+          function(i) {
+            window_cols <- w_start[i]:w_end[i]
+            if (anyNA(final_output[, window_cols])) {
+              final_output[, window_cols] <- mean_impute_col(final_output[, window_cols])
+            }
+          },
+          w_start = w_start,
+          w_end = w_end,
+          final_output = final_output,
+          mean_impute_col = mean_impute_col
+        ),
+        .progress = .progress,
+        .parallel = .parallel
+      )
+    } else {
+      if (anyNA(final_output)) {
+        final_output <- mean_impute_col(final_output)
+      }
     }
   }
-  # Restore original column and row names to the final imputed matrix.
-  colnames(final_imputed) <- colnames(obj)
-  rownames(final_imputed) <- rownames(obj)
 
-  return(final_imputed)
+  # Restore names
+  if (!is_big) {
+    colnames(final_output) <- colnames(obj)
+    rownames(final_output) <- rownames(obj)
+    return(final_output)
+  }
+  if (is_big) {
+    list(
+      final_output = final_output,
+      output = output,
+      colnames = colnames(obj),
+      rownames = rownames(obj)
+    )
+  }
 }
 
 #' KNN Imputation Wrapper
@@ -246,7 +336,8 @@ knn_imp <- function(
     post_imp = TRUE) {
   # Pre-conditioning
   method <- match.arg(method)
-  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, col.names = "unique")
+  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, col.names = "unique", null.ok = FALSE)
+  checkmate::assert_true(sum(is.infinite(obj)) == 0)
   checkmate::assert_integerish(k, lower = 1, upper = ncol(obj), len = 1)
   checkmate::assert_integerish(cores, lower = 1, len = 1)
   checkmate::assert_numeric(colmax, lower = 0, upper = 1, len = 1)

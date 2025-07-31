@@ -147,7 +147,7 @@ data(khanmiss1)
 
 # Transpose for samples in rows, features in columns
 imputed <- SlideKnn(t(khanmiss1), n_feat = 100, n_overlap = 10, k = 10)
-sum(is.na(imputed))  # Should be 0
+sum(is.na(imputed)) # Should be 0
 #> [1] 0
 ```
 
@@ -168,7 +168,7 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 4)
 )
 #>    user  system elapsed 
-#>    0.00    0.02    0.02
+#>    0.07    0.00    0.01
 ```
 
 ## Parameter Tuning
@@ -235,13 +235,14 @@ library(yardstick)
 met_set <- metric_set(mae, rmse, rsq)
 results$metrics <- lapply(results$result, function(x) met_set(x, truth = truth, estimate = estimate))
 head(tidyr::unnest(dplyr::select(results, -result), cols = "metrics"))
-#> # A tibble: 6 × 8
-#>     rep param_id n_feat     k n_overlap .metric .estimator .estimate
-#>   <int>    <int>  <dbl> <dbl>     <dbl> <chr>   <chr>          <dbl>
-#> 1     1        1    100     5        10 mae     standard     399.   
-#> 2     1        1    100     5        10 rmse    standard     501.   
-#> 3     1        1    100     5        10 rsq     standard       0.264
-#> 4     1        2    200    10        20 mae     standard     404.   
-#> 5     1        2    200    10        20 rmse    standard     497.   
-#> 6     1        2    200    10        20 rsq     standard       0.273
+#> # A tibble: 6 × 10
+#>     rep param_id n_feat     k n_overlap method    post_imp .metric .estimator
+#>   <int>    <int>  <dbl> <dbl>     <dbl> <chr>     <lgl>    <chr>   <chr>     
+#> 1     1        1    100     5        10 euclidean TRUE     mae     standard  
+#> 2     1        1    100     5        10 euclidean TRUE     rmse    standard  
+#> 3     1        1    100     5        10 euclidean TRUE     rsq     standard  
+#> 4     1        2    200    10        20 euclidean TRUE     mae     standard  
+#> 5     1        2    200    10        20 euclidean TRUE     rmse    standard  
+#> 6     1        2    200    10        20 euclidean TRUE     rsq     standard  
+#> # ℹ 1 more variable: .estimate <dbl>
 ```

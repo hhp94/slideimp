@@ -31,7 +31,9 @@ Imports:
     purrr,
     Rcpp,
     tibble,
-    rlang
+    rlang,
+    bigstatsr,
+    withr
 Remotes: 
     bioc::release/impute
 Depends: 

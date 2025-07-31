@@ -15,7 +15,8 @@ SlideKnn(
   method = c("euclidean", "manhattan", "impute.knn"),
   post_imp = TRUE,
   .progress = FALSE,
-  .parallel = FALSE
+  output = NULL,
+  block = 1000
 )
 }
 \arguments{
