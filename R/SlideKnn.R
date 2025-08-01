@@ -47,49 +47,118 @@ SlideKnn <- function(
     post_imp = TRUE,
     .progress = FALSE,
     output = NULL,
-    block = 1000) {
+    overwrite = TRUE,
+    block = NULL) {
   # Pre-conditioning
   method <- match.arg(method)
-  checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE)
-  checkmate::assert_integerish(n_overlap, lower = 0, upper = n_feat - 1, len = 1, null.ok = FALSE)
+  checkmate::assert_integerish(
+    n_feat,
+    lower = 2,
+    upper = ncol(obj),
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "n_feat"
+  )
+  checkmate::assert_integerish(
+    n_overlap,
+    lower = 0,
+    upper = n_feat - 1,
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "n_overlap"
+  )
+  checkmate::assert_integerish(
+    k,
+    lower = 1,
+    upper = ncol(obj) - 1,
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "k"
+  )
+  checkmate::assert_numeric(
+    rowmax,
+    lower = 0,
+    upper = 1,
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "rowmax"
+  )
+  checkmate::assert_numeric(
+    colmax,
+    lower = 0,
+    upper = 1,
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "colmax"
+  )
+  checkmate::assert_integerish(
+    cores,
+    lower = 1,
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "cores"
+  )
+  if (cores > 1) {
+    tryCatch(
+      mirai::require_daemons(),
+      error = function(e) {
+        stop(sprintf("%d cores requested, but no mirai daemon is setup. Call mirai::daemons(%d) to set up the parallelization", cores, cores))
+      }
+    )
+    fn <- purrr::in_parallel
+  } else {
+    fn <- function(x, ...) {
+      x
+    }
+  }
+  checkmate::assert_flag(post_imp, .var.name = "post_imp", null.ok = FALSE)
+  checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
+  checkmate::assert_character(output, len = 1, null.ok = TRUE, .var.name = "output")
 
   # Handle obj as bigmemory or path
   is_big <- if (is.character(obj)) {
-    if (!file.exists(obj)) {
-      stop("The bigstatsr .rds file provided is not found.")
+    if (!fs::file_exists(obj)) {
+      stop("The provided path to the big.matrix descriptor and/or filebacking can not be found.")
     }
-    obj <- bigstatsr::big_attach(obj)
+    # Handle if path is to .bin instead of .desc
+    if (fs::path_ext(obj) == "bin") {
+      desc_path <- fs::path_ext_set(obj, "desc")
+      if (fs::file_exists(desc_path)) {
+        obj <- desc_path
+      } else {
+        stop("Descriptor file not found for the provided backing file.")
+      }
+    }
+    obj <- bigmemory::attach.big.matrix(obj)
     TRUE
-  } else if (inherits(obj, "FBM")) {
+  } else if (bigmemory::is.big.matrix(obj)) {
     TRUE
   } else if (is.matrix(obj) && is.numeric(obj)) {
     FALSE
   } else {
-    stop("obj must either be an .rds file to the bigstatsr::FBM object, an FBM object, or a numeric matrix")
+    stop("`obj` has to be a numeric matrix, a (descriptor of) double big.matrix.")
   }
 
   if (is_big && is.null(output)) {
-    stop("output path must be provided if obj is an FBM/path to FBM object")
-  }
-
-  if (!is.null(output) && grepl("\\.rds$", output)) {
-    backing_path <- sub("\\.rds$", "", output)
-  } else {
-    backing_path <- output
+    stop("`output` must be provided if obj is a big.matrix or path to big.matrix descriptor (i.e., './output.bin').")
   }
 
   if (!is.null(output)) {
-    tryCatch(
-      {
-        file.create(output)
-        if (!file.exists(output)) {
-          stop("Failed to write output. Check if this path exists/writable")
-        }
-      },
-      error = function(e) {
-        message("Error creating file: ", e$message)
-      }
-    )
+    output <- fs::as_fs_path(output)
+    backingpath <- fs::path_dir(output)
+    if (!all(fs::file_access(backingpath, mode = c("exists", "read", "write")))) {
+      stop("Provided path to `output` doesn't exist or is not readable/writable")
+    }
+    file_name <- fs::path_file(output)
+    ext <- fs::path_ext(file_name)
+    base_no_ext <- fs::path_ext_remove(file_name)
+    if (ext == "" || ext == "desc") {
+      backfile <- fs::path_ext_set(base_no_ext, "bin")
+      descfile <- fs::path_ext_set(base_no_ext, "desc")
+    } else {
+      backfile <- fs::path_ext_set(base_no_ext, paste0(ext, ".bin"))
+      descfile <- fs::path_ext_set(base_no_ext, paste0(ext, ".desc"))
+    }
   }
 
   # Windowing Logic
@@ -109,92 +178,225 @@ SlideKnn <- function(
 
   # And make the last window extra wide to cover the full end
   end[corrected_length] <- ncol(obj)
-  # width <- end - start + 1
+  # Then, we calculate the offsets needed to subset the intermediate matrix
+  width <- end - start + 1
+  offset_start <- c(1, cumsum(width)[-length(width)] + 1)
+  offset_end <- cumsum(width)
 
   # sliding Imputation
   # Set up the function for mapping (either parallel or sequential).
   # Initialize final_imputed and counts
   nr <- nrow(obj)
   nc <- ncol(obj)
+  if (is.null(block)) {
+    # whichever is smaller, ncol(obj) or
+    # whichever is larger, 1, number of cores * 100 iterations each core, or 0.005 * ncol()
+    block <- min(nc, max(1, nc %/% (cores * 100), floor(0.005 * nc)))
+  }
+  checkmate::assert_integerish(
+    block,
+    lower = 1,
+    upper = ncol(obj),
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "block"
+  )
   if (is_big) {
-    final_imputed <- bigstatsr::FBM(
+    checkmate::assert_flag(overwrite, .var.name = "overwrite", null.ok = FALSE)
+    files_to_check <- file.path(backingpath, c(backfile, descfile))
+    if (any(fs::file_exists(files_to_check))) {
+      if (!overwrite) {
+        stop("Provided `output` already exists but overwrite is `FALSE`")
+      }
+      # Proceed to delete if overwrite is TRUE
+      unlink(files_to_check, force = TRUE)
+      if (any(file.exists(files_to_check))) {
+        stop("Failed to delete existing files for `output`")
+      }
+    }
+    allow.dimnames <- getOption("bigmemory.allow.dimnames")
+    if (!allow.dimnames) {
+      options(bigmemory.allow.dimnames = TRUE)
+      on.exit(
+        options(bigmemory.allow.dimnames = allow.dimnames)
+      )
+    }
+    temp_dir <- withr::local_tempdir(pattern = paste0("SlideKnn_", Sys.getpid()))
+    # intermediate is the matrix that does not contain overlap. This is so that
+    # we can parallelize the impute_knn function, which takes a lot of time.
+    # Do this to avoid race conditioning in parallelization
+    intermediate <- bigmemory::filebacked.big.matrix(
+      nrow = nr,
+      ncol = sum(width),
+      type = "double",
+      init = 0.0,
+      backingfile = "intermediate.bin",
+      descriptorfile = "intermediate.desc",
+      backingpath = temp_dir
+    )
+    # final_imputed and counts should be fast enough to be ran sequentially
+    final_imputed <- bigmemory::filebacked.big.matrix(
       nrow = nr,
       ncol = nc,
       type = "double",
       init = 0.0,
-      backingfile = withr::local_tempfile(pattern = "final_imputed")
+      backingfile = "final_imputed.bin",
+      descriptorfile = "final_imputed.desc",
+      backingpath = temp_dir
     )
-    counts <- bigstatsr::FBM(
+    counts <- bigmemory::filebacked.big.matrix(
       nrow = nr,
       ncol = nc,
       type = "double",
       init = 0.0,
-      backingfile = withr::local_tempfile(pattern = "counts")
+      backingfile = "counts.bin",
+      descriptorfile = "counts.desc",
+      backingpath = temp_dir
     )
-    final_output <- bigstatsr::FBM(
+    final_output <- bigmemory::filebacked.big.matrix(
       nrow = nr,
       ncol = nc,
       type = "double",
       init = 0.0,
-      backingfile = backing_path
+      backingpath = backingpath,
+      backingfile = backfile,
+      descriptorfile = descfile
     )
+    obj_desc <- bigmemory::describe(obj)
+    intermediate_desc <- bigmemory::describe(intermediate)
+    final_imputed_desc <- bigmemory::describe(final_imputed)
+    counts_desc <- bigmemory::describe(counts)
+    final_output_desc <- bigmemory::describe(final_output)
   } else {
-    final_imputed <- matrix(0, nrow = nr, ncol = nc)
-    counts <- matrix(0, nrow = nr, ncol = nc)
+    intermediate <- matrix(0.0, nrow = nr, ncol = sum(width))
+    final_imputed <- matrix(0.0, nrow = nr, ncol = nc)
+    counts <- matrix(0.0, nrow = nr, ncol = nc)
+    final_output <- matrix(NA_real_, nrow = nr, ncol = nc)
   }
 
-  # Sliding Imputation with walk (sequential, direct accumulation). Realize in
-  # memory because each window size would be small
-  purrr::walk(
-    seq_along(start),
-    function(i) {
-      window_cols <- start[i]:end[i]
-      imp <- impute_knn(
-        obj = obj[, window_cols, drop = FALSE],
+  # Sliding Imputation. Could have used if to shorten the code, but that would
+  # be a lot of ifs if there are alot of windows.
+  if (is_big) {
+    purrr::walk(
+      seq_along(start),
+      fn(
+        function(i, ...) {
+          window_cols <- start[i]:end[i]
+          obj_big <- bigmemory::attach.big.matrix(obj_desc)
+          intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc)
+          imp <- SlideKnn:::impute_knn(
+            obj = obj_big[, window_cols, drop = FALSE],
+            k = k,
+            rowmax = rowmax,
+            colmax = colmax,
+            cores = 1L, # For Slide KNN, fix cores = 1
+            method = method,
+            post_imp = post_imp
+          )
+          intermediate_big[, offset_start[i]:offset_end[i]] <- imp
+        },
+        # impute_knn = impute_knn,
+        # knn_imp = knn_imp,
+        start = start,
+        end = end,
+        obj_desc = obj_desc,
+        intermediate_desc = intermediate_desc,
         k = k,
         rowmax = rowmax,
         colmax = colmax,
-        cores = cores,
         method = method,
-        post_imp = post_imp
-      )
-      final_imputed[, window_cols] <- final_imputed[, window_cols] + imp
-      counts[, window_cols] <- counts[, window_cols] + 1
-    },
-    .progress = .progress
-  )
+        post_imp = post_imp,
+        offset_start = offset_start,
+        offset_end = offset_end
+      ),
+      .progress = .progress
+    )
 
+    # Then we sequentially fill in the value to avoid race condition. But this step
+    # is fast
+    purrr::walk(
+      seq_along(start),
+      function(i, ...) {
+        window_cols <- start[i]:end[i]
+        final_imputed[, window_cols] <- {
+          final_imputed[, window_cols] + intermediate[, offset_start[i]:offset_end[i]]
+        }
+        counts[, window_cols] <- counts[, window_cols] + 1
+      },
+      .progress = .progress
+    )
+  } else {
+    purrr::walk(
+      seq_along(start),
+      fn(
+        function(i, ...) {
+          window_cols <- start[i]:end[i]
+          imp <- SlideKnn:::impute_knn(
+            obj = obj[, window_cols, drop = FALSE],
+            k = k,
+            rowmax = rowmax,
+            colmax = colmax,
+            cores = 1L, # For Slide KNN, fix cores = 1
+            method = method,
+            post_imp = post_imp
+          )
+          intermediate[, offset_start[i]:offset_end[i]] <<- imp
+        },
+        # impute_knn = impute_knn,
+        # knn_imp = knn_imp,
+        start = start,
+        end = end,
+        obj = obj,
+        intermediate = intermediate,
+        k = k,
+        rowmax = rowmax,
+        colmax = colmax,
+        method = method,
+        post_imp = post_imp,
+        offset_start = offset_start,
+        offset_end = offset_end
+      ),
+      .progress = .progress
+    )
+
+    # Then we sequentially fill in the value to avoid race condition. But this step
+    # is fast
+    purrr::walk(
+      seq_along(start),
+      function(i, ...) {
+        window_cols <- start[i]:end[i]
+        final_imputed[, window_cols] <<- {
+          final_imputed[, window_cols] + intermediate[, offset_start[i]:offset_end[i]]
+        }
+        counts[, window_cols] <<- counts[, window_cols] + 1
+      },
+      .progress = .progress
+    )
+  }
+
+  # post-processing, average out values.
   # Block is the size of the block of columns to process the data by
   w_start <- seq(1, nc, by = block)
   w_end <- c(w_start[-1] - 1, nc)
-
-  if (cores > 1) {
-    mirai::require_daemons()
-    fn <- purrr::in_parallel
-    .parallel <- TRUE
-  } else {
-    fn <- function(x, ...) {
-      x
-    }
-    .parallel <- FALSE
-  }
 
   if (is_big) {
     purrr::walk(
       seq_along(w_start),
       fn(
-        function(i) {
+        function(i, ...) {
           window_cols <- w_start[i]:w_end[i]
-          final_output[, window_cols] <- final_imputed[, window_cols] / counts[, window_cols]
+          final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc)
+          counts_big <- bigmemory::attach.big.matrix(counts_desc)
+          final_output_big <- bigmemory::attach.big.matrix(final_output_desc)
+          final_output_big[, window_cols] <- final_imputed_big[, window_cols] / counts_big[, window_cols]
         },
+        final_imputed_desc = final_imputed_desc,
+        counts_desc = counts_desc,
+        final_output_desc = final_output_desc,
         w_start = w_start,
-        w_end = w_end,
-        final_output = final_output,
-        final_imputed = final_imputed,
-        counts = counts
+        w_end = w_end
       ),
-      .progress = .progress,
-      .parallel = .parallel
+      .progress = .progress
     )
   } else {
     final_output <- final_imputed / counts
@@ -206,19 +408,18 @@ SlideKnn <- function(
       purrr::walk(
         seq_along(w_start),
         fn(
-          function(i) {
+          function(i, ...) {
             window_cols <- w_start[i]:w_end[i]
-            if (anyNA(final_output[, window_cols])) {
-              final_output[, window_cols] <- mean_impute_col(final_output[, window_cols])
+            final_output_big <- bigmemory::attach.big.matrix(final_output_desc)
+            if (anyNA(final_output_big[, window_cols])) {
+              final_output_big[, window_cols] <- SlideKnn:::mean_impute_col(final_output_big[, window_cols])
             }
           },
+          final_output_desc = final_output_desc,
           w_start = w_start,
-          w_end = w_end,
-          final_output = final_output,
-          mean_impute_col = mean_impute_col
+          w_end = w_end
         ),
-        .progress = .progress,
-        .parallel = .parallel
+        .progress = .progress
       )
     } else {
       if (anyNA(final_output)) {
@@ -228,19 +429,10 @@ SlideKnn <- function(
   }
 
   # Restore names
-  if (!is_big) {
-    colnames(final_output) <- colnames(obj)
-    rownames(final_output) <- rownames(obj)
-    return(final_output)
-  }
-  if (is_big) {
-    list(
-      final_output = final_output,
-      output = output,
-      colnames = colnames(obj),
-      rownames = rownames(obj)
-    )
-  }
+  colnames(final_output) <- colnames(obj)
+  rownames(final_output) <- rownames(obj)
+
+  return(final_output)
 }
 
 #' KNN Imputation Wrapper
@@ -267,7 +459,7 @@ impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp = TRUE) {
     return(obj)
   }
 
-  imputed_good <- knn_imp(
+  imputed_good <- SlideKnn:::knn_imp(
     obj = obj[good_rows, , drop = FALSE],
     k = k,
     rowmax = rowmax,
@@ -376,10 +568,8 @@ knn_imp <- function(
   }
 
   # Impute
-  ## mean imp cols
-  obj[, !knn_imp_cols] <- mean_impute_col(obj[, !knn_imp_cols])
-  ## knn imp cols
-  post_imp_cols <- impute_knn_naive(
+  ## knn imp cols. Note: only pre_imp_cols is imputed if post_imp is FALSE.
+  post_imp_cols <- SlideKnn:::impute_knn_naive(
     obj = pre_imp_cols,
     miss = pre_imp_miss,
     k = k,
@@ -394,7 +584,7 @@ knn_imp <- function(
   colnames(post_imp_cols) <- colnames(pre_imp_cols)
   if (post_imp) {
     if (anyNA(post_imp_cols)) {
-      post_imp_cols <- mean_impute_col(post_imp_cols)
+      post_imp_cols <- SlideKnn:::mean_impute_col(post_imp_cols)
     }
   }
   ## Reconstruct obj

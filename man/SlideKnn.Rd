@@ -16,7 +16,8 @@ SlideKnn(
   post_imp = TRUE,
   .progress = FALSE,
   output = NULL,
-  block = 1000
+  overwrite = TRUE,
+  block = NULL
 )
 }
 \arguments{
