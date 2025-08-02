@@ -9,30 +9,23 @@
 #'
 #' @param obj A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
 #' @param n_feat Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.
-#' @param n_overlap Integer specifying the overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.
-#' @param k An integer specifying the number of nearest neighbors to use for
-#' imputation. Must be between 1 and the number of columns.
-#' @param colmax A numeric value between 0 and 1. This is the threshold for the
-#' proportion of missing values in a column. Columns exceeding this
-#' threshold will be imputed using the column mean instead of k-NN.
-#' @param rowmax A numeric value between 0 and 1. This is the maximum
-#' allowable proportion of missing values in any single row. If a row
-#' exceeds this threshold, the function will stop with an error.
-#' @param cores Number of cores to parallelize calculations of distances over. Note: if \code{.parallel} is TRUE and cores = n, then each [mirai::daemons()] process will spawn n cores.
-#' @param method A character string specifying the distance metric for k-NN.
-#' Acceptable values are `"euclidean"`, `"manhattan"`, or `"impute.knn"`.
-#' Defaults to `"euclidean"`. See details.
-#' @param post_imp KNN impute can fail. Retry with mean imputation or not? Default is TRUE.
-#' @param .progress Logical indicating whether to show a progress bar. Default is FALSE.
-#' @param .parallel Logical indicating whether to use parallel processing for multiple windows. Default is FALSE.
+#' @param n_overlap Integer specifying the number of features to overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.
+#' @param k Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).
+#' @param rowmax Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.
+#' @param colmax Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.
+#' @param cores Integer specifying the number of cores to use for parallel computation of distances.
+#' @param method Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.
+#' @param post_imp Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.
+#' @param .progress Logical; if TRUE, show a progress bar. Default is FALSE.
+#' @param output Character; path to save the output big.matrix if \code{obj} is file-backed. Required in that case.
+#' @param overwrite Logical; if TRUE (default), overwrite existing files at \code{output}.
+#' @param block Integer; block size for processing large matrices. If NULL (default), calculated automatically.
 #'
 #' @return A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 #'
 #' @examples
-#' \dontrun{
 #' data(khanmiss1)
 #' imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
-#' }
 #'
 #' @export
 SlideKnn <- function(
@@ -49,7 +42,7 @@ SlideKnn <- function(
     output = NULL,
     overwrite = TRUE,
     block = NULL) {
-  # Pre-conditioning
+  # Preconditions ----
   method <- match.arg(method)
   checkmate::assert_integerish(
     n_feat,
@@ -107,16 +100,19 @@ SlideKnn <- function(
     )
     fn <- purrr::in_parallel
   } else {
-    fn <- function(x, ...) {
-      x
-    }
+    fn <- carrier::crate
   }
   checkmate::assert_flag(post_imp, .var.name = "post_imp", null.ok = FALSE)
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
   checkmate::assert_character(output, len = 1, null.ok = TRUE, .var.name = "output")
+  # Check big.matrix ----
+  allow.dimnames <- getOption("bigmemory.allow.dimnames")
+  if (!allow.dimnames) {
+    options(bigmemory.allow.dimnames = TRUE)
+    on.exit(options(bigmemory.allow.dimnames = allow.dimnames))
+  }
 
-  # Handle obj as bigmemory or path
-  is_big <- if (is.character(obj)) {
+  file_backed <- if (is.character(obj)) {
     if (!fs::file_exists(obj)) {
       stop("The provided path to the big.matrix descriptor and/or filebacking can not be found.")
     }
@@ -130,19 +126,30 @@ SlideKnn <- function(
       }
     }
     obj <- bigmemory::attach.big.matrix(obj)
+    rn <- rownames(obj)
+    cn <- colnames(obj)
+    rownames(obj) <- NULL
+    colnames(obj) <- NULL
     TRUE
   } else if (bigmemory::is.big.matrix(obj)) {
+    rn <- rownames(obj)
+    cn <- colnames(obj)
+    rownames(obj) <- NULL
+    colnames(obj) <- NULL
     TRUE
   } else if (is.matrix(obj) && is.numeric(obj)) {
+    rn <- rownames(obj)
+    cn <- colnames(obj)
+    rownames(obj) <- NULL
+    colnames(obj) <- NULL
+    obj <- bigmemory::as.big.matrix(obj, type = "double")
     FALSE
   } else {
-    stop("`obj` has to be a numeric matrix, a (descriptor of) double big.matrix.")
+    stop("`obj` has to be a numeric matrix or a (descriptor of a) double bigmemory::big.matrix.")
   }
-
-  if (is_big && is.null(output)) {
+  if (file_backed && is.null(output)) {
     stop("`output` must be provided if obj is a big.matrix or path to big.matrix descriptor (i.e., './output.bin').")
   }
-
   if (!is.null(output)) {
     output <- fs::as_fs_path(output)
     backingpath <- fs::path_dir(output)
@@ -160,8 +167,7 @@ SlideKnn <- function(
       descfile <- fs::path_ext_set(base_no_ext, paste0(ext, ".desc"))
     }
   }
-
-  # Windowing Logic
+  # Windowing Logic ----
   # Calculate the total number of steps/windows needed.
   idx <- 1 # R index at 1
   max_step <- ceiling((ncol(obj) - idx) / (n_feat - n_overlap))
@@ -170,22 +176,18 @@ SlideKnn <- function(
   end <- start + n_feat - 1
   # Edge case, the end might overshoot the number of rows of the obj
   n_overshoot <- sum(end > ncol(obj))
-
   # In which case trim off the runs that overshoot
   corrected_length <- length(end) - n_overshoot
-  start <- start[idx:corrected_length]
-  end <- end[idx:corrected_length]
-
+  start <- start[1:corrected_length]
+  end <- end[1:corrected_length]
   # And make the last window extra wide to cover the full end
   end[corrected_length] <- ncol(obj)
   # Then, we calculate the offsets needed to subset the intermediate matrix
   width <- end - start + 1
   offset_start <- c(1, cumsum(width)[-length(width)] + 1)
   offset_end <- cumsum(width)
-
-  # sliding Imputation
-  # Set up the function for mapping (either parallel or sequential).
-  # Initialize final_imputed and counts
+  # Sliding Imputation ----
+  ## Init ----
   nr <- nrow(obj)
   nc <- ncol(obj)
   if (is.null(block)) {
@@ -201,7 +203,10 @@ SlideKnn <- function(
     null.ok = FALSE,
     .var.name = "block"
   )
-  if (is_big) {
+  # Strategy: use big.memory and pass the pointer around across cores to avoid
+  # copying the matrix over the cores to minimize overhead
+  ### file_backed ----
+  if (file_backed) {
     checkmate::assert_flag(overwrite, .var.name = "overwrite", null.ok = FALSE)
     files_to_check <- file.path(backingpath, c(backfile, descfile))
     if (any(fs::file_exists(files_to_check))) {
@@ -214,17 +219,16 @@ SlideKnn <- function(
         stop("Failed to delete existing files for `output`")
       }
     }
-    allow.dimnames <- getOption("bigmemory.allow.dimnames")
-    if (!allow.dimnames) {
-      options(bigmemory.allow.dimnames = TRUE)
-      on.exit(
-        options(bigmemory.allow.dimnames = allow.dimnames)
-      )
-    }
     temp_dir <- withr::local_tempdir(pattern = paste0("SlideKnn_", Sys.getpid()))
-    # intermediate is the matrix that does not contain overlap. This is so that
+    # Description of the main matrices:
+    # 1) `intermediate` is the matrix that does not contain overlap. This is so that
     # we can parallelize the impute_knn function, which takes a lot of time.
-    # Do this to avoid race conditioning in parallelization
+    # Do this to avoid race conditions in parallelization
+    # 2) `final_imputed` holds the numerator value of imputation after adding the
+    # overlapping windows
+    # 3) `counts` is the column vector (ncol * 1) that holds the denominator to
+    # normalize the column of final_imputed by
+    # 4) `final_output` holds the averaged results
     intermediate <- bigmemory::filebacked.big.matrix(
       nrow = nr,
       ncol = sum(width),
@@ -245,8 +249,8 @@ SlideKnn <- function(
       backingpath = temp_dir
     )
     counts <- bigmemory::filebacked.big.matrix(
-      nrow = nr,
-      ncol = nc,
+      nrow = nc,
+      ncol = 1,
       type = "double",
       init = 0.0,
       backingfile = "counts.bin",
@@ -262,177 +266,168 @@ SlideKnn <- function(
       backingfile = backfile,
       descriptorfile = descfile
     )
-    obj_desc <- bigmemory::describe(obj)
-    intermediate_desc <- bigmemory::describe(intermediate)
-    final_imputed_desc <- bigmemory::describe(final_imputed)
-    counts_desc <- bigmemory::describe(counts)
-    final_output_desc <- bigmemory::describe(final_output)
   } else {
-    intermediate <- matrix(0.0, nrow = nr, ncol = sum(width))
-    final_imputed <- matrix(0.0, nrow = nr, ncol = nc)
-    counts <- matrix(0.0, nrow = nr, ncol = nc)
-    final_output <- matrix(NA_real_, nrow = nr, ncol = nc)
-  }
-
-  # Sliding Imputation. Could have used if to shorten the code, but that would
-  # be a lot of ifs if there are alot of windows.
-  if (is_big) {
-    purrr::walk(
-      seq_along(start),
-      fn(
-        function(i, ...) {
-          window_cols <- start[i]:end[i]
-          obj_big <- bigmemory::attach.big.matrix(obj_desc)
-          intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc)
-          imp <- SlideKnn:::impute_knn(
-            obj = obj_big[, window_cols, drop = FALSE],
-            k = k,
-            rowmax = rowmax,
-            colmax = colmax,
-            cores = 1L, # For Slide KNN, fix cores = 1
-            method = method,
-            post_imp = post_imp
-          )
-          intermediate_big[, offset_start[i]:offset_end[i]] <- imp
-        },
-        # impute_knn = impute_knn,
-        # knn_imp = knn_imp,
-        start = start,
-        end = end,
-        obj_desc = obj_desc,
-        intermediate_desc = intermediate_desc,
-        k = k,
-        rowmax = rowmax,
-        colmax = colmax,
-        method = method,
-        post_imp = post_imp,
-        offset_start = offset_start,
-        offset_end = offset_end
-      ),
-      .progress = .progress
+    ### in-memory ----
+    intermediate <- bigmemory::big.matrix(
+      nrow = nr,
+      ncol = sum(width),
+      type = "double",
+      init = 0.0
     )
-
-    # Then we sequentially fill in the value to avoid race condition. But this step
-    # is fast
-    purrr::walk(
-      seq_along(start),
-      function(i, ...) {
-        window_cols <- start[i]:end[i]
-        final_imputed[, window_cols] <- {
-          final_imputed[, window_cols] + intermediate[, offset_start[i]:offset_end[i]]
-        }
-        counts[, window_cols] <- counts[, window_cols] + 1
-      },
-      .progress = .progress
+    # final_imputed and counts should be fast enough to be ran sequentially
+    final_imputed <- bigmemory::big.matrix(
+      nrow = nr,
+      ncol = nc,
+      type = "double",
+      init = 0.0
     )
-  } else {
-    purrr::walk(
-      seq_along(start),
-      fn(
-        function(i, ...) {
-          window_cols <- start[i]:end[i]
-          imp <- SlideKnn:::impute_knn(
-            obj = obj[, window_cols, drop = FALSE],
-            k = k,
-            rowmax = rowmax,
-            colmax = colmax,
-            cores = 1L, # For Slide KNN, fix cores = 1
-            method = method,
-            post_imp = post_imp
-          )
-          intermediate[, offset_start[i]:offset_end[i]] <<- imp
-        },
-        # impute_knn = impute_knn,
-        # knn_imp = knn_imp,
-        start = start,
-        end = end,
-        obj = obj,
-        intermediate = intermediate,
-        k = k,
-        rowmax = rowmax,
-        colmax = colmax,
-        method = method,
-        post_imp = post_imp,
-        offset_start = offset_start,
-        offset_end = offset_end
-      ),
-      .progress = .progress
+    counts <- bigmemory::big.matrix(
+      nrow = nc,
+      ncol = 1,
+      type = "double",
+      init = 0.0
     )
-
-    # Then we sequentially fill in the value to avoid race condition. But this step
-    # is fast
-    purrr::walk(
-      seq_along(start),
-      function(i, ...) {
-        window_cols <- start[i]:end[i]
-        final_imputed[, window_cols] <<- {
-          final_imputed[, window_cols] + intermediate[, offset_start[i]:offset_end[i]]
-        }
-        counts[, window_cols] <<- counts[, window_cols] + 1
-      },
-      .progress = .progress
+    final_output <- bigmemory::big.matrix(
+      nrow = nr,
+      ncol = nc,
+      type = "double",
+      init = 0.0
     )
   }
-
+  # These are pointers to the big.matrices. We are passing these around in
+  # the for loops. These also avoid the fragile <<- solution
+  obj_desc <- bigmemory::describe(obj)
+  intermediate_desc <- bigmemory::describe(intermediate)
+  final_imputed_desc <- bigmemory::describe(final_imputed)
+  counts_desc <- bigmemory::describe(counts)
+  final_output_desc <- bigmemory::describe(final_output)
+  ## Impute ----
+  if (.progress) {
+    message("Step 1/3: Imputing")
+  }
+  purrr::walk(
+    seq_along(start),
+    fn(
+      function(i) {
+        window_cols <- start[i]:end[i]
+        obj_big <- bigmemory::attach.big.matrix(obj_desc)
+        intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc)
+        imp <- impute_knn(
+          obj = obj_big[, window_cols, drop = FALSE],
+          k = k,
+          rowmax = rowmax,
+          colmax = colmax,
+          cores = 1L, # For Slide KNN, fix cores = 1
+          method = method,
+          post_imp = post_imp,
+          knn_imp = knn_imp,
+          impute_knn_naive = impute_knn_naive
+        )
+        intermediate_big[, offset_start[i]:offset_end[i]] <- imp
+      },
+      impute_knn = impute_knn,
+      knn_imp = knn_imp,
+      impute_knn_naive = impute_knn_naive,
+      start = start,
+      end = end,
+      obj_desc = obj_desc,
+      intermediate_desc = intermediate_desc,
+      k = k,
+      rowmax = rowmax,
+      colmax = colmax,
+      method = method,
+      post_imp = post_imp,
+      offset_start = offset_start,
+      offset_end = offset_end
+    ),
+    .progress = .progress
+  )
+  # Then we sequentially fill in the value to avoid race condition. This step
+  # is fast enough without parallel so we don't need to pass the pointers.
+  ## Averaging ----
+  if (.progress) {
+    message("Step 2/3: Overlapping")
+  }
+  purrr::walk(
+    seq_along(start),
+    function(i) {
+      window_cols <- start[i]:end[i]
+      final_imputed[, window_cols] <- {
+        final_imputed[, window_cols] + intermediate[, offset_start[i]:offset_end[i]]
+      }
+      counts[window_cols] <- counts[window_cols] + 1
+    },
+    .progress = FALSE
+  )
   # post-processing, average out values.
   # Block is the size of the block of columns to process the data by
   w_start <- seq(1, nc, by = block)
   w_end <- c(w_start[-1] - 1, nc)
-
-  if (is_big) {
+  if (.progress) {
+    message("Step 3/3: Averaging")
+  }
+  purrr::walk(
+    seq_along(w_start),
+    fn(
+      function(i, ...) {
+        window_cols <- w_start[i]:w_end[i]
+        final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc)
+        counts_big <- bigmemory::attach.big.matrix(counts_desc)
+        final_output_big <- bigmemory::attach.big.matrix(final_output_desc)
+        average <- counts_big[window_cols] > 1
+        # part 1 if average == FALSE (average == 1), then just assign `final_imputed` to `final_output`
+        final_output_big[, window_cols[!average]] <- final_imputed_big[, window_cols[!average]]
+        # part 2 if average == TRUE (average == 1), then just sweep `final_imputed` to `final_output`
+        if (length(window_cols[average]) > 0) {
+          final_output_big[, window_cols[average]] <- sweep(
+            final_imputed_big[, window_cols[average]],
+            MARGIN = 2,
+            STATS = counts_big[window_cols[average]],
+            FUN = "/"
+          )
+        }
+      },
+      final_imputed_desc = final_imputed_desc,
+      counts_desc = counts_desc,
+      final_output_desc = final_output_desc,
+      w_start = w_start,
+      w_end = w_end
+    ),
+    .progress = FALSE
+  )
+  ## post_imp ----
+  if (post_imp) {
+    if (.progress) {
+      message("Post-imputation")
+    }
     purrr::walk(
       seq_along(w_start),
       fn(
-        function(i, ...) {
+        function(i) {
           window_cols <- w_start[i]:w_end[i]
-          final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc)
-          counts_big <- bigmemory::attach.big.matrix(counts_desc)
           final_output_big <- bigmemory::attach.big.matrix(final_output_desc)
-          final_output_big[, window_cols] <- final_imputed_big[, window_cols] / counts_big[, window_cols]
+          if (anyNA(final_output_big[, window_cols])) {
+            final_output_big[, window_cols] <- mean_impute_col(final_output_big[, window_cols])
+          }
         },
-        final_imputed_desc = final_imputed_desc,
-        counts_desc = counts_desc,
+        mean_impute_col = mean_impute_col,
         final_output_desc = final_output_desc,
         w_start = w_start,
         w_end = w_end
       ),
-      .progress = .progress
+      .progress = FALSE
     )
-  } else {
-    final_output <- final_imputed / counts
   }
-
-  # Post-imputation
-  if (post_imp) {
-    if (is_big) {
-      purrr::walk(
-        seq_along(w_start),
-        fn(
-          function(i, ...) {
-            window_cols <- w_start[i]:w_end[i]
-            final_output_big <- bigmemory::attach.big.matrix(final_output_desc)
-            if (anyNA(final_output_big[, window_cols])) {
-              final_output_big[, window_cols] <- SlideKnn:::mean_impute_col(final_output_big[, window_cols])
-            }
-          },
-          final_output_desc = final_output_desc,
-          w_start = w_start,
-          w_end = w_end
-        ),
-        .progress = .progress
-      )
-    } else {
-      if (anyNA(final_output)) {
-        final_output <- mean_impute_col(final_output)
-      }
-    }
-  }
-
   # Restore names
-  colnames(final_output) <- colnames(obj)
-  rownames(final_output) <- rownames(obj)
-
-  return(final_output)
+  rownames(obj) <- rn
+  colnames(obj) <- cn
+  rownames(final_output) <- rn
+  colnames(final_output) <- cn
+  if (file_backed) {
+    return(final_output)
+  } else {
+    return(bigmemory::as.matrix(final_output))
+  }
 }
 
 #' KNN Imputation Wrapper
@@ -442,12 +437,14 @@ SlideKnn <- function(
 #' throwing exceptions in [knn_imp()].
 #'
 #' @inheritParams SlideKnn
+#' @param knn_imp function. Needed for crating.
+#' @param ... Pass through to knn_imp.
 #'
 #' @return The imputed matrix, with only qualifying rows imputed via KNN; others remain unchanged.
 #'
 #' @keywords internal
 #' @noRd
-impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp = TRUE) {
+impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp = TRUE, knn_imp = knn_imp, ...) {
   na_mat <- is.na(obj)
 
   # Determine 'good_rows': rows where the proportion of NAs is less than 'rowmax'.
@@ -459,14 +456,15 @@ impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp = TRUE) {
     return(obj)
   }
 
-  imputed_good <- SlideKnn:::knn_imp(
+  imputed_good <- knn_imp(
     obj = obj[good_rows, , drop = FALSE],
     k = k,
     rowmax = rowmax,
     colmax = colmax,
     method = method,
     cores = cores,
-    post_imp = post_imp
+    post_imp = post_imp,
+    ...
   )
 
   # Initialize the result matrix with the original object's values.
@@ -503,6 +501,7 @@ impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp = TRUE) {
 #' raw distance than a column with many matched values. See also [stats::dist()].
 #'
 #' @inheritParams SlideKnn
+#' @param ... Not Implemented.
 #'
 #' @inherit SlideKnn return
 #'
@@ -525,10 +524,11 @@ knn_imp <- function(
     rowmax = 0.9,
     method = c("euclidean", "manhattan", "impute.knn"),
     cores = 1,
-    post_imp = TRUE) {
+    post_imp = TRUE,
+    ...) {
   # Pre-conditioning
   method <- match.arg(method)
-  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, col.names = "unique", null.ok = FALSE)
+  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE)
   checkmate::assert_true(sum(is.infinite(obj)) == 0)
   checkmate::assert_integerish(k, lower = 1, upper = ncol(obj), len = 1)
   checkmate::assert_integerish(cores, lower = 1, len = 1)
@@ -569,7 +569,7 @@ knn_imp <- function(
 
   # Impute
   ## knn imp cols. Note: only pre_imp_cols is imputed if post_imp is FALSE.
-  post_imp_cols <- SlideKnn:::impute_knn_naive(
+  post_imp_cols <- impute_knn_naive(
     obj = pre_imp_cols,
     miss = pre_imp_miss,
     k = k,
@@ -584,7 +584,7 @@ knn_imp <- function(
   colnames(post_imp_cols) <- colnames(pre_imp_cols)
   if (post_imp) {
     if (anyNA(post_imp_cols)) {
-      post_imp_cols <- SlideKnn:::mean_impute_col(post_imp_cols)
+      post_imp_cols <- mean_impute_col(post_imp_cols)
     }
   }
   ## Reconstruct obj

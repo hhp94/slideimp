@@ -30,19 +30,13 @@ See [knn_imp()] or [SlideKnn()] for details about the parameters.}
 
 \item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
 
-\item{rowmax}{A numeric value between 0 and 1. This is the maximum
-allowable proportion of missing values in any single row. If a row
-exceeds this threshold, the function will stop with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{colmax}{A numeric value between 0 and 1. This is the threshold for the
-proportion of missing values in a column. Columns exceeding this
-threshold will be imputed using the column mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
 
 \item{verbose}{Print out progress? Default is TRUE.}
 
-\item{cores}{Number of cores to parallelize calculations of distances over. Note: if \code{.parallel} is TRUE and cores = n, then each [mirai::daemons()] process will spawn n cores.}
-
-\item{.parallel}{Logical indicating whether to use parallel processing for multiple windows. Default is FALSE.}
+\item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 }
 \value{
 A tibble containing the tuning results. Each row corresponds to a specific repetition and

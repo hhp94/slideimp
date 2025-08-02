@@ -25,30 +25,27 @@ SlideKnn(
 
 \item{n_feat}{Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.}
 
-\item{n_overlap}{Integer specifying the overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.}
+\item{n_overlap}{Integer specifying the number of features to overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.}
 
-\item{k}{An integer specifying the number of nearest neighbors to use for
-imputation. Must be between 1 and the number of columns.}
+\item{k}{Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).}
 
-\item{rowmax}{A numeric value between 0 and 1. This is the maximum
-allowable proportion of missing values in any single row. If a row
-exceeds this threshold, the function will stop with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{colmax}{A numeric value between 0 and 1. This is the threshold for the
-proportion of missing values in a column. Columns exceeding this
-threshold will be imputed using the column mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
 
-\item{cores}{Number of cores to parallelize calculations of distances over. Note: if \code{.parallel} is TRUE and cores = n, then each [mirai::daemons()] process will spawn n cores.}
+\item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 
-\item{method}{A character string specifying the distance metric for k-NN.
-Acceptable values are `"euclidean"`, `"manhattan"`, or `"impute.knn"`.
-Defaults to `"euclidean"`. See details.}
+\item{method}{Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.}
 
-\item{post_imp}{KNN impute can fail. Retry with mean imputation or not? Default is TRUE.}
+\item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
 
-\item{.progress}{Logical indicating whether to show a progress bar. Default is FALSE.}
+\item{.progress}{Logical; if TRUE, show a progress bar. Default is FALSE.}
 
-\item{.parallel}{Logical indicating whether to use parallel processing for multiple windows. Default is FALSE.}
+\item{output}{Character; path to save the output big.matrix if \code{obj} is file-backed. Required in that case.}
+
+\item{overwrite}{Logical; if TRUE (default), overwrite existing files at \code{output}.}
+
+\item{block}{Integer; block size for processing large matrices. If NULL (default), calculated automatically.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
@@ -62,9 +59,7 @@ Overlapping regions are averaged to produce the final imputed matrix.
 See [knn_imp()] for details about the implementation.
 }
 \examples{
-\dontrun{
 data(khanmiss1)
 imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
-}
 
 }

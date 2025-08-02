@@ -44,6 +44,51 @@ test_that("SlideKnn in-memory matrix mode works", {
   )
 })
 
+test_that("SlideKnn in-memory edge case no overlap", {
+  set.seed(1234)
+  ## Manual minimal implementation to test SlideKnn functionality by using
+  ## knn_imp, which we test correctness elsewhere
+  to_test <- t(
+    sim_mat(
+      n = 300,
+      m = 100,
+      perc_NA = 0.5,
+      perc_col_NA = 1
+    )$input
+  )
+  # Init
+  counts <- final_imputed <- matrix(0, nrow = nrow(to_test), ncol = ncol(to_test), dimnames = dimnames(to_test))
+  # 1 to 100 is the first window;
+  final_imputed[, 1:100] <- final_imputed[, 1:100] + knn_imp(
+    obj = to_test[, 1:100], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
+  )
+  counts[, 1:100] <- counts[, 1:100] + 1
+  # 101 to 200 is the second window;
+  final_imputed[, 101:200] <- final_imputed[, 101:200] + knn_imp(
+    obj = to_test[, 101:200], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
+  )
+  counts[, 101:200] <- counts[, 101:200] + 1
+  # 201 to 300 is the last window
+  final_imputed[, 201:300] <- final_imputed[, 201:300] + knn_imp(
+    obj = to_test[, 201:300], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
+  )
+  counts[, 201:300] <- counts[, 201:300] + 1
+  final_imputed <- final_imputed / counts
+  # SlideKnn should exactly replicate this result
+  expect_identical(
+    SlideKnn(
+      to_test,
+      n_feat = 100,
+      n_overlap = 0,
+      k = 3,
+      rowmax = 0.9,
+      colmax = 0.9,
+      post_imp = TRUE
+    ),
+    final_imputed
+  )
+})
+
 test_that("SlideKnn bigmemory matrix mode and parallelization works", {
   set.seed(1234)
   # Simulated data
@@ -118,7 +163,7 @@ test_that("impute_knn ignore all na rows", {
 
   # Call impute_knn. For all-NA rows to be ignored, their NA proportion (100%)
   # must be >= colmax. Setting colmax to 1 ensures this.
-  imputed <- impute_knn(obj = mat, k = 5, rowmax = 0.5, colmax = 1, method = "euclidean", cores = 1)
+  imputed <- impute_knn(obj = mat, k = 5, rowmax = 0.5, colmax = 1, method = "euclidean", cores = 1, knn_imp = knn_imp)
 
   # Expect that the all-NA rows remain all NA
   testthat::expect_true(all(is.na(imputed[3, ])) && all(is.na(imputed[7, ])))

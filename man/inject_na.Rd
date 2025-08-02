@@ -11,13 +11,9 @@ inject_na(obj, num_na = 100, rowmax = 0.9, colmax = 0.9, max_iter = 1000)
 
 \item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
 
-\item{rowmax}{A numeric value between 0 and 1. This is the maximum
-allowable proportion of missing values in any single row. If a row
-exceeds this threshold, the function will stop with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{colmax}{A numeric value between 0 and 1. This is the threshold for the
-proportion of missing values in a column. Columns exceeding this
-threshold will be imputed using the column mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
 
 \item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
 }

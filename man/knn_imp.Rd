@@ -11,30 +11,26 @@ knn_imp(
   rowmax = 0.9,
   method = c("euclidean", "manhattan", "impute.knn"),
   cores = 1,
-  post_imp = TRUE
+  post_imp = TRUE,
+  ...
 )
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
 
-\item{k}{An integer specifying the number of nearest neighbors to use for
-imputation. Must be between 1 and the number of columns.}
+\item{k}{Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).}
 
-\item{colmax}{A numeric value between 0 and 1. This is the threshold for the
-proportion of missing values in a column. Columns exceeding this
-threshold will be imputed using the column mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
 
-\item{rowmax}{A numeric value between 0 and 1. This is the maximum
-allowable proportion of missing values in any single row. If a row
-exceeds this threshold, the function will stop with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{method}{A character string specifying the distance metric for k-NN.
-Acceptable values are `"euclidean"`, `"manhattan"`, or `"impute.knn"`.
-Defaults to `"euclidean"`. See details.}
+\item{method}{Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.}
 
-\item{cores}{Number of cores to parallelize calculations of distances over. Note: if \code{.parallel} is TRUE and cores = n, then each [mirai::daemons()] process will spawn n cores.}
+\item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 
-\item{post_imp}{KNN impute can fail. Retry with mean imputation or not? Default is TRUE.}
+\item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
+
+\item{...}{Not Implemented.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
