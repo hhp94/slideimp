@@ -4,10 +4,13 @@
 \alias{mean_impute_col}
 \title{Col Mean Imputation}
 \usage{
-mean_impute_col(obj)
+mean_impute_col(obj, subset = NULL)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
+Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
+
+\item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
 }
 \value{
 The matrix with NA values replaced by col means.

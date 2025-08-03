@@ -7,6 +7,7 @@
 SlideKnn(
   obj,
   n_feat,
+  subset = NULL,
   n_overlap = 10,
   k = 10,
   rowmax = 0.9,
@@ -17,13 +18,17 @@ SlideKnn(
   .progress = FALSE,
   output = NULL,
   overwrite = TRUE,
-  block = NULL
+  block = NULL,
+  strip_dimnames = FALSE
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
+Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 
 \item{n_feat}{Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.}
+
+\item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
 
 \item{n_overlap}{Integer specifying the number of features to overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.}
 
@@ -46,6 +51,9 @@ SlideKnn(
 \item{overwrite}{Logical; if TRUE (default), overwrite existing files at \code{output}.}
 
 \item{block}{Integer; block size for processing large matrices. If NULL (default), calculated automatically.}
+
+\item{strip_dimnames}{Logical; if FALSE (default), dimnames will not be removed to save memory in for loops. Should
+set to TRUE if cores is > 1. See details.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
@@ -57,9 +65,18 @@ Overlapping regions are averaged to produce the final imputed matrix.
 }
 \details{
 See [knn_imp()] for details about the implementation.
+
+If your `obj` is a [bigmemory::big.matrix()] or description file, you have to
+set `strip_dimnames` to `TRUE` for the output big.matrix to have the same
+dimnames as the `obj`. Otherwise, you can also re-add the dimnames to the
+output using the dimnames of the original object after setting
+`options(bigmemory.allow.dimnames = TRUE)`.
 }
 \examples{
+
 data(khanmiss1)
+
+# Set `strip_dimnames` to `TRUE` when running multiple cores to minimize overhead.
 imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
 
 }

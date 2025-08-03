@@ -12,11 +12,13 @@ knn_imp(
   method = c("euclidean", "manhattan", "impute.knn"),
   cores = 1,
   post_imp = TRUE,
+  subset = NULL,
   ...
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
+Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 
 \item{k}{Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).}
 
@@ -29,6 +31,8 @@ knn_imp(
 \item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 
 \item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
+
+\item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
 
 \item{...}{Not Implemented.}
 }
