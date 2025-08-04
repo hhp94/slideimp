@@ -189,8 +189,7 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
 
   # parallel version
   # in-memory version
-  skip_if_not(interactive(), message = "Skipping")
-  skip_on_cran()
+  skip_if_not(interactive())
   mirai::daemons(4)
   on.exit(mirai::daemons(0))
   ram_4 <- SlideKnn(sim, n_feat = 100, n_overlap = 10, k = 5, cores = 4, post_imp = TRUE)

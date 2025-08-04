@@ -24,8 +24,10 @@ test_that("tune_imp .f = `SlideKnn`, `knn_imp` or function works", {
   expect_no_error(tune_imp(obj, knn_imp_par, rep = 1, .f = "knn_imp"))
 
   # Check custom function
+  f1 <- function() {}
   custom_fun <- function(obj, value) {
     obj[is.na(obj)] <- value
+    f1()
     return(obj)
   }
   custom_par <- data.frame(

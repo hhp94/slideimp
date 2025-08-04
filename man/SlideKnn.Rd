@@ -52,8 +52,8 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 
 \item{block}{Integer; block size for processing large matrices. If NULL (default), calculated automatically.}
 
-\item{strip_dimnames}{Logical; if FALSE (default), dimnames will not be removed to save memory in for loops. Should
-set to TRUE if cores is > 1. See details.}
+\item{strip_dimnames}{Logical; if FALSE (default), dimnames will not be removed which will increase memory usage.
+Should set to TRUE to save memory from overhead especially when cores > 1. See details.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
@@ -66,11 +66,10 @@ Overlapping regions are averaged to produce the final imputed matrix.
 \details{
 See [knn_imp()] for details about the implementation.
 
-If your `obj` is a [bigmemory::big.matrix()] or description file, you have to
-set `strip_dimnames` to `TRUE` for the output big.matrix to have the same
-dimnames as the `obj`. Otherwise, you can also re-add the dimnames to the
-output using the dimnames of the original object after setting
-`options(bigmemory.allow.dimnames = TRUE)`.
+If your `obj` is a [bigmemory::big.matrix()] or description file, you have to set
+`strip_dimnames` to `TRUE` for the output big.matrix to have the same dimnames as
+the `obj`. Otherwise, you can also re-add the dimnames to the output using the
+dimnames of the original object after setting `options(bigmemory.allow.dimnames = TRUE)`.
 }
 \examples{
 

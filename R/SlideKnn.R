@@ -7,11 +7,10 @@
 #' @details
 #' See [knn_imp()] for details about the implementation.
 #'
-#' If your `obj` is a [bigmemory::big.matrix()] or description file, you have to
-#' set `strip_dimnames` to `TRUE` for the output big.matrix to have the same
-#' dimnames as the `obj`. Otherwise, you can also re-add the dimnames to the
-#' output using the dimnames of the original object after setting
-#' `options(bigmemory.allow.dimnames = TRUE)`.
+#' If your `obj` is a [bigmemory::big.matrix()] or description file, you have to set
+#' `strip_dimnames` to `TRUE` for the output big.matrix to have the same dimnames as
+#' the `obj`. Otherwise, you can also re-add the dimnames to the output using the
+#' dimnames of the original object after setting `options(bigmemory.allow.dimnames = TRUE)`.
 #'
 #' @param obj A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
 #' Can also be a path to the description file of, or a [bigmemory::big.matrix()].
@@ -28,8 +27,8 @@
 #' @param output Character; path to save the output big.matrix if \code{obj} is file-backed. Required in that case.
 #' @param overwrite Logical; if TRUE (default), overwrite existing files at \code{output}.
 #' @param block Integer; block size for processing large matrices. If NULL (default), calculated automatically.
-#' @param strip_dimnames Logical; if FALSE (default), dimnames will not be removed to save memory in for loops. Should
-#' set to TRUE if cores is > 1. See details.
+#' @param strip_dimnames Logical; if FALSE (default), dimnames will not be removed which will increase memory usage.
+#' Should set to TRUE to save memory from overhead especially when cores > 1. See details.
 #'
 #' @return A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 #'
@@ -81,7 +80,9 @@ SlideKnn <- function(
   checkmate::assert_character(output, len = 1, null.ok = TRUE, .var.name = "output")
   checkmate::assert(
     checkmate::check_character(subset, min.len = 1, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
-    checkmate::check_integerish(subset, lower = 1, upper = ncol(obj), min.len = 1, any.missing = FALSE, null.ok = TRUE, unique = TRUE),
+    checkmate::check_integerish(
+      subset, lower = 1, upper = ncol(obj), min.len = 1, any.missing = FALSE, null.ok = TRUE, unique = TRUE
+    ),
     .var.name = "subset"
   )
 
@@ -241,7 +242,7 @@ SlideKnn <- function(
     # overlapping windows
     # 3) `counts` is the column vector (ncol * 1) that holds the denominator to
     # normalize the column of final_imputed by
-    # 4) `final_output` holds the averaged results
+    # 4) `final_imputed` holds the averaged results
     intermediate <- bigmemory::filebacked.big.matrix(
       nrow = nr,
       ncol = sum(width),
@@ -252,15 +253,6 @@ SlideKnn <- function(
       backingpath = temp_dir
     )
     # final_imputed and counts should be fast enough to be ran sequentially
-    final_imputed <- bigmemory::filebacked.big.matrix(
-      nrow = nr,
-      ncol = nc,
-      type = "double",
-      init = 0.0,
-      backingfile = "final_imputed.bin",
-      descriptorfile = "final_imputed.desc",
-      backingpath = temp_dir
-    )
     counts <- bigmemory::filebacked.big.matrix(
       nrow = nc,
       ncol = 1,
@@ -270,7 +262,7 @@ SlideKnn <- function(
       descriptorfile = "counts.desc",
       backingpath = temp_dir
     )
-    final_output <- bigmemory::filebacked.big.matrix(
+    final_imputed <- bigmemory::filebacked.big.matrix(
       nrow = nr,
       ncol = nc,
       type = "double",
@@ -288,19 +280,13 @@ SlideKnn <- function(
       init = 0.0
     )
     # final_imputed and counts should be fast enough to be ran sequentially
-    final_imputed <- bigmemory::big.matrix(
-      nrow = nr,
-      ncol = nc,
-      type = "double",
-      init = 0.0
-    )
     counts <- bigmemory::big.matrix(
       nrow = nc,
       ncol = 1,
       type = "double",
       init = 0.0
     )
-    final_output <- bigmemory::big.matrix(
+    final_imputed <- bigmemory::big.matrix(
       nrow = nr,
       ncol = nc,
       type = "double",
@@ -311,9 +297,8 @@ SlideKnn <- function(
   # the for loops. These also avoid the fragile <<- solution
   obj_desc <- bigmemory::describe(obj)
   intermediate_desc <- bigmemory::describe(intermediate)
-  final_imputed_desc <- bigmemory::describe(final_imputed)
   counts_desc <- bigmemory::describe(counts)
-  final_output_desc <- bigmemory::describe(final_output)
+  final_imputed_desc <- bigmemory::describe(final_imputed)
   ## Impute ----
   if (.progress) {
     message("Step 1/3: Imputing")
@@ -410,15 +395,14 @@ SlideKnn <- function(
     fn(
       function(i, ...) {
         window_cols <- w_start[i]:w_end[i]
-        final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc)
         counts_big <- bigmemory::attach.big.matrix(counts_desc)
-        final_output_big <- bigmemory::attach.big.matrix(final_output_desc)
+        final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc)
         average <- counts_big[window_cols] > 1
-        # part 1 if average == FALSE (average == 1), then just assign `final_imputed` to `final_output`
-        final_output_big[, window_cols[!average]] <- final_imputed_big[, window_cols[!average], drop = F]
-        # part 2 if average == TRUE (average == 1), then just sweep `final_imputed` to `final_output`
+        # part 1 if average == FALSE (average == 1), then just assign `final_imputed` to `final_imputed`
+        # final_imputed_big[, window_cols[!average]] <- final_imputed_big[, window_cols[!average], drop = F]
+        # part 2 if average == TRUE (average == 1), then just sweep `final_imputed` to `final_imputed`
         if (length(window_cols[average]) > 0) {
-          final_output_big[, window_cols[average]] <- sweep(
+          final_imputed_big[, window_cols[average]] <- sweep(
             final_imputed_big[, window_cols[average], drop = F],
             MARGIN = 2,
             STATS = counts_big[window_cols[average]],
@@ -426,9 +410,8 @@ SlideKnn <- function(
           )
         }
       },
-      final_imputed_desc = final_imputed_desc,
       counts_desc = counts_desc,
-      final_output_desc = final_output_desc,
+      final_imputed_desc = final_imputed_desc,
       w_start = w_start,
       w_end = w_end
     ),
@@ -444,16 +427,16 @@ SlideKnn <- function(
       fn(
         function(i) {
           window_cols <- w_start[i]:w_end[i]
-          final_output_big <- bigmemory::attach.big.matrix(final_output_desc)
-          if (anyNA(final_output_big[, window_cols])) {
-            final_output_big[, window_cols] <- mean_impute_col(
-              final_output_big[, window_cols, drop = FALSE],
+          final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc)
+          if (anyNA(final_imputed_big[, window_cols])) {
+            final_imputed_big[, window_cols] <- mean_impute_col(
+              final_imputed_big[, window_cols, drop = FALSE],
               subset = w_subset_list[[i]]
             )
           }
         },
         mean_impute_col = mean_impute_col,
-        final_output_desc = final_output_desc,
+        final_imputed_desc = final_imputed_desc,
         w_subset_list = w_subset_list,
         w_start = w_start,
         w_end = w_end
@@ -465,14 +448,14 @@ SlideKnn <- function(
   if (strip_dimnames) {
     rownames(obj) <- rn
     colnames(obj) <- cn
-    rownames(final_output) <- rn
-    colnames(final_output) <- cn
+    rownames(final_imputed) <- rn
+    colnames(final_imputed) <- cn
   }
 
   if (file_backed) {
-    return(final_output)
+    return(final_imputed)
   } else {
-    out <- bigmemory::as.matrix(final_output)
+    out <- bigmemory::as.matrix(final_imputed)
     rownames(out) <- rn
     colnames(out) <- cn
     return(out)

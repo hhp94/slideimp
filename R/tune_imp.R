@@ -245,7 +245,7 @@ tune_imp <- function(
         stop(sprintf("%d cores requested, but no mirai daemon is setup. Call mirai::daemons(%d) to set up the parallelization", cores, cores))
       }
     )
-    fn <- function(f, ...) purrr::in_parallel(carrier::crate(f, ...))
+    fn <- purrr::in_parallel
   } else {
     fn <- carrier::crate
   }
@@ -323,8 +323,7 @@ tune_imp <- function(
   if (any(vapply(indices$result, nrow, double(1)) == 0)) {
     warning("Some iteration(s) failed. Check the results carefully.")
   }
-  indices <- cbind(parameters[indices$param_set, ], indices)
-  indices <- tibble::as_tibble(indices)
+  indices <- tibble::as_tibble(cbind(parameters[indices$param_set, ], indices))
   rownames(obj) <- rn
   colnames(obj) <- cn
   return(indices)
