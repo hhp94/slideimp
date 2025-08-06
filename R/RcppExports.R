@@ -6,17 +6,24 @@
 #' This function imputes missing values in a matrix using a k-nearest neighbors
 #' approach based on the specified distance metric. It processes only columns
 #' with missing values, calculating distances to other columns to find the
-#' k-nearest neighbors, and imputes missing values by averaging non-missing
-#' values from these neighbors.
+#' k-nearest neighbors, and imputes missing values using either a simple average
+#' or a weighted average (inverse distance weighting) of non-missing values from
+#' these neighbors, depending on the `weighted` parameter.
 #'
 #' @param obj Numeric matrix with missing values represented as NA (NaN).
 #' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 #' @param k Number of nearest neighbors to use for imputation.
 #' @param n_col_miss Integer vector specifying the count of missing values per column.
-#' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan, 2 = impute.knn.
+#' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
+#' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
+#' @param dist_pow A positive double that controls the penalty for larger distances in
+#' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
+#' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix with imputed values where missing values were present.
-impute_knn_naive <- function(obj, miss, k, n_col_miss, method, cores = 1L) {
-    .Call(`_SlideKnn_impute_knn_naive`, obj, miss, k, n_col_miss, method, cores)
+#'
+#' @export
+impute_knn_naive <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, cores) {
+    .Call(`_SlideKnn_impute_knn_naive`, obj, miss, k, n_col_miss, method, weighted, dist_pow, cores)
 }
 

@@ -4,7 +4,7 @@
 \alias{impute_knn_naive}
 \title{Impute missing values in a matrix using k-nearest neighbors (k-NN)}
 \usage{
-impute_knn_naive(obj, miss, k, n_col_miss, method, cores = 1L)
+impute_knn_naive(obj, miss, k, n_col_miss, method, weighted, dist_pow, cores)
 }
 \arguments{
 \item{obj}{Numeric matrix with missing values represented as NA (NaN).}
@@ -15,7 +15,13 @@ impute_knn_naive(obj, miss, k, n_col_miss, method, cores = 1L)
 
 \item{n_col_miss}{Integer vector specifying the count of missing values per column.}
 
-\item{method}{Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan, 2 = impute.knn.}
+\item{method}{Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.}
+
+\item{weighted}{Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.}
+
+\item{dist_pow}{A positive double that controls the penalty for larger distances in
+the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
+1 is linear (default), and values greater than 1 apply a harsher penalty.}
 
 \item{cores}{Number of CPU cores to use for parallel processing (default = 1).}
 }
@@ -26,6 +32,7 @@ A matrix with imputed values where missing values were present.
 This function imputes missing values in a matrix using a k-nearest neighbors
 approach based on the specified distance metric. It processes only columns
 with missing values, calculating distances to other columns to find the
-k-nearest neighbors, and imputes missing values by averaging non-missing
-values from these neighbors.
+k-nearest neighbors, and imputes missing values using either a simple average
+or a weighted average (inverse distance weighting) of non-missing values from
+these neighbors, depending on the `weighted` parameter.
 }

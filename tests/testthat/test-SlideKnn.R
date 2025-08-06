@@ -30,18 +30,41 @@ test_that("`SlideKnn` in-memory matrix mode works", {
   final_imputed <- final_imputed / counts
 
   # SlideKnn should exactly replicate this result
-  expect_identical(
-    SlideKnn(
-      to_test,
-      n_feat = 100,
-      n_overlap = 10,
-      k = 3,
-      rowmax = 0.9,
-      colmax = 0.9,
-      post_imp = TRUE
-    ),
-    final_imputed
+  simple_mean <- SlideKnn(
+    to_test,
+    n_feat = 100,
+    n_overlap = 10,
+    k = 3,
+    rowmax = 0.9,
+    colmax = 0.9,
+    post_imp = TRUE
   )
+  expect_identical(simple_mean, simple_mean)
+
+  # SlideKnn weighted should be different than simple mean
+  weighted_1 <- SlideKnn(
+    to_test,
+    n_feat = 100,
+    n_overlap = 10,
+    k = 3,
+    rowmax = 0.9,
+    colmax = 0.9,
+    post_imp = TRUE,
+    weighted = TRUE
+  )
+  weighted_2 <- SlideKnn(
+    to_test,
+    n_feat = 100,
+    n_overlap = 10,
+    k = 3,
+    rowmax = 0.9,
+    colmax = 0.9,
+    post_imp = TRUE,
+    weighted = TRUE,
+    dist_pow = 2
+  )
+  expect_true(sum((simple_mean - weighted_1)^2) > 0)
+  expect_true(sum((weighted_2 - weighted_1)^2) > 0)
 })
 
 test_that("`SlideKnn` in-memory subset works", {
@@ -239,8 +262,12 @@ test_that("`impute_knn` ignore all na rows", {
     method = "euclidean",
     post_imp = TRUE,
     cores = 1,
+    weighted = TRUE,
+    dist_pow = 1,
+    subset = NULL,
     knn_imp = knn_imp,
-    subset = NULL
+    impute_knn_naive = impute_knn_naive,
+    mean_impute_col = mean_impute_col
   )
 
   # Expect that the all-NA rows remain all NA

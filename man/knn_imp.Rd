@@ -13,6 +13,8 @@ knn_imp(
   cores = 1,
   post_imp = TRUE,
   subset = NULL,
+  weighted = FALSE,
+  dist_pow = 1,
   ...
 )
 }
@@ -33,6 +35,11 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 \item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
 
 \item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
+
+\item{weighted}{Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.}
+
+\item{dist_pow}{A positive double that controls the penalty for larger distances in the weighted mean imputation.
+Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.}
 
 \item{...}{Not Implemented.}
 }

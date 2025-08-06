@@ -23,6 +23,9 @@
 #' @param cores Integer specifying the number of cores to use for parallel computation of distances.
 #' @param method Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.
 #' @param post_imp Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.
+#' @param weighted Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.
+#' @param dist_pow  A positive double that controls the penalty for larger distances in the weighted mean imputation.
+#' Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.
 #' @param .progress Logical; if TRUE, show a progress bar. Default is FALSE.
 #' @param output Character; path to save the output big.matrix if \code{obj} is file-backed. Required in that case.
 #' @param overwrite Logical; if TRUE (default), overwrite existing files at \code{output}.
@@ -51,6 +54,8 @@ SlideKnn <- function(
     cores = 1,
     method = c("euclidean", "manhattan", "impute.knn"),
     post_imp = TRUE,
+    weighted = FALSE,
+    dist_pow = 1,
     .progress = FALSE,
     output = NULL,
     overwrite = TRUE,
@@ -81,7 +86,8 @@ SlideKnn <- function(
   checkmate::assert(
     checkmate::check_character(subset, min.len = 1, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
     checkmate::check_integerish(
-      subset, lower = 1, upper = ncol(obj), min.len = 1, any.missing = FALSE, null.ok = TRUE, unique = TRUE
+      subset,
+      lower = 1, upper = ncol(obj), min.len = 1, any.missing = FALSE, null.ok = TRUE, unique = TRUE
     ),
     .var.name = "subset"
   )
@@ -303,10 +309,11 @@ SlideKnn <- function(
   if (.progress) {
     message("Step 1/3: Imputing")
   }
+
   purrr::walk(
     seq_along(start),
     fn(
-      function(i) {
+      function(i, ...) {
         window_cols <- start[i]:end[i]
         obj_big <- bigmemory::attach.big.matrix(obj_desc)
         intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc)
@@ -318,18 +325,22 @@ SlideKnn <- function(
           cores = 1L, # For Slide KNN, fix cores = 1
           method = method,
           post_imp = post_imp,
-          knn_imp = knn_imp,
+          weighted = weighted,
+          dist_pow = dist_pow,
           subset = subset_list[[i]],
+          knn_imp = knn_imp,
           impute_knn_naive = impute_knn_naive,
-          mean_impute_col = mean_impute_col
+          # mean_impute_col = mean_impute_col
         )
         intermediate_big[, offset_start[i]:offset_end[i]] <- imp
       },
       impute_knn = impute_knn,
       subset_list = subset_list,
       knn_imp = knn_imp,
-      mean_impute_col = mean_impute_col,
+      weighted = weighted,
+      dist_pow = dist_pow,
       impute_knn_naive = impute_knn_naive,
+      mean_impute_col = mean_impute_col,
       start = start,
       end = end,
       obj_desc = obj_desc,
@@ -393,7 +404,7 @@ SlideKnn <- function(
   purrr::walk(
     seq_along(w_start),
     fn(
-      function(i, ...) {
+      function(i) {
         window_cols <- w_start[i]:w_end[i]
         counts_big <- bigmemory::attach.big.matrix(counts_desc)
         final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc)
@@ -476,7 +487,19 @@ SlideKnn <- function(
 #'
 #' @keywords internal
 #' @noRd
-impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp, subset, knn_imp = knn_imp, ...) {
+impute_knn <- function(
+    obj,
+    k,
+    rowmax,
+    colmax,
+    cores,
+    method,
+    post_imp,
+    subset,
+    weighted,
+    dist_pow,
+    knn_imp,
+    ...) {
   na_mat <- is.na(obj)
 
   # Determine 'good_rows': rows where the proportion of NAs is less than 'rowmax'.
@@ -497,6 +520,8 @@ impute_knn <- function(obj, k, rowmax, colmax, cores, method, post_imp, subset, 
     cores = cores,
     post_imp = post_imp,
     subset = subset,
+    weighted = weighted,
+    dist_pow = dist_pow,
     ...
   )
 
@@ -559,6 +584,8 @@ knn_imp <- function(
     cores = 1,
     post_imp = TRUE,
     subset = NULL,
+    weighted = FALSE,
+    dist_pow = 1,
     ...) {
   # Pre-conditioning
   method <- match.arg(method)
@@ -575,6 +602,10 @@ knn_imp <- function(
     combine = "or",
     .var.name = "subset"
   )
+  checkmate::assert_flag(weighted)
+  if (weighted) {
+    stopifnot(length(dist_pow) == 1, dist_pow > 0, !is.infinite(dist_pow))
+  }
   if (!is.null(subset)) {
     if (length(subset) == 0) {
       # message("non-NULL `subset` of length 0 detected. Returning object unimputed.")
@@ -632,6 +663,8 @@ knn_imp <- function(
       "manhattan" = 1L,
       "impute.knn" = 2L
     ),
+    weighted = weighted,
+    dist_pow = dist_pow,
     cores = cores
   )
   colnames(post_imp_cols) <- colnames(pre_imp_cols)

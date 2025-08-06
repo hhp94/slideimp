@@ -15,6 +15,8 @@ SlideKnn(
   cores = 1,
   method = c("euclidean", "manhattan", "impute.knn"),
   post_imp = TRUE,
+  weighted = FALSE,
+  dist_pow = 1,
   .progress = FALSE,
   output = NULL,
   overwrite = TRUE,
@@ -43,6 +45,11 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 \item{method}{Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.}
 
 \item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
+
+\item{weighted}{Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.}
+
+\item{dist_pow}{A positive double that controls the penalty for larger distances in the weighted mean imputation.
+Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.}
 
 \item{.progress}{Logical; if TRUE, show a progress bar. Default is FALSE.}
 
