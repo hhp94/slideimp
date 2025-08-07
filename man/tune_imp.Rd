@@ -11,7 +11,7 @@ tune_imp(
   rep = 1,
   num_na = 100,
   max_iter = 1000,
-  .progress = TRUE,
+  .progress = FALSE,
   rowmax = 0.9,
   colmax = 0.9,
   cores = 1

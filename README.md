@@ -160,7 +160,7 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
 )
 #>    user  system elapsed 
-#>    0.01    0.01    0.03
+#>    0.00    0.03    0.02
 ```
 
 Importantly, we can speed this up using multiple cores:
@@ -170,7 +170,7 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 4)
 )
 #>    user  system elapsed 
-#>    0.00    0.00    0.02
+#>    0.01    0.00    0.02
 ```
 
 ## Parameter Tuning
@@ -233,15 +233,20 @@ calculate the prediction metrics.
 library(yardstick)
 met_set <- metric_set(mae, rmse, rsq)
 results$metrics <- lapply(results$result, function(x) met_set(x, truth = truth, estimate = estimate))
-head(dplyr::select(tidyr::unnest(dplyr::select(results, -result), cols = "metrics"), -(.progress:cores)))
-#> # A tibble: 6 × 12
-#>   n_feat     k n_overlap rowmax colmax post_imp method   param_set   rep .metric
-#>    <dbl> <dbl>     <dbl>  <dbl>  <dbl> <lgl>    <chr>        <int> <int> <chr>  
-#> 1    100     5        10    0.9    0.9 TRUE     euclide…         1     1 mae    
-#> 2    100     5        10    0.9    0.9 TRUE     euclide…         1     1 rmse   
-#> 3    100     5        10    0.9    0.9 TRUE     euclide…         1     1 rsq    
-#> 4    200    10        20    0.9    0.9 TRUE     euclide…         2     1 mae    
-#> 5    200    10        20    0.9    0.9 TRUE     euclide…         2     1 rmse   
-#> 6    200    10        20    0.9    0.9 TRUE     euclide…         2     1 rsq    
-#> # ℹ 2 more variables: .estimator <chr>, .estimate <dbl>
+head(
+  dplyr::select(
+    tidyr::unnest(dplyr::select(results, -result), cols = "metrics"),
+    -(.progress:cores),
+    -c(post_imp, rowmax, colmax)
+  )
+)
+#> # A tibble: 6 × 9
+#>   n_feat     k n_overlap method    param_set   rep .metric .estimator .estimate
+#>    <dbl> <dbl>     <dbl> <chr>         <int> <int> <chr>   <chr>          <dbl>
+#> 1    100     5        10 euclidean         1     1 mae     standard    386.    
+#> 2    100     5        10 euclidean         1     1 rmse    standard    519.    
+#> 3    100     5        10 euclidean         1     1 rsq     standard      0.0501
+#> 4    200    10        20 euclidean         2     1 mae     standard    350.    
+#> 5    200    10        20 euclidean         2     1 rmse    standard    481.    
+#> 6    200    10        20 euclidean         2     1 rsq     standard      0.123
 ```

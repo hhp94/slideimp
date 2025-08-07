@@ -685,13 +685,9 @@ knn_imp <- function(
       cores = cores
     )
   } else {
-    pre_imp_cols_filled <- pre_imp_cols
-    col_means <- colMeans(pre_imp_cols, na.rm = TRUE)
-    for (j in which(pre_imp_cmiss > 0)) {
-      pre_imp_cols_filled[is.na(pre_imp_cols_filled[, j]), j] <- col_means[j]
-    }
     post_imp_cols <- impute_knn_mlpack(
-      obj = pre_imp_cols_filled,
+      # Has to pre-fill with colMeans
+      obj = mean_impute_col(pre_imp_cols),
       miss = pre_imp_miss,
       k = k,
       n_col_miss = pre_imp_cmiss,

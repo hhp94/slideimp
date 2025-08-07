@@ -113,5 +113,11 @@ You can then use [`{yardstick}`](https://yardstick.tidymodels.org/) to calculate
 library(yardstick)
 met_set <- metric_set(mae, rmse, rsq)
 results$metrics <- lapply(results$result, function(x) met_set(x, truth = truth, estimate = estimate))
-head(dplyr::select(tidyr::unnest(dplyr::select(results, -result), cols = "metrics"), -(.progress:cores)))
+head(
+  dplyr::select(
+    tidyr::unnest(dplyr::select(results, -result), cols = "metrics"),
+    -(.progress:cores),
+    -c(post_imp, rowmax, colmax)
+  )
+)
 ```
