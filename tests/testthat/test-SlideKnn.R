@@ -11,21 +11,41 @@ test_that("`SlideKnn` in-memory matrix mode works", {
     )$input
   )
   # Init
-  counts <- final_imputed <- matrix(0, nrow = nrow(to_test), ncol = ncol(to_test), dimnames = dimnames(to_test))
-  # 1 to 100 is the first window;
-  final_imputed[, 1:100] <- final_imputed[, 1:100] + knn_imp(
-    obj = to_test[, 1:100], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
+  counts <- final_imputed <- matrix(
+    0,
+    nrow = nrow(to_test),
+    ncol = ncol(to_test),
+    dimnames = dimnames(to_test)
   )
+  # 1 to 100 is the first window;
+  final_imputed[, 1:100] <- final_imputed[, 1:100] +
+    knn_imp(
+      obj = to_test[, 1:100],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE
+    )
   counts[, 1:100] <- counts[, 1:100] + 1
   # 91 to 190 is the second window;
-  final_imputed[, 91:190] <- final_imputed[, 91:190] + knn_imp(
-    obj = to_test[, 91:190], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
-  )
+  final_imputed[, 91:190] <- final_imputed[, 91:190] +
+    knn_imp(
+      obj = to_test[, 91:190],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE
+    )
   counts[, 91:190] <- counts[, 91:190] + 1
   # 181 to 280 is the last window
-  final_imputed[, 181:280] <- final_imputed[, 181:280] + knn_imp(
-    obj = to_test[, 181:280], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
-  )
+  final_imputed[, 181:280] <- final_imputed[, 181:280] +
+    knn_imp(
+      obj = to_test[, 181:280],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE
+    )
   counts[, 181:280] <- counts[, 181:280] + 1
   final_imputed <- final_imputed / counts
 
@@ -81,27 +101,50 @@ test_that("`SlideKnn` in-memory subset works", {
   )
   subset <- c(1, 6, 10, 50)
   # Init
-  counts <- final_imputed <- matrix(0, nrow = nrow(to_test), ncol = ncol(to_test), dimnames = dimnames(to_test))
+  counts <- final_imputed <- matrix(
+    0,
+    nrow = nrow(to_test),
+    ncol = ncol(to_test),
+    dimnames = dimnames(to_test)
+  )
   # 1 to 20 is the first window;
   window_cols <- 1:20
   local_subset <- which(window_cols %in% subset)
-  final_imputed[, window_cols] <- final_imputed[, window_cols] + knn_imp(
-    obj = to_test[, window_cols], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE, subset = local_subset
-  )
+  final_imputed[, window_cols] <- final_imputed[, window_cols] +
+    knn_imp(
+      obj = to_test[, window_cols],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE,
+      subset = local_subset
+    )
   counts[, window_cols] <- counts[, window_cols] + 1
   # 16 to 35 is the second window;
   window_cols <- 16:35
   local_subset <- which(window_cols %in% subset)
-  final_imputed[, window_cols] <- final_imputed[, window_cols] + knn_imp(
-    obj = to_test[, window_cols], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE, subset = local_subset
-  )
+  final_imputed[, window_cols] <- final_imputed[, window_cols] +
+    knn_imp(
+      obj = to_test[, window_cols],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE,
+      subset = local_subset
+    )
   counts[, window_cols] <- counts[, window_cols] + 1
   # 31 to 50 is the last window
   window_cols <- 31:50
   local_subset <- which(window_cols %in% subset)
-  final_imputed[, window_cols] <- final_imputed[, window_cols] + knn_imp(
-    obj = to_test[, window_cols], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE, subset = local_subset
-  )
+  final_imputed[, window_cols] <- final_imputed[, window_cols] +
+    knn_imp(
+      obj = to_test[, window_cols],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE,
+      subset = local_subset
+    )
   counts[, window_cols] <- counts[, window_cols] + 1
   final_imputed <- final_imputed / counts
   # SlideKnn should exactly replicate this result
@@ -133,21 +176,41 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
     )$input
   )
   # Init
-  counts <- final_imputed <- matrix(0, nrow = nrow(to_test), ncol = ncol(to_test), dimnames = dimnames(to_test))
-  # 1 to 100 is the first window;
-  final_imputed[, 1:100] <- final_imputed[, 1:100] + knn_imp(
-    obj = to_test[, 1:100], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
+  counts <- final_imputed <- matrix(
+    0,
+    nrow = nrow(to_test),
+    ncol = ncol(to_test),
+    dimnames = dimnames(to_test)
   )
+  # 1 to 100 is the first window;
+  final_imputed[, 1:100] <- final_imputed[, 1:100] +
+    knn_imp(
+      obj = to_test[, 1:100],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE
+    )
   counts[, 1:100] <- counts[, 1:100] + 1
   # 101 to 200 is the second window;
-  final_imputed[, 101:200] <- final_imputed[, 101:200] + knn_imp(
-    obj = to_test[, 101:200], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
-  )
+  final_imputed[, 101:200] <- final_imputed[, 101:200] +
+    knn_imp(
+      obj = to_test[, 101:200],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE
+    )
   counts[, 101:200] <- counts[, 101:200] + 1
   # 201 to 300 is the last window
-  final_imputed[, 201:300] <- final_imputed[, 201:300] + knn_imp(
-    obj = to_test[, 201:300], k = 3, colmax = 0.9, rowmax = 0.9, post_imp = TRUE
-  )
+  final_imputed[, 201:300] <- final_imputed[, 201:300] +
+    knn_imp(
+      obj = to_test[, 201:300],
+      k = 3,
+      colmax = 0.9,
+      rowmax = 0.9,
+      post_imp = TRUE
+    )
   counts[, 201:300] <- counts[, 201:300] + 1
   final_imputed <- final_imputed / counts
   # SlideKnn should exactly replicate this result
@@ -192,8 +255,28 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
   expect_true(bigmemory::is.big.matrix(sim_bm))
 
   # in-memory version
-  ram <- SlideKnn(sim, n_feat = 100, n_overlap = 10, k = 5, cores = 1, post_imp = TRUE)
+  ram <- SlideKnn(
+    sim,
+    n_feat = 100,
+    n_overlap = 10,
+    k = 5,
+    cores = 1,
+    post_imp = TRUE
+  )
 
+  # Quickly check that treed version works
+  expect_no_error(
+    SlideKnn(
+      sim,
+      n_feat = 100,
+      n_overlap = 10,
+      k = 5,
+      cores = 1,
+      post_imp = TRUE,
+      tree = "ball",
+      method = "euclidean"
+    )
+  )
   # Explicit temp file path for bm output
   temp_bm <- withr::local_tempfile(pattern = "bm")
 
@@ -215,7 +298,14 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
   skip_if_not(interactive())
   mirai::daemons(4)
   on.exit(mirai::daemons(0))
-  ram_4 <- SlideKnn(sim, n_feat = 100, n_overlap = 10, k = 5, cores = 4, post_imp = TRUE)
+  ram_4 <- SlideKnn(
+    sim,
+    n_feat = 100,
+    n_overlap = 10,
+    k = 5,
+    cores = 4,
+    post_imp = TRUE
+  )
 
   # Explicit temp file path for bm_4 output
   temp_bm4 <- withr::local_tempfile(pattern = "bm_4")
@@ -238,7 +328,20 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
 
 test_that("`knn_imp` works", {
   data("khanmiss1")
-  expect_no_error(knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "impute.knn"))
+  expect_no_error(knn_imp(
+    t(khanmiss1),
+    k = 3,
+    rowmax = 1,
+    method = "impute.knn"
+  ))
+
+  expect_no_error(knn_imp(
+    t(khanmiss1),
+    k = 3,
+    rowmax = 1,
+    method = "euclidean",
+    tree = "kd"
+  ))
 })
 
 test_that("`impute_knn` ignore all na rows", {
@@ -267,7 +370,8 @@ test_that("`impute_knn` ignore all na rows", {
     subset = NULL,
     knn_imp = knn_imp,
     impute_knn_naive = impute_knn_naive,
-    mean_impute_col = mean_impute_col
+    mean_impute_col = mean_impute_col,
+    tree = NULL
   )
 
   # Expect that the all-NA rows remain all NA
@@ -282,10 +386,22 @@ test_that("Exactly replicate `impute::impute.knn`", {
   testthat::skip_on_cran()
   if (rlang::is_installed("impute")) {
     r1 <- knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "impute.knn")
-    r2 <- t(impute::impute.knn(khanmiss1, k = 3, rowmax = 1, maxp = nrow(khanmiss1))$data)
+    r2 <- t(
+      impute::impute.knn(
+        khanmiss1,
+        k = 3,
+        rowmax = 1,
+        maxp = nrow(khanmiss1)
+      )$data
+    )
     expect_equal(r1, r2)
   } else {
-    expect_no_error(knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "impute.knn"))
+    expect_no_error(knn_imp(
+      t(khanmiss1),
+      k = 3,
+      rowmax = 1,
+      method = "impute.knn"
+    ))
   }
 })
 
@@ -295,7 +411,12 @@ test_that("`subset` feature of `knn_imp` works", {
   # Impute just 3 columns
   r1 <- knn_imp(to_test, k = 3, post_imp = FALSE, subset = c(1, 3, 5))
   expect_true(!anyNA(r1[, c(1, 3, 5)]))
-  r2 <- knn_imp(to_test, k = 3, post_imp = FALSE, subset = paste0("feat", c(1, 3, 5)))
+  r2 <- knn_imp(
+    to_test,
+    k = 3,
+    post_imp = FALSE,
+    subset = paste0("feat", c(1, 3, 5))
+  )
   expect_identical(r1, r2)
 })
 

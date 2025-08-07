@@ -22,6 +22,8 @@
 #' @param colmax Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.
 #' @param cores Integer specifying the number of cores to use for parallel computation of distances.
 #' @param method Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.
+#' @param tree Character string specifying the k-NN method. `NULL` (default) uses naive search.
+#' `"kd"` uses KDTree and `"ball"` uses BallTree as implemented by the mlpack package where missing values are first filled with column means.
 #' @param post_imp Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.
 #' @param weighted Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.
 #' @param dist_pow  A positive double that controls the penalty for larger distances in the weighted mean imputation.
@@ -53,6 +55,7 @@ SlideKnn <- function(
     colmax = 0.9,
     cores = 1,
     method = c("euclidean", "manhattan", "impute.knn"),
+    tree = NULL,
     post_imp = TRUE,
     weighted = FALSE,
     dist_pow = 1,
@@ -329,8 +332,10 @@ SlideKnn <- function(
           dist_pow = dist_pow,
           subset = subset_list[[i]],
           knn_imp = knn_imp,
+          tree = tree,
           impute_knn_naive = impute_knn_naive,
-          # mean_impute_col = mean_impute_col
+          impute_knn_mlpack = impute_knn_mlpack,
+          mean_impute_col = mean_impute_col
         )
         intermediate_big[, offset_start[i]:offset_end[i]] <- imp
       },
@@ -341,9 +346,11 @@ SlideKnn <- function(
       dist_pow = dist_pow,
       impute_knn_naive = impute_knn_naive,
       mean_impute_col = mean_impute_col,
+      impute_knn_mlpack = impute_knn_mlpack,
       start = start,
       end = end,
       obj_desc = obj_desc,
+      tree = tree,
       intermediate_desc = intermediate_desc,
       k = k,
       rowmax = rowmax,
@@ -498,6 +505,7 @@ impute_knn <- function(
     subset,
     weighted,
     dist_pow,
+    tree,
     knn_imp,
     ...) {
   na_mat <- is.na(obj)
@@ -522,6 +530,7 @@ impute_knn <- function(
     subset = subset,
     weighted = weighted,
     dist_pow = dist_pow,
+    tree = tree,
     ...
   )
 
@@ -586,6 +595,7 @@ knn_imp <- function(
     subset = NULL,
     weighted = FALSE,
     dist_pow = 1,
+    tree = NULL,
     ...) {
   # Pre-conditioning
   method <- match.arg(method)
@@ -605,6 +615,12 @@ knn_imp <- function(
   checkmate::assert_flag(weighted)
   if (weighted) {
     stopifnot(length(dist_pow) == 1, dist_pow > 0, !is.infinite(dist_pow))
+  }
+  checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
+  if (!is.null(tree)) {
+    if (method == "impute.knn") {
+      stop("When tree is not NULL, method cannot be 'impute.knn'")
+    }
   }
   if (!is.null(subset)) {
     if (length(subset) == 0) {
@@ -653,20 +669,42 @@ knn_imp <- function(
   }
   # Impute
   ## knn imp cols. Note: only pre_imp_cols is imputed if post_imp is FALSE.
-  post_imp_cols <- impute_knn_naive(
-    obj = pre_imp_cols,
-    miss = pre_imp_miss,
-    k = k,
-    n_col_miss = pre_imp_cmiss,
-    method = switch(method,
-      "euclidean" = 0L,
-      "manhattan" = 1L,
-      "impute.knn" = 2L
-    ),
-    weighted = weighted,
-    dist_pow = dist_pow,
-    cores = cores
-  )
+  if (is.null(tree)) {
+    post_imp_cols <- impute_knn_naive(
+      obj = pre_imp_cols,
+      miss = pre_imp_miss,
+      k = k,
+      n_col_miss = pre_imp_cmiss,
+      method = switch(method,
+        "euclidean" = 0L,
+        "manhattan" = 1L,
+        "impute.knn" = 2L
+      ),
+      weighted = weighted,
+      dist_pow = dist_pow,
+      cores = cores
+    )
+  } else {
+    pre_imp_cols_filled <- pre_imp_cols
+    col_means <- colMeans(pre_imp_cols, na.rm = TRUE)
+    for (j in which(pre_imp_cmiss > 0)) {
+      pre_imp_cols_filled[is.na(pre_imp_cols_filled[, j]), j] <- col_means[j]
+    }
+    post_imp_cols <- impute_knn_mlpack(
+      obj = pre_imp_cols_filled,
+      miss = pre_imp_miss,
+      k = k,
+      n_col_miss = pre_imp_cmiss,
+      method = switch(method,
+        "euclidean" = 0L,
+        "manhattan" = 1L
+      ),
+      tree = tree,
+      weighted = weighted,
+      dist_pow = dist_pow,
+      cores = cores
+    )
+  }
   colnames(post_imp_cols) <- colnames(pre_imp_cols)
   if (post_imp) {
     subset_knn <- intersect(subset, knn_indices)
@@ -679,7 +717,6 @@ knn_imp <- function(
   obj[, knn_imp_cols] <- post_imp_cols
   return(obj)
 }
-
 #' @title Row Mean Imputation
 #'
 #' @description
@@ -744,4 +781,5 @@ mean_impute_col <- function(obj, subset = NULL) {
 
 dummy <- function() {
   Rcpp::evalCpp()
+  mlpack::adaboost
 }

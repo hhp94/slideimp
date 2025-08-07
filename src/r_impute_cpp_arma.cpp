@@ -89,9 +89,6 @@ double calc_distance_euclid(
   const arma::uword *miss2_ptr = miss.colptr(idx2);
   double dist = 0.0;
   arma::uword n_valid = 0;
-#if defined(_OPENMP)
-#pragma omp simd reduction(+ : dist) reduction(+ : n_valid)
-#endif
   for (arma::uword r = 0; r < obj.n_rows; ++r)
   {
     if (miss1_ptr[r] == 0 && miss2_ptr[r] == 0)
@@ -122,9 +119,6 @@ double calc_distance_manhattan(
   const arma::uword *miss2_ptr = miss.colptr(idx2);
   double dist = 0.0;
   arma::uword n_valid = 0;
-#if defined(_OPENMP)
-#pragma omp simd reduction(+ : dist) reduction(+ : n_valid)
-#endif
   for (arma::uword r = 0; r < obj.n_rows; ++r)
   {
     if (miss1_ptr[r] == 0 && miss2_ptr[r] == 0)
@@ -155,9 +149,6 @@ double calc_distance_knn(
   const arma::uword *miss2_ptr = miss.colptr(idx2);
   double dist = 0.0;
   arma::uword n_valid = 0;
-#if defined(_OPENMP)
-#pragma omp simd reduction(+ : dist) reduction(+ : n_valid)
-#endif
   for (arma::uword r = 0; r < obj.n_rows; ++r)
   {
     if (miss1_ptr[r] == 0 && miss2_ptr[r] == 0)
@@ -274,7 +265,7 @@ arma::mat impute_knn_naive(
     const arma::uword k,         // n neighbors
     const arma::uvec n_col_miss, // vector of missing per column
     const int method,
-    const bool weighted, // weighted average for imputation or not
+    const bool weighted,   // weighted average for imputation or not
     const double dist_pow, // controls distance penalty for weighted average
     int cores)
 {
@@ -355,11 +346,7 @@ arma::mat impute_knn_naive(
     arma::vec nn_weights(nn_columns.n_elem);
     if (weighted)
     {
-      for (arma::uword j = 0; j < nn_columns.n_elem; ++j)
-      {
-        double dist = nn_dists(j);
-        nn_weights(j) = 1.0 / std::pow(dist + epsilon, dist_pow);
-      }
+      nn_weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
     }
     else
     {
@@ -373,9 +360,6 @@ arma::mat impute_knn_naive(
     {
       double weighted_sum = 0.0;
       double weight_total = 0.0;
-#if defined(_OPENMP)
-#pragma omp simd reduction(+ : weighted_sum) reduction(+ : weight_total)
-#endif
       for (arma::uword j = 0; j < nn_columns.n_elem; ++j)
       {
         arma::uword neighbor_col_idx = nn_columns(j);

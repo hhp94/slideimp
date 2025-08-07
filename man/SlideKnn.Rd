@@ -14,6 +14,7 @@ SlideKnn(
   colmax = 0.9,
   cores = 1,
   method = c("euclidean", "manhattan", "impute.knn"),
+  tree = NULL,
   post_imp = TRUE,
   weighted = FALSE,
   dist_pow = 1,
@@ -43,6 +44,9 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 \item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 
 \item{method}{Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.}
+
+\item{tree}{Character string specifying the k-NN method. `NULL` (default) uses naive search.
+`"kd"` uses KDTree and `"ball"` uses BallTree as implemented by the mlpack package where missing values are first filled with column means.}
 
 \item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
 

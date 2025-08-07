@@ -15,6 +15,7 @@ knn_imp(
   subset = NULL,
   weighted = FALSE,
   dist_pow = 1,
+  tree = NULL,
   ...
 )
 }
@@ -40,6 +41,9 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 
 \item{dist_pow}{A positive double that controls the penalty for larger distances in the weighted mean imputation.
 Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.}
+
+\item{tree}{Character string specifying the k-NN method. `NULL` (default) uses naive search.
+`"kd"` uses KDTree and `"ball"` uses BallTree as implemented by the mlpack package where missing values are first filled with column means.}
 
 \item{...}{Not Implemented.}
 }

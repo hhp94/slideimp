@@ -63,7 +63,9 @@ inject_na <- function(
   while (c_miss || r_miss) {
     iter <- iter + 1
     if (iter > max_iter) {
-      stop("NA injection failed. Adjust 'num_na' or increase 'colmax' and 'rowmax'.")
+      stop(
+        "NA injection failed. Adjust 'num_na' or increase 'colmax' and 'rowmax'."
+      )
     }
     na_mat_test <- na_mat
     na_loc <- sample(not_na, size = num_na)
@@ -153,26 +155,50 @@ tune_imp <- function(
     rep = 1,
     num_na = 100,
     max_iter = 1000,
-    .progress = TRUE,
+    .progress = FALSE,
     rowmax = 0.9,
     colmax = 0.9,
     cores = 1) {
-  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(
+    obj,
+    mode = "numeric",
+    min.rows = 1,
+    min.cols = 2,
+    null.ok = FALSE,
+    .var.name = "obj"
+  )
   checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
   stopifnot(
-    "`.f` must be a function or 'SlideKnn' or 'knn_imp'." = (
-      is.function(.f) ||
-        is.character(.f) &&
-          (.f %in% c("SlideKnn", "knn_imp")) && length(.f) == 1
-    )
+    "`.f` must be a function or 'SlideKnn' or 'knn_imp'." = (is.function(.f) ||
+      is.character(.f) &&
+        (.f %in% c("SlideKnn", "knn_imp")) &&
+        length(.f) == 1)
   )
   checkmate::assert_count(rep, positive = TRUE, .var.name = "rep")
   checkmate::assert_count(num_na, positive = TRUE, .var.name = "num_na")
   checkmate::assert_count(max_iter, positive = TRUE, .var.name = "max_iter")
   checkmate::assert_flag(.progress, .var.name = ".progress")
-  checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
-  checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
-  checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
+  checkmate::assert_number(
+    rowmax,
+    lower = 0,
+    upper = 1,
+    null.ok = FALSE,
+    .var.name = "rowmax"
+  )
+  checkmate::assert_number(
+    colmax,
+    lower = 0,
+    upper = 1,
+    null.ok = FALSE,
+    .var.name = "colmax"
+  )
+  checkmate::assert_integerish(
+    cores,
+    lower = 1,
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "cores"
+  )
   checkmate::assert_data_frame(
     parameters,
     any.missing = FALSE,
@@ -189,18 +215,45 @@ tune_imp <- function(
     if (!"method" %in% names(parameters)) {
       parameters$method <- "euclidean"
     }
+    if (!"weighted" %in% names(parameters)) {
+      parameters$weighted <- FALSE
+    }
+    if (!"dist_pow" %in% names(parameters)) {
+      parameters$dist_pow <- 1
+    }
     if (.f == "SlideKnn") {
-      stopifnot("`SlideKnn` requires `n_feat`, `k`, and `n_overlap` in parameters" = c("n_feat", "k", "n_overlap") %in% names(parameters))
+      stopifnot(
+        "`SlideKnn` requires `n_feat`, `k`, and `n_overlap` in parameters" = c(
+          "n_feat",
+          "k",
+          "n_overlap"
+        ) %in%
+          names(parameters)
+      )
       parameters$.progress <- FALSE
       # For `SlideKnn`, cores passed to `SlideKnn` instead
       parameters$cores <- cores
       cores <- 1
       parameters <- subset(
         parameters,
-        select = c("n_feat", "k", "n_overlap", "rowmax", "colmax", "post_imp", "method", ".progress", "cores")
+        select = c(
+          "n_feat",
+          "k",
+          "n_overlap",
+          "rowmax",
+          "colmax",
+          "post_imp",
+          "method",
+          ".progress",
+          "weighted",
+          "dist_pow",
+          "cores"
+        )
       )
     } else if (.f == "knn_imp") {
-      stopifnot("`knn_imp` requires `k` in parameters" = "k" %in% names(parameters))
+      stopifnot(
+        "`knn_imp` requires `k` in parameters" = "k" %in% names(parameters)
+      )
       # If cores is less than number of work total, then parallel the work and sequential in each task
       if (cores <= nrow(parameters) * rep) {
         parameters$cores <- 1
@@ -211,7 +264,7 @@ tune_imp <- function(
       }
       parameters <- subset(
         parameters,
-        select = c("k", "rowmax", "colmax", "post_imp", "method", "cores")
+        select = c("k", "rowmax", "colmax", "post_imp", "method", "cores", "weighted", "dist_pow")
       )
       .f <- knn_imp
     }
@@ -219,7 +272,10 @@ tune_imp <- function(
   parameters <- unique(parameters)
   .rowid <- seq_len(nrow(parameters))
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), as.list)
-  indices <- tibble::as_tibble(expand.grid(param_set = .rowid, rep = seq_len(rep)))
+  indices <- tibble::as_tibble(expand.grid(
+    param_set = .rowid,
+    rep = seq_len(rep)
+  ))
   # Generate na_loc
   na_loc <- replicate(
     n = rep,
@@ -242,7 +298,11 @@ tune_imp <- function(
     tryCatch(
       mirai::require_daemons(),
       error = function(e) {
-        stop(sprintf("%d cores requested, but no mirai daemon is setup. Call mirai::daemons(%d) to set up the parallelization", cores, cores))
+        stop(sprintf(
+          "%d cores requested, but no mirai daemon is setup. Call mirai::daemons(%d) to set up the parallelization",
+          cores,
+          cores
+        ))
       }
     )
     fn <- purrr::in_parallel

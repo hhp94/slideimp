@@ -1,7 +1,7 @@
 Package: SlideKnn
 Type: Package
 Title: KNN Imputation of Numeric Data and Sliding KNN Imputation of Micro Array Data
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: c(
     person(
       "Hung", "Pham",
@@ -23,8 +23,11 @@ Config/testthat/edition: 3
 RoxygenNote: 7.3.2
 LinkingTo: 
     Rcpp,
-    RcppArmadillo
-Imports: 
+    RcppArmadillo,
+    RcppEnsmallen,
+    mlpack
+Imports:
+    mlpack,
     carrier,
     checkmate,
     mirai,
@@ -36,6 +39,6 @@ Imports:
     withr,
     fs
 Depends: 
-    R (>= 3.5)
+    R (>= 4.1.0)
 URL: https://github.com/hhp94/SlideKnn
 BugReports: https://github.com/hhp94/SlideKnn/issues
