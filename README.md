@@ -8,7 +8,7 @@
 <!-- badges: end -->
 
 The
-[`impute`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
+[`{impute}`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
 package available on Bioconductor is the go-to solution for k-nearest
 neighbors (KNN) imputation in R. It is extremely fast and battle-tested.
 However, the package has certain quirks:
@@ -52,10 +52,8 @@ cores.
 <li>
 
 Modern KNN methods for high dimensional data using tree based methods
-might not work properly because the distance that takes into
-consideration missing may not satisfy the triangle inequality. This
-makes it so that we have to rely on brute-force imputation which is
-slower.
+may speed up calculations substantially at the expense of some accuracy
+due to the handling of missing value in distance calculations.
 </li>
 
 <li>
@@ -74,14 +72,7 @@ imputation of even very high-dimensional data.
 
 <li>
 
-The distance calculation between two rows in `impute.knn` is divided by
-the number of matching coordinates between the rows. This can
-potentially make rows that only have one matching coordinate with other
-rows (which should have higher uncertainty in calling neighbors) be
-judged as closer to rows with higher matching. The `dist` function from
-the `stats` package appropriately penalizes the distance between
-neighbors with missing values by scaling the distance up relative to the
-number of missing coordinates.
+Doesn’t support weighted average by inverse distance.
 </li>
 
 <li>
@@ -109,7 +100,18 @@ parallelization over numbers of columns with missing
 
 <li>
 
-Parameter tuning with artificial NA injection (`tune_knn()` and
+Tree KNN implementation by the [`{mlpack}`](https://www.mlpack.org/)
+package.
+</li>
+
+<li>
+
+Weighted average imputation by inverse distance to improve accuracy.
+</li>
+
+<li>
+
+Parameter tuning with artificial NA injection (`tune_imp()` and
 `inject_na()`).
 </li>
 
@@ -147,7 +149,7 @@ data(khanmiss1)
 
 # Transpose for samples in rows, features in columns
 imputed <- SlideKnn(t(khanmiss1), n_feat = 100, n_overlap = 10, k = 10)
-sum(is.na(imputed))  # Should be 0
+sum(is.na(imputed)) # Should be 0
 #> [1] 0
 ```
 
@@ -158,7 +160,7 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
 )
 #>    user  system elapsed 
-#>    0.03    0.00    0.03
+#>    0.00    0.03    0.02
 ```
 
 Importantly, we can speed this up using multiple cores:
@@ -168,12 +170,12 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 4)
 )
 #>    user  system elapsed 
-#>    0.00    0.02    0.02
+#>    0.01    0.00    0.02
 ```
 
 ## Parameter Tuning
 
-Use `tune_knn()` to estimate the predictive performance of different
+Use `tune_imp()` to estimate the predictive performance of different
 parameter combinations by injecting artificial NAs into the data and
 measuring imputation accuracy. The `parameters` data.frame must have the
 following columns:
@@ -221,10 +223,7 @@ parameters <- dplyr::tibble(
   post_imp = TRUE
 )
 
-results <- tune_knn(t(khanmiss1), parameters, rep = 3, num_na = 50)
-#> Iter 1 of 3
-#> Iter 2 of 3
-#> Iter 3 of 3
+results <- tune_imp(t(khanmiss1), parameters, rep = 3, num_na = 50)
 ```
 
 You can then use [`{yardstick}`](https://yardstick.tidymodels.org/) to
@@ -234,14 +233,20 @@ calculate the prediction metrics.
 library(yardstick)
 met_set <- metric_set(mae, rmse, rsq)
 results$metrics <- lapply(results$result, function(x) met_set(x, truth = truth, estimate = estimate))
-head(tidyr::unnest(dplyr::select(results, -result), cols = "metrics"))
-#> # A tibble: 6 × 8
-#>     rep param_id n_feat     k n_overlap .metric .estimator .estimate
-#>   <int>    <int>  <dbl> <dbl>     <dbl> <chr>   <chr>          <dbl>
-#> 1     1        1    100     5        10 mae     standard     399.   
-#> 2     1        1    100     5        10 rmse    standard     501.   
-#> 3     1        1    100     5        10 rsq     standard       0.264
-#> 4     1        2    200    10        20 mae     standard     404.   
-#> 5     1        2    200    10        20 rmse    standard     497.   
-#> 6     1        2    200    10        20 rsq     standard       0.273
+head(
+  dplyr::select(
+    tidyr::unnest(dplyr::select(results, -result), cols = "metrics"),
+    -(.progress:cores),
+    -c(post_imp, rowmax, colmax)
+  )
+)
+#> # A tibble: 6 × 9
+#>   n_feat     k n_overlap method    param_set   rep .metric .estimator .estimate
+#>    <dbl> <dbl>     <dbl> <chr>         <int> <int> <chr>   <chr>          <dbl>
+#> 1    100     5        10 euclidean         1     1 mae     standard    386.    
+#> 2    100     5        10 euclidean         1     1 rmse    standard    519.    
+#> 3    100     5        10 euclidean         1     1 rsq     standard      0.0501
+#> 4    200    10        20 euclidean         2     1 mae     standard    350.    
+#> 5    200    10        20 euclidean         2     1 rmse    standard    481.    
+#> 6    200    10        20 euclidean         2     1 rsq     standard      0.123
 ```

@@ -36,13 +36,27 @@
 #' # Generate a dataset with no missing values
 #' sim_data_complete <- sim_mat(n = 50, m = 10, perc_NA = 0, perc_col_NA = 0)
 #' sum(is.na(sim_data_complete$input))
-sim_mat <- function(n = 100, m = 100, nchr = 2, ngrp = 1, perc_NA = 0.5, perc_col_NA = 0.5) {
+sim_mat <- function(
+    n = 100,
+    m = 100,
+    nchr = 2,
+    ngrp = 1,
+    perc_NA = 0.5,
+    perc_col_NA = 0.5) {
   stopifnot(
-    n > 1, m > 1, nchr >= 1, nchr <= 22,
-    perc_NA >= 0, perc_NA <= 1, perc_col_NA >= 0, perc_col_NA <= 1
+    n > 1,
+    m > 1,
+    nchr >= 1,
+    nchr <= 22,
+    perc_NA >= 0,
+    perc_NA <= 1,
+    perc_col_NA >= 0,
+    perc_col_NA <= 1
   )
   if (!rlang::is_installed("matrixStats")) {
-    stop("sim_mat requires {matrixStats}, which can be installed with install.packages('matrixStats')")
+    stop(
+      "sim_mat requires {matrixStats}, which can be installed with install.packages('matrixStats')"
+    )
   }
 
   # Create and scale the matrix to between 0 and 1 per column
@@ -74,5 +88,9 @@ sim_mat <- function(n = 100, m = 100, nchr = 2, ngrp = 1, perc_NA = 0.5, perc_co
     d[cbind(row_idx, col_idx)] <- NA
   }
 
-  return(list(input = d, group_feature = group_feature, group_sample = group_sample))
+  return(list(
+    input = d,
+    group_feature = group_feature,
+    group_sample = group_sample
+  ))
 }

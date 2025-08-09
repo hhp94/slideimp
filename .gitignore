@@ -4,3 +4,7 @@
 .Ruserdata
 dev
 *.Rproj
+.vscode
+src/*.o
+src/*.so
+src/*.dll

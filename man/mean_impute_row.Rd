@@ -7,7 +7,8 @@
 mean_impute_row(obj)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
+Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
 }
 \value{
 The matrix with NA values replaced by row means.
