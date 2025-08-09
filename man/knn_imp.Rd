@@ -20,8 +20,7 @@ knn_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
-Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{k}{Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).}
 
@@ -29,11 +28,11 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 
 \item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{method}{Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.}
+\item{method}{Character string specifying the distance metric for k-NN. One of \code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
 
 \item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 
-\item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
+\item{post_imp}{Logical; if TRUE (default), any missing after k-NN imputations will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
 
 \item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
 
@@ -42,8 +41,8 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 \item{dist_pow}{A positive double that controls the penalty for larger distances in the weighted mean imputation.
 Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.}
 
-\item{tree}{Character string specifying the k-NN method. `NULL` (default) uses naive search.
-`"kd"` uses KDTree and `"ball"` uses BallTree as implemented by the mlpack package where missing values are first filled with column means.}
+\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses naive search.
+\code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by the mlpack package where missing values are first filled with column means (biased at high percentage missing).}
 
 \item{...}{Not Implemented.}
 }
@@ -53,26 +52,28 @@ A numeric matrix of the same dimensions as \code{obj} with missing values impute
 \description{
 This function imputes missing values in a numeric matrix using the k-Nearest
 Neighbors algorithm. It follows a two-stage process. First, it imputes
-columns with a proportion of missing values below `colmax` using k-NN.
+columns with a proportion of missing values below \code{colmax} using k-NN.
 Second, if requested, any remaining missing values are imputed using the column mean.
 }
 \details{
 This implementation calculates the distances for neighbors column-wise. This is an
 \strong{extremely} important detail. Outside of microarray data, most datasets have
-people in columns and features (e.g., weight, height, etc.) in rows for imputation
+people in columns and features (e.g., weight, height, etc.) in rows for imputation.
 However, in microarray data, genes or CpG sites for the same sample that are
-spatially closer together carry mutual information, so you can place genes in columns
-and samples in rows; the algorithm will then impute values based on nearby genes
+spatially closer together may carry mutual information, so you can place genes/CpGs in columns
+and samples in rows; the algorithm will then impute values based on nearby genes/CpGs
 for the same sample.
 
 The distance calculation between columns for identifying nearest neighbors is
 scaled based on the number of non-missing value pairs. Specifically, the
 raw distance is penalized by scaling it up for columns that have fewer
 overlapping observations. This penalizes distances for columns with very few
-shared observations used for distance calculations. The
-\code{impute.knn} method averages the distances over the number of matching positions,
-so a column with only one matching value to calculate distance from might have a lower
-raw distance than a column with many matched values. See also [stats::dist()].
+shared observations used for distance calculations. See also \code{\link[stats:dist]{stats::dist()}}.
+}
+\note{
+Compared to \code{impute::impute.knn}, for columns with very high missing, the
+mean imputation uses the imputed values and original values for the mean calculation
+instead of just the original values.
 }
 \examples{
 # See ?khanmiss1

@@ -38,7 +38,7 @@ the weighted mean imputation. Must be greater than zero: values between 0 and 1 
 \item{cores}{Number of CPU cores to use for parallel processing (default = 1).}
 }
 \value{
-A matrix with imputed values where missing values were present.
+A matrix where the first column is the index of missing value as if calculated in R and column > 2 are imputed values.
 }
 \description{
 k-NN using KDTree or BallTree.

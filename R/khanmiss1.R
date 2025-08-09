@@ -1,11 +1,11 @@
 #' @title Khan microarray data with random missing values
 #'
 #' @description
-#' A text file containing the Khan microarray data with random missing values introduced for illustrative purposes. Adapted from the \code{impute} package.
+#' A text file containing the Khan microarray data with random missing values introduced for illustrative purposes. Adapted from the `impute` package.
 #'
 #' @usage data(khanmiss1)
 #'
-#' @format The data set \code{khanmiss1} consists of genes on rows and samples on column.
+#' @format The data set `khanmiss1` consists of genes on rows and samples on column.
 #'
 #' Please note that this dataset was derived from the original by introducing some random missing values purely for the purpose of illustration.
 #'

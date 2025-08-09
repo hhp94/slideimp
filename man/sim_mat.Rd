@@ -7,30 +7,30 @@
 sim_mat(n = 100, m = 100, nchr = 2, ngrp = 1, perc_NA = 0.5, perc_col_NA = 0.5)
 }
 \arguments{
-\item{n}{An integer specifying the number of rows (features). Default is `100`.}
+\item{n}{An integer specifying the number of rows (features). Default is \code{100}.}
 
-\item{m}{An integer specifying the number of columns (samples). Default is `100`.}
+\item{m}{An integer specifying the number of columns (samples). Default is \code{100}.}
 
-\item{nchr}{An integer for the number of chromosome groups to assign to features (e.g., `nchr = 22` for human autosomes). Default is `2`.}
+\item{nchr}{An integer for the number of chromosome groups to assign to features (e.g., \code{nchr = 22} for human autosomes). Default is \code{2}.}
 
-\item{ngrp}{An integer for the number of groups to assign to samples. Default is `1`.}
+\item{ngrp}{An integer for the number of groups to assign to samples. Default is \code{1}.}
 
-\item{perc_NA}{A numeric value between 0 and 1 indicating the proportion of values to set to `NA` within each selected row. Default is `0.5`.}
+\item{perc_NA}{A numeric value between 0 and 1 indicating the proportion of values to set to \code{NA} within each selected row. Default is \code{0.5}.}
 
-\item{perc_col_NA}{A numeric value between 0 and 1 indicating the proportion of rows to select for `NA` introduction. Default is `0.5`.}
+\item{perc_col_NA}{A numeric value between 0 and 1 indicating the proportion of rows to select for \code{NA} introduction. Default is \code{0.5}.}
 }
 \value{
-A `list` containing three elements:
+A \code{list} containing three elements:
 \itemize{
-  \item `input`: The simulated `n` x `m` numeric matrix with values between 0 and 1.
-  \item `group_feature`: A `data.frame` with feature IDs and their assigned chromosome group.
-  \item `group_sample`: A `data.frame` with sample IDs and their assigned group.
+\item \code{input}: The simulated \code{n} x \code{m} numeric matrix with values between 0 and 1.
+\item \code{group_feature}: A \code{data.frame} with feature IDs and their assigned chromosome group.
+\item \code{group_sample}: A \code{data.frame} with sample IDs and their assigned group.
 }
 }
 \description{
 This function generates a matrix of random numeric data, scaled between 0 and 1
 per column. It also creates corresponding data frames for feature and sample
-metadata and can optionally introduce `NA` values into a specified proportion
+metadata and can optionally introduce \code{NA} values into a specified proportion
 of rows.
 }
 \examples{

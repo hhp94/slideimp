@@ -4,6 +4,7 @@
 
 #include <RcppArmadillo.h>
 #include <mlpack/methods/neighbor_search/neighbor_search.hpp>
+#include <mlpack/core/util/log.hpp>
 #include <stdexcept>
 #include <cmath>
 #if defined(_OPENMP)
@@ -11,7 +12,6 @@
 #endif
 
 constexpr double epsilon = 1e-10;
-
 
 //' Impute missing values in a matrix using treed k-nearest neighbors (k-NN)
 //'
@@ -28,7 +28,7 @@ constexpr double epsilon = 1e-10;
 //' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 //' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix with imputed values where missing values were present.
+//' @return A matrix where the first column is the index of missing value as if calculated in R and column > 2 are imputed values.
 //'
 //' @export
 // [[Rcpp::export]]
@@ -44,15 +44,14 @@ arma::mat impute_knn_mlpack(
     const int cores)
 {
 #if defined(_OPENMP)
-  omp_set_num_threads(cores);
-#else
-  cores = 1;
+    omp_set_num_threads(cores);
 #endif
+    mlpack::Log::Info.ignoreInput = true;
     // col_index_miss holds columns that has any missing
     arma::uvec col_index_miss = arma::find(n_col_miss);
     if (col_index_miss.n_elem == 0)
     {
-        return obj;
+        return arma::mat(0, 2);
     }
     arma::mat query_mat = obj.cols(col_index_miss);
     // Matrices to store output
@@ -86,15 +85,33 @@ arma::mat impute_knn_mlpack(
     {
         throw std::invalid_argument("Invalid `tree` or `method`. Use 'kd' or 'ball' for `tree`, and 0 for 'euclidean' or 1 for 'manhattan' for `method`.");
     }
-
     // Nearest neighbors and distance are now stored. We proceed to imputation column wise.
-    arma::mat imputed = obj;
+    // see the impute_cpp_arma.cpp file for comments
+    arma::uword sum_missing = arma::accu(n_col_miss);
+    arma::mat result(sum_missing, 2);
+    result.fill(arma::datum::nan);
+    arma::uvec miss_counts = n_col_miss.elem(col_index_miss);
+    arma::uvec col_offsets(miss_counts.n_elem + 1);
+    col_offsets.fill(arma::fill::zeros);
+    col_offsets.subvec(1, miss_counts.n_elem) = arma::cumsum(miss_counts);
+    // Pre-fill result with linear indices and NaN values
+    for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+    {
+        const arma::uword target_col_idx = col_index_miss(i);
+        const arma::uvec rows_to_impute = arma::find(miss.col(target_col_idx));
+        for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
+        {
+            const arma::uword row_idx = rows_to_impute(r);
+            const arma::uword res_row = col_offsets(i) + r;
+            result(res_row, 0) = target_col_idx * obj.n_rows + row_idx + 1;
+        }
+    }
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
     for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
     {
-        // Get the indices of the k nearest neighbors for the i-th query point (skip the 0-th neighbor, which is the point itself)
+        // Get the indices of the k nearest neighbors for the i-th query point (skip the 0-th neighbor, which is self)
         arma::uvec nn_columns = resultingNeighbors(arma::span(1, k), i);
         // Get the corresponding distances for these neighbors
         arma::vec nn_dists = resultingDistances(arma::span(1, k), i);
@@ -110,9 +127,9 @@ arma::mat impute_knn_mlpack(
         // now we move on to nn imputation. Find the rows to impute for this column
         arma::uword target_col_idx = col_index_miss(i);
         arma::uvec rows_to_impute = arma::find(miss.col(target_col_idx));
-        // man, range-for-loop is trippy. kind of not used to this but it works
-        for (arma::uword row_idx : rows_to_impute)
+        for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
         {
+            arma::uword row_idx = rows_to_impute(r);
             double weighted_sum = 0.0;
             double weight_total = 0.0;
             for (arma::uword j = 0; j < nn_columns.n_elem; ++j)
@@ -125,11 +142,11 @@ arma::mat impute_knn_mlpack(
                     weight_total += weight;
                 }
             }
-            if (weight_total > 0.0)
-            {
-                imputed(row_idx, target_col_idx) = weighted_sum / weight_total;
-            }
+            double imputed_value = (weight_total > 0.0) ? (weighted_sum / weight_total) : arma::datum::nan;
+            // Set in result matrix (1-based linear index for R)
+            const arma::uword res_row = col_offsets(i) + r;
+            result(res_row, 1) = imputed_value;
         }
     }
-    return imputed;
+    return result;
 }

@@ -8,7 +8,7 @@ inject_na(obj, num_na = 100, rowmax = 0.9, colmax = 0.9, max_iter = 1000)
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
-Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
+Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
 
 \item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
 
@@ -28,10 +28,10 @@ ensuring that the injection does not exceed specified missingness thresholds for
 It attempts to find a valid set of positions within a maximum number of iterations.
 }
 \details{
-The function uses the `num_na` parameter to determine the number of NAs to inject.
+The function uses the \code{num_na} parameter to determine the number of NAs to inject.
 It then repeatedly samples random positions from existing non-NA elements and checks if injecting NAs
 at those positions would exceed the missingness thresholds for any row or column (accounting for existing NAs).
-If no valid set is found within `max_iter` attempts, an error is thrown.
+If no valid set is found within \code{max_iter} attempts, an error is thrown.
 }
 \examples{
 mat <- matrix(1:100, nrow = 10, ncol = 10)

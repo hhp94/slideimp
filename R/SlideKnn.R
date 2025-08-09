@@ -12,36 +12,37 @@
 #' the `obj`. Otherwise, you can also re-add the dimnames to the output using the
 #' dimnames of the original object after setting `options(bigmemory.allow.dimnames = TRUE)`.
 #'
-#' @param obj A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
+#' @param obj A numeric matrix with **samples in rows** and **features in columns**. See details.
 #' Can also be a path to the description file of, or a [bigmemory::big.matrix()].
-#' @param n_feat Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.
+#' @param n_feat Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in `obj`.
 #' @param subset Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.
-#' @param n_overlap Integer specifying the number of features to overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.
+#' @param n_overlap Integer specifying the number of features to overlap between consecutive windows. Default is 10. Must be between 0 and `n_feat - 1`.
 #' @param k Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).
 #' @param rowmax Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.
 #' @param colmax Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.
 #' @param cores Integer specifying the number of cores to use for parallel computation of distances.
 #' @param method Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.
 #' @param tree Character string specifying the k-NN method. `NULL` (default) uses naive search.
-#' `"kd"` uses KDTree and `"ball"` uses BallTree as implemented by the mlpack package where missing values are first filled with column means.
-#' @param post_imp Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.
+#' `"kd"` uses KDTree and `"ball"` uses BallTree as implemented by the mlpack package where missing values are first filled with column means (biased at high percentage missing).
+#' @param post_imp Logical; if TRUE (default), any missing after k-NN imputations will be imputed with [mean_impute_col()].
 #' @param weighted Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.
 #' @param dist_pow  A positive double that controls the penalty for larger distances in the weighted mean imputation.
 #' Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.
 #' @param .progress Logical; if TRUE, show a progress bar. Default is FALSE.
-#' @param output Character; path to save the output big.matrix if \code{obj} is file-backed. Required in that case.
-#' @param overwrite Logical; if TRUE (default), overwrite existing files at \code{output}.
+#' @param output Character; path to save the output big.matrix if `obj` is file-backed. Required in that case.
+#' @param overwrite Logical; if TRUE (default), overwrite existing files at `output`.
 #' @param block Integer; block size for processing large matrices. If NULL (default), calculated automatically.
 #' @param strip_dimnames Logical; if FALSE (default), dimnames will not be removed which will increase memory usage.
 #' Should set to TRUE to save memory from overhead especially when cores > 1. See details.
 #'
-#' @return A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
+#' @return A numeric matrix/big.matrix of the same dimensions as `obj` with missing values imputed.
 #'
 #' @examples
 #'
 #' data(khanmiss1)
 #'
-#' # Set `strip_dimnames` to `TRUE` when running multiple cores to minimize overhead.
+#' # Set `strip_dimnames` to `TRUE` with `options(bigmemory.allow.dimnames = TRUE)`
+#' # when running multiple cores to minimize overhead.
 #' imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
 #'
 #' @export
@@ -483,7 +484,7 @@ SlideKnn <- function(
 #' KNN Imputation Wrapper
 #'
 #' A wrapper function for KNN imputation that filters rows based on missing value proportions before imputing.
-#' Rows with missing proportions exceeding \code{rowmax} are not imputed in this step to avoid
+#' Rows with missing proportions exceeding `rowmax` are not imputed in this step to avoid
 #' throwing exceptions in [knn_imp()].
 #'
 #' @inheritParams SlideKnn
@@ -551,26 +552,28 @@ impute_knn <- function(
 #'
 #' @details
 #' This implementation calculates the distances for neighbors column-wise. This is an
-#' \strong{extremely} important detail. Outside of microarray data, most datasets have
-#' people in columns and features (e.g., weight, height, etc.) in rows for imputation
+#' **extremely** important detail. Outside of microarray data, most datasets have
+#' people in columns and features (e.g., weight, height, etc.) in rows for imputation.
 #' However, in microarray data, genes or CpG sites for the same sample that are
-#' spatially closer together carry mutual information, so you can place genes in columns
-#' and samples in rows; the algorithm will then impute values based on nearby genes
+#' spatially closer together may carry mutual information, so you can place genes/CpGs in columns
+#' and samples in rows; the algorithm will then impute values based on nearby genes/CpGs
 #' for the same sample.
 #'
 #' The distance calculation between columns for identifying nearest neighbors is
 #' scaled based on the number of non-missing value pairs. Specifically, the
 #' raw distance is penalized by scaling it up for columns that have fewer
 #' overlapping observations. This penalizes distances for columns with very few
-#' shared observations used for distance calculations. The
-#' \code{impute.knn} method averages the distances over the number of matching positions,
-#' so a column with only one matching value to calculate distance from might have a lower
-#' raw distance than a column with many matched values. See also [stats::dist()].
+#' shared observations used for distance calculations. See also [stats::dist()].
+#'
+#' @note Compared to `impute::impute.knn`, for columns with very high missing, the
+#' mean imputation uses the imputed values and original values for the mean calculation
+#' instead of just the original values.
 #'
 #' @inheritParams SlideKnn
+#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param ... Not Implemented.
 #'
-#' @inherit SlideKnn return
+#' @return A numeric matrix of the same dimensions as `obj` with missing values imputed.
 #'
 #' @export
 #'
@@ -601,7 +604,7 @@ knn_imp <- function(
   method <- match.arg(method)
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
   checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
-  checkmate::assert_integerish(k, lower = 1, upper = ncol(obj), len = 1, .var.name = "k")
+  checkmate::assert_integerish(k, lower = 1, upper = ncol(obj) - 1, len = 1, .var.name = "k")
   checkmate::assert_integerish(cores, lower = 1, len = 1, .var.name = "cores")
   checkmate::assert_numeric(colmax, lower = 0, upper = 1, len = 1, .var.name = "colmax")
   checkmate::assert_numeric(rowmax, lower = 0, upper = 1, len = 1, .var.name = "rowmax")
@@ -670,7 +673,7 @@ knn_imp <- function(
   # Impute
   ## knn imp cols. Note: only pre_imp_cols is imputed if post_imp is FALSE.
   if (is.null(tree)) {
-    post_imp_cols <- impute_knn_naive(
+    imputed_values <- impute_knn_naive(
       obj = pre_imp_cols,
       miss = pre_imp_miss,
       k = k,
@@ -685,7 +688,7 @@ knn_imp <- function(
       cores = cores
     )
   } else {
-    post_imp_cols <- impute_knn_mlpack(
+    imputed_values <- impute_knn_mlpack(
       # Has to pre-fill with colMeans
       obj = mean_impute_col(pre_imp_cols),
       miss = pre_imp_miss,
@@ -701,18 +704,20 @@ knn_imp <- function(
       cores = cores
     )
   }
-  colnames(post_imp_cols) <- colnames(pre_imp_cols)
-  if (post_imp) {
-    subset_knn <- intersect(subset, knn_indices)
-    pos_subset <- match(subset_knn, knn_indices)
-    if (length(pos_subset) > 0 && anyNA(post_imp_cols[, pos_subset])) {
-      post_imp_cols[, pos_subset] <- mean_impute_col(post_imp_cols[, pos_subset, drop = F])
-    }
-  }
+  # Impute `pre_imp_cols`
+  imputed_values[is.nan(imputed_values)] <- NA
+  pre_imp_cols[imputed_values[, 1]] <- imputed_values[, 2]
+
   ## Reconstruct obj
-  obj[, knn_imp_cols] <- post_imp_cols
+  obj[, knn_imp_cols] <- pre_imp_cols
+
+  if (post_imp && anyNA(obj)) {
+    obj <- mean_impute_col(obj)
+  }
+
   return(obj)
 }
+
 #' @title Row Mean Imputation
 #'
 #' @description

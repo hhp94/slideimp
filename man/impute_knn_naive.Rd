@@ -26,7 +26,7 @@ the weighted mean imputation. Must be greater than zero: values between 0 and 1 
 \item{cores}{Number of CPU cores to use for parallel processing (default = 1).}
 }
 \value{
-A matrix with imputed values where missing values were present.
+A matrix where the first column is the index of missing value as if calculated in R and column > 2 are imputed values.
 }
 \description{
 This function imputes missing values in a matrix using a k-nearest neighbors
@@ -34,5 +34,5 @@ approach based on the specified distance metric. It processes only columns
 with missing values, calculating distances to other columns to find the
 k-nearest neighbors, and imputes missing values using either a simple average
 or a weighted average (inverse distance weighting) of non-missing values from
-these neighbors, depending on the `weighted` parameter.
+these neighbors, depending on the \code{weighted} parameter.
 }

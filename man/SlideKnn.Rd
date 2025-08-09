@@ -27,7 +27,7 @@ SlideKnn(
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
-Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
+Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
 
 \item{n_feat}{Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.}
 
@@ -43,12 +43,12 @@ Can also be a path to the description file of, or a [bigmemory::big.matrix()].}
 
 \item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 
-\item{method}{Character string specifying the distance metric for k-NN. One of `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.}
+\item{method}{Character string specifying the distance metric for k-NN. One of \code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
 
-\item{tree}{Character string specifying the k-NN method. `NULL` (default) uses naive search.
-`"kd"` uses KDTree and `"ball"` uses BallTree as implemented by the mlpack package where missing values are first filled with column means.}
+\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses naive search.
+\code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by the mlpack package where missing values are first filled with column means (biased at high percentage missing).}
 
-\item{post_imp}{Logical; if TRUE (default), retry failed k-NN imputations with mean imputation.}
+\item{post_imp}{Logical; if TRUE (default), any missing after k-NN imputations will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
 
 \item{weighted}{Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.}
 
@@ -67,7 +67,7 @@ Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is l
 Should set to TRUE to save memory from overhead especially when cores > 1. See details.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
+A numeric matrix/big.matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
 Performs sliding window KNN imputation on a numeric matrix to handle missing values.
@@ -75,18 +75,19 @@ The matrix is divided into overlapping windows, and imputation is applied to eac
 Overlapping regions are averaged to produce the final imputed matrix.
 }
 \details{
-See [knn_imp()] for details about the implementation.
+See \code{\link[=knn_imp]{knn_imp()}} for details about the implementation.
 
-If your `obj` is a [bigmemory::big.matrix()] or description file, you have to set
-`strip_dimnames` to `TRUE` for the output big.matrix to have the same dimnames as
-the `obj`. Otherwise, you can also re-add the dimnames to the output using the
-dimnames of the original object after setting `options(bigmemory.allow.dimnames = TRUE)`.
+If your \code{obj} is a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} or description file, you have to set
+\code{strip_dimnames} to \code{TRUE} for the output big.matrix to have the same dimnames as
+the \code{obj}. Otherwise, you can also re-add the dimnames to the output using the
+dimnames of the original object after setting \code{options(bigmemory.allow.dimnames = TRUE)}.
 }
 \examples{
 
 data(khanmiss1)
 
-# Set `strip_dimnames` to `TRUE` when running multiple cores to minimize overhead.
+# Set `strip_dimnames` to `TRUE` with `options(bigmemory.allow.dimnames = TRUE)`
+# when running multiple cores to minimize overhead.
 imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
 
 }

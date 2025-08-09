@@ -1,11 +1,11 @@
 Package: SlideKnn
 Type: Package
 Title: KNN Imputation of Numeric Data and Sliding KNN Imputation of Micro Array Data
-Version: 0.4.0
+Version: 0.5.0
 Authors@R: c(
     person(
       "Hung", "Pham",
-      email = "first.last@example.com",
+      email = "amser.hoanghung@gmail.com",
       role = c("aut", "cre")
     )
   )
@@ -42,3 +42,4 @@ Depends:
     R (>= 4.1.0)
 URL: https://github.com/hhp94/SlideKnn
 BugReports: https://github.com/hhp94/SlideKnn/issues
+Roxygen: list(markdown = TRUE)

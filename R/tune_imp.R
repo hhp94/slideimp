@@ -80,7 +80,7 @@ inject_na <- function(
   return(na_loc)
 }
 
-#' Tune Parameters for \code{SlideKnn}/\code{knn_imp} Imputation
+#' Tune Parameters for `SlideKnn`/`knn_imp` Imputation
 #'
 #' This function tunes the parameters for the [SlideKnn()]/[knn_imp()] imputation method by injecting missing values
 #' into the dataset multiple times and evaluating the imputation performance for different parameter
@@ -106,7 +106,7 @@ inject_na <- function(
 #' Metrics can be computed from these results, as shown in the examples.
 #'
 #' @inheritParams SlideKnn
-#' @param obj A numeric matrix with \strong{samples in rows} and \strong{features in columns}. Note: keep `obj` small since
+#' @param obj A numeric matrix with **samples in rows** and **features in columns**. Note: keep `obj` small since
 #' this function doesn't support `bigmemory`.
 #' @param parameters A data frame specifying the parameter combinations to tune. Duplicated rows are removed.
 #'   The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about the parameters, and `@details` for custom functions.

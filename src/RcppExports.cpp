@@ -12,6 +12,24 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// impute_knn_naive
+arma::mat impute_knn_naive(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const bool weighted, const double dist_pow, int cores);
+RcppExport SEXP _SlideKnn_impute_knn_naive(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const arma::umat& >::type miss(missSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type k(kSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type n_col_miss(n_col_missSEXP);
+    Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
+    Rcpp::traits::input_parameter< const bool >::type weighted(weightedSEXP);
+    Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(impute_knn_naive(obj, miss, k, n_col_miss, method, weighted, dist_pow, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // impute_knn_mlpack
 arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec n_col_miss, const int method, const std::string tree, const bool weighted, const double dist_pow, const int cores);
 RcppExport SEXP _SlideKnn_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
@@ -31,28 +49,10 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// impute_knn_naive
-arma::mat impute_knn_naive(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec n_col_miss, const int method, const bool weighted, const double dist_pow, int cores);
-RcppExport SEXP _SlideKnn_impute_knn_naive(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const arma::umat& >::type miss(missSEXP);
-    Rcpp::traits::input_parameter< const arma::uword >::type k(kSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec >::type n_col_miss(n_col_missSEXP);
-    Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
-    Rcpp::traits::input_parameter< const bool >::type weighted(weightedSEXP);
-    Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_naive(obj, miss, k, n_col_miss, method, weighted, dist_pow, cores));
-    return rcpp_result_gen;
-END_RCPP
-}
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 9},
     {"_SlideKnn_impute_knn_naive", (DL_FUNC) &_SlideKnn_impute_knn_naive, 8},
+    {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 9},
     {NULL, NULL, 0}
 };
 

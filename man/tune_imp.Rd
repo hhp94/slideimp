@@ -18,11 +18,11 @@ tune_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. Note: keep `obj` small since
-this function doesn't support `bigmemory`.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. Note: keep \code{obj} small since
+this function doesn't support \code{bigmemory}.}
 
 \item{parameters}{A data frame specifying the parameter combinations to tune. Duplicated rows are removed.
-The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about the parameters, and `@details` for custom functions.}
+The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=SlideKnn]{SlideKnn()}} for details about the parameters, and \verb{@details} for custom functions.}
 
 \item{.f}{The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or a custom function.}
 
@@ -41,27 +41,27 @@ The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details
 \item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
 }
 \description{
-This function tunes the parameters for the [SlideKnn()]/[knn_imp()] imputation method by injecting missing values
+This function tunes the parameters for the \code{\link[=SlideKnn]{SlideKnn()}}/\code{\link[=knn_imp]{knn_imp()}} imputation method by injecting missing values
 into the dataset multiple times and evaluating the imputation performance for different parameter
 combinations. Can also tune custom imputation functions. See details.
 }
 \details{
 This function allows tuning of hyperparameters for matrix imputation methods, including the built-in 'SlideKnn' and 'knn_imp',
-or a custom function provided to `.f`.
+or a custom function provided to \code{.f}.
 
-For a custom function in `.f`, the `parameters` data.frame must have columns whose names match the argument names of `.f`
-(excluding `obj`). The custom function must take `obj` as its first input argument and output an imputed numeric matrix
-of the same dimensions as `obj`.
+For a custom function in \code{.f}, the \code{parameters} data.frame must have columns whose names match the argument names of \code{.f}
+(excluding \code{obj}). The custom function must take \code{obj} as its first input argument and output an imputed numeric matrix
+of the same dimensions as \code{obj}.
 
-For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are required in `parameters` (e.g., `n_feat`, `k`, `n_overlap` for 'SlideKnn';
-`k` for 'knn_imp'), and defaults are set if not provided (e.g., `method = "euclidean"`, `post_imp = FALSE`).
+For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are required in \code{parameters} (e.g., \code{n_feat}, \code{k}, \code{n_overlap} for 'SlideKnn';
+\code{k} for 'knn_imp'), and defaults are set if not provided (e.g., \code{method = "euclidean"}, \code{post_imp = FALSE}).
 
-`tune_imp` can be parallelize over iterations (number of rows of `parameters` * number of repetitions per row) with
-the argument `cores`. Note that for `SlideKnn`, `tune_imp` will run sequentially but cores will parallelize within
-`SlideKnn`.
+\code{tune_imp} can be parallelize over iterations (number of rows of \code{parameters} * number of repetitions per row) with
+the argument \code{cores}. Note that for \code{SlideKnn}, \code{tune_imp} will run sequentially but cores will parallelize within
+\code{SlideKnn}.
 
-The output is a tibble with columns for each parameter combination, a `param_set` identifier, the repetition number (`rep`),
-and a nested `results` column containing a tibble of `truth` (original values) and `estimate` (imputed values) for the injected NAs.
+The output is a tibble with columns for each parameter combination, a \code{param_set} identifier, the repetition number (\code{rep}),
+and a nested \code{results} column containing a tibble of \code{truth} (original values) and \code{estimate} (imputed values) for the injected NAs.
 Metrics can be computed from these results, as shown in the examples.
 }
 \examples{
@@ -96,5 +96,5 @@ results <- tune_imp(obj, parameters, rep = 1)
 
 }
 \seealso{
-[knn_imp()], [SlideKnn()]
+\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=SlideKnn]{SlideKnn()}}
 }
