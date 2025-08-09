@@ -532,12 +532,15 @@ test_that("Exactly replicate `impute::impute.knn`", {
   }
 })
 
-test_that("`subset` feature of `knn_imp` works", {
+test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   set.seed(1234)
   to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
   # Impute just 3 columns
+  ## Check subset using numeric index
   r1 <- knn_imp(to_test, k = 3, post_imp = FALSE, subset = c(1, 3, 5))
   expect_true(!anyNA(r1[, c(1, 3, 5)]))
+  expect_equal(is.na(r1[, -c(1, 3, 5)]), is.na(to_test[, -c(1, 3, 5)]))
+  ## Check subset using character vector
   r2 <- knn_imp(
     to_test,
     k = 3,
@@ -545,6 +548,25 @@ test_that("`subset` feature of `knn_imp` works", {
     subset = paste0("feat", c(1, 3, 5))
   )
   expect_identical(r1, r2)
+
+  # Test with post_imp = TRUE and a column requiring post imputation
+  to_test_post <- to_test
+  # Column 5 will be colMeans if post_imp is TRUE
+  to_test_post[2:nrow(to_test_post), 5] <- NA
+  r3 <- knn_imp(to_test_post, k = 3, post_imp = TRUE, subset = c(1, 3, 5))
+  expect_true(!anyNA(r3[, c(1, 3, 5)]))
+  # Expect that only the subset columns are imputed. The rests are untouched
+  expect_equal(is.na(r3[, -c(1, 3, 5)]), is.na(to_test_post[, -c(1, 3, 5)]))
+  # Verify post_imp on column 5
+  col5_mean <- mean(to_test_post[, 5], na.rm = TRUE)
+  expect_equal(unname(r3[, 5]), rep(col5_mean, nrow(to_test_post)))
+  r4 <- knn_imp(
+    to_test_post,
+    k = 3,
+    post_imp = TRUE,
+    subset = paste0("feat", c(1, 3, 5))
+  )
+  expect_identical(r3, r4)
 })
 
 test_that("`mean_impute_col` works", {

@@ -711,8 +711,21 @@ knn_imp <- function(
   ## Reconstruct obj
   obj[, knn_imp_cols] <- pre_imp_cols
 
-  if (post_imp && anyNA(obj)) {
-    obj <- mean_impute_col(obj)
+  if (post_imp && anyNA(obj[, subset, drop = FALSE])) {
+    # na indices relative to the subset
+    na_indices <- which(is.na(obj[, subset, drop = FALSE]), arr.ind = TRUE)
+    # only calculate colmeans of the subset. Should be fast enough. A compromise
+    # because calculate colmeans of just cols with missing would require more
+    # logic
+    sub_means <- colMeans(obj[, subset, drop = FALSE], na.rm = TRUE)
+    # row index and col index jj relative to subset
+    i_vec <- na_indices[, 1]
+    jj_vec <- na_indices[, 2]
+    # col index relative to the original object
+    j_vec <- subset[jj_vec]
+    # cbind recreates the matrix of ij being TRUE/FALSE with the j now relative to
+    # obj. then just fill in the means using sub_means[jj_vec]
+    obj[cbind(i_vec, j_vec)] <- sub_means[jj_vec]
   }
 
   return(obj)
