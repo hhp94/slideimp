@@ -213,9 +213,8 @@ tune_imp <- function(
   if (is.character(.f)) {
     parameters <- unique(parameters)
 
-    # Remove any nboot column if present and force nboot = 1
+    # Remove any nboot column if present and force nboot = 1 also disable bigmemory support
     parameters$nboot <- NULL
-    parameters$nboot <- 1L
 
     # Add fixed parameters
     parameters$rowmax <- rowmax
@@ -258,7 +257,6 @@ tune_imp <- function(
         "dist_pow", "cores", "nboot"
       )
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
-
     } else if (.f == "knn_imp") {
       # Validate required parameters
       if (!"k" %in% names(parameters)) {
@@ -372,7 +370,7 @@ tune_imp <- function(
               post_imp = param_vec$post_imp,
               weighted = param_vec$weighted,
               dist_pow = param_vec$dist_pow,
-              nboot = 1L,  # Always use nboot = 1 for tuning
+              nboot = 1L, # Always use nboot = 1 for tuning
               .progress = FALSE
             )
 
@@ -391,7 +389,7 @@ tune_imp <- function(
     )
   } else if (is.character(.f) && .f == "knn_imp") {
     # knn_imp can be parallelized
-    fun <- function(){}
+    fun <- function() {}
     indices$result <- purrr::map(
       seq_len(nrow(indices)),
       fn(

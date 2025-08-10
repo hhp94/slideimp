@@ -18,6 +18,8 @@ knn_imp(
   tree = NULL,
   nboot = 1,
   seed = 42,
+  output = NULL,
+  overwrite = FALSE,
   ...
 )
 }
@@ -65,11 +67,16 @@ Default is 1.}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
+\item{output}{Character; path to save the output as list of \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
+to save memory. Highly recommended for \code{nboot} > 1.}
+
+\item{overwrite}{Logical; if \code{TRUE} (default), overwrite existing files at \code{output}.}
+
 \item{...}{Currently not implemented.}
 }
 \value{
-A list of numeric matrices of the same dimensions as \code{obj} with missing
-values imputed. Length of list equals \code{nboot}.
+A list of numeric matrices or big.matrix of the same dimensions as \code{obj}
+with missing values imputed. Length of list equals \code{nboot}.
 }
 \description{
 This function imputes missing values in a numeric matrix using the k-Nearest
@@ -105,6 +112,9 @@ slower in lower dimensions and k.
 Compared to \code{impute::impute.knn}, for columns with very high missingness, the
 mean imputation uses the imputed values and original values for the mean calculation
 instead of just the original values.
+
+When \code{nboot} > 1, output should be specified to use \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} to
+save memory.
 }
 \examples{
 # Load example data

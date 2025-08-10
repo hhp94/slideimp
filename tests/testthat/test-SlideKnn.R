@@ -640,6 +640,248 @@ test_that("Exactly replicate `impute::impute.knn`", {
   }
 })
 
+test_that("bigmemory functionality in knn_imp works correctly", {
+  # Save current option and set bigmemory.allow.dimnames
+  old_opt <- getOption("bigmemory.allow.dimnames")
+  options(bigmemory.allow.dimnames = TRUE)
+  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
+  skip_if_not(isTRUE(getOption("bigmemory.allow.dimnames")))
+
+  # Create test data
+  set.seed(1234)
+  test_data <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
+
+  # Create temporary directory for output
+  temp_dir <- withr::local_tempdir()
+  output_path <- fs::path(temp_dir, "test_imputed")
+
+  # Test 1: Run with output, expect no error
+  expect_no_error({
+    result_bigmem <- knn_imp(
+      test_data,
+      k = 3,
+      output = output_path,
+      overwrite = TRUE,
+      nboot = 3,
+      seed = 42
+    )
+  })
+
+  # Verify that files were created
+  base_no_ext <- fs::path_ext_remove(output_path)
+  for (i in 1:3) {
+    suffix <- paste0("_boot", i)
+    bin_file <- paste0(base_no_ext, suffix, ".bin")
+    desc_file <- paste0(base_no_ext, suffix, ".desc")
+    expect_true(fs::file_exists(bin_file),
+      info = paste("Binary file should exist:", bin_file)
+    )
+    expect_true(fs::file_exists(desc_file),
+      info = paste("Descriptor file should exist:", desc_file)
+    )
+  }
+
+  # Test 2: Rerun with overwrite = FALSE, expect error
+  expect_error(
+    {
+      knn_imp(
+        test_data,
+        k = 3,
+        output = output_path,
+        overwrite = FALSE,
+        nboot = 3,
+        seed = 42
+      )
+    },
+    "Output files already exist"
+  )
+
+  # Test 3: Rerun with overwrite = TRUE, check files exist
+  expect_no_error({
+    result_bigmem_overwrite <- knn_imp(
+      test_data,
+      k = 3,
+      output = output_path,
+      overwrite = TRUE,
+      nboot = 3,
+      seed = 42
+    )
+  })
+
+  # Verify files still exist after overwrite
+  for (i in 1:3) {
+    suffix <- paste0("_boot", i)
+    bin_file <- paste0(base_no_ext, suffix, ".bin")
+    desc_file <- paste0(base_no_ext, suffix, ".desc")
+    expect_true(fs::file_exists(bin_file))
+    expect_true(fs::file_exists(desc_file))
+  }
+
+  # Test 4: Compare in-memory vs file-backed results
+  # Run in-memory version with same seed
+  result_memory <- knn_imp(
+    test_data,
+    k = 3,
+    output = NULL, # Memory version
+    nboot = 3,
+    seed = 42
+  )
+
+  # Compare each bootstrap iteration
+  for (i in 1:3) {
+    # Get the realized matrix from big.matrix
+    bigmem_mat <- result_bigmem_overwrite[[i]][, ]
+    mem_mat <- result_memory[[i]]
+
+    # Check values are identical (or very close due to potential floating point differences)
+    expect_identical(bigmem_mat, mem_mat,
+      info = paste("Values should match for bootstrap", i)
+    )
+
+    # Check dimnames are preserved
+    expect_equal(dimnames(bigmem_mat), dimnames(mem_mat),
+      info = paste("Dimnames should match for bootstrap", i)
+    )
+  }
+
+  # Test that big.matrix objects are properly created
+  for (i in 1:3) {
+    expect_s4_class(result_bigmem_overwrite[[i]], "big.matrix")
+  }
+})
+
+test_that("bigmemory with single bootstrap (nboot=1) works correctly", {
+  # Set option
+  old_opt <- getOption("bigmemory.allow.dimnames")
+  options(bigmemory.allow.dimnames = TRUE)
+  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
+
+  # Create test data
+  set.seed(1234)
+  test_data <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
+
+  # Create temporary directory for output
+  temp_dir <- withr::local_tempdir()
+  output_path <- fs::path(temp_dir, "test_single_boot")
+
+  # Run with nboot=1 (should not add _boot suffix)
+  result_single <- knn_imp(
+    test_data,
+    k = 3,
+    output = output_path,
+    overwrite = TRUE,
+    nboot = 1,
+    seed = 42
+  )
+
+  # Check that files exist without _boot suffix
+  base_no_ext <- fs::path_ext_remove(output_path)
+  bin_file <- paste0(base_no_ext, ".bin")
+  desc_file <- paste0(base_no_ext, ".desc")
+
+  expect_true(fs::file_exists(bin_file))
+  expect_true(fs::file_exists(desc_file))
+
+  # Compare with in-memory version
+  result_memory <- knn_imp(
+    test_data,
+    k = 3,
+    output = NULL,
+    nboot = 1,
+    seed = 42
+  )
+
+  expect_identical(result_single[[1]][, ], result_memory[[1]])
+})
+
+test_that("bigmemory with subset parameter works correctly", {
+  # Set option
+  old_opt <- getOption("bigmemory.allow.dimnames")
+  options(bigmemory.allow.dimnames = TRUE)
+  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
+
+  # Create test data
+  set.seed(1234)
+  test_data <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
+
+  # Create temporary directory for output
+  temp_dir <- withr::local_tempdir()
+  output_path <- fs::path(temp_dir, "test_subset")
+
+  # Test with subset using numeric index
+  result_bigmem_subset <- knn_imp(
+    test_data,
+    k = 3,
+    output = output_path,
+    overwrite = TRUE,
+    subset = c(1, 3, 5),
+    post_imp = FALSE,
+    nboot = 2,
+    seed = 42
+  )
+
+  # Compare with in-memory version
+  result_memory_subset <- knn_imp(
+    test_data,
+    k = 3,
+    output = NULL,
+    subset = c(1, 3, 5),
+    post_imp = FALSE,
+    nboot = 2,
+    seed = 42
+  )
+
+  # Check both bootstrap iterations
+  for (i in 1:2) {
+    bigmem_mat <- result_bigmem_subset[[i]][, ]
+    mem_mat <- result_memory_subset[[i]]
+
+    # Check that only specified columns are imputed
+    expect_true(!anyNA(bigmem_mat[, c(1, 3, 5)]))
+    expect_equal(is.na(bigmem_mat[, -c(1, 3, 5)]), is.na(test_data[, -c(1, 3, 5)]))
+
+    # Compare with memory version
+    expect_identical(bigmem_mat, mem_mat)
+  }
+})
+
+test_that("bigmemory error handling works correctly", {
+  # Create test data
+  set.seed(1234)
+  test_data <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
+
+  # Test error when bigmemory.allow.dimnames is FALSE
+  old_opt <- getOption("bigmemory.allow.dimnames")
+  options(bigmemory.allow.dimnames = FALSE)
+  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
+
+  expect_error(
+    {
+      knn_imp(
+        test_data,
+        k = 3,
+        output = tempfile()
+      )
+    },
+    "`bigmemory.allow.dimnames` must be TRUE"
+  )
+
+  # Reset option for next tests
+  options(bigmemory.allow.dimnames = TRUE)
+
+  # Test error with invalid output path
+  expect_error(
+    {
+      knn_imp(
+        test_data,
+        k = 3,
+        output = "/invalid/path/that/does/not/exist/output.bin"
+      )
+    },
+    "doesn't exist or is not readable/writable"
+  )
+})
+
 test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   set.seed(1234)
   to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)

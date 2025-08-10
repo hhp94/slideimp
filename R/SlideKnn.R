@@ -709,12 +709,17 @@ impute_knn <- function(
 #' mean imputation uses the imputed values and original values for the mean calculation
 #' instead of just the original values.
 #'
-#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
+#' When `nboot` > 1, output should be specified to use [bigmemory::big.matrix()] to
+#' save memory.
+#'
 #' @inheritParams SlideKnn
+#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
+#' @param output Character; path to save the output as list of [bigmemory::big.matrix()]
+#' to save memory. Highly recommended for `nboot` > 1.
 #' @param ... Currently not implemented.
 #'
-#' @return A list of numeric matrices of the same dimensions as `obj` with missing
-#'   values imputed. Length of list equals `nboot`.
+#' @return A list of numeric matrices or big.matrix of the same dimensions as `obj`
+#' with missing values imputed. Length of list equals `nboot`.
 #'
 #' @seealso [SlideKnn()], [mean_impute_col()], [mean_impute_row()]
 #'
@@ -775,6 +780,8 @@ knn_imp <- function(
     tree = NULL,
     nboot = 1,
     seed = 42,
+    output = NULL,
+    overwrite = FALSE,
     ...) {
   # Pre-conditioning
   method <- match.arg(method)
@@ -798,44 +805,120 @@ knn_imp <- function(
     stopifnot(length(dist_pow) == 1, dist_pow > 0, !is.infinite(dist_pow))
   }
   checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
+  checkmate::assert_string(output, null.ok = TRUE, .var.name = "output")
+  checkmate::assert_logical(overwrite, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "overwrite")
+
   if (!is.null(tree)) {
     if (method == "impute.knn") {
-      stop("When tree is not NULL, method cannot be 'impute.knn'")
+      method <- "euclidean"
     }
   }
 
-  # Set seed if provided
-  if (!is.null(seed)) {
-    set.seed(seed)
-  }
+  set.seed(seed)
 
-  if (!is.null(subset)) {
-    if (length(subset) == 0) {
-      # Return list of copies
-      return(replicate(nboot, obj, simplify = FALSE))
+  # Store original dimnames
+  rn <- rownames(obj)
+  cn <- colnames(obj)
+
+  # Check bigmemory options if output is specified
+  file_backed <- !is.null(output)
+
+  # Pre-compute file paths for all bootstrap iterations
+  if (file_backed) {
+    if (!isTRUE(getOption("bigmemory.allow.dimnames"))) {
+      stop("`bigmemory.allow.dimnames` must be TRUE. Set it with: options(bigmemory.allow.dimnames = TRUE)")
     }
-    if (is.character(subset)) {
-      stopifnot("`subset` are characters but `obj` doesn't have colnames" = !is.null(colnames(obj)))
-      matched <- match(subset, colnames(obj), nomatch = NA)
-      # subset converted to index
-      subset <- matched[!is.na(matched)]
+
+    # Prepare file paths
+    output <- fs::as_fs_path(output)
+    backingpath <- fs::path_dir(output)
+    if (!all(fs::file_access(backingpath, mode = c("exists", "read", "write")))) {
+      stop("Provided path to `output` doesn't exist or is not readable/writable")
+    }
+    file_name <- fs::path_file(output)
+    ext <- fs::path_ext(file_name)
+    base_no_ext <- fs::path_ext_remove(file_name)
+
+    # Pre-compute all file paths
+    boot_indices <- seq_len(nboot)
+    suffix <- if (nboot == 1) "" else paste0("_boot", boot_indices)
+
+    if (ext == "" || ext == "desc") {
+      backfiles <- paste0(base_no_ext, suffix, ".bin")
+      descfiles <- paste0(base_no_ext, suffix, ".desc")
+    } else {
+      backfiles <- paste0(base_no_ext, suffix, ".", ext, ".bin")
+      descfiles <- paste0(base_no_ext, suffix, ".", ext, ".desc")
+    }
+
+    # Check if files exist and overwrite is FALSE
+    for (i in boot_indices) {
+      backfile_path <- fs::path(backingpath, backfiles[i])
+      descfile_path <- fs::path(backingpath, descfiles[i])
+
+      if (overwrite) {
+        # Proceed to delete if overwrite is TRUE
+        unlink(backfile_path, force = TRUE)
+        unlink(descfile_path, force = TRUE)
+
+        if (fs::file_exists(backfile_path) || fs::file_exists(descfile_path)) {
+          stop("Failed to delete existing files for `output`")
+        }
+      } else {
+        if (fs::file_exists(backfile_path) || fs::file_exists(descfile_path)) {
+          stop(
+            paste0(
+              "Output files already exist for bootstrap ",
+              i,
+              ". Set overwrite = TRUE to overwrite them."
+            )
+          )
+        }
+      }
     }
   } else {
-    # If subset is NULL, set it to all columns
-    subset <- seq_len(ncol(obj))
+    # Not file-backed - set to NULL
+    backingpath <- NULL
+    boot_indices <- seq_len(nboot)
+    backfiles <- NULL
+    descfiles <- NULL
   }
+
+  # Handle subset conversion and validation
+  subset <- if (is.null(subset)) {
+    seq_len(ncol(obj))
+  } else if (length(subset) == 0) {
+    integer(0)
+  } else if (is.character(subset)) {
+    if (is.null(colnames(obj))) {
+      stop("`subset` contains characters but `obj` doesn't have column names")
+    }
+    matched_indices <- match(subset, colnames(obj), nomatch = NA)
+    matched_indices[!is.na(matched_indices)]
+  } else {
+    subset
+  }
+
+  # Early return for empty subset or no missing data
+  if (length(subset) == 0 || !sum(is.na(obj[, subset, drop = FALSE])) > 0) {
+    if (length(subset) > 0) {
+      message("No missing data in subset columns")
+    }
+    return(create_result_list(
+      data_to_copy = obj,
+      file_backed = file_backed,
+      nboot = nboot,
+      backfiles = backfiles,
+      descfiles = descfiles,
+      backingpath = backingpath,
+      rn = rn,
+      cn = cn
+    ))
+  }
+
+  # Calculate complement for further processing
   complement <- setdiff(seq_len(ncol(obj)), subset)
-
-  if (cores >= 16) {
-    warning("Setting cores too high can slow down runtime. Benchmark your data first.")
-  }
-
   miss <- is.na(obj)
-  if (sum(miss[, subset, drop = FALSE]) == 0) {
-    message("No missing data")
-    return(replicate(nboot, obj, simplify = FALSE))
-  }
-
   rmiss <- rowSums(miss) / ncol(obj)
   if (any(rmiss >= rowmax)) {
     stop("Row(s) missing exceeded rowmax. Remove row(s) with too high NA %")
@@ -853,7 +936,8 @@ knn_imp <- function(
   knn_indices <- which(knn_imp_cols)
   complement_knn <- intersect(complement, knn_indices)
   pos_complement <- match(complement_knn, knn_indices)
-  # Set all values outside of subset to be zero cmiss. This will make impute_knn_brute skip these columns
+  # Set all values outside of subset to be zero cmiss. This will make
+  # impute_knn_brute skip these columns
   pre_imp_cmiss[pos_complement] <- 0L
 
   if (any(rowSums(pre_imp_miss) / ncol(pre_imp_cols) == 1)) {
@@ -901,35 +985,111 @@ knn_imp <- function(
   # Handle NaN values
   imputed_values[is.nan(imputed_values)] <- NA
 
-  # Always return list of imputed datasets
-  result_list <- vector("list", nboot)
+  # Convert linear indices to row/col positions. These positions are the same for all
+  # bootstrap iterations
+  na_positions <- arrayInd(imputed_values[, 1], dim(pre_imp_cols))
+  # Map column indices from pre_imp_cols to original matrix columns
+  matrix_cols <- knn_indices[na_positions[, 2]]
+  # Create the index matrix for direct assignment
+  imp_indices <- cbind(na_positions[, 1], matrix_cols)
 
-  # Create nboot complete imputed datasets
-  for (boot_idx in 1:nboot) {
-    # Start with copy of original object
-    obj_boot <- obj
+  # Fill in imputed values
+  if (file_backed) {
+    # Create bigmemory matrices and modify them directly
+    result_list <- vector("list", nboot)
 
-    # Copy pre_imp_cols for this bootstrap iteration
-    pre_imp_cols_boot <- pre_imp_cols
+    for (i in seq_len(nboot)) {
+      # Create bigmemory matrix initialized with original data
+      bigmat <- bigmemory::big.matrix(
+        nrow = nrow(obj),
+        ncol = ncol(obj),
+        type = "double",
+        init = NA,
+        backingpath = backingpath,
+        backingfile = backfiles[i],
+        descriptorfile = descfiles[i],
+        dimnames = list(rn, cn)
+      )
 
-    # Apply imputation using bootstrap column (boot_idx + 1, since column 1 is indices)
-    pre_imp_cols_boot[imputed_values[, 1]] <- imputed_values[, boot_idx + 1]
+      # Copy original data to bigmatrix
+      bigmat[, ] <- obj
 
-    # Reconstruct object with imputed values
-    obj_boot[, knn_imp_cols] <- pre_imp_cols_boot
+      # Directly modify bigmatrix with imputed values using pre-computed indices
+      bigmat[imp_indices] <- imputed_values[, i + 1]
 
-    # Post-imputation step if needed
-    if (post_imp && anyNA(obj_boot[, subset, drop = FALSE])) {
-      na_indices <- which(is.na(obj_boot[, subset, drop = FALSE]), arr.ind = TRUE)
-      sub_means <- colMeans(obj_boot[, subset, drop = FALSE], na.rm = TRUE)
-      i_vec <- na_indices[, 1]
-      jj_vec <- na_indices[, 2]
-      j_vec <- subset[jj_vec]
-      obj_boot[cbind(i_vec, j_vec)] <- sub_means[jj_vec]
+      # Post-imputation directly on bigmatrix if needed
+      if (post_imp && anyNA(bigmat[, subset, drop = FALSE])) {
+        subset_data <- bigmat[, subset, drop = FALSE]
+        na_indices <- which(is.na(subset_data), arr.ind = TRUE)
+        sub_means <- colMeans(subset_data, na.rm = TRUE)
+        i_vec <- na_indices[, 1]
+        jj_vec <- na_indices[, 2]
+        j_vec <- subset[jj_vec]
+        # Update bigmatrix using vectorized indexing
+        bigmat[cbind(i_vec, j_vec)] <- sub_means[jj_vec]
+      }
+
+      # Flush to ensure changes are written to disk
+      bigmemory::flush(bigmat)
+      result_list[[i]] <- bigmat
+    }
+    return(result_list)
+  } else {
+    # Create all copies upfront with replicate
+    result_list <- replicate(nboot, obj, simplify = FALSE)
+
+    for (i in seq_len(nboot)) {
+      # Directly modify result_list[[i]] with imputed values using pre-computed indices
+      result_list[[i]][imp_indices] <- imputed_values[, i + 1]
+
+      # Post-imputation step if needed
+      if (post_imp && anyNA(result_list[[i]][, subset, drop = FALSE])) {
+        na_indices <- which(is.na(result_list[[i]][, subset, drop = FALSE]), arr.ind = TRUE)
+        sub_means <- colMeans(result_list[[i]][, subset, drop = FALSE], na.rm = TRUE)
+        i_vec <- na_indices[, 1]
+        jj_vec <- na_indices[, 2]
+        j_vec <- subset[jj_vec]
+        result_list[[i]][cbind(i_vec, j_vec)] <- sub_means[jj_vec]
+      }
     }
 
-    # Store completed imputed dataset in result list
-    result_list[[boot_idx]] <- obj_boot
+    return(result_list)
+  }
+}
+
+# Helper function for knn_imp to create bigmatrix or copy for a single bootstrap.
+# No need to pass to SlideKnn because knn_imp is always in memory there.
+create_result_list <- function(
+    data_to_copy,
+    file_backed,
+    nboot,
+    backfiles = NULL,
+    descfiles = NULL,
+    backingpath = NULL,
+    rn = NULL,
+    cn = NULL) {
+  result_list <- vector("list", nboot)
+
+  if (file_backed) {
+    for (i in seq_len(nboot)) {
+      bigmat <- bigmemory::big.matrix(
+        nrow = nrow(data_to_copy),
+        ncol = ncol(data_to_copy),
+        type = "double",
+        init = NA,
+        backingpath = backingpath,
+        backingfile = backfiles[i],
+        descriptorfile = descfiles[i],
+        dimnames = list(rn, cn)
+      )
+      bigmat[, ] <- data_to_copy
+      result_list[[i]] <- bigmat
+    }
+  } else {
+    # For in-memory, create nboot copies
+    for (i in seq_len(nboot)) {
+      result_list[[i]] <- data_to_copy
+    }
   }
 
   return(result_list)
