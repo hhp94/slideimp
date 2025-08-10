@@ -2,7 +2,7 @@
 % Please edit documentation in R/tune_imp.R
 \name{tune_imp}
 \alias{tune_imp}
-\title{Tune Parameters for \code{SlideKnn}/\code{knn_imp} Imputation}
+\title{Tune Parameters for \code{\link[=SlideKnn]{SlideKnn()}}/\code{\link[=knn_imp]{knn_imp()}}/Custom Imputation}
 \usage{
 tune_imp(
   obj,
@@ -18,51 +18,77 @@ tune_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. Note: keep \code{obj} small since
-this function doesn't support \code{bigmemory}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
+Note: keep \code{obj} small since this function doesn't support \code{bigmemory}.}
 
-\item{parameters}{A data frame specifying the parameter combinations to tune. Duplicated rows are removed.
-The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=SlideKnn]{SlideKnn()}} for details about the parameters, and \verb{@details} for custom functions.}
+\item{parameters}{A data frame specifying the parameter combinations to tune. Duplicated rows are
+removed. The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=SlideKnn]{SlideKnn()}} for details about
+the parameters. Any \code{nboot} values in this data frame will be ignored.}
 
-\item{.f}{The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or a custom function.}
+\item{.f}{The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
+a custom function.}
 
-\item{rep}{The number of repetitions for injecting missing values to evaluate each combination of parameters. Default is 1.}
+\item{rep}{The number of repetitions for injecting missing values to evaluate each combination of
+parameters. Default is 1.}
 
 \item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
 
 \item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
 
-\item{.progress}{Logical; if TRUE, show a progress bar. Default is FALSE.}
+\item{.progress}{Logical; if \code{TRUE}, show a progress bar. Default is \code{FALSE}.}
 
-\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
+of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of
+missing values in a column above which the column is imputed using the mean
+instead of k-NN if \code{post_imp} is true.}
 
-\item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
+\item{cores}{Integer specifying the number of cores to use for parallel computation
+of distances. Default is 1.}
+}
+\value{
+A tibble containing:
+\itemize{
+\item All parameter columns from the input \code{parameters} data frame
+\item \code{param_set}: Integer identifier for each unique parameter combination
+\item \code{rep}: The repetition number
+\item \code{result}: A nested tibble with columns \code{truth} (original values) and \code{estimate} (imputed values)
+}
 }
 \description{
-This function tunes the parameters for the \code{\link[=SlideKnn]{SlideKnn()}}/\code{\link[=knn_imp]{knn_imp()}} imputation method by injecting missing values
-into the dataset multiple times and evaluating the imputation performance for different parameter
-combinations. Can also tune custom imputation functions. See details.
+This function tunes the parameters for the \code{\link[=SlideKnn]{SlideKnn()}} or \code{\link[=knn_imp]{knn_imp()}} imputation methods by injecting
+missing values into the dataset multiple times and evaluating the imputation performance for different
+parameter combinations. Can also tune custom imputation functions.
 }
 \details{
-This function allows tuning of hyperparameters for matrix imputation methods, including the built-in 'SlideKnn' and 'knn_imp',
-or a custom function provided to \code{.f}.
+This function allows tuning of hyperparameters for matrix imputation methods, including the built-in
+'SlideKnn' and 'knn_imp', or a custom function provided to \code{.f}.
 
-For a custom function in \code{.f}, the \code{parameters} data.frame must have columns whose names match the argument names of \code{.f}
-(excluding \code{obj}). The custom function must take \code{obj} as its first input argument and output an imputed numeric matrix
-of the same dimensions as \code{obj}.
+For a custom function in \code{.f}, the \code{parameters} data.frame must have columns whose names match the
+argument names of \code{.f} (excluding \code{obj}). The custom function must take \code{obj} as its first input
+argument and output a numeric matrix of the same dimensions as \code{obj}.
 
-For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are required in \code{parameters} (e.g., \code{n_feat}, \code{k}, \code{n_overlap} for 'SlideKnn';
-\code{k} for 'knn_imp'), and defaults are set if not provided (e.g., \code{method = "euclidean"}, \code{post_imp = FALSE}).
+For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are required in \code{parameters}:
+\itemize{
+\item For 'SlideKnn': \code{n_feat}, \code{k}, and \code{n_overlap}
+\item For 'knn_imp': \code{k}
+}
 
-\code{tune_imp} can be parallelize over iterations (number of rows of \code{parameters} * number of repetitions per row) with
-the argument \code{cores}. Note that for \code{SlideKnn}, \code{tune_imp} will run sequentially but cores will parallelize within
-\code{SlideKnn}.
+Default values are set for optional parameters if not provided (e.g., \code{method = "euclidean"},
+\code{post_imp = FALSE}).
 
-The output is a tibble with columns for each parameter combination, a \code{param_set} identifier, the repetition number (\code{rep}),
-and a nested \code{results} column containing a tibble of \code{truth} (original values) and \code{estimate} (imputed values) for the injected NAs.
-Metrics can be computed from these results, as shown in the examples.
+\strong{Note:} The \code{nboot} parameter is always internally set to 1 for tuning purposes, regardless of
+any value provided in \code{parameters}. This ensures consistent comparison across parameter combinations.
+
+\code{tune_imp} can be parallelized over iterations (number of rows of \code{parameters} * number of repetitions
+per row) with the argument \code{cores}. Note that for \code{SlideKnn}, \code{tune_imp} will run sequentially but
+cores will parallelize within \code{SlideKnn}.
+
+The output is a tibble with columns for each parameter combination, a \code{param_set} identifier, the
+repetition number (\code{rep}), and a nested \code{results} column containing a tibble of \code{truth} (original
+values) and \code{estimate} (imputed values) for the injected NAs. Metrics can be computed from these
+results, as shown in the examples.
 }
 \examples{
 data(khanmiss1)
@@ -86,15 +112,15 @@ results <- tune_imp(obj, parameters, rep = 1)
 # library(yardstick)
 # met_set <- metric_set(mae, rmse, rsq)
 # results$metrics <- lapply(
-# results$results,
-# function(x) {
-# met_set(x, truth = truth, estimate = estimate)
-# }
+#   results$result,
+#   function(x) {
+#     met_set(x, truth = truth, estimate = estimate)
+#   }
 # )
 # # Unnest the metrics
-# tidyr::unnest(dplyr::select(results, -results), cols = "metrics")
+# tidyr::unnest(dplyr::select(results, -result), cols = "metrics")
 
 }
 \seealso{
-\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=SlideKnn]{SlideKnn()}}
+\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=SlideKnn]{SlideKnn()}}, \code{\link[=inject_na]{inject_na()}}
 }

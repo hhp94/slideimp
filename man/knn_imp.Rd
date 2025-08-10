@@ -16,44 +16,66 @@ knn_imp(
   weighted = FALSE,
   dist_pow = 1,
   tree = NULL,
+  nboot = 1,
+  seed = 42,
   ...
 )
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{k}{Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).}
+\item{k}{Integer specifying the number of nearest neighbors to use for imputation.
+Must be between 1 and (\code{n_feat} - 1).}
 
-\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of
+missing values in a column above which the column is imputed using the mean
+instead of k-NN if \code{post_imp} is true.}
 
-\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
+of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{method}{Character string specifying the distance metric for k-NN. One of \code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
+\item{method}{Character string specifying the distance metric for k-NN. One of
+\code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
 
-\item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
+\item{cores}{Integer specifying the number of cores to use for parallel computation
+of distances. Default is 1.}
 
-\item{post_imp}{Logical; if TRUE (default), any missing after k-NN imputations will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
+\item{post_imp}{Logical; if \code{TRUE} (default), any missing values remaining after
+k-NN imputations will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
 
-\item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
+\item{subset}{Character vector of column names or integer vector of column indices
+specifying the subset of columns to perform imputation. If \code{NULL} (default),
+all columns are included.}
 
-\item{weighted}{Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.}
+\item{weighted}{Logical; controls whether the imputed value should be a simple
+mean or weighted mean by inverse distance. Default is \code{FALSE}.}
 
-\item{dist_pow}{A positive double that controls the penalty for larger distances in the weighted mean imputation.
-Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.}
+\item{dist_pow}{A positive double that controls the penalty for larger distances
+in the weighted mean imputation. Must be greater than zero: values between 0
+and 1 apply a softer penalty, 1 is linear (default), and values greater than
+1 apply a harsher penalty.}
 
-\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses naive search.
-\code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by the mlpack package where missing values are first filled with column means (biased at high percentage missing).}
+\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses
+brute-force search. \code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by
+the mlpack package where missing values are first filled with column means
+(biased at high percentage missing and less efficient at lower dimensions).}
 
-\item{...}{Not Implemented.}
+\item{nboot}{Integer specifying the number of bootstrap imputations to perform.
+Default is 1.}
+
+\item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
+
+\item{...}{Currently not implemented.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
+A list of numeric matrices of the same dimensions as \code{obj} with missing
+values imputed. Length of list equals \code{nboot}.
 }
 \description{
 This function imputes missing values in a numeric matrix using the k-Nearest
-Neighbors algorithm. It follows a two-stage process. First, it imputes
-columns with a proportion of missing values below \code{colmax} using k-NN.
-Second, if requested, any remaining missing values are imputed using the column mean.
+Neighbors algorithm. It follows a two-stage process: first, it imputes
+columns with a proportion of missing values below \code{colmax} using k-NN;
+second, if requested, any remaining missing values are imputed using the column mean.
 }
 \details{
 This implementation calculates the distances for neighbors column-wise. This is an
@@ -69,20 +91,64 @@ scaled based on the number of non-missing value pairs. Specifically, the
 raw distance is penalized by scaling it up for columns that have fewer
 overlapping observations. This penalizes distances for columns with very few
 shared observations used for distance calculations. See also \code{\link[stats:dist]{stats::dist()}}.
+
+When \code{weighted = TRUE}, imputed values are computed as weighted averages where
+weights are the inverse of distances raised to the power of \code{dist_pow}. This
+gives closer neighbors more influence in the imputation.
+
+The \code{tree} parameter allows for faster neighbor search using spatial data structures,
+but requires pre-filling missing values with column means, which may introduce bias
+in datasets with high missingness. The overhead of building tree may makes the function
+slower in lower dimensions and k.
 }
 \note{
-Compared to \code{impute::impute.knn}, for columns with very high missing, the
+Compared to \code{impute::impute.knn}, for columns with very high missingness, the
 mean imputation uses the imputed values and original values for the mean calculation
 instead of just the original values.
 }
 \examples{
-# See ?khanmiss1
+# Load example data
 data(khanmiss1)
 sum(is.na(khanmiss1))
 
-# Perform k-NN imputation. `khanmiss1` stores genes in the row so we have to t().
-# set method to "impute.knn" to mimic how distant is scaled in impute::impute.knn.
-imputed <- knn_imp(obj = t(khanmiss1), k = 3, colmax = 0.5, rowmax = 0.8, method = "euclidean")
+# Perform k-NN imputation. `khanmiss1` stores genes in rows so we transpose.
+# Set method to "impute.knn" to mimic how distance is scaled in impute::impute.knn.
+imputed <- knn_imp(
+  obj = t(khanmiss1),
+  k = 3,
+  colmax = 0.5,
+  rowmax = 0.8,
+  method = "euclidean"
+)[[1]]
+
+# Check results
 imputed[1:5, 1:20]
 sum(is.na(imputed))
+
+# Using weighted imputation with custom distance power
+imputed_weighted <- knn_imp(
+  obj = t(khanmiss1),
+  k = 5,
+  weighted = TRUE,
+  dist_pow = 2,
+  method = "euclidean"
+)[[1]]
+
+# Bootstrap imputation for uncertainty quantification
+imputed_boot <- knn_imp(
+  obj = t(khanmiss1),
+  k = 3,
+  nboot = 5,
+  seed = 123
+)
+length(imputed_boot) # Returns 5 imputed datasets
+
+}
+\references{
+Troyanskaya, O., Cantor, M., Sherlock, G., Brown, P., Hastie, T., Tibshirani, R.,
+Botstein, D. and Altman, R.B. (2001) Missing value estimation methods for DNA
+microarrays. \emph{Bioinformatics}, \strong{17}(6), 520-525.
+}
+\seealso{
+\code{\link[=SlideKnn]{SlideKnn()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[=mean_impute_row]{mean_impute_row()}}
 }

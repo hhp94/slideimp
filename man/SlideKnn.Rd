@@ -18,6 +18,8 @@ SlideKnn(
   post_imp = TRUE,
   weighted = FALSE,
   dist_pow = 1,
+  nboot = 1,
+  seed = 42,
   .progress = FALSE,
   output = NULL,
   overwrite = TRUE,
@@ -26,48 +28,74 @@ SlideKnn(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
 Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
 
-\item{n_feat}{Integer specifying the number of features (columns) in each window. Must be between 2 and the number of columns in \code{obj}.}
+\item{n_feat}{Integer specifying the number of features (columns) in each window.
+Must be between 2 and the number of columns in \code{obj}.}
 
-\item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
+\item{subset}{Character vector of column names or integer vector of column indices
+specifying the subset of columns to perform imputation. If \code{NULL} (default),
+all columns are included.}
 
-\item{n_overlap}{Integer specifying the number of features to overlap between consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.}
+\item{n_overlap}{Integer specifying the number of features to overlap between
+consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.}
 
-\item{k}{Integer specifying the number of nearest neighbors to use for imputation. Must be between 1 and (number of columns - 1).}
+\item{k}{Integer specifying the number of nearest neighbors to use for imputation.
+Must be between 1 and (\code{n_feat} - 1).}
 
-\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
+of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of
+missing values in a column above which the column is imputed using the mean
+instead of k-NN if \code{post_imp} is true.}
 
-\item{cores}{Integer specifying the number of cores to use for parallel computation of distances.}
+\item{cores}{Integer specifying the number of cores to use for parallel computation
+of distances. Default is 1.}
 
-\item{method}{Character string specifying the distance metric for k-NN. One of \code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
+\item{method}{Character string specifying the distance metric for k-NN. One of
+\code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
 
-\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses naive search.
-\code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by the mlpack package where missing values are first filled with column means (biased at high percentage missing).}
+\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses
+brute-force search. \code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by
+the mlpack package where missing values are first filled with column means
+(biased at high percentage missing and less efficient at lower dimensions).}
 
-\item{post_imp}{Logical; if TRUE (default), any missing after k-NN imputations will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
+\item{post_imp}{Logical; if \code{TRUE} (default), any missing values remaining after
+k-NN imputations will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
 
-\item{weighted}{Logical; controls for the imputed value to be a simple mean or weighted mean by inverse distance.}
+\item{weighted}{Logical; controls whether the imputed value should be a simple
+mean or weighted mean by inverse distance. Default is \code{FALSE}.}
 
-\item{dist_pow}{A positive double that controls the penalty for larger distances in the weighted mean imputation.
-Must be greater than zero: values between 0 and 1 apply a softer penalty, 1 is linear (default), and values greater than 1 apply a harsher penalty.}
+\item{dist_pow}{A positive double that controls the penalty for larger distances
+in the weighted mean imputation. Must be greater than zero: values between 0
+and 1 apply a softer penalty, 1 is linear (default), and values greater than
+1 apply a harsher penalty.}
 
-\item{.progress}{Logical; if TRUE, show a progress bar. Default is FALSE.}
+\item{nboot}{Integer specifying the number of bootstrap imputations to perform.
+Default is 1.}
 
-\item{output}{Character; path to save the output big.matrix if \code{obj} is file-backed. Required in that case.}
+\item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
-\item{overwrite}{Logical; if TRUE (default), overwrite existing files at \code{output}.}
+\item{.progress}{Logical; if \code{TRUE}, show a progress bar. Default is \code{FALSE}.}
 
-\item{block}{Integer; block size for processing large matrices. If NULL (default), calculated automatically.}
+\item{output}{Character; path to save the output big.matrix if \code{obj} is file-backed.
+Required when \code{obj} is a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} or path to big.matrix descriptor.}
 
-\item{strip_dimnames}{Logical; if FALSE (default), dimnames will not be removed which will increase memory usage.
-Should set to TRUE to save memory from overhead especially when cores > 1. See details.}
+\item{overwrite}{Logical; if \code{TRUE} (default), overwrite existing files at \code{output}.}
+
+\item{block}{Integer; block size for processing large matrices. If \code{NULL} (default),
+calculated automatically based on the matrix size and number of cores.}
+
+\item{strip_dimnames}{Logical; if \code{FALSE} (default), dimnames will not be removed
+which will increase memory usage. Should set to \code{TRUE} to save memory from
+overhead especially when \code{cores} > 1. See details.}
 }
 \value{
-A numeric matrix/big.matrix of the same dimensions as \code{obj} with missing values imputed.
+A list of numeric matrices/big.matrices of the same dimensions as \code{obj}
+with missing values imputed. Length of list equals \code{nboot}. If \code{obj} is file-backed,
+returns a list of big.matrix objects; otherwise returns regular matrices.
 }
 \description{
 Performs sliding window KNN imputation on a numeric matrix to handle missing values.
@@ -75,7 +103,15 @@ The matrix is divided into overlapping windows, and imputation is applied to eac
 Overlapping regions are averaged to produce the final imputed matrix.
 }
 \details{
-See \code{\link[=knn_imp]{knn_imp()}} for details about the implementation.
+The sliding window approach is particularly useful for large datasets where applying
+KNN imputation to the entire matrix would be computationally prohibitive. By breaking
+the data into smaller, overlapping windows, the algorithm maintains local correlation
+structures while keeping memory usage manageable.
+
+See \code{\link[=knn_imp]{knn_imp()}} for details about the underlying KNN implementation.
+}
+\note{
+Setting \code{nboot} > 1 is meant to be used only with \code{subset}.
 
 If your \code{obj} is a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} or description file, you have to set
 \code{strip_dimnames} to \code{TRUE} for the output big.matrix to have the same dimnames as
@@ -83,11 +119,23 @@ the \code{obj}. Otherwise, you can also re-add the dimnames to the output using 
 dimnames of the original object after setting \code{options(bigmemory.allow.dimnames = TRUE)}.
 }
 \examples{
-
 data(khanmiss1)
 
+# Basic sliding KNN imputation with bootstrap
 # Set `strip_dimnames` to `TRUE` with `options(bigmemory.allow.dimnames = TRUE)`
 # when running multiple cores to minimize overhead.
-imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10)
+imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, nboot = 3)
 
+# Using weighted imputation
+imputed_weighted <- SlideKnn(
+  t(khanmiss1),
+  k = 5,
+  n_feat = 50,
+  weighted = TRUE,
+  dist_pow = 2
+)
+
+}
+\seealso{
+\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
 }

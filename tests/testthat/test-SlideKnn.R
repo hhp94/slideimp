@@ -1,4 +1,4 @@
-test_that("impute_knn_naive and impute_knn_mlpack calculates the missing location correctly", {
+test_that("impute_knn_brute and impute_knn_mlpack calculates the missing location correctly", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
   missing <- which(is.na(to_test))
@@ -6,8 +6,8 @@ test_that("impute_knn_naive and impute_knn_mlpack calculates the missing locatio
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
 
-  # For naive
-  imputed_index_naive <- impute_knn_naive(
+  # For brute
+  imputed_index_brute <- impute_knn_brute(
     obj = to_test,
     miss = miss,
     k = 5,
@@ -29,10 +29,112 @@ test_that("impute_knn_naive and impute_knn_mlpack calculates the missing locatio
     dist_pow = 1,
     cores = 1
   )
-  imputed_index_naive[is.nan(imputed_index_naive)] <- NA
+  imputed_index_brute[is.nan(imputed_index_brute)] <- NA
   imputed_index_mlpack[is.nan(imputed_index_mlpack)] <- NA
-  expect_equal(imputed_index_naive[, 1], missing)
+  expect_equal(imputed_index_brute[, 1], missing)
   expect_equal(imputed_index_mlpack[, 1], missing)
+})
+
+test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", {
+  set.seed(1234)
+  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.3, perc_col_NA = 1)$input)
+  missing <- which(is.na(to_test))
+  miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
+  storage.mode(miss) <- "integer"
+  n_col_miss <- colSums(is.na(to_test))
+
+  nboot <- 5
+  k <- 5
+
+  # Test with bootstrap
+  imputed_bootstrap <- impute_knn_brute(
+    obj = to_test,
+    miss = miss,
+    k = k,
+    n_col_miss = n_col_miss,
+    method = 2,
+    weighted = TRUE, # Should be forced to FALSE when nboot > 1
+    dist_pow = 1,
+    nboot = nboot,
+    seed = 42,
+    cores = 1
+  )
+
+  # Convert NaN to NA for easier testing
+  imputed_bootstrap[is.nan(imputed_bootstrap)] <- NA
+
+  # Correct dimensions
+  expected_cols <- 1 + nboot # 1 index column + nboot imputation columns
+  expect_equal(ncol(imputed_bootstrap), expected_cols)
+  expect_equal(nrow(imputed_bootstrap), length(missing))
+
+  # First column contains correct missing indices
+  expect_equal(imputed_bootstrap[, 1], missing)
+
+  # All bootstrap columns should contain imputed values
+  # (some may be NA if no valid neighbors, but structure should be consistent)
+  for (b in 2:(1 + nboot)) {
+    expect_true(is.numeric(imputed_bootstrap[, b]))
+  }
+
+  # Bootstrap should produce some variability
+  # Count how many missing values have at least 2 different imputed values across bootstraps
+  n_with_variability <- 0
+  for (i in 1:nrow(imputed_bootstrap)) {
+    bootstrap_vals <- imputed_bootstrap[i, 2:(1 + nboot)]
+    bootstrap_vals <- bootstrap_vals[!is.na(bootstrap_vals)]
+    if (length(bootstrap_vals) > 1 && length(unique(bootstrap_vals)) > 1) {
+      n_with_variability <- n_with_variability + 1
+    }
+  }
+
+  # At least some missing values should show bootstrap variability
+  # (unless the data is very structured or k is very small)
+  expect_true(
+    n_with_variability > 0,
+    info = "Bootstrap should produce some variability in imputed values"
+  )
+})
+
+test_that("impute_knn_brute with nboot > 1 produces reproducible results with same seed", {
+  set.seed(1234)
+  to_test <- t(sim_mat(n = 30, m = 15, perc_NA = 0.4, perc_col_NA = 1)$input)
+  miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
+  storage.mode(miss) <- "integer"
+  n_col_miss <- colSums(is.na(to_test))
+
+  nboot <- 3
+  seed_val <- 123
+
+  # Run twice with same seed
+  result1 <- impute_knn_brute(
+    obj = to_test,
+    miss = miss,
+    k = 5,
+    n_col_miss = n_col_miss,
+    method = 2,
+    weighted = FALSE,
+    dist_pow = 1,
+    nboot = nboot,
+    seed = seed_val,
+    cores = 1
+  )
+
+  result2 <- impute_knn_brute(
+    obj = to_test,
+    miss = miss,
+    k = 5,
+    n_col_miss = n_col_miss,
+    method = 2,
+    weighted = FALSE,
+    dist_pow = 1,
+    nboot = nboot,
+    seed = seed_val,
+    cores = 1
+  )
+
+  # Results should be identical
+  expect_equal(result1, result2)
 })
 
 test_that("`SlideKnn` in-memory matrix mode works", {
@@ -48,12 +150,13 @@ test_that("`SlideKnn` in-memory matrix mode works", {
     )$input
   )
   # Init
-  counts <- final_imputed <- matrix(
+  counts <- matrix(
     0,
     nrow = nrow(to_test),
     ncol = ncol(to_test),
     dimnames = dimnames(to_test)
   )
+  final_imputed <- counts
   # 1 to 100 is the first window;
   final_imputed[, 1:100] <- final_imputed[, 1:100] +
     knn_imp(
@@ -62,7 +165,7 @@ test_that("`SlideKnn` in-memory matrix mode works", {
       colmax = 0.9,
       rowmax = 0.9,
       post_imp = TRUE
-    )
+    )[[1]]
   counts[, 1:100] <- counts[, 1:100] + 1
   # 91 to 190 is the second window;
   final_imputed[, 91:190] <- final_imputed[, 91:190] +
@@ -72,7 +175,7 @@ test_that("`SlideKnn` in-memory matrix mode works", {
       colmax = 0.9,
       rowmax = 0.9,
       post_imp = TRUE
-    )
+    )[[1]]
   counts[, 91:190] <- counts[, 91:190] + 1
   # 181 to 280 is the last window
   final_imputed[, 181:280] <- final_imputed[, 181:280] +
@@ -82,7 +185,7 @@ test_that("`SlideKnn` in-memory matrix mode works", {
       colmax = 0.9,
       rowmax = 0.9,
       post_imp = TRUE
-    )
+    )[[1]]
   counts[, 181:280] <- counts[, 181:280] + 1
   final_imputed <- final_imputed / counts
 
@@ -95,8 +198,8 @@ test_that("`SlideKnn` in-memory matrix mode works", {
     rowmax = 0.9,
     colmax = 0.9,
     post_imp = TRUE
-  )
-  expect_identical(simple_mean, simple_mean)
+  )[[1]]
+  expect_identical(simple_mean, final_imputed)
 
   # SlideKnn weighted should be different than simple mean
   weighted_1 <- SlideKnn(
@@ -108,7 +211,7 @@ test_that("`SlideKnn` in-memory matrix mode works", {
     colmax = 0.9,
     post_imp = TRUE,
     weighted = TRUE
-  )
+  )[[1]]
   weighted_2 <- SlideKnn(
     to_test,
     n_feat = 100,
@@ -119,7 +222,7 @@ test_that("`SlideKnn` in-memory matrix mode works", {
     post_imp = TRUE,
     weighted = TRUE,
     dist_pow = 2
-  )
+  )[[1]]
   expect_true(sum((simple_mean - weighted_1)^2) > 0)
   expect_true(sum((weighted_2 - weighted_1)^2) > 0)
 })
@@ -138,12 +241,13 @@ test_that("`SlideKnn` in-memory subset works", {
   )
   subset <- c(1, 6, 10, 50)
   # Init
-  counts <- final_imputed <- matrix(
+  counts <- matrix(
     0,
     nrow = nrow(to_test),
     ncol = ncol(to_test),
     dimnames = dimnames(to_test)
   )
+  final_imputed <- counts
   # 1 to 20 is the first window;
   window_cols <- 1:20
   local_subset <- which(window_cols %in% subset)
@@ -155,7 +259,7 @@ test_that("`SlideKnn` in-memory subset works", {
       rowmax = 0.9,
       post_imp = TRUE,
       subset = local_subset
-    )
+    )[[1]]
   counts[, window_cols] <- counts[, window_cols] + 1
   # 16 to 35 is the second window;
   window_cols <- 16:35
@@ -168,7 +272,7 @@ test_that("`SlideKnn` in-memory subset works", {
       rowmax = 0.9,
       post_imp = TRUE,
       subset = local_subset
-    )
+    )[[1]]
   counts[, window_cols] <- counts[, window_cols] + 1
   # 31 to 50 is the last window
   window_cols <- 31:50
@@ -181,7 +285,7 @@ test_that("`SlideKnn` in-memory subset works", {
       rowmax = 0.9,
       post_imp = TRUE,
       subset = local_subset
-    )
+    )[[1]]
   counts[, window_cols] <- counts[, window_cols] + 1
   final_imputed <- final_imputed / counts
   # SlideKnn should exactly replicate this result
@@ -195,7 +299,7 @@ test_that("`SlideKnn` in-memory subset works", {
       colmax = 0.9,
       post_imp = TRUE,
       subset = subset
-    ),
+    )[[1]],
     final_imputed
   )
 })
@@ -213,12 +317,14 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
     )$input
   )
   # Init
-  counts <- final_imputed <- matrix(
+  counts <- matrix(
     0,
     nrow = nrow(to_test),
     ncol = ncol(to_test),
     dimnames = dimnames(to_test)
   )
+  final_imputed <- counts
+
   # 1 to 100 is the first window;
   final_imputed[, 1:100] <- final_imputed[, 1:100] +
     knn_imp(
@@ -227,7 +333,7 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
       colmax = 0.9,
       rowmax = 0.9,
       post_imp = TRUE
-    )
+    )[[1]]
   counts[, 1:100] <- counts[, 1:100] + 1
   # 101 to 200 is the second window;
   final_imputed[, 101:200] <- final_imputed[, 101:200] +
@@ -237,7 +343,7 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
       colmax = 0.9,
       rowmax = 0.9,
       post_imp = TRUE
-    )
+    )[[1]]
   counts[, 101:200] <- counts[, 101:200] + 1
   # 201 to 300 is the last window
   final_imputed[, 201:300] <- final_imputed[, 201:300] +
@@ -247,7 +353,7 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
       colmax = 0.9,
       rowmax = 0.9,
       post_imp = TRUE
-    )
+    )[[1]]
   counts[, 201:300] <- counts[, 201:300] + 1
   final_imputed <- final_imputed / counts
   # SlideKnn should exactly replicate this result
@@ -260,7 +366,7 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
       rowmax = 0.9,
       colmax = 0.9,
       post_imp = TRUE
-    ),
+    )[[1]],
     final_imputed
   )
 })
@@ -299,7 +405,7 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
     k = 5,
     cores = 1,
     post_imp = TRUE
-  )
+  )[[1]]
 
   # Quickly check that treed version works
   expect_no_error(
@@ -327,7 +433,7 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
     post_imp = TRUE,
     output = temp_bm,
     overwrite = TRUE
-  )
+  )[[1]]
   expect_identical(bm[, ], ram)
 
   # parallel version
@@ -342,7 +448,7 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
     k = 5,
     cores = 4,
     post_imp = TRUE
-  )
+  )[[1]]
 
   # Explicit temp file path for bm_4 output
   temp_bm4 <- withr::local_tempfile(pattern = "bm_4")
@@ -357,7 +463,7 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
     post_imp = TRUE,
     output = temp_bm4,
     overwrite = TRUE
-  )
+  )[[1]]
   expect_identical(ram, ram_4)
   expect_identical(bm[, ], bm_4[, ])
   mirai::daemons(0)
@@ -406,10 +512,12 @@ test_that("`impute_knn` ignore all na rows", {
     dist_pow = 1,
     subset = NULL,
     knn_imp = knn_imp,
-    impute_knn_naive = impute_knn_naive,
+    impute_knn_brute = impute_knn_brute,
     mean_impute_col = mean_impute_col,
-    tree = NULL
-  )
+    tree = NULL,
+    nboot = 1,
+    seed = 42
+  )[[1]]
 
   # Expect that the all-NA rows remain all NA
   testthat::expect_true(all(is.na(imputed[3, ])) && all(is.na(imputed[7, ])))
@@ -428,7 +536,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
   # Check if the 'impute' package is installed
   if (rlang::is_installed("impute")) {
     # Perform imputation using knn_imp with method "impute.knn" on transposed data
-    r1 <- knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "impute.knn")
+    r1 <- knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "impute.knn")[[1]]
 
     # Perform imputation using the original impute::impute.knn function
     # Transpose the result to match the orientation
@@ -455,7 +563,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
     pre_impute <- rowMeans(to_test, na.rm = TRUE)
 
     # Impute using knn_imp without post-imputation step; expect some NAs to remain
-    r1.1 <- knn_imp(to_test, k = 5, method = "impute.knn", post_imp = FALSE)
+    r1.1 <- knn_imp(to_test, k = 5, method = "impute.knn", post_imp = FALSE)[[1]]
     expect_true(anyNA(r1.1))
 
     # impute::impute.knn uses the pre-imputation row means to impute the data.
@@ -502,7 +610,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
       method = "impute.knn",
       post_imp = FALSE,
       subset = subset_cols
-    )[, subset_cols]
+    )[[1]][, subset_cols]
 
     # Verify no NAs remain in the imputed subset
     expect_true(!anyNA(r1_subset))
@@ -537,7 +645,7 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
   # Impute just 3 columns
   ## Check subset using numeric index
-  r1 <- knn_imp(to_test, k = 3, post_imp = FALSE, subset = c(1, 3, 5))
+  r1 <- knn_imp(to_test, k = 3, post_imp = FALSE, subset = c(1, 3, 5))[[1]]
   expect_true(!anyNA(r1[, c(1, 3, 5)]))
   expect_equal(is.na(r1[, -c(1, 3, 5)]), is.na(to_test[, -c(1, 3, 5)]))
   ## Check subset using character vector
@@ -546,14 +654,14 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
     k = 3,
     post_imp = FALSE,
     subset = paste0("feat", c(1, 3, 5))
-  )
+  )[[1]]
   expect_identical(r1, r2)
 
   # Test with post_imp = TRUE and a column requiring post imputation
   to_test_post <- to_test
   # Column 5 will be colMeans if post_imp is TRUE
   to_test_post[2:nrow(to_test_post), 5] <- NA
-  r3 <- knn_imp(to_test_post, k = 3, post_imp = TRUE, subset = c(1, 3, 5))
+  r3 <- knn_imp(to_test_post, k = 3, post_imp = TRUE, subset = c(1, 3, 5))[[1]]
   expect_true(!anyNA(r3[, c(1, 3, 5)]))
   # Expect that only the subset columns are imputed. The rests are untouched
   expect_equal(is.na(r3[, -c(1, 3, 5)]), is.na(to_test_post[, -c(1, 3, 5)]))
@@ -565,7 +673,7 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
     k = 3,
     post_imp = TRUE,
     subset = paste0("feat", c(1, 3, 5))
-  )
+  )[[1]]
   expect_identical(r3, r4)
 })
 
@@ -596,4 +704,105 @@ test_that("`mean_impute_col` works", {
     c_subset[is.na(c_subset[, i]), i] <- mean(c_subset[, i], na.rm = TRUE)
   }
   expect_identical(mean_impute_col(to_test, subset = c(1, 5, 10)), c_subset)
+})
+
+test_that("`knn_imp` with nboot = 2 and subset = first 2 columns works", {
+  set.seed(1234)
+  to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)$input)
+
+  # Test with nboot = 2 and subset = first 2 columns
+  results <- knn_imp(
+    to_test,
+    k = 5,
+    nboot = 2,
+    subset = c(1, 2),
+    post_imp = TRUE,
+    seed = 123
+  )
+
+  # Should return a list of length 2
+  expect_equal(length(results), 2)
+
+  # Each result should be a matrix with same dimensions as input
+  expect_true(all(sapply(results, function(x) all(dim(x) == dim(to_test)))))
+
+  # Only first 2 columns should be imputed (no NAs)
+  expect_true(all(sapply(results, function(x) !anyNA(x[, 1:2]))))
+
+  # Other columns should have same NA pattern as original
+  expect_true(all(sapply(results, function(x) {
+    identical(is.na(x[, -(1:2)]), is.na(to_test[, -(1:2)]))
+  })))
+
+  # Bootstrap results should potentially differ
+  # (though with small data and specific seed, they might be identical)
+  expect_true(is.list(results) && length(results) == 2)
+})
+
+test_that("`SlideKnn` with nboot = 2 and subset = first 2 columns works", {
+  set.seed(1234)
+  to_test <- t(sim_mat(n = 100, m = 50, perc_NA = 0.3, perc_col_NA = 1)$input)
+
+  # Test with nboot = 2 and subset = first 2 columns
+  results <- SlideKnn(
+    to_test,
+    n_feat = 30,
+    n_overlap = 5,
+    k = 5,
+    nboot = 2,
+    subset = c(1, 2),
+    post_imp = TRUE,
+    seed = 123
+  )
+
+  # Should return a list of length 2
+  expect_equal(length(results), 2)
+
+  # Each result should be a matrix with same dimensions as input
+  expect_true(all(sapply(results, function(x) all(dim(x) == dim(to_test)))))
+
+  # Only first 2 columns should be imputed (no NAs)
+  expect_true(all(sapply(results, function(x) !anyNA(x[, 1:2]))))
+
+  # Other columns should have same NA pattern as original
+  expect_true(all(sapply(results, function(x) {
+    identical(is.na(x[, -(1:2)]), is.na(to_test[, -(1:2)]))
+  })))
+
+  # Results should be proper matrices with correct attributes
+  expect_true(all(sapply(results, is.matrix)))
+  expect_true(all(sapply(results, is.numeric)))
+})
+
+test_that("`knn_imp` and `SlideKnn` bootstrap reproducibility with seeds", {
+  set.seed(1234)
+  to_test <- t(sim_mat(m = 10, n = 30, perc_NA = 0.2, perc_col_NA = 1)$input)
+
+  # Test knn_imp reproducibility
+  result1_knn <- knn_imp(to_test, k = 3, nboot = 2, subset = c(1, 2), seed = 456)
+  result2_knn <- knn_imp(to_test, k = 3, nboot = 2, subset = c(1, 2), seed = 456)
+
+  expect_identical(result1_knn, result2_knn)
+
+  # Test SlideKnn reproducibility
+  result1_slide <- SlideKnn(
+    to_test,
+    n_feat = 15,
+    n_overlap = 3,
+    k = 3,
+    nboot = 2,
+    subset = c(1, 2),
+    seed = 456
+  )
+  result2_slide <- SlideKnn(
+    to_test,
+    n_feat = 15,
+    n_overlap = 3,
+    k = 3,
+    nboot = 2,
+    subset = c(1, 2),
+    seed = 456
+  )
+
+  expect_identical(result1_slide, result2_slide)
 })
