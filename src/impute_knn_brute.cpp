@@ -6,6 +6,7 @@
 #include <limits>
 #include <stdexcept>
 #include <cmath>
+#include <random>
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
@@ -174,69 +175,92 @@ using dist_func_t = double (*)(
     const arma::uword,
     const arma::uword);
 
-arma::vec distance_vector(
-    const arma::mat &obj,                     // data with missing
-    const arma::umat &miss,                   // miss matrix correspond to full data
-    const arma::uword &index,                 // index of `index_miss`, not the obj
-    const arma::uvec &index_miss,             // actual index of all missing columns, refers to the obj
-    const arma::uvec &index_not_miss,         // actual index of all non missing columns, refers to the obj
-    const StrictLowerTriangularMatrix &cache, // cache of value using lower triangular matrix
-    const dist_func_t calc_dist)
+// struct hold the distance and index relative to distance_vector for each neighbor
+struct NeighborInfo
 {
-  // Each missing column needs a vector of distance to all other columns. We iterate
-  // column wise instead of calculating all the distances upfront because the distance
-  // from missing to non-missing columns can be discarded after each iteration to
-  // lower memory usage. This keeps memory usage to minimum.
-  arma::vec dist_vec(obj.n_cols, arma::fill::none);
-  // dist_vec is arranged in two parts:: all the missing columns, then the non missing columns
-  // First iterate through all the missing column. Missing columns has 3 parts: 1) i < index
-  // if the current column is < index, then the value has already been calculated, fetch from cache.
-  // This will run from 0 to right before index
-  for (arma::uword i = 0; i < index; ++i)
+  double distance;   // The calculated distance to this neighbor
+  arma::uword index; // The index of this neighbor relative to distance_vector
+  NeighborInfo(double d, arma::uword i) : distance(d), index(i) {}
+};
+
+void insert_if_better(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx, arma::uword k)
+{
+  // Step 1: Reject infinite distances immediately
+  if (!std::isfinite(dist))
+    return;
+
+  // Step 2: If we haven't filled k neighbors yet, always insert
+  if (top_k.size() < k)
   {
-    dist_vec(i) = cache(index, i);
+    // Find the correct position to maintain sorted order (smallest distances first)
+    auto it = std::upper_bound(
+        top_k.begin(),
+        top_k.end(),
+        dist,
+        [](double d, const NeighborInfo &ni)
+        {
+          return d < ni.distance;
+        });
+    // Insert the new neighbor at the correct position
+    top_k.insert(it, NeighborInfo(dist, idx));
   }
-  // 2) then the next position is the index, which is the distance between the column and itself,
-  // which is inf for the sake of sorting
-  dist_vec(index) = arma::datum::inf;
-  // 3) then from index to index_miss.n_elem, the cache is in the symmetric position
-  for (arma::uword i = index + 1; i < index_miss.n_elem; ++i)
+  // Step 3: If we already have k neighbors, only insert if this one is better
+  else if (dist < top_k.back().distance)
   {
-    dist_vec(i) = cache(i, index);
+    // Replace the worst neighbor (last in sorted list)
+    top_k.back() = NeighborInfo(dist, idx);
+
+    // Bubble the new element to its correct position
+    // Since we only changed the last element, we just need to bubble it forward
+    for (size_t i = top_k.size() - 1; i > 0 && top_k[i].distance < top_k[i - 1].distance; --i)
+    {
+      std::swap(top_k[i], top_k[i - 1]);
+    }
   }
-  // Compute the remaining part of the vector (distance from missing to non missing columns).
-  // If all columns have missing values (i.e., the matrix is square with
-  // obj.n_cols == index_miss.n_elem), this loop is automatically skipped.
-  for (arma::uword i = index_miss.n_elem; i < obj.n_cols; ++i)
-  {
-    // Offset i to index into index_not_miss from 0
-    dist_vec(i) = calc_dist(obj, miss, index_miss(index), index_not_miss(i - index_miss.n_elem));
-  }
-  return dist_vec;
+  // Step 4: If dist >= top_k.back().distance, do nothing (this neighbor is worse)
 }
 
-arma::uvec find_knn_indices_arma(const arma::vec &distances, arma::uword k)
+std::vector<NeighborInfo> distance_vector(
+    const arma::mat &obj,
+    const arma::umat &miss,
+    const arma::uword &index,
+    const arma::uvec &index_miss,
+    const arma::uvec &index_not_miss,
+    const StrictLowerTriangularMatrix &cache,
+    const dist_func_t calc_dist,
+    const arma::uword k)
 {
-  arma::uvec indices = arma::regspace<arma::uvec>(0, distances.n_elem - 1);
-  // Partition the indices vector such that the k-th smallest element is in its
-  // head k position. Elements before it are smaller or equal.
-  std::nth_element(
-      indices.begin(),
-      // nth_element is 0-indexed, so we use k-1 to get the k-th element
-      indices.begin() + (k - 1),
-      indices.end(),
-      // Custom comparator lambda function that compares the distances at the given indices.
-      [&](arma::uword a, arma::uword b)
-      {
-        return distances(a) < distances(b);
-      });
-  // Return the first k indices, which now correspond to the k smallest distances.
-  return indices.head(k);
+  std::vector<NeighborInfo> top_k_neighbors;
+  top_k_neighbors.reserve(k);
+
+  // Process missing columns before current index (0 to index-1)
+  for (arma::uword i = 0; i < index; ++i)
+  {
+    double dist = cache(index, i);
+    insert_if_better(top_k_neighbors, dist, i, k);
+  }
+
+  // Process missing columns after current index (index+1 to n_elem-1)
+  for (arma::uword i = index + 1; i < index_miss.n_elem; ++i)
+  {
+    double dist = cache(i, index);
+    insert_if_better(top_k_neighbors, dist, i, k);
+  }
+
+  // Process non-missing columns (unchanged)
+  for (arma::uword i = 0; i < index_not_miss.n_elem; ++i)
+  {
+    double dist = calc_dist(obj, miss, index_miss(index), index_not_miss(i));
+    arma::uword global_idx = index_miss.n_elem + i; // Offset to match original indexing
+    insert_if_better(top_k_neighbors, dist, global_idx, k);
+  }
+
+  return top_k_neighbors;
 }
 
 constexpr double epsilon = 1e-10;
 
-//' Impute missing values in a matrix using k-nearest neighbors (k-NN)
+//' Impute missing values in a matrix using k-nearest neighbors (k-NN) with brute-force
 //'
 //' This function imputes missing values in a matrix using a k-nearest neighbors
 //' approach based on the specified distance metric. It processes only columns
@@ -245,29 +269,40 @@ constexpr double epsilon = 1e-10;
 //' or a weighted average (inverse distance weighting) of non-missing values from
 //' these neighbors, depending on the `weighted` parameter.
 //'
+//' When `nboot > 1`, bootstrapping is enabled: for each missing value, `nboot` imputed values are generated
+//' by resampling the k nearest neighbors with replacement and using simple averages (weighted is forced to FALSE).
+//' This provides variability estimates for imputation uncertainty. Random number generation is seeded for reproducibility,
+//' with per-column offsets to ensure independence.
+//'
 //' @param obj Numeric matrix with missing values represented as NA (NaN).
 //' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 //' @param k Number of nearest neighbors to use for imputation.
 //' @param n_col_miss Integer vector specifying the count of missing values per column.
-//' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
+//' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan, 2 = impute.knn method.
 //' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
+//'   Note: Forced to FALSE when `nboot > 1`.
 //' @param dist_pow A positive double that controls the penalty for larger distances in
 //' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 //' 1 is linear (default), and values greater than 1 apply a harsher penalty.
+//' @param nboot Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
+//' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `nboot > 1`.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the index of missing value as if calculated in R and column > 2 are imputed values.
+//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
+//' and the subsequent `nboot` columns contain the imputed values (one column per bootstrap replicate if `nboot > 1`).
 //'
 //' @export
 // [[Rcpp::export]]
-arma::mat impute_knn_naive(
+arma::mat impute_knn_brute(
     const arma::mat &obj,         // Input data matrix with missing values as NaN
     const arma::umat &miss,       // Matrix of same size as obj, with 1 for missing (NA) and 0 for present
     const arma::uword k,          // Number of nearest neighbors to use
     const arma::uvec &n_col_miss, // Vector containing the count of missing values per column
     const int method,             // Distance metric: 0=Euclidean, 1=Manhattan, 2=impute.knn's method
-    const bool weighted,          // TRUE for a weighted average, FALSE for a simple average
+    bool weighted,                // TRUE for a weighted average, FALSE for a simple average
     const double dist_pow,        // Power for distance penalty in weighted average
-    int cores)                    // Number of cores for parallel processing
+    const arma::uword nboot = 1,  // Number of boot strap ( > 1)
+    const arma::uword seed = 42,  // seed
+    int cores = 1)                // Number of cores for parallel processing
 {
   // Select the distance calculation function based on the method
   dist_func_t calc_dist = nullptr;
@@ -285,30 +320,26 @@ arma::mat impute_knn_naive(
   default:
     throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan, 2=impute.knn");
   }
-
+  // column number = 2 (row index, column index) + nboot (each boot is an additional column)
+  const arma::uword n_col_result = 2 + nboot;
   // Find columns that contain missing values
   arma::uvec col_index_miss = arma::find(n_col_miss > 0);
   if (col_index_miss.n_elem == 0)
   {
     // Return empty matrix if no missing values exist
-    return arma::mat(0, 2);
+    return arma::mat(0, n_col_result);
   }
-
-  // For finding neighbors, we need all columns. Separate them into missing/non-missing.
+  // For finding neighbors, we need all columns. Separate them into missing and non-missing.
   arma::uvec col_index_non_miss = arma::find(n_col_miss == 0);
-
   // Create a combined index vector to look up original column indices after finding neighbors.
   // This groups columns with missing data first, which simplifies distance calculations.
   arma::uvec neighbor_index = arma::join_vert(col_index_miss, col_index_non_miss);
-
   // Initialize a cache to store pairwise distances between columns that have missing data.
   // This avoids redundant distance calculations.
   StrictLowerTriangularMatrix cache(col_index_miss.n_elem);
-
 #if defined(_OPENMP)
   omp_set_num_threads(cores);
 #endif
-
   // Pre-fill the cache with distances in parallel
 #if defined(_OPENMP)
 #pragma omp parallel for schedule(dynamic)
@@ -320,21 +351,18 @@ arma::mat impute_knn_naive(
       cache(row, col) = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col));
     }
   }
-
-  // Initialize the result matrix: [1-based linear index, imputed value]
+  // Initialize the result matrix: [row index, column index, imputed values...]
   // This allows for easy merging back into a matrix in R.
   arma::uword sum_missing = arma::accu(n_col_miss);
-  arma::mat result(sum_missing, 2);
+  arma::mat result(sum_missing, n_col_result);
   result.fill(arma::datum::nan);
-
   // To efficiently fill the 'result' matrix, we calculate offsets.
   // 'col_offsets(i)' will be the starting row in 'result' for the i-th column with missing data.
   arma::uvec miss_counts = n_col_miss.elem(col_index_miss);
   arma::uvec col_offsets(miss_counts.n_elem + 1);
   col_offsets.fill(arma::fill::zeros);
   col_offsets.subvec(1, miss_counts.n_elem) = arma::cumsum(miss_counts);
-
-  // Pre-fill result with linear indices to avoid "continue" skipping the indices
+  // Pre-fill result with row and column indices to avoid "continue" skipping the indices
   arma::uword offset = 0;
   for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
   {
@@ -344,79 +372,103 @@ arma::mat impute_knn_naive(
     {
       const arma::uword row_idx = rows_to_impute(r);
       const arma::uword res_row = offset + r;
-      result(res_row, 0) = target_col_idx * obj.n_rows + row_idx + 1;
+      result(res_row, 0) = row_idx + 1;        // R Row index (1-based)
+      result(res_row, 1) = target_col_idx + 1; // R Column index (1-based)
     }
     offset += rows_to_impute.n_elem;
   }
-
+  // Setup bootstrap stuff
+  if (nboot > 1)
+  {
+    weighted = false;
+  }
   // Main imputation loop: iterate through only the columns that need imputation
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
   for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
   {
-    // Calculate distances from the current target column to all other potential neighbor columns
-    arma::vec dist_vec = distance_vector(
-        obj, miss, i, col_index_miss, col_index_non_miss, cache, calc_dist);
-
-    // Find available neighbors (those with a finite distance)
-    arma::uvec candidate_indices = arma::find_finite(dist_vec);
-    arma::uword n_neighbors = std::min(k, candidate_indices.n_elem);
-
+    // Get top-k neighbors directly
+    std::vector<NeighborInfo> top_k = distance_vector(
+        obj, miss, i, col_index_miss, col_index_non_miss, cache, calc_dist, k);
+    arma::uword n_neighbors = top_k.size();
     if (n_neighbors == 0)
     {
       continue; // Skip if no valid neighbors are found
     }
-
-    // Find the indices of the 'k' nearest neighbors relative to 'dist_vec'
-    arma::uvec nn_dist_indices = find_knn_indices_arma(dist_vec, n_neighbors);
-
-    // Get the original column indices (in 'obj') of these neighbors
-    arma::uvec nn_columns = neighbor_index.elem(nn_dist_indices);
-    // Get the distances to these neighbors
-    arma::vec nn_dists = dist_vec.elem(nn_dist_indices);
-
-    // Precompute weights for each neighbor (these are the same for all missing rows in this column)
-    arma::vec nn_weights(nn_columns.n_elem);
-    if (weighted)
+    // Extract neighbor indices (already sorted by distance)
+    arma::uvec nn_columns(n_neighbors);
+    for (arma::uword j = 0; j < n_neighbors; ++j)
     {
-      nn_weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
+      nn_columns(j) = neighbor_index(top_k[j].index);
+    }
+    // Init the boot strap neighbors and distance matrix
+    arma::umat nn_columns_mat(n_neighbors, nboot);
+    arma::mat nn_weights_mat(n_neighbors, nboot);
+    arma::uword target_col_idx = col_index_miss(i);
+
+    if (nboot > 1)
+    {
+      std::mt19937 gen(seed + target_col_idx);
+      std::uniform_int_distribution<arma::uword> dist(0, n_neighbors - 1);
+      for (arma::uword b = 0; b < nboot; ++b)
+      {
+        arma::uvec resampled(n_neighbors);
+        for (arma::uword j = 0; j < n_neighbors; ++j)
+        {
+          arma::uword idx = dist(gen);
+          resampled(j) = nn_columns(idx);
+        }
+        nn_columns_mat.col(b) = resampled;
+      }
+      nn_weights_mat.fill(1.0);
     }
     else
     {
-      nn_weights.fill(1.0); // Simple average means all weights are 1
+      nn_columns_mat.col(0) = nn_columns;
+      if (weighted)
+      {
+        // Extract distances for weight calculation
+        arma::vec nn_dists(n_neighbors);
+        for (arma::uword j = 0; j < n_neighbors; ++j)
+        {
+          nn_dists(j) = top_k[j].distance;
+        }
+        nn_weights_mat.col(0) = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
+      }
+      else
+      {
+        nn_weights_mat.col(0).fill(1.0);
+      }
     }
-
     // Get the original index of the column we are currently imputing
-    arma::uword target_col_idx = col_index_miss(i);
     // Find which rows are missing in this specific column
     arma::uvec rows_to_impute = arma::find(miss.col(target_col_idx));
-
     // For each missing cell in this column, calculate the imputed value
     for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
     {
       arma::uword row_idx = rows_to_impute(r); // The actual row index of the missing value
-      double weighted_sum = 0.0;
-      double weight_total = 0.0;
-
-      // Aggregate values from neighbors
-      for (arma::uword j = 0; j < nn_columns.n_elem; ++j)
-      {
-        arma::uword neighbor_col_idx = nn_columns(j);
-        // A neighbor can only contribute if its value in the same row is NOT missing
-        if (miss(row_idx, neighbor_col_idx) == 0)
-        {
-          double weight = nn_weights(j);
-          weighted_sum += weight * obj(row_idx, neighbor_col_idx);
-          weight_total += weight;
-        }
-      }
-
-      double imputed_value = (weight_total > 0.0) ? (weighted_sum / weight_total) : arma::datum::nan;
-
       // Find the correct row in the result matrix to write to
       const arma::uword res_row = col_offsets(i) + r;
-      result(res_row, 1) = imputed_value;
+      for (arma::uword b = 0; b < nboot; ++b)
+      {
+        double weighted_sum = 0.0;
+        double weight_total = 0.0;
+        // Aggregate values from neighbors
+        for (arma::uword j = 0; j < n_neighbors; ++j)
+        {
+          arma::uword neighbor_col_idx = nn_columns_mat(j, b);
+          // A neighbor can only contribute if its value in the same row is NOT missing
+          if (miss(row_idx, neighbor_col_idx) == 0)
+          {
+            double weight = nn_weights_mat(j, b);
+            weighted_sum += weight * obj(row_idx, neighbor_col_idx);
+            weight_total += weight;
+          }
+        }
+        double imputed_value = (weight_total > 0.0) ? (weighted_sum / weight_total) : arma::datum::nan;
+        result(res_row, 2 + b) = imputed_value; // boot starts at column 2
+      }
     }
   }
   return result;

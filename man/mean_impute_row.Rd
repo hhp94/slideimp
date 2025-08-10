@@ -7,13 +7,44 @@
 mean_impute_row(obj)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
-Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
+\item{obj}{A numeric matrix with samples in rows and features in columns.}
 }
 \value{
-The matrix with NA values replaced by row means.
+A numeric matrix of the same dimensions as \code{obj} with missing values
+replaced by row means.
 }
 \description{
 Imputes missing values (NA) in a matrix by replacing them with the mean of their
-respective rows.
+respective rows. This is a simple imputation method that preserves row-wise
+patterns in the data.
+}
+\details{
+This function calculates the mean for each row excluding missing values and
+replaces all missing values in that row with the computed mean. If a row
+consists entirely of missing values, those values will remain as \code{NA} since
+the mean cannot be calculated.
+
+This method is most appropriate when features (columns) are on similar scales
+and when the assumption that missing values should be close to the row average
+is reasonable for your data context.
+}
+\examples{
+# Create example matrix with missing values
+mat <- matrix(c(1, 2, NA, 4, 5, 6, NA, 8, 9), nrow = 3)
+print(mat)
+
+# Impute missing values with row means
+imputed_mat <- mean_impute_row(mat)
+print(imputed_mat)
+
+# Example with real data
+data(khanmiss1)
+# Note: khanmiss1 has genes in rows, so we use it directly
+imputed_khan <- mean_impute_row(khanmiss1)
+sum(is.na(khanmiss1)) # Original missing values
+sum(is.na(imputed_khan)) # After imputation
+
+}
+\seealso{
+\code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[=knn_imp]{knn_imp()}}
 }

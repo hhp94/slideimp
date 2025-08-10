@@ -7,14 +7,16 @@
 inject_na(obj, num_na = 100, rowmax = 0.9, colmax = 0.9, max_iter = 1000)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
-Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
 
-\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion of missing values in any row. If exceeded, the function stops with an error.}
+\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
+of missing values in any row. If exceeded, the function stops with an error.}
 
-\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of missing values in a column above which the column is imputed using the mean instead of k-NN.}
+\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of
+missing values in a column above which the column is imputed using the mean
+instead of k-NN if \code{post_imp} is true.}
 
 \item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
 }

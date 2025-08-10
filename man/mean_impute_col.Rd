@@ -2,20 +2,61 @@
 % Please edit documentation in R/SlideKnn.R
 \name{mean_impute_col}
 \alias{mean_impute_col}
-\title{Col Mean Imputation}
+\title{Column Mean Imputation}
 \usage{
 mean_impute_col(obj, subset = NULL)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}. See details.
-Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
+\item{obj}{A numeric matrix with samples in rows and features in columns.}
 
-\item{subset}{Character vector of column names or integer vector of column indices specifying the subset of columns to perform imputation.}
+\item{subset}{Character vector of column names or integer vector of column indices
+specifying the subset of columns to perform imputation. If \code{NULL} (default),
+all columns are processed.}
 }
 \value{
-The matrix with NA values replaced by col means.
+A numeric matrix of the same dimensions as \code{obj} with missing values
+in the specified columns replaced by column means.
 }
 \description{
 Imputes missing values (NA) in a matrix by replacing them with the mean of their
-respective cols.
+respective columns. This is a simple imputation method that preserves column-wise
+patterns in the data.
+}
+\details{
+This function calculates the mean for each column excluding missing values and
+replaces all missing values in that column with the computed mean. If a column
+consists entirely of missing values, those values will remain as \code{NA} since
+the mean cannot be calculated.
+
+The \code{subset} parameter allows for selective imputation of only specific columns.
+}
+\examples{
+# Create example matrix with missing values
+mat <- matrix(c(1, 2, NA, 4, 5, 6, NA, 8, 9), nrow = 3)
+colnames(mat) <- c("A", "B", "C")
+print(mat)
+
+# Impute missing values with column means
+imputed_mat <- mean_impute_col(mat)
+print(imputed_mat)
+
+# Impute only specific columns by name
+imputed_subset <- mean_impute_col(mat, subset = c("A", "C"))
+print(imputed_subset)
+
+# Impute only specific columns by index
+imputed_idx <- mean_impute_col(mat, subset = c(1, 3))
+print(imputed_idx)
+
+# Example with real data
+data(khanmiss1)
+# Transpose since khanmiss1 has genes in rows
+khanmiss_t <- t(khanmiss1)
+imputed_khan <- mean_impute_col(khanmiss_t)
+sum(is.na(khanmiss_t)) # Original missing values
+sum(is.na(imputed_khan)) # After imputation
+
+}
+\seealso{
+\code{\link[=mean_impute_row]{mean_impute_row()}}, \code{\link[=knn_imp]{knn_imp()}}
 }
