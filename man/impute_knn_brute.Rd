@@ -42,7 +42,7 @@ the weighted mean imputation. Must be greater than zero: values between 0 and 1 
 \item{cores}{Number of CPU cores to use for parallel processing (default = 1).}
 }
 \value{
-A matrix where the first column is the 1-based linear index of the missing value (as calculated in R),
+A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 and the subsequent \code{nboot} columns contain the imputed values (one column per bootstrap replicate if \code{nboot > 1}).
 }
 \description{

@@ -24,6 +24,7 @@ impute_knn(
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
+Make sure the features in the columns are sorted (e.g., by genomic position).
 Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
 
 \item{k}{Integer specifying the number of nearest neighbors to use for imputation.

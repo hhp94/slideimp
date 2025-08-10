@@ -1,7 +1,7 @@
 test_that("impute_knn_brute and impute_knn_mlpack calculates the missing location correctly", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
-  missing <- which(is.na(to_test))
+  missing <- unname(which(is.na(to_test), arr.ind = TRUE))
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
@@ -31,21 +31,19 @@ test_that("impute_knn_brute and impute_knn_mlpack calculates the missing locatio
   )
   imputed_index_brute[is.nan(imputed_index_brute)] <- NA
   imputed_index_mlpack[is.nan(imputed_index_mlpack)] <- NA
-  expect_equal(imputed_index_brute[, 1], missing)
-  expect_equal(imputed_index_mlpack[, 1], missing)
+  expect_equal(imputed_index_brute[, c(1, 2)], missing)
+  expect_equal(imputed_index_mlpack[, c(1, 2)], missing)
 })
 
 test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.3, perc_col_NA = 1)$input)
-  missing <- which(is.na(to_test))
+  missing <- unname(which(is.na(to_test), arr.ind = TRUE))
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
-
   nboot <- 5
   k <- 5
-
   # Test with bootstrap
   imputed_bootstrap <- impute_knn_brute(
     obj = to_test,
@@ -59,41 +57,28 @@ test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", 
     seed = 42,
     cores = 1
   )
-
   # Convert NaN to NA for easier testing
   imputed_bootstrap[is.nan(imputed_bootstrap)] <- NA
-
   # Correct dimensions
-  expected_cols <- 1 + nboot # 1 index column + nboot imputation columns
-  expect_equal(ncol(imputed_bootstrap), expected_cols)
-  expect_equal(nrow(imputed_bootstrap), length(missing))
-
-  # First column contains correct missing indices
-  expect_equal(imputed_bootstrap[, 1], missing)
-
+  expect_equal(ncol(imputed_bootstrap), nboot + 2)
+  expect_equal(imputed_bootstrap[, 1:2], missing)
   # All bootstrap columns should contain imputed values
   # (some may be NA if no valid neighbors, but structure should be consistent)
-  for (b in 2:(1 + nboot)) {
+  for (b in 3:(2 + nboot)) {
     expect_true(is.numeric(imputed_bootstrap[, b]))
   }
-
   # Bootstrap should produce some variability
   # Count how many missing values have at least 2 different imputed values across bootstraps
   n_with_variability <- 0
   for (i in 1:nrow(imputed_bootstrap)) {
-    bootstrap_vals <- imputed_bootstrap[i, 2:(1 + nboot)]
+    bootstrap_vals <- imputed_bootstrap[i, 3:(2 + nboot)]
     bootstrap_vals <- bootstrap_vals[!is.na(bootstrap_vals)]
     if (length(bootstrap_vals) > 1 && length(unique(bootstrap_vals)) > 1) {
       n_with_variability <- n_with_variability + 1
     }
   }
-
   # At least some missing values should show bootstrap variability
-  # (unless the data is very structured or k is very small)
-  expect_true(
-    n_with_variability > 0,
-    info = "Bootstrap should produce some variability in imputed values"
-  )
+  expect_true(n_with_variability > 0)
 })
 
 test_that("impute_knn_brute with nboot > 1 produces reproducible results with same seed", {
@@ -102,10 +87,8 @@ test_that("impute_knn_brute with nboot > 1 produces reproducible results with sa
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
-
   nboot <- 3
   seed_val <- 123
-
   # Run twice with same seed
   result1 <- impute_knn_brute(
     obj = to_test,
@@ -119,7 +102,6 @@ test_that("impute_knn_brute with nboot > 1 produces reproducible results with sa
     seed = seed_val,
     cores = 1
   )
-
   result2 <- impute_knn_brute(
     obj = to_test,
     miss = miss,
@@ -132,7 +114,6 @@ test_that("impute_knn_brute with nboot > 1 produces reproducible results with sa
     seed = seed_val,
     cores = 1
   )
-
   # Results should be identical
   expect_equal(result1, result2)
 })

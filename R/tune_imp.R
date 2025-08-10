@@ -5,6 +5,7 @@
 #' It attempts to find a valid set of positions within a maximum number of iterations.
 #'
 #' @inheritParams SlideKnn
+#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param num_na The number of missing values used to estimate prediction quality. Must be a positive integer.
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
 #'
@@ -103,16 +104,7 @@ inject_na <- function(
 #' `post_imp = FALSE`).
 #'
 #' **Note:** The `nboot` parameter is always internally set to 1 for tuning purposes, regardless of
-#' any value provided in `parameters`. This ensures consistent comparison across parameter combinations.
-#'
-#' `tune_imp` can be parallelized over iterations (number of rows of `parameters` * number of repetitions
-#' per row) with the argument `cores`. Note that for `SlideKnn`, `tune_imp` will run sequentially but
-#' cores will parallelize within `SlideKnn`.
-#'
-#' The output is a tibble with columns for each parameter combination, a `param_set` identifier, the
-#' repetition number (`rep`), and a nested `results` column containing a tibble of `truth` (original
-#' values) and `estimate` (imputed values) for the injected NAs. Metrics can be computed from these
-#' results, as shown in the examples.
+#' any value provided in `parameters`.
 #'
 #' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
@@ -121,7 +113,7 @@ inject_na <- function(
 #'   removed. The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about
 #'   the parameters. Any `nboot` values in this data frame will be ignored.
 #' @param .f The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
-#'   a custom function.
+#'   a custom function. See details.
 #' @param rep The number of repetitions for injecting missing values to evaluate each combination of
 #'   parameters. Default is 1.
 #'
@@ -148,12 +140,12 @@ inject_na <- function(
 #' )
 #'
 #' set.seed(1234)
-#' # Tune `SlideKnn` function on a subset of khanmiss1
+#' # Tune SlideKnn function on a subset of khanmiss1
 #' obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
 #' anyNA(obj)
-#' results <- tune_imp(obj, parameters, rep = 1)
+#' results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1)
 #'
-#' # # Install `{yardstick}` or calculate any other metrics using the result
+#' # # Install {yardstick} or calculate any other metrics using the result
 #' # library(yardstick)
 #' # met_set <- metric_set(mae, rmse, rsq)
 #' # results$metrics <- lapply(
@@ -164,6 +156,31 @@ inject_na <- function(
 #' # )
 #' # # Unnest the metrics
 #' # tidyr::unnest(dplyr::select(results, -result), cols = "metrics")
+#'
+#' # Example with a custom imputation function where missing values are filled with random values
+#' custom_imp <- function(obj, mean = 0, sd = 1) {
+#'   na_pos <- is.na(obj)
+#'   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
+#'   return(obj)
+#' }
+#'
+#' parameters_custom <- data.frame(
+#'   mean = c(0, 0, 1),
+#'   sd = c(1, 2, 1)
+#' )
+#'
+#' set.seed(1234)
+#' # Reuse the same obj
+#' results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1)
+#'
+#' # # Similarly, compute metrics
+#' # results_custom$metrics <- lapply(
+#' #   results_custom$result,
+#' #   function(x) {
+#' #     met_set(x, truth = truth, estimate = estimate)
+#' #   }
+#' # )
+#' # tidyr::unnest(dplyr::select(results_custom, -result), cols = "metrics")
 #'
 #' @export
 tune_imp <- function(

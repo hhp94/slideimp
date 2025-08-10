@@ -287,7 +287,7 @@ constexpr double epsilon = 1e-10;
 //' @param nboot Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
 //' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `nboot > 1`.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the 1-based linear index of the missing value (as calculated in R),
+//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 //' and the subsequent `nboot` columns contain the imputed values (one column per bootstrap replicate if `nboot > 1`).
 //'
 //' @export
@@ -320,8 +320,8 @@ arma::mat impute_knn_brute(
   default:
     throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan, 2=impute.knn");
   }
-  // column number = 1 (index) + nboot (each boot is an additional column)
-  const arma::uword n_col_result = 1 + nboot;
+  // column number = 2 (row index, column index) + nboot (each boot is an additional column)
+  const arma::uword n_col_result = 2 + nboot;
   // Find columns that contain missing values
   arma::uvec col_index_miss = arma::find(n_col_miss > 0);
   if (col_index_miss.n_elem == 0)
@@ -351,7 +351,7 @@ arma::mat impute_knn_brute(
       cache(row, col) = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col));
     }
   }
-  // Initialize the result matrix: [1-based linear index, imputed value]
+  // Initialize the result matrix: [row index, column index, imputed values...]
   // This allows for easy merging back into a matrix in R.
   arma::uword sum_missing = arma::accu(n_col_miss);
   arma::mat result(sum_missing, n_col_result);
@@ -362,7 +362,7 @@ arma::mat impute_knn_brute(
   arma::uvec col_offsets(miss_counts.n_elem + 1);
   col_offsets.fill(arma::fill::zeros);
   col_offsets.subvec(1, miss_counts.n_elem) = arma::cumsum(miss_counts);
-  // Pre-fill result with linear indices to avoid "continue" skipping the indices
+  // Pre-fill result with row and column indices to avoid "continue" skipping the indices
   arma::uword offset = 0;
   for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
   {
@@ -372,7 +372,8 @@ arma::mat impute_knn_brute(
     {
       const arma::uword row_idx = rows_to_impute(r);
       const arma::uword res_row = offset + r;
-      result(res_row, 0) = target_col_idx * obj.n_rows + row_idx + 1;
+      result(res_row, 0) = row_idx + 1;        // R Row index (1-based)
+      result(res_row, 1) = target_col_idx + 1; // R Column index (1-based)
     }
     offset += rows_to_impute.n_elem;
   }
@@ -466,7 +467,7 @@ arma::mat impute_knn_brute(
           }
         }
         double imputed_value = (weight_total > 0.0) ? (weighted_sum / weight_total) : arma::datum::nan;
-        result(res_row, 1 + b) = imputed_value;
+        result(res_row, 2 + b) = imputed_value; // boot starts at column 2
       }
     }
   }

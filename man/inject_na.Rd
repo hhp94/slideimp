@@ -7,8 +7,7 @@
 inject_na(obj, num_na = 100, rowmax = 0.9, colmax = 0.9, max_iter = 1000)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
-Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
 

@@ -28,7 +28,7 @@
 #' @param nboot Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
 #' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `nboot > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
-#' @return A matrix where the first column is the 1-based linear index of the missing value (as calculated in R),
+#' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `nboot` columns contain the imputed values (one column per bootstrap replicate if `nboot > 1`).
 #'
 #' @export
@@ -58,7 +58,7 @@ impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_po
 #' @param nboot Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
 #' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `nboot > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
-#' @return A matrix where the first column is the 1-based linear index of the missing value (as calculated in R),
+#' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `nboot` columns contain the imputed values (one column per bootstrap replicate if `nboot > 1`).
 #'
 #' @export

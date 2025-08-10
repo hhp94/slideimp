@@ -35,7 +35,7 @@ constexpr double epsilon = 1e-10;
 //' @param nboot Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
 //' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `nboot > 1`.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the 1-based linear index of the missing value (as calculated in R),
+//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 //' and the subsequent `nboot` columns contain the imputed values (one column per bootstrap replicate if `nboot > 1`).
 //'
 //' @export
@@ -57,7 +57,7 @@ arma::mat impute_knn_mlpack(
     omp_set_num_threads(cores);
 #endif
     // col_index_miss holds columns that has any missing
-    const arma::uword n_col_result = 1 + nboot;
+    const arma::uword n_col_result = 2 + nboot; // Changed: 2 columns for indices + nboot columns for values
     // Find columns that contain missing values
     arma::uvec col_index_miss = arma::find(n_col_miss > 0);
     if (col_index_miss.n_elem == 0)
@@ -112,7 +112,7 @@ arma::mat impute_knn_mlpack(
     col_offsets.fill(arma::fill::zeros);
     col_offsets.subvec(1, miss_counts.n_elem) = arma::cumsum(miss_counts);
 
-    // Pre-fill result with linear indices
+    // Pre-fill result with row and column indices
     for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
     {
         const arma::uword target_col_idx = col_index_miss(i);
@@ -121,7 +121,8 @@ arma::mat impute_knn_mlpack(
         {
             const arma::uword row_idx = rows_to_impute(r);
             const arma::uword res_row = col_offsets(i) + r;
-            result(res_row, 0) = target_col_idx * obj.n_rows + row_idx + 1;
+            result(res_row, 0) = row_idx + 1;
+            result(res_row, 1) = target_col_idx + 1;
         }
     }
 
@@ -195,7 +196,7 @@ arma::mat impute_knn_mlpack(
                     }
                 }
                 double imputed_value = (weight_total > 0.0) ? (weighted_sum / weight_total) : arma::datum::nan;
-                result(res_row, 1 + b) = imputed_value;
+                result(res_row, 2 + b) = imputed_value;
             }
         }
     }

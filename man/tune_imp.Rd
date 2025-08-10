@@ -26,7 +26,7 @@ removed. The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn
 the parameters. Any \code{nboot} values in this data frame will be ignored.}
 
 \item{.f}{The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
-a custom function.}
+a custom function. See details.}
 
 \item{rep}{The number of repetitions for injecting missing values to evaluate each combination of
 parameters. Default is 1.}
@@ -79,16 +79,7 @@ Default values are set for optional parameters if not provided (e.g., \code{meth
 \code{post_imp = FALSE}).
 
 \strong{Note:} The \code{nboot} parameter is always internally set to 1 for tuning purposes, regardless of
-any value provided in \code{parameters}. This ensures consistent comparison across parameter combinations.
-
-\code{tune_imp} can be parallelized over iterations (number of rows of \code{parameters} * number of repetitions
-per row) with the argument \code{cores}. Note that for \code{SlideKnn}, \code{tune_imp} will run sequentially but
-cores will parallelize within \code{SlideKnn}.
-
-The output is a tibble with columns for each parameter combination, a \code{param_set} identifier, the
-repetition number (\code{rep}), and a nested \code{results} column containing a tibble of \code{truth} (original
-values) and \code{estimate} (imputed values) for the injected NAs. Metrics can be computed from these
-results, as shown in the examples.
+any value provided in \code{parameters}.
 }
 \examples{
 data(khanmiss1)
@@ -103,12 +94,12 @@ parameters <- data.frame(
 )
 
 set.seed(1234)
-# Tune `SlideKnn` function on a subset of khanmiss1
+# Tune SlideKnn function on a subset of khanmiss1
 obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
 anyNA(obj)
-results <- tune_imp(obj, parameters, rep = 1)
+results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1)
 
-# # Install `{yardstick}` or calculate any other metrics using the result
+# # Install {yardstick} or calculate any other metrics using the result
 # library(yardstick)
 # met_set <- metric_set(mae, rmse, rsq)
 # results$metrics <- lapply(
@@ -119,6 +110,31 @@ results <- tune_imp(obj, parameters, rep = 1)
 # )
 # # Unnest the metrics
 # tidyr::unnest(dplyr::select(results, -result), cols = "metrics")
+
+# Example with a custom imputation function where missing values are filled with random values
+custom_imp <- function(obj, mean = 0, sd = 1) {
+  na_pos <- is.na(obj)
+  obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
+  return(obj)
+}
+
+parameters_custom <- data.frame(
+  mean = c(0, 0, 1),
+  sd = c(1, 2, 1)
+)
+
+set.seed(1234)
+# Reuse the same obj
+results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1)
+
+# # Similarly, compute metrics
+# results_custom$metrics <- lapply(
+#   results_custom$result,
+#   function(x) {
+#     met_set(x, truth = truth, estimate = estimate)
+#   }
+# )
+# tidyr::unnest(dplyr::select(results_custom, -result), cols = "metrics")
 
 }
 \seealso{

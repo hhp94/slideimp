@@ -22,6 +22,7 @@
 #' dimnames of the original object after setting `options(bigmemory.allow.dimnames = TRUE)`.
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
+#'   Make sure the features in the columns are sorted (e.g., by genomic position).
 #'   Can also be a path to the description file of, or a [bigmemory::big.matrix()].
 #' @param n_feat Integer specifying the number of features (columns) in each window.
 #'   Must be between 2 and the number of columns in `obj`.
@@ -146,9 +147,7 @@ SlideKnn <- function(
   if (nboot > 1 && weighted) {
     warning("If nboot > 1, weighted will be forced to FALSE")
   }
-  if (nboot > 1 && is.null(subset)) {
-    warning("nboot > 1 is only meant to be used with the subset feature.")
-  }
+
   # set.seed() ----
   set.seed(seed)
 
@@ -181,6 +180,9 @@ SlideKnn <- function(
     FALSE
   } else {
     stop("`obj` has to be a numeric matrix or a (descriptor of a) double bigmemory::big.matrix.")
+  }
+  if (nboot > 1 && !file_backed) {
+    warning("If nboot > 1 should be used with output to bigmemory::big.matrix. Change `output` to a path to enable this.")
   }
   # Remove obj names temporary to reduce size of pointers being passed to workers
   rn <- rownames(obj)
@@ -807,28 +809,22 @@ knn_imp <- function(
   checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
   checkmate::assert_string(output, null.ok = TRUE, .var.name = "output")
   checkmate::assert_logical(overwrite, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "overwrite")
-
   if (!is.null(tree)) {
     if (method == "impute.knn") {
       method <- "euclidean"
     }
   }
-
   set.seed(seed)
-
   # Store original dimnames
   rn <- rownames(obj)
   cn <- colnames(obj)
-
   # Check bigmemory options if output is specified
   file_backed <- !is.null(output)
-
   # Pre-compute file paths for all bootstrap iterations
   if (file_backed) {
     if (!isTRUE(getOption("bigmemory.allow.dimnames"))) {
       stop("`bigmemory.allow.dimnames` must be TRUE. Set it with: options(bigmemory.allow.dimnames = TRUE)")
     }
-
     # Prepare file paths
     output <- fs::as_fs_path(output)
     backingpath <- fs::path_dir(output)
@@ -838,11 +834,9 @@ knn_imp <- function(
     file_name <- fs::path_file(output)
     ext <- fs::path_ext(file_name)
     base_no_ext <- fs::path_ext_remove(file_name)
-
     # Pre-compute all file paths
     boot_indices <- seq_len(nboot)
     suffix <- if (nboot == 1) "" else paste0("_boot", boot_indices)
-
     if (ext == "" || ext == "desc") {
       backfiles <- paste0(base_no_ext, suffix, ".bin")
       descfiles <- paste0(base_no_ext, suffix, ".desc")
@@ -850,17 +844,14 @@ knn_imp <- function(
       backfiles <- paste0(base_no_ext, suffix, ".", ext, ".bin")
       descfiles <- paste0(base_no_ext, suffix, ".", ext, ".desc")
     }
-
     # Check if files exist and overwrite is FALSE
     for (i in boot_indices) {
       backfile_path <- fs::path(backingpath, backfiles[i])
       descfile_path <- fs::path(backingpath, descfiles[i])
-
       if (overwrite) {
         # Proceed to delete if overwrite is TRUE
         unlink(backfile_path, force = TRUE)
         unlink(descfile_path, force = TRUE)
-
         if (fs::file_exists(backfile_path) || fs::file_exists(descfile_path)) {
           stop("Failed to delete existing files for `output`")
         }
@@ -883,7 +874,6 @@ knn_imp <- function(
     backfiles <- NULL
     descfiles <- NULL
   }
-
   # Handle subset conversion and validation
   subset <- if (is.null(subset)) {
     seq_len(ncol(obj))
@@ -898,7 +888,6 @@ knn_imp <- function(
   } else {
     subset
   }
-
   # Early return for empty subset or no missing data
   if (length(subset) == 0 || !sum(is.na(obj[, subset, drop = FALSE])) > 0) {
     if (length(subset) > 0) {
@@ -915,7 +904,6 @@ knn_imp <- function(
       cn = cn
     ))
   }
-
   # Calculate complement for further processing
   complement <- setdiff(seq_len(ncol(obj)), subset)
   miss <- is.na(obj)
@@ -927,7 +915,6 @@ knn_imp <- function(
   if (any(cmiss / nrow(obj) == 1)) {
     stop("Col(s) with all missing detected. Remove before proceed")
   }
-
   # Partition
   knn_imp_cols <- (cmiss / nrow(obj)) < colmax
   pre_imp_cols <- obj[, knn_imp_cols, drop = FALSE]
@@ -939,11 +926,9 @@ knn_imp <- function(
   # Set all values outside of subset to be zero cmiss. This will make
   # impute_knn_brute skip these columns
   pre_imp_cmiss[pos_complement] <- 0L
-
   if (any(rowSums(pre_imp_miss) / ncol(pre_imp_cols) == 1)) {
     stop("Row(s) missing exceeded rowmax. Remove row(s) with too high NA %")
   }
-
   # Impute
   if (is.null(tree)) {
     imputed_values <- impute_knn_brute(
@@ -981,23 +966,15 @@ knn_imp <- function(
       cores = cores
     )
   }
-
   # Handle NaN values
   imputed_values[is.nan(imputed_values)] <- NA
-
-  # Convert linear indices to row/col positions. These positions are the same for all
-  # bootstrap iterations
-  na_positions <- arrayInd(imputed_values[, 1], dim(pre_imp_cols))
-  # Map column indices from pre_imp_cols to original matrix columns
-  matrix_cols <- knn_indices[na_positions[, 2]]
-  # Create the index matrix for direct assignment
-  imp_indices <- cbind(na_positions[, 1], matrix_cols)
-
+  # Map column indices from pre_imp_cols to original matrix columns and create
+  # the index matrix for direct assignment
+  imp_indices <- cbind(imputed_values[, 1], knn_indices[imputed_values[, 2]])
   # Fill in imputed values
   if (file_backed) {
     # Create bigmemory matrices and modify them directly
     result_list <- vector("list", nboot)
-
     for (i in seq_len(nboot)) {
       # Create bigmemory matrix initialized with original data
       bigmat <- bigmemory::big.matrix(
@@ -1010,13 +987,10 @@ knn_imp <- function(
         descriptorfile = descfiles[i],
         dimnames = list(rn, cn)
       )
-
       # Copy original data to bigmatrix
       bigmat[, ] <- obj
-
       # Directly modify bigmatrix with imputed values using pre-computed indices
-      bigmat[imp_indices] <- imputed_values[, i + 1]
-
+      bigmat[imp_indices] <- imputed_values[, i + 2]
       # Post-imputation directly on bigmatrix if needed
       if (post_imp && anyNA(bigmat[, subset, drop = FALSE])) {
         subset_data <- bigmat[, subset, drop = FALSE]
@@ -1028,7 +1002,6 @@ knn_imp <- function(
         # Update bigmatrix using vectorized indexing
         bigmat[cbind(i_vec, j_vec)] <- sub_means[jj_vec]
       }
-
       # Flush to ensure changes are written to disk
       bigmemory::flush(bigmat)
       result_list[[i]] <- bigmat
@@ -1037,11 +1010,9 @@ knn_imp <- function(
   } else {
     # Create all copies upfront with replicate
     result_list <- replicate(nboot, obj, simplify = FALSE)
-
     for (i in seq_len(nboot)) {
       # Directly modify result_list[[i]] with imputed values using pre-computed indices
-      result_list[[i]][imp_indices] <- imputed_values[, i + 1]
-
+      result_list[[i]][imp_indices] <- imputed_values[, i + 2]
       # Post-imputation step if needed
       if (post_imp && anyNA(result_list[[i]][, subset, drop = FALSE])) {
         na_indices <- which(is.na(result_list[[i]][, subset, drop = FALSE]), arr.ind = TRUE)
@@ -1052,7 +1023,6 @@ knn_imp <- function(
         result_list[[i]][cbind(i_vec, j_vec)] <- sub_means[jj_vec]
       }
     }
-
     return(result_list)
   }
 }
