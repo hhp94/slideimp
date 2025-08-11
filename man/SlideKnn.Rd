@@ -125,7 +125,6 @@ data(khanmiss1)
 # Basic sliding KNN imputation with bootstrap
 # Set `strip_dimnames` to `TRUE` with `options(bigmemory.allow.dimnames = TRUE)`
 # when running multiple cores to minimize overhead.
-imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, nboot = 3)
 
 # Using weighted imputation
 imputed_weighted <- SlideKnn(
@@ -135,7 +134,8 @@ imputed_weighted <- SlideKnn(
   weighted = TRUE,
   dist_pow = 2
 )
-
+# Bootstrap version
+# imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, nboot = 3)
 }
 \seealso{
 \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}

@@ -79,7 +79,6 @@
 #' # Basic sliding KNN imputation with bootstrap
 #' # Set `strip_dimnames` to `TRUE` with `options(bigmemory.allow.dimnames = TRUE)`
 #' # when running multiple cores to minimize overhead.
-#' imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, nboot = 3)
 #'
 #' # Using weighted imputation
 #' imputed_weighted <- SlideKnn(
@@ -89,7 +88,8 @@
 #'   weighted = TRUE,
 #'   dist_pow = 2
 #' )
-#'
+#' # Bootstrap version
+#' # imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, nboot = 3)
 #' @export
 SlideKnn <- function(
     obj,
@@ -1217,5 +1217,4 @@ mean_impute_col <- function(obj, subset = NULL) {
 
 dummy <- function() {
   Rcpp::evalCpp()
-  mlpack::adaboost
 }

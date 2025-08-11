@@ -473,3 +473,135 @@ arma::mat impute_knn_brute(
   }
   return result;
 }
+
+//' @title Find K-Nearest Neighbors for Columns with Missing Values
+//'
+//' @description
+//' This function returns the information of nearest neighbors found.
+//' Used for benchmarking and unit testing logic of \code{impute_knn_brute} only.
+//'
+//' @param obj R matrix
+//' @param miss is.na(obj)
+//' @param k n neighbor
+//' @param n_col_miss Integer vector specifying the count of missing values per column.
+//' @param n_col_name Character vector of same length as n_col_miss containing column names.
+//' @param method distance metric
+//' @param cores n cores
+//'
+//' @return
+//' A named list where each element corresponds to one column with missing values
+//' (i.e., where n_col_miss > 0). Each sub-list contains:
+//'
+//' \itemize{
+//'   \item \code{indices}: An integer vector of 1-based indices of the nearest neighbor columns.
+//'   \item \code{distances}: A numeric vector of distances to the nearest neighbors.
+//'   \item \code{n_neighbors}: The number of valid neighbors found.
+//' }
+//'
+//' If no columns have missing values, an empty list is returned.
+//'
+//' @export
+// [[Rcpp::export]]
+Rcpp::List find_knn_brute(
+    const arma::mat &obj,                    // Input data matrix with missing values as NaN
+    const arma::umat &miss,                  // Matrix of same size as obj, with 1 for missing (NA) and 0 for present
+    const arma::uword k,                     // Number of nearest neighbors to use
+    const arma::uvec &n_col_miss,            // Vector containing the count of missing values per column
+    const Rcpp::CharacterVector &n_col_name, // Vector of column names (same length as n_col_miss)
+    const int method,                        // Distance metric: 0=Euclidean, 1=Manhattan, 2=impute.knn's method
+    int cores = 1)                           // Number of cores for parallel processing
+{
+  // Select the distance calculation function based on the method
+  dist_func_t calc_dist = nullptr;
+  switch (method)
+  {
+  case 0:
+    calc_dist = calc_distance_euclid;
+    break;
+  case 1:
+    calc_dist = calc_distance_manhattan;
+    break;
+  case 2:
+    calc_dist = calc_distance_knn;
+    break;
+  default:
+    throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan, 2=impute.knn");
+  }
+
+  arma::uvec col_index_miss = arma::find(n_col_miss > 0);
+  if (col_index_miss.n_elem == 0)
+  {
+    return Rcpp::List();
+  }
+  arma::uvec col_index_non_miss = arma::find(n_col_miss == 0);
+  arma::uvec neighbor_index = arma::join_vert(col_index_miss, col_index_non_miss);
+  StrictLowerTriangularMatrix cache(col_index_miss.n_elem);
+#if defined(_OPENMP)
+  omp_set_num_threads(cores);
+#endif
+  // Pre-fill the cache with distances in parallel
+#if defined(_OPENMP)
+#pragma omp parallel for schedule(dynamic)
+#endif
+  for (arma::uword row = 1; row < col_index_miss.n_elem; ++row)
+  {
+    for (arma::uword col = 0; col < row; ++col)
+    {
+      cache(row, col) = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col));
+    }
+  }
+  // Initialize result list for all columns with missing values
+  Rcpp::List result(col_index_miss.n_elem);
+
+  // Main loop: iterate through all columns with missing values
+#if defined(_OPENMP)
+#pragma omp parallel for
+#endif
+  for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+  {
+    // Get top-k neighbors directly
+    std::vector<NeighborInfo> top_k = distance_vector(
+        obj, miss, i, col_index_miss, col_index_non_miss, cache, calc_dist, k);
+    arma::uword n_neighbors = top_k.size();
+    Rcpp::List neighbor_info;
+    if (n_neighbors == 0)
+    {
+      // No valid neighbors found
+      neighbor_info = Rcpp::List::create(
+          Rcpp::Named("indices") = Rcpp::IntegerVector(),
+          Rcpp::Named("distances") = Rcpp::NumericVector(),
+          Rcpp::Named("n_neighbors") = 0);
+    }
+    else
+    {
+      // Extract neighbor indices and distances
+      Rcpp::IntegerVector nn_indices(n_neighbors);
+      Rcpp::NumericVector nn_distances(n_neighbors);
+
+      for (arma::uword j = 0; j < n_neighbors; ++j)
+      {
+        // Convert back to R 1-based indexing
+        nn_indices[j] = neighbor_index(top_k[j].index) + 1;
+        nn_distances[j] = top_k[j].distance;
+      }
+
+      neighbor_info = Rcpp::List::create(
+          Rcpp::Named("indices") = nn_indices,
+          Rcpp::Named("distances") = nn_distances,
+          Rcpp::Named("n_neighbors") = n_neighbors);
+    }
+
+    // Store in result list
+    result[i] = neighbor_info;
+  }
+
+  // Set names for the list elements from n_col_name
+  Rcpp::CharacterVector result_names(col_index_miss.n_elem);
+  for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+  {
+    result_names[i] = n_col_name[col_index_miss(i)];
+  }
+  result.names() = result_names;
+
+  return result;
+}

@@ -141,7 +141,7 @@ inject_na <- function(
 #'
 #' set.seed(1234)
 #' # Tune SlideKnn function on a subset of khanmiss1
-#' obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
+#' obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 #' anyNA(obj)
 #' results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1)
 #'

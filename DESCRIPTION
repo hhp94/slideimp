@@ -27,7 +27,6 @@ LinkingTo:
     RcppEnsmallen,
     mlpack
 Imports:
-    mlpack,
     carrier,
     checkmate,
     mirai,

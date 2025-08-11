@@ -32,6 +32,23 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// find_knn_brute
+Rcpp::List find_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const Rcpp::CharacterVector& n_col_name, const int method, int cores);
+RcppExport SEXP _SlideKnn_find_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP n_col_nameSEXP, SEXP methodSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const arma::umat& >::type miss(missSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type k(kSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type n_col_miss(n_col_missSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::CharacterVector& >::type n_col_name(n_col_nameSEXP);
+    Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(find_knn_brute(obj, miss, k, n_col_miss, n_col_name, method, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // impute_knn_mlpack
 arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const std::string tree, bool weighted, const double dist_pow, const arma::uword nboot, const arma::uword seed, const int cores);
 RcppExport SEXP _SlideKnn_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP nbootSEXP, SEXP seedSEXP, SEXP coresSEXP) {
@@ -56,6 +73,7 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_SlideKnn_impute_knn_brute", (DL_FUNC) &_SlideKnn_impute_knn_brute, 10},
+    {"_SlideKnn_find_knn_brute", (DL_FUNC) &_SlideKnn_find_knn_brute, 7},
     {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 11},
     {NULL, NULL, 0}
 };
