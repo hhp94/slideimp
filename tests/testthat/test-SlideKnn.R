@@ -1060,7 +1060,7 @@ test_that("`find_knn_brute` returns correct neighbors as manual implementation",
 
     # Get distances for this column, excluding self (diagonal)
     distances <- r_dist[, col_idx]
-    distances[col_idx] <- Inf  # Exclude self-distance
+    distances[col_idx] <- Inf # Exclude self-distance
 
     # Find k nearest neighbors
     k_nearest_indices <- order(distances)[1:k]
