@@ -9,7 +9,7 @@ inject_na(obj, num_na = 100, rowmax = 0.9, colmax = 0.9, max_iter = 1000)
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
+\item{num_na}{The number of missing values used to estimate prediction quality.}
 
 \item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
 of missing values in any row. If exceeded, the function stops with an error.}
@@ -25,7 +25,7 @@ A vector of integer indices indicating the positions in the matrix
 where NAs should be injected.
 }
 \description{
-This function randomly selects positions in a matrix to inject a specified number of NA values,
+This helper function randomly selects positions in a matrix to inject a specified number of NA values,
 ensuring that the injection does not exceed specified missingness thresholds for rows and columns.
 It attempts to find a valid set of positions within a maximum number of iterations.
 }
@@ -36,9 +36,10 @@ at those positions would exceed the missingness thresholds for any row or column
 If no valid set is found within \code{max_iter} attempts, an error is thrown.
 }
 \examples{
+\dontrun{
 mat <- matrix(1:100, nrow = 10, ncol = 10)
 # Inject 10 NAs
 na_positions <- inject_na(mat, num_na = 10)
 mat[na_positions] <- NA
-
+}
 }

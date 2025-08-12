@@ -9,7 +9,7 @@ tune_imp(
   parameters,
   .f = "SlideKnn",
   rep = 1,
-  num_na = 100,
+  num_na = NULL,
   max_iter = 1000,
   .progress = FALSE,
   rowmax = 0.9,
@@ -29,10 +29,18 @@ the parameters. Any \code{nboot} values in this data frame will be ignored.}
 \item{.f}{The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
 a custom function. See details.}
 
-\item{rep}{The number of repetitions for injecting missing values to evaluate each combination of
-parameters. Default is 1.}
+\item{rep}{Either:
+\itemize{
+\item A positive integer specifying the number of repetitions for randomly injecting missing values
+to evaluate each parameter combination (default is 1).
+\item A list of integer vectors, where each vector contains the positions (1-indexed) in the matrix
+where NAs should be injected. All vectors must have the same length, and all elements must be
+unique (no duplicate NA location sets). The length of the list determines the number of repetitions.
+}}
 
-\item{num_na}{The number of missing values used to estimate prediction quality. Must be a positive integer.}
+\item{num_na}{The number of missing values to inject randomly when \code{rep} is an integer.
+Must be a positive integer when \code{rep} is an integer. This parameter is ignored (with a warning)
+when \code{rep} is a list. Default is NULL.}
 
 \item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
 
@@ -57,14 +65,14 @@ A tibble containing:
 \itemize{
 \item All parameter columns from the input \code{parameters} data frame
 \item \code{param_set}: Integer identifier for each unique parameter combination
-\item \code{rep}: The repetition number
+\item \code{rep}: The repetition number (1 to length of \code{rep} if list, or 1 to \code{rep} if integer)
 \item \code{result}: A nested tibble with columns \code{truth} (original values) and \code{estimate} (imputed values)
 }
 }
 \description{
 This function tunes the parameters for the \code{\link[=SlideKnn]{SlideKnn()}} or \code{\link[=knn_imp]{knn_imp()}} imputation methods by injecting
 missing values into the dataset multiple times and evaluating the imputation performance for different
-parameter combinations. Can also tune custom imputation functions.
+parameter combinations. Can also tune custom imputation functions. Can also accept list of NA locations.
 }
 \details{
 This function allows tuning of hyperparameters for matrix imputation methods, including the built-in
@@ -83,8 +91,7 @@ For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are requi
 Default values are set for optional parameters if not provided (e.g., \code{method = "euclidean"},
 \code{post_imp = FALSE}).
 
-\strong{Note:} The \code{nboot} parameter is always internally set to 1 for tuning purposes, regardless of
-any value provided in \code{parameters}.
+\strong{Note:} The \code{nboot} parameter is always internally set to 1 for tuning purposes.
 }
 \examples{
 data(khanmiss1)
@@ -102,7 +109,29 @@ set.seed(1234)
 # Tune SlideKnn function on a subset of khanmiss1
 obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 anyNA(obj)
-results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1)
+
+# Method 1: Random NA injection with integer rep
+results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1, num_na = 20)
+
+# Method 2: Specific NA locations with list rep
+# Create a complete matrix for demonstration
+obj_complete <- obj
+obj_complete[is.na(obj_complete)] <- 0
+
+# Define specific positions to test
+na_positions <- list(
+  sample(1:length(obj_complete), 20, replace = FALSE),
+  sample(1:length(obj_complete), 20, replace = FALSE),
+  sample(1:length(obj_complete), 20, replace = FALSE)
+)
+
+# Tune with predefined NA locations (useful for reproducible benchmarking)
+results_fixed <- tune_imp(
+  obj_complete,
+  parameters,
+  .f = "SlideKnn",
+  rep = na_positions  # No num_na needed
+)
 
 # # Install {yardstick} or calculate any other metrics using the result
 # library(yardstick)
@@ -130,7 +159,7 @@ parameters_custom <- data.frame(
 
 set.seed(1234)
 # Reuse the same obj
-results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1)
+results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1, num_na = 20)
 
 # # Similarly, compute metrics
 # results_custom$metrics <- lapply(

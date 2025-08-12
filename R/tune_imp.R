@@ -1,12 +1,12 @@
 #' Inject NA Values into a Matrix
 #'
-#' This function randomly selects positions in a matrix to inject a specified number of NA values,
+#' This helper function randomly selects positions in a matrix to inject a specified number of NA values,
 #' ensuring that the injection does not exceed specified missingness thresholds for rows and columns.
 #' It attempts to find a valid set of positions within a maximum number of iterations.
 #'
 #' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#' @param num_na The number of missing values used to estimate prediction quality. Must be a positive integer.
+#' @param num_na The number of missing values used to estimate prediction quality.
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
 #'
 #' @return A vector of integer indices indicating the positions in the matrix
@@ -19,23 +19,18 @@
 #' If no valid set is found within `max_iter` attempts, an error is thrown.
 #'
 #' @examples
+#' \dontrun{
 #' mat <- matrix(1:100, nrow = 10, ncol = 10)
 #' # Inject 10 NAs
 #' na_positions <- inject_na(mat, num_na = 10)
 #' mat[na_positions] <- NA
-#'
-#' @export
+#' }
 inject_na <- function(
     obj,
     num_na = 100,
     rowmax = 0.9,
     colmax = 0.9,
     max_iter = 1000) {
-  checkmate::assert_number(colmax, lower = 0, upper = 1)
-  checkmate::assert_number(rowmax, lower = 0, upper = 1)
-  checkmate::assert_count(max_iter, positive = TRUE)
-  checkmate::assert_count(num_na, positive = TRUE)
-
   # subset the matrix to the specified features and samples
   na_mat <- !is.na(obj)
   not_na <- which(na_mat)
@@ -86,7 +81,7 @@ inject_na <- function(
 #' @description
 #' This function tunes the parameters for the [SlideKnn()] or [knn_imp()] imputation methods by injecting
 #' missing values into the dataset multiple times and evaluating the imputation performance for different
-#' parameter combinations. Can also tune custom imputation functions.
+#' parameter combinations. Can also tune custom imputation functions. Can also accept list of NA locations.
 #'
 #' @details
 #' This function allows tuning of hyperparameters for matrix imputation methods, including the built-in
@@ -103,8 +98,7 @@ inject_na <- function(
 #' Default values are set for optional parameters if not provided (e.g., `method = "euclidean"`,
 #' `post_imp = FALSE`).
 #'
-#' **Note:** The `nboot` parameter is always internally set to 1 for tuning purposes, regardless of
-#' any value provided in `parameters`.
+#' **Note:** The `nboot` parameter is always internally set to 1 for tuning purposes.
 #'
 #' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
@@ -114,15 +108,22 @@ inject_na <- function(
 #'   the parameters. Any `nboot` values in this data frame will be ignored.
 #' @param .f The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
 #'   a custom function. See details.
-#' @param rep The number of repetitions for injecting missing values to evaluate each combination of
-#'   parameters. Default is 1.
+#' @param rep Either:
+#'   - A positive integer specifying the number of repetitions for randomly injecting missing values
+#'     to evaluate each parameter combination (default is 1).
+#'   - A list of integer vectors, where each vector contains the positions (1-indexed) in the matrix
+#'     where NAs should be injected. All vectors must have the same length, and all elements must be
+#'     unique (no duplicate NA location sets). The length of the list determines the number of repetitions.
+#' @param num_na The number of missing values to inject randomly when `rep` is an integer.
+#'   Must be a positive integer when `rep` is an integer. This parameter is ignored (with a warning)
+#'   when `rep` is a list. Default is NULL.
 #'
 #' @inheritParams inject_na
 #'
 #' @return A tibble containing:
 #' - All parameter columns from the input `parameters` data frame
 #' - `param_set`: Integer identifier for each unique parameter combination
-#' - `rep`: The repetition number
+#' - `rep`: The repetition number (1 to length of `rep` if list, or 1 to `rep` if integer)
 #' - `result`: A nested tibble with columns `truth` (original values) and `estimate` (imputed values)
 #'
 #' @seealso [knn_imp()], [SlideKnn()], [inject_na()]
@@ -143,7 +144,29 @@ inject_na <- function(
 #' # Tune SlideKnn function on a subset of khanmiss1
 #' obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 #' anyNA(obj)
-#' results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1)
+#'
+#' # Method 1: Random NA injection with integer rep
+#' results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1, num_na = 20)
+#'
+#' # Method 2: Specific NA locations with list rep
+#' # Create a complete matrix for demonstration
+#' obj_complete <- obj
+#' obj_complete[is.na(obj_complete)] <- 0
+#'
+#' # Define specific positions to test
+#' na_positions <- list(
+#'   sample(1:length(obj_complete), 20, replace = FALSE),
+#'   sample(1:length(obj_complete), 20, replace = FALSE),
+#'   sample(1:length(obj_complete), 20, replace = FALSE)
+#' )
+#'
+#' # Tune with predefined NA locations (useful for reproducible benchmarking)
+#' results_fixed <- tune_imp(
+#'   obj_complete,
+#'   parameters,
+#'   .f = "SlideKnn",
+#'   rep = na_positions  # No num_na needed
+#' )
 #'
 #' # # Install {yardstick} or calculate any other metrics using the result
 #' # library(yardstick)
@@ -171,7 +194,7 @@ inject_na <- function(
 #'
 #' set.seed(1234)
 #' # Reuse the same obj
-#' results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1)
+#' results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1, num_na = 20)
 #'
 #' # # Similarly, compute metrics
 #' # results_custom$metrics <- lapply(
@@ -188,7 +211,7 @@ tune_imp <- function(
     parameters,
     .f = "SlideKnn",
     rep = 1,
-    num_na = 100,
+    num_na = NULL,
     max_iter = 1000,
     .progress = FALSE,
     rowmax = 0.9,
@@ -211,8 +234,35 @@ tune_imp <- function(
       is.function(.f) || (is.character(.f) && (.f %in% c("SlideKnn", "knn_imp")) && length(.f) == 1)
     )
   )
-  checkmate::assert_count(rep, positive = TRUE, .var.name = "rep")
-  checkmate::assert_count(num_na, positive = TRUE, .var.name = "num_na")
+  if (is.numeric(rep)) {
+    checkmate::assert_count(rep, positive = TRUE, .var.name = "rep")
+    checkmate::assert_count(num_na, positive = TRUE, null.ok = FALSE, .var.name = "num_na")
+    checkmate::assert_count(max_iter, positive = TRUE, null.ok = FALSE, .var.name = "max_iter")
+    rep_is_list <- FALSE
+    n_reps <- rep
+  } else if (is.list(rep)) {
+    checkmate::assert_list(rep, types = "integerish", unique = TRUE, min.len = 1, .var.name = "rep")
+    elem_lengths <- vapply(rep, length, numeric(1))
+    if (length(unique(elem_lengths)) != 1) {
+      stop("All elements in `rep` list must have the same length")
+    }
+    purrr::walk(seq_along(rep), \(i) {
+      checkmate::assert_integerish(
+        rep[[i]],
+        lower = 1,
+        upper = length(obj),
+        any.missing = FALSE,
+        min.len = 1,
+        unique = TRUE,
+        null.ok = FALSE,
+        .var.name = sprintf("rep[[%d]]", i)
+      )
+    })
+    rep_is_list <- TRUE
+    n_reps <- length(rep)
+  } else {
+    stop("`rep` must be either a positive integer or a list of NA location vectors")
+  }
   checkmate::assert_count(max_iter, positive = TRUE, .var.name = "max_iter")
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(strip_dimnames, .var.name = "strip_dimnames")
@@ -284,7 +334,7 @@ tune_imp <- function(
       }
 
       # Optimize core allocation
-      total_work <- nrow(parameters) * rep
+      total_work <- nrow(parameters) * n_reps
       if (cores <= total_work) {
         # Parallelize over iterations
         parameters$cores <- 1
@@ -317,21 +367,27 @@ tune_imp <- function(
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), as.list)
   indices <- tibble::as_tibble(expand.grid(
     param_set = .rowid,
-    rep = seq_len(rep)
+    rep = seq_len(n_reps)
   ))
 
-  # Generate NA injection locations for each repetition
-  na_loc <- replicate(
-    n = rep,
-    inject_na(
-      obj = obj,
-      num_na = num_na,
-      rowmax = rowmax,
-      colmax = colmax,
-      max_iter = max_iter
-    ),
-    simplify = FALSE
-  )
+  # Generate or use NA injection locations
+  if (rep_is_list) {
+    # Use the provided list of NA locations
+    na_loc <- rep
+  } else {
+    # Generate NA injection locations for each repetition
+    na_loc <- replicate(
+      n = n_reps,
+      inject_na(
+        obj = obj,
+        num_na = num_na,
+        rowmax = rowmax,
+        colmax = colmax,
+        max_iter = max_iter
+      ),
+      simplify = FALSE
+    )
+  }
 
   # Strip dimnames to reduce object size
   if (strip_dimnames) {
@@ -445,6 +501,8 @@ tune_imp <- function(
     )
   } else {
     # For custom functions
+    nrow_obj <- nrow(obj)
+    ncol_obj <- ncol(obj)
     crated_fn <- fn(
       function(i) {
         tryCatch(
@@ -465,6 +523,15 @@ tune_imp <- function(
               fun,
               args = c(list(obj = pre), param_vec)
             )
+            checkmate::assert_matrix(
+              imputed_result,
+              mode = "numeric",
+              nrows = nrow_obj,
+              ncols = ncol_obj,
+              null.ok = FALSE,
+              .var.name = "imputed_result"
+            )
+            checkmate::assert_true(sum(is.infinite(imputed_result)) == 0, .var.name = "imputed_result")
 
             # Extract imputed values directly from matrix
             estimate_vec <- imputed_result[na_positions]
@@ -481,7 +548,9 @@ tune_imp <- function(
       obj = obj,
       na_loc = na_loc,
       indices = indices,
-      parameters_list = parameters_list
+      parameters_list = parameters_list,
+      nrow_obj = nrow_obj,
+      ncol_obj = ncol_obj
     )
   }
 
