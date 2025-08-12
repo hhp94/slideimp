@@ -193,7 +193,8 @@ tune_imp <- function(
     .progress = FALSE,
     rowmax = 0.9,
     colmax = 0.9,
-    cores = 1) {
+    cores = 1,
+    strip_dimnames = FALSE) {
   # Input validation
   checkmate::assert_matrix(
     obj,
@@ -213,6 +214,7 @@ tune_imp <- function(
   checkmate::assert_count(num_na, positive = TRUE, .var.name = "num_na")
   checkmate::assert_count(max_iter, positive = TRUE, .var.name = "max_iter")
   checkmate::assert_flag(.progress, .var.name = ".progress")
+  checkmate::assert_flag(strip_dimnames, .var.name = ".progress")
   checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
   checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
@@ -232,8 +234,6 @@ tune_imp <- function(
 
     # Remove any nboot column if present and force nboot = 1 also disable bigmemory support
     parameters$nboot <- NULL
-
-    # Add fixed parameters
     parameters$rowmax <- rowmax
     parameters$colmax <- colmax
 
@@ -333,11 +333,12 @@ tune_imp <- function(
   )
 
   # Strip dimnames to reduce object size
-  rn <- rownames(obj)
-  cn <- colnames(obj)
-  rownames(obj) <- NULL
-  colnames(obj) <- NULL
-
+  if (strip_dimnames) {
+    rn <- rownames(obj)
+    cn <- colnames(obj)
+    rownames(obj) <- NULL
+    colnames(obj) <- NULL
+  }
   # Setup parallelization
   if (cores > 1) {
     tryCatch(
@@ -505,8 +506,10 @@ tune_imp <- function(
   result_df <- tibble::as_tibble(cbind(parameters[indices$param_set, , drop = FALSE], indices))
 
   # Restore dimnames
-  rownames(obj) <- rn
-  colnames(obj) <- cn
+  if (strip_dimnames) {
+    rownames(obj) <- rn
+    colnames(obj) <- cn
+  }
 
   return(result_df)
 }

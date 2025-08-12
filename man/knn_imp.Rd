@@ -19,7 +19,7 @@ knn_imp(
   nboot = 1,
   seed = 42,
   output = NULL,
-  overwrite = FALSE,
+  overwrite = TRUE,
   ...
 )
 }

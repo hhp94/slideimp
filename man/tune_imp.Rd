@@ -14,7 +14,8 @@ tune_imp(
   .progress = FALSE,
   rowmax = 0.9,
   colmax = 0.9,
-  cores = 1
+  cores = 1,
+  strip_dimnames = FALSE
 )
 }
 \arguments{
@@ -46,6 +47,10 @@ instead of k-NN if \code{post_imp} is true.}
 
 \item{cores}{Integer specifying the number of cores to use for parallel computation
 of distances. Default is 1.}
+
+\item{strip_dimnames}{Logical; if \code{FALSE} (default), dimnames will not be removed
+which will increase memory usage. Should set to \code{TRUE} to save memory from
+overhead especially when \code{cores} > 1. See details.}
 }
 \value{
 A tibble containing:
