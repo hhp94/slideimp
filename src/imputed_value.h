@@ -24,19 +24,34 @@ void impute_column_values(
     const arma::uword col_offset,
     const arma::uword target_col_idx,
     const arma::umat &nn_columns_mat,
-    const arma::mat &nn_weights_mat,
+    const arma::vec &nn_weights,
     const arma::uword n_imp);
 
-// Helper function to prepare neighbor columns and weights for bootstrapping
-void prepare_bootstrap_neighbors(
+// Helper function to resample neighbors for bootstrap imputation
+void resample_neighbor(
     arma::umat &nn_columns_mat,
-    arma::mat &nn_weights_mat,
-    const arma::uvec &nn_columns,
-    const arma::vec &nn_dists,
-    const arma::uword n_imp,
     const arma::uword seed,
+    const arma::uword target_col_idx);
+
+// PMM requires the full predicted values for column i, which is just the
+// weighted_row_means in knn imputation.
+arma::vec weighted_row_means(
+    const arma::mat &obj,
+    const arma::umat &miss,
+    const arma::uvec &nn_columns,
+    const arma::vec &nn_weights);
+
+// Implementation of PMM.
+void impute_column_values_pmm(
+    arma::mat &result,
+    const arma::mat &obj,
+    const arma::umat &miss,
+    const arma::uword col_offset,
     const arma::uword target_col_idx,
-    const bool weighted,
-    const double dist_pow);
+    const arma::uvec &nn_columns,
+    const arma::vec &nn_weights,
+    const arma::uword n_imp,
+    const arma::uword n_pmm,
+    const arma::uword seed);
 
 #endif

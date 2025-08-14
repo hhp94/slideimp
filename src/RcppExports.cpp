@@ -13,8 +13,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // impute_knn_brute
-arma::mat impute_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, bool weighted, const double dist_pow, const arma::uword n_imp, const arma::uword seed, int cores);
-RcppExport SEXP _SlideKnn_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP n_impSEXP, SEXP seedSEXP, SEXP coresSEXP) {
+arma::mat impute_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, bool weighted, const double dist_pow, const arma::uword n_imp, arma::uword n_pmm, const arma::uword seed, int cores);
+RcppExport SEXP _SlideKnn_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP n_impSEXP, SEXP n_pmmSEXP, SEXP seedSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -26,9 +26,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type weighted(weightedSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
     Rcpp::traits::input_parameter< const arma::uword >::type n_imp(n_impSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type n_pmm(n_pmmSEXP);
     Rcpp::traits::input_parameter< const arma::uword >::type seed(seedSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, seed, cores));
+    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, n_pmm, seed, cores));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -50,8 +51,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // impute_knn_mlpack
-arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const std::string tree, bool weighted, const double dist_pow, const arma::uword n_imp, const arma::uword seed, const int cores);
-RcppExport SEXP _SlideKnn_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP n_impSEXP, SEXP seedSEXP, SEXP coresSEXP) {
+arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const std::string tree, bool weighted, const double dist_pow, const arma::uword n_imp, arma::uword n_pmm, const arma::uword seed, const int cores);
+RcppExport SEXP _SlideKnn_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP n_impSEXP, SEXP n_pmmSEXP, SEXP seedSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -64,17 +65,18 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< bool >::type weighted(weightedSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
     Rcpp::traits::input_parameter< const arma::uword >::type n_imp(n_impSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type n_pmm(n_pmmSEXP);
     Rcpp::traits::input_parameter< const arma::uword >::type seed(seedSEXP);
     Rcpp::traits::input_parameter< const int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_mlpack(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, seed, cores));
+    rcpp_result_gen = Rcpp::wrap(impute_knn_mlpack(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, n_pmm, seed, cores));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_SlideKnn_impute_knn_brute", (DL_FUNC) &_SlideKnn_impute_knn_brute, 10},
+    {"_SlideKnn_impute_knn_brute", (DL_FUNC) &_SlideKnn_impute_knn_brute, 11},
     {"_SlideKnn_find_knn_brute", (DL_FUNC) &_SlideKnn_find_knn_brute, 7},
-    {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 11},
+    {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 12},
     {NULL, NULL, 0}
 };
 

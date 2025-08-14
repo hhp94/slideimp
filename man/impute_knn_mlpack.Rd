@@ -14,6 +14,7 @@ impute_knn_mlpack(
   weighted,
   dist_pow,
   n_imp = 1L,
+  n_pmm = 0L,
   seed = 42L,
   cores = 1L
 )
@@ -39,6 +40,8 @@ the weighted mean imputation. Must be greater than zero: values between 0 and 1 
 1 is linear (default), and values greater than 1 apply a harsher penalty.}
 
 \item{n_imp}{Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.}
+
+\item{n_pmm}{Integer specifying the number of donors for pmm.}
 
 \item{seed}{Integer seed for random number generation during bootstrapping (default = 42). Only used when \code{n_imp > 1}.}
 

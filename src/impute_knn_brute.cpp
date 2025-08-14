@@ -1,10 +1,12 @@
-// [[Rcpp::plugins(openmp)]]
+// [[Rcpp::depends(RcppArmadillo)]]
 
 #include "imputed_value.h"
+#include <RcppArmadillo.h>
 #include <vector>
 #include <limits>
 #include <stdexcept>
 #include <cmath>
+#include <algorithm>
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
@@ -184,7 +186,6 @@ void insert_if_better(std::vector<NeighborInfo> &top_k, double dist, arma::uword
   // Step 1: Reject infinite distances immediately
   if (!std::isfinite(dist))
     return;
-
   // Step 2: If we haven't filled k neighbors yet, always insert
   if (top_k.size() < k)
   {
@@ -275,6 +276,7 @@ std::vector<NeighborInfo> distance_vector(
 //' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 //' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 //' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
+//' @param n_pmm Integer specifying the number of donors for pmm.
 //' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
 //' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
@@ -290,7 +292,8 @@ arma::mat impute_knn_brute(
     const int method,             // Distance metric: 0=Euclidean, 1=Manhattan, 2=impute.knn's method
     bool weighted,                // TRUE for a weighted average, FALSE for a simple average
     const double dist_pow,        // Power for distance penalty in weighted average
-    const arma::uword n_imp = 1,  // Number of boot strap ( > 1)
+    const arma::uword n_imp = 1,  // Number of imputation
+    arma::uword n_pmm = 0,        // Number of pmm donors. If n_imp = 1, then n_pmm = 0 else if n_pmm > 0, then use pmm, else use bootstrap
     const arma::uword seed = 42,  // seed
     int cores = 1)                // Number of cores for parallel processing
 {
@@ -347,12 +350,19 @@ arma::mat impute_knn_brute(
     }
   }
 
-  // Setup bootstrap: force weighted to false if bootstrapping
-  if (n_imp > 1)
+  // Determine imputation method
+  bool use_pmm = false;
+  if (n_imp > 1 && n_pmm > 0)
   {
+    use_pmm = true;
+  }
+  if (n_imp > 1 && n_pmm == 0)
+  {
+    // if n_imp > 1, and n_pmm == 0, then it's bootstrapping. In which case
+    // we fix weighted to false. Weighted bootstrap might not be a good
+    // idea because it can lower uncertainty.
     weighted = false;
   }
-
   // Main imputation loop: iterate through only the columns that need imputation
 #ifdef _OPENMP
 #pragma omp parallel for
@@ -362,13 +372,11 @@ arma::mat impute_knn_brute(
     // Get top-k neighbors directly
     std::vector<NeighborInfo> top_k = distance_vector(
         obj, miss, i, col_index_miss, col_index_non_miss, cache, calc_dist, k);
-
     arma::uword n_neighbors = top_k.size();
     if (n_neighbors == 0)
     {
       continue; // Skip if no valid neighbors are found
     }
-
     // Extract neighbor indices (already sorted by distance)
     arma::uvec nn_columns(n_neighbors);
     arma::vec nn_dists(n_neighbors);
@@ -377,28 +385,55 @@ arma::mat impute_knn_brute(
       nn_columns(j) = neighbor_index(top_k[j].index);
       nn_dists(j) = top_k[j].distance;
     }
-
-    // Prepare storage for potentially bootstrapped neighbors and weights
-    arma::umat nn_columns_mat;
-    arma::mat nn_weights_mat;
-
+    // Copy below here for mlpack
     arma::uword target_col_idx = col_index_miss(i);
-
-    // Use helper function to prepare bootstrap neighbors
-    prepare_bootstrap_neighbors(
-        nn_columns_mat, nn_weights_mat,
-        nn_columns, nn_dists,
-        n_imp, seed, target_col_idx,
-        weighted, dist_pow);
-
-    // Use helper function to impute values for this column
-    impute_column_values(
-        result, obj, miss,
-        col_offsets(i), target_col_idx,
-        nn_columns_mat, nn_weights_mat,
-        n_imp);
+    if (use_pmm)
+    {
+      arma::vec weights(n_neighbors);
+      if (weighted)
+      {
+        weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
+      }
+      else
+      {
+        weights.fill(1.0);
+      }
+      impute_column_values_pmm(
+          result, obj, miss,
+          col_offsets(i), target_col_idx,
+          nn_columns, weights,
+          n_imp, n_pmm, seed);
+    }
+    else
+    {
+      // Bootstrap or single imputation
+      arma::umat nn_columns_mat(n_neighbors, n_imp);
+      // Calculate weights once
+      arma::vec weights(n_neighbors);
+      if (weighted)
+      {
+        weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
+      }
+      else
+      {
+        weights.fill(1.0);
+      }
+      // Fill columns matrix for all imputations
+      for (arma::uword b = 0; b < n_imp; ++b)
+      {
+        nn_columns_mat.col(b) = nn_columns;
+      }
+      if (n_imp > 1)
+      {
+        resample_neighbor(nn_columns_mat, seed, target_col_idx);
+      }
+      impute_column_values(
+          result, obj, miss,
+          col_offsets(i), target_col_idx,
+          nn_columns_mat, weights,
+          n_imp);
+    }
   }
-
   return result;
 }
 

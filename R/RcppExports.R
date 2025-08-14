@@ -22,14 +22,15 @@
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 #' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
+#' @param n_pmm Integer specifying the number of donors for pmm.
 #' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
 #' @export
-impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp = 1L, seed = 42L, cores = 1L) {
-    .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, seed, cores)
+impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
+    .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, n_pmm, seed, cores)
 }
 
 #' @title Find K-Nearest Neighbors for Columns with Missing Values
@@ -83,13 +84,14 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 #' @param n_imp Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
+#' @param n_pmm Integer specifying the number of donors for pmm.
 #' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
 #' @export
-impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp = 1L, seed = 42L, cores = 1L) {
-    .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, seed, cores)
+impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
+    .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, n_pmm, seed, cores)
 }
 
