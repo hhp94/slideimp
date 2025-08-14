@@ -35,14 +35,14 @@ test_that("impute_knn_brute and impute_knn_mlpack calculates the missing locatio
   expect_equal(imputed_index_mlpack[, c(1, 2)], missing)
 })
 
-test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", {
+test_that("impute_knn_brute with n_imp > 1 produces correct bootstrap results", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.3, perc_col_NA = 1)$input)
   missing <- unname(which(is.na(to_test), arr.ind = TRUE))
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
-  nboot <- 5
+  n_imp <- 5
   k <- 5
   # Test with bootstrap
   imputed_bootstrap <- impute_knn_brute(
@@ -51,27 +51,27 @@ test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", 
     k = k,
     n_col_miss = n_col_miss,
     method = 2,
-    weighted = TRUE, # Should be forced to FALSE when nboot > 1
+    weighted = TRUE, # Should be forced to FALSE when n_imp > 1
     dist_pow = 1,
-    nboot = nboot,
+    n_imp = n_imp,
     seed = 42,
     cores = 1
   )
   # Convert NaN to NA for easier testing
   imputed_bootstrap[is.nan(imputed_bootstrap)] <- NA
   # Correct dimensions
-  expect_equal(ncol(imputed_bootstrap), nboot + 2)
+  expect_equal(ncol(imputed_bootstrap), n_imp + 2)
   expect_equal(imputed_bootstrap[, 1:2], missing)
   # All bootstrap columns should contain imputed values
   # (some may be NA if no valid neighbors, but structure should be consistent)
-  for (b in 3:(2 + nboot)) {
+  for (b in 3:(2 + n_imp)) {
     expect_true(is.numeric(imputed_bootstrap[, b]))
   }
   # Bootstrap should produce some variability
   # Count how many missing values have at least 2 different imputed values across bootstraps
   n_with_variability <- 0
   for (i in 1:nrow(imputed_bootstrap)) {
-    bootstrap_vals <- imputed_bootstrap[i, 3:(2 + nboot)]
+    bootstrap_vals <- imputed_bootstrap[i, 3:(2 + n_imp)]
     bootstrap_vals <- bootstrap_vals[!is.na(bootstrap_vals)]
     if (length(bootstrap_vals) > 1 && length(unique(bootstrap_vals)) > 1) {
       n_with_variability <- n_with_variability + 1
@@ -81,13 +81,13 @@ test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", 
   expect_true(n_with_variability > 0)
 })
 
-test_that("impute_knn_brute with nboot > 1 produces reproducible results with same seed", {
+test_that("impute_knn_brute with n_imp > 1 produces reproducible results with same seed", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 30, m = 15, perc_NA = 0.4, perc_col_NA = 1)$input)
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
-  nboot <- 3
+  n_imp <- 3
   seed_val <- 123
   # Run twice with same seed
   result1 <- impute_knn_brute(
@@ -98,7 +98,7 @@ test_that("impute_knn_brute with nboot > 1 produces reproducible results with sa
     method = 2,
     weighted = FALSE,
     dist_pow = 1,
-    nboot = nboot,
+    n_imp = n_imp,
     seed = seed_val,
     cores = 1
   )
@@ -110,7 +110,7 @@ test_that("impute_knn_brute with nboot > 1 produces reproducible results with sa
     method = 2,
     weighted = FALSE,
     dist_pow = 1,
-    nboot = nboot,
+    n_imp = n_imp,
     seed = seed_val,
     cores = 1
   )
@@ -496,7 +496,7 @@ test_that("`impute_knn` ignore all na rows", {
     impute_knn_brute = impute_knn_brute,
     mean_impute_col = mean_impute_col,
     tree = NULL,
-    nboot = 1,
+    n_imp = 1,
     seed = 42
   )[[1]]
 
@@ -643,7 +643,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
       k = 3,
       output = output_path,
       overwrite = TRUE,
-      nboot = 3,
+      n_imp = 3,
       seed = 42
     )
   })
@@ -670,7 +670,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
         k = 3,
         output = output_path,
         overwrite = FALSE,
-        nboot = 3,
+        n_imp = 3,
         seed = 42
       )
     },
@@ -684,7 +684,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
       k = 3,
       output = output_path,
       overwrite = TRUE,
-      nboot = 3,
+      n_imp = 3,
       seed = 42
     )
   })
@@ -704,7 +704,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
     test_data,
     k = 3,
     output = NULL, # Memory version
-    nboot = 3,
+    n_imp = 3,
     seed = 42
   )
 
@@ -731,7 +731,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
   }
 })
 
-test_that("bigmemory with single bootstrap (nboot=1) works correctly", {
+test_that("bigmemory with single bootstrap (n_imp=1) works correctly", {
   # Set option
   old_opt <- getOption("bigmemory.allow.dimnames")
   options(bigmemory.allow.dimnames = TRUE)
@@ -745,13 +745,13 @@ test_that("bigmemory with single bootstrap (nboot=1) works correctly", {
   temp_dir <- withr::local_tempdir()
   output_path <- fs::path(temp_dir, "test_single_boot")
 
-  # Run with nboot=1 (should not add _boot suffix)
+  # Run with n_imp=1 (should not add _boot suffix)
   result_single <- knn_imp(
     test_data,
     k = 3,
     output = output_path,
     overwrite = TRUE,
-    nboot = 1,
+    n_imp = 1,
     seed = 42
   )
 
@@ -768,7 +768,7 @@ test_that("bigmemory with single bootstrap (nboot=1) works correctly", {
     test_data,
     k = 3,
     output = NULL,
-    nboot = 1,
+    n_imp = 1,
     seed = 42
   )
 
@@ -797,7 +797,7 @@ test_that("bigmemory with subset parameter works correctly", {
     overwrite = TRUE,
     subset = c(1, 3, 5),
     post_imp = FALSE,
-    nboot = 2,
+    n_imp = 2,
     seed = 42
   )
 
@@ -808,7 +808,7 @@ test_that("bigmemory with subset parameter works correctly", {
     output = NULL,
     subset = c(1, 3, 5),
     post_imp = FALSE,
-    nboot = 2,
+    n_imp = 2,
     seed = 42
   )
 
@@ -929,15 +929,15 @@ test_that("`mean_impute_col` works", {
   expect_identical(mean_impute_col(to_test, subset = c(1, 5, 10)), c_subset)
 })
 
-test_that("`knn_imp` with nboot = 2 and subset = first 2 columns works", {
+test_that("`knn_imp` with n_imp = 2 and subset = first 2 columns works", {
   set.seed(1234)
   to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)$input)
 
-  # Test with nboot = 2 and subset = first 2 columns
+  # Test with n_imp = 2 and subset = first 2 columns
   results <- knn_imp(
     to_test,
     k = 5,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
     post_imp = TRUE,
     seed = 123
@@ -962,17 +962,17 @@ test_that("`knn_imp` with nboot = 2 and subset = first 2 columns works", {
   expect_true(is.list(results) && length(results) == 2)
 })
 
-test_that("`SlideKnn` with nboot = 2 and subset = first 2 columns works", {
+test_that("`SlideKnn` with n_imp = 2 and subset = first 2 columns works", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 100, m = 50, perc_NA = 0.3, perc_col_NA = 1)$input)
 
-  # Test with nboot = 2 and subset = first 2 columns
+  # Test with n_imp = 2 and subset = first 2 columns
   results <- SlideKnn(
     to_test,
     n_feat = 30,
     n_overlap = 5,
     k = 5,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
     post_imp = TRUE,
     seed = 123
@@ -1002,8 +1002,8 @@ test_that("`knn_imp` and `SlideKnn` bootstrap reproducibility with seeds", {
   to_test <- t(sim_mat(m = 10, n = 30, perc_NA = 0.2, perc_col_NA = 1)$input)
 
   # Test knn_imp reproducibility
-  result1_knn <- knn_imp(to_test, k = 3, nboot = 2, subset = c(1, 2), seed = 456)
-  result2_knn <- knn_imp(to_test, k = 3, nboot = 2, subset = c(1, 2), seed = 456)
+  result1_knn <- knn_imp(to_test, k = 3, n_imp = 2, subset = c(1, 2), seed = 456)
+  result2_knn <- knn_imp(to_test, k = 3, n_imp = 2, subset = c(1, 2), seed = 456)
 
   expect_identical(result1_knn, result2_knn)
 
@@ -1013,7 +1013,7 @@ test_that("`knn_imp` and `SlideKnn` bootstrap reproducibility with seeds", {
     n_feat = 15,
     n_overlap = 3,
     k = 3,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
     seed = 456
   )
@@ -1022,7 +1022,7 @@ test_that("`knn_imp` and `SlideKnn` bootstrap reproducibility with seeds", {
     n_feat = 15,
     n_overlap = 3,
     k = 3,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
     seed = 456
   )

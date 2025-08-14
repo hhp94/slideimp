@@ -17,7 +17,7 @@ impute_knn(
   dist_pow,
   tree,
   knn_imp,
-  nboot,
+  n_imp,
   seed,
   ...
 )
@@ -66,7 +66,7 @@ the mlpack package where missing values are first filled with column means
 \item{knn_imp}{Function object for KNN imputation. Required for function crating
 in parallel environments.}
 
-\item{nboot}{Integer specifying the number of bootstrap imputations to perform.
+\item{n_imp}{Integer specifying the number of imputations to perform.
 Default is 1.}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
@@ -75,7 +75,7 @@ Default is 1.}
 }
 \value{
 A list of imputed matrices, with only qualifying rows imputed via KNN;
-others remain unchanged. Length of list equals \code{nboot}.
+others remain unchanged. Length of list equals \code{n_imp}.
 }
 \description{
 A wrapper function for KNN imputation that filters rows based on missing value

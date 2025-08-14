@@ -24,7 +24,7 @@ Note: keep \code{obj} small since this function doesn't support \code{bigmemory}
 
 \item{parameters}{A data frame specifying the parameter combinations to tune. Duplicated rows are
 removed. The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=SlideKnn]{SlideKnn()}} for details about
-the parameters. Any \code{nboot} values in this data frame will be ignored.}
+the parameters. Any \code{n_imp} values in this data frame will be ignored.}
 
 \item{.f}{The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
 a custom function. See details.}
@@ -91,7 +91,7 @@ For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are requi
 Default values are set for optional parameters if not provided (e.g., \code{method = "euclidean"},
 \code{post_imp = FALSE}).
 
-\strong{Note:} The \code{nboot} parameter is always internally set to 1 for tuning purposes.
+\strong{Note:} The \code{n_imp} parameter is always internally set to 1 for tuning purposes.
 }
 \examples{
 data(khanmiss1)

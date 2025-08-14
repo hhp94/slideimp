@@ -16,7 +16,7 @@ knn_imp(
   weighted = FALSE,
   dist_pow = 1,
   tree = NULL,
-  nboot = 1,
+  n_imp = 1,
   seed = 42,
   output = NULL,
   overwrite = TRUE,
@@ -62,13 +62,13 @@ brute-force search. \code{"kd"} uses KDTree and \code{"ball"} uses BallTree as i
 the mlpack package where missing values are first filled with column means
 (biased at high percentage missing and less efficient at lower dimensions).}
 
-\item{nboot}{Integer specifying the number of bootstrap imputations to perform.
+\item{n_imp}{Integer specifying the number of imputations to perform.
 Default is 1.}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
 \item{output}{Character; path to save the output as list of \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
-to save memory. Highly recommended for \code{nboot} > 1.}
+to save memory. Highly recommended for \code{n_imp} > 1.}
 
 \item{overwrite}{Logical; if \code{TRUE} (default), overwrite existing files at \code{output}.}
 
@@ -76,7 +76,7 @@ to save memory. Highly recommended for \code{nboot} > 1.}
 }
 \value{
 A list of numeric matrices or big.matrix of the same dimensions as \code{obj}
-with missing values imputed. Length of list equals \code{nboot}.
+with missing values imputed. Length of list equals \code{n_imp}.
 }
 \description{
 This function imputes missing values in a numeric matrix using the k-Nearest
@@ -113,7 +113,7 @@ Compared to \code{impute::impute.knn}, for columns with very high missingness, t
 mean imputation uses the imputed values and original values for the mean calculation
 instead of just the original values.
 
-When \code{nboot} > 1, output should be specified to use \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} to
+When \code{n_imp} > 1, output should be specified to use \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} to
 save memory.
 }
 \examples{
@@ -148,7 +148,7 @@ imputed_weighted <- knn_imp(
 imputed_boot <- knn_imp(
   obj = t(khanmiss1),
   k = 3,
-  nboot = 5,
+  n_imp = 5,
   seed = 123
 )
 length(imputed_boot) # Returns 5 imputed datasets

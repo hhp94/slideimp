@@ -18,7 +18,7 @@ SlideKnn(
   post_imp = TRUE,
   weighted = FALSE,
   dist_pow = 1,
-  nboot = 1,
+  n_imp = 1,
   seed = 42,
   .progress = FALSE,
   output = NULL,
@@ -74,7 +74,7 @@ in the weighted mean imputation. Must be greater than zero: values between 0
 and 1 apply a softer penalty, 1 is linear (default), and values greater than
 1 apply a harsher penalty.}
 
-\item{nboot}{Integer specifying the number of bootstrap imputations to perform.
+\item{n_imp}{Integer specifying the number of imputations to perform.
 Default is 1.}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
@@ -95,7 +95,7 @@ overhead especially when \code{cores} > 1. See details.}
 }
 \value{
 A list of numeric matrices/big.matrices of the same dimensions as \code{obj}
-with missing values imputed. Length of list equals \code{nboot}. If \code{obj} is file-backed,
+with missing values imputed. Length of list equals \code{n_imp}. If \code{obj} is file-backed,
 returns a list of big.matrix objects; otherwise returns regular matrices.
 }
 \description{
@@ -112,7 +112,7 @@ structures while keeping memory usage manageable.
 See \code{\link[=knn_imp]{knn_imp()}} for details about the underlying KNN implementation.
 }
 \note{
-Setting \code{nboot} > 1 is meant to be used only with \code{subset}.
+Setting \code{n_imp} > 1 is meant to be used only with \code{subset}.
 
 If your \code{obj} is a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} or description file, you have to set
 \code{strip_dimnames} to \code{TRUE} for the output big.matrix to have the same dimnames as
@@ -135,7 +135,7 @@ imputed_weighted <- SlideKnn(
   dist_pow = 2
 )
 # Bootstrap version
-# imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, nboot = 3)
+# imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, n_imp = 3)
 }
 \seealso{
 \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}

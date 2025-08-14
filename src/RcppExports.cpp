@@ -13,8 +13,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // impute_knn_brute
-arma::mat impute_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, bool weighted, const double dist_pow, const arma::uword nboot, const arma::uword seed, int cores);
-RcppExport SEXP _SlideKnn_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP nbootSEXP, SEXP seedSEXP, SEXP coresSEXP) {
+arma::mat impute_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, bool weighted, const double dist_pow, const arma::uword n_imp, const arma::uword seed, int cores);
+RcppExport SEXP _SlideKnn_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP n_impSEXP, SEXP seedSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -25,10 +25,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
     Rcpp::traits::input_parameter< bool >::type weighted(weightedSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
-    Rcpp::traits::input_parameter< const arma::uword >::type nboot(nbootSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type n_imp(n_impSEXP);
     Rcpp::traits::input_parameter< const arma::uword >::type seed(seedSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, miss, k, n_col_miss, method, weighted, dist_pow, nboot, seed, cores));
+    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, seed, cores));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -50,8 +50,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // impute_knn_mlpack
-arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const std::string tree, bool weighted, const double dist_pow, const arma::uword nboot, const arma::uword seed, const int cores);
-RcppExport SEXP _SlideKnn_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP nbootSEXP, SEXP seedSEXP, SEXP coresSEXP) {
+arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const std::string tree, bool weighted, const double dist_pow, const arma::uword n_imp, const arma::uword seed, const int cores);
+RcppExport SEXP _SlideKnn_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP n_impSEXP, SEXP seedSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -63,10 +63,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const std::string >::type tree(treeSEXP);
     Rcpp::traits::input_parameter< bool >::type weighted(weightedSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
-    Rcpp::traits::input_parameter< const arma::uword >::type nboot(nbootSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type n_imp(n_impSEXP);
     Rcpp::traits::input_parameter< const arma::uword >::type seed(seedSEXP);
     Rcpp::traits::input_parameter< const int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_mlpack(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, nboot, seed, cores));
+    rcpp_result_gen = Rcpp::wrap(impute_knn_mlpack(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, seed, cores));
     return rcpp_result_gen;
 END_RCPP
 }

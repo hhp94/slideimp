@@ -98,14 +98,14 @@ inject_na <- function(
 #' Default values are set for optional parameters if not provided (e.g., `method = "euclidean"`,
 #' `post_imp = FALSE`).
 #'
-#' **Note:** The `nboot` parameter is always internally set to 1 for tuning purposes.
+#' **Note:** The `n_imp` parameter is always internally set to 1 for tuning purposes.
 #'
 #' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #'   Note: keep `obj` small since this function doesn't support `bigmemory`.
 #' @param parameters A data frame specifying the parameter combinations to tune. Duplicated rows are
 #'   removed. The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about
-#'   the parameters. Any `nboot` values in this data frame will be ignored.
+#'   the parameters. Any `n_imp` values in this data frame will be ignored.
 #' @param .f The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
 #'   a custom function. See details.
 #' @param rep Either:
@@ -283,8 +283,8 @@ tune_imp <- function(
   if (is.character(.f)) {
     parameters <- unique(parameters)
 
-    # Remove any nboot column if present and force nboot = 1 also disable bigmemory support
-    parameters$nboot <- NULL
+    # Remove any n_imp column if present and force n_imp = 1 also disable bigmemory support
+    parameters$n_imp <- NULL
 
     # Add fixed parameters
     parameters$rowmax <- rowmax
@@ -324,7 +324,7 @@ tune_imp <- function(
       valid_cols <- c(
         "n_feat", "k", "n_overlap", "rowmax", "colmax",
         "post_imp", "method", ".progress", "weighted",
-        "dist_pow", "cores", "nboot"
+        "dist_pow", "cores", "n_imp"
       )
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     } else if (.f == "knn_imp") {
@@ -347,15 +347,15 @@ tune_imp <- function(
       # Select only relevant columns for knn_imp
       valid_cols <- c(
         "k", "rowmax", "colmax", "post_imp", "method",
-        "cores", "weighted", "dist_pow", "nboot"
+        "cores", "weighted", "dist_pow", "n_imp"
       )
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     }
   } else {
-    # For custom functions, ensure nboot is not in parameters or set to 1
-    if ("nboot" %in% names(parameters)) {
-      warning("Removing 'nboot' from parameters for custom function - tuning always uses nboot=1")
-      parameters$nboot <- NULL
+    # For custom functions, ensure n_imp is not in parameters or set to 1
+    if ("n_imp" %in% names(parameters)) {
+      warning("Removing 'n_imp' from parameters for custom function - tuning always uses n_imp=1")
+      parameters$n_imp <- NULL
     }
   }
 
@@ -444,7 +444,7 @@ tune_imp <- function(
             post_imp = param_vec$post_imp,
             weighted = param_vec$weighted,
             dist_pow = param_vec$dist_pow,
-            nboot = 1L, # Always use nboot = 1 for tuning
+            n_imp = 1L, # Always use n_imp = 1 for tuning
             .progress = FALSE
           )
 
