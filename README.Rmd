@@ -191,4 +191,4 @@ results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 2, num
 ```
 
 For more details, see the function documentation (e.g., `?SlideKnn`, `?knn_imp`, `?tune_imp`).
-```
+

@@ -77,7 +77,7 @@ system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 4)
 )
 #>    user  system elapsed 
-#>    0.00    0.00    0.01
+#>    0.01    0.00    0.01
 sum(is.na(imputed_full[[1]])) # Should be 0
 #> [1] 0
 ```
@@ -236,4 +236,4 @@ results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 2, num
 ```
 
 For more details, see the function documentation (e.g., `?SlideKnn`,
-`?knn_imp`, `?tune_imp`). \`\`\`
+`?knn_imp`, `?tune_imp`).
