@@ -12,7 +12,8 @@ impute_knn_brute(
   method,
   weighted,
   dist_pow,
-  nboot = 1L,
+  n_imp = 1L,
+  n_pmm = 0L,
   seed = 42L,
   cores = 1L
 )
@@ -26,24 +27,26 @@ impute_knn_brute(
 
 \item{n_col_miss}{Integer vector specifying the count of missing values per column.}
 
-\item{method}{Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan, 2 = impute.knn method.}
+\item{method}{Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.}
 
 \item{weighted}{Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
-Note: Forced to FALSE when \code{nboot > 1}.}
+Note: Forced to FALSE when \code{n_imp > 1}.}
 
 \item{dist_pow}{A positive double that controls the penalty for larger distances in
 the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 1 is linear (default), and values greater than 1 apply a harsher penalty.}
 
-\item{nboot}{Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.}
+\item{n_imp}{Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.}
 
-\item{seed}{Integer seed for random number generation during bootstrapping (default = 42). Only used when \code{nboot > 1}.}
+\item{n_pmm}{Integer specifying the number of donors for pmm.}
+
+\item{seed}{Integer seed for random number generation during bootstrapping (default = 42). Only used when \code{n_imp > 1}.}
 
 \item{cores}{Number of CPU cores to use for parallel processing (default = 1).}
 }
 \value{
 A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
-and the subsequent \code{nboot} columns contain the imputed values (one column per bootstrap replicate if \code{nboot > 1}).
+and the subsequent \code{n_imp} columns contain the imputed values (one column per bootstrap replicate if \code{n_imp > 1}).
 }
 \description{
 This function imputes missing values in a matrix using a k-nearest neighbors
@@ -52,10 +55,4 @@ with missing values, calculating distances to other columns to find the
 k-nearest neighbors, and imputes missing values using either a simple average
 or a weighted average (inverse distance weighting) of non-missing values from
 these neighbors, depending on the \code{weighted} parameter.
-}
-\details{
-When \code{nboot > 1}, bootstrapping is enabled: for each missing value, \code{nboot} imputed values are generated
-by resampling the k nearest neighbors with replacement and using simple averages (weighted is forced to FALSE).
-This provides variability estimates for imputation uncertainty. Random number generation is seeded for reproducibility,
-with per-column offsets to ensure independence.
 }

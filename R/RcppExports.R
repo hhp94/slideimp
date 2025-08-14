@@ -10,30 +10,27 @@
 #' or a weighted average (inverse distance weighting) of non-missing values from
 #' these neighbors, depending on the `weighted` parameter.
 #'
-#' When `nboot > 1`, bootstrapping is enabled: for each missing value, `nboot` imputed values are generated
-#' by resampling the k nearest neighbors with replacement and using simple averages (weighted is forced to FALSE).
-#' This provides variability estimates for imputation uncertainty. Random number generation is seeded for reproducibility,
-#' with per-column offsets to ensure independence.
 #'
 #' @param obj Numeric matrix with missing values represented as NA (NaN).
 #' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 #' @param k Number of nearest neighbors to use for imputation.
 #' @param n_col_miss Integer vector specifying the count of missing values per column.
-#' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan, 2 = impute.knn method.
+#' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
 #' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
-#'   Note: Forced to FALSE when `nboot > 1`.
+#'   Note: Forced to FALSE when `n_imp > 1`.
 #' @param dist_pow A positive double that controls the penalty for larger distances in
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param nboot Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
-#' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `nboot > 1`.
+#' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
+#' @param n_pmm Integer specifying the number of donors for pmm.
+#' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
-#' and the subsequent `nboot` columns contain the imputed values (one column per bootstrap replicate if `nboot > 1`).
+#' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
 #' @export
-impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, nboot = 1L, seed = 42L, cores = 1L) {
-    .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, weighted, dist_pow, nboot, seed, cores)
+impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
+    .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, n_pmm, seed, cores)
 }
 
 #' @title Find K-Nearest Neighbors for Columns with Missing Values
@@ -71,7 +68,7 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #'
 #' k-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
 #'
-#' When `nboot > 1`, bootstrapping is enabled: for each missing value, `nboot` imputed values are generated
+#' When `n_imp > 1`, bootstrapping is enabled: for each missing value, `n_imp` imputed values are generated
 #' by resampling the k nearest neighbors with replacement and using simple averages (weighted is forced to FALSE).
 #' This provides variability estimates for imputation uncertainty.
 #'
@@ -82,18 +79,55 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
 #' @param tree Which type of tree? "kd" or "ball".
 #' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
-#'   Note: Forced to FALSE when `nboot > 1`.
+#'   Note: Forced to FALSE when `n_imp > 1`.
 #' @param dist_pow A positive double that controls the penalty for larger distances in
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param nboot Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
-#' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `nboot > 1`.
+#' @param n_imp Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
+#' @param n_pmm Integer specifying the number of donors for pmm.
+#' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
-#' and the subsequent `nboot` columns contain the imputed values (one column per bootstrap replicate if `nboot > 1`).
+#' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
 #' @export
-impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, nboot = 1L, seed = 42L, cores = 1L) {
-    .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, nboot, seed, cores)
+impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
+    .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, n_pmm, seed, cores)
+}
+
+#' @title Weighted Row Mean
+#'
+#' @description Calculate weighted row means for specified columns, accounting for missing values.
+#'
+#' @param obj A numeric matrix containing the data.
+#' @param miss An unsigned integer matrix indicating missing values (0 for observed, 1 for missing).
+#' @param nn_columns An unsigned integer vector of column indices for the neighbors.
+#' @param nn_weights A numeric vector of weights corresponding to the neighbors.
+#'
+#' @return A column vector containing the weighted row means, with NaN where computation is not possible.
+#'
+weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
+    .Call(`_SlideKnn_weighted_row_means`, obj, miss, nn_columns, nn_weights)
+}
+
+#' @title k-NN Impute using Predictive Mean Matching
+#'
+#' @description Rcpp implementation of predictive mean matching (PMM) for imputation. Exported for testing only.
+#'
+#' @param result Result matrix where column 2:2+n_imp contains imputed values (modified in place).
+#' @param obj R matrix
+#' @param miss is.na(obj).
+#' @param col_offset Basically `cumsum(colSums(is.na(obj)))`.
+#' @param target_col_idx The index of the target column to impute in obj.
+#' @param nn_columns Column idx of nearest neighbors.
+#' @param nn_weights Weights corresponding to nn_columns.
+#' @param n_imp The number of imputations to perform for each missing value.
+#' @param n_pmm The number of closest donors to consider for PMM.
+#' @param seed RNG seed.
+#'
+#' @return void (modifies the result matrix in place).
+#'
+impute_column_values_pmm <- function(result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed) {
+    invisible(.Call(`_SlideKnn_impute_column_values_pmm`, result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed))
 }
 

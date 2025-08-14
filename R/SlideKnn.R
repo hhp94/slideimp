@@ -14,7 +14,7 @@
 #' See [knn_imp()] for details about the underlying KNN implementation.
 #'
 #' @note
-#' Setting `nboot` > 1 is meant to be used only with `subset`.
+#' Setting `n_imp` > 1 is meant to be used only with `subset`.
 #'
 #' If your `obj` is a [bigmemory::big.matrix()] or description file, you have to set
 #' `strip_dimnames` to `TRUE` for the output big.matrix to have the same dimnames as
@@ -41,7 +41,7 @@
 #' @param cores Integer specifying the number of cores to use for parallel computation
 #'   of distances. Default is 1.
 #' @param method Character string specifying the distance metric for k-NN. One of
-#'   `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.
+#'   `"euclidean"`, `"manhattan"`. Defaults to `"euclidean"`.
 #' @param tree Character string specifying the k-NN method. `NULL` (default) uses
 #'   brute-force search. `"kd"` uses KDTree and `"ball"` uses BallTree as implemented by
 #'   the mlpack package where missing values are first filled with column means
@@ -54,8 +54,13 @@
 #'   in the weighted mean imputation. Must be greater than zero: values between 0
 #'   and 1 apply a softer penalty, 1 is linear (default), and values greater than
 #'   1 apply a harsher penalty.
-#' @param nboot Integer specifying the number of bootstrap imputations to perform.
+#' @param n_imp Integer specifying the number of imputations to perform.
 #'   Default is 1.
+#' @param n_pmm Integer controlling multiple imputation method when n_imp > 1.
+#'   If n_pmm > 0: PMM multiple imputation using n_pmm closest donors (will not exceed
+#'   available non-missing values column wise).
+#'   If n_pmm = 0: Bootstrap multiple imputation via resampling from k nearest neighbors.
+#'   Ignored when n_imp = 1 (single imputation).
 #' @param seed Integer; random seed for reproducible bootstrap sampling. Default is 42.
 #' @param .progress Logical; if `TRUE`, show a progress bar. Default is `FALSE`.
 #' @param output Character; path to save the output big.matrix if `obj` is file-backed.
@@ -68,7 +73,7 @@
 #'   overhead especially when `cores` > 1. See details.
 #'
 #' @return A list of numeric matrices/big.matrices of the same dimensions as `obj`
-#'   with missing values imputed. Length of list equals `nboot`. If `obj` is file-backed,
+#'   with missing values imputed. Length of list equals `n_imp`. If `obj` is file-backed,
 #'   returns a list of big.matrix objects; otherwise returns regular matrices.
 #'
 #' @seealso [knn_imp()], [mean_impute_col()], [bigmemory::big.matrix()]
@@ -88,8 +93,8 @@
 #'   weighted = TRUE,
 #'   dist_pow = 2
 #' )
-#' # Bootstrap version
-#' # imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, nboot = 3)
+#' # PMM version with 10 donors
+#' # imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, n_imp = 3, n_pmm = 10)
 #' @export
 SlideKnn <- function(
     obj,
@@ -100,12 +105,13 @@ SlideKnn <- function(
     rowmax = 0.9,
     colmax = 0.9,
     cores = 1,
-    method = c("euclidean", "manhattan", "impute.knn"),
+    method = c("euclidean", "manhattan"),
     tree = NULL,
     post_imp = TRUE,
     weighted = FALSE,
     dist_pow = 1,
-    nboot = 1,
+    n_imp = 1,
+    n_pmm = 10,
     seed = 42,
     .progress = FALSE,
     output = NULL,
@@ -114,13 +120,15 @@ SlideKnn <- function(
     strip_dimnames = FALSE) {
   # Pre-conditioning ----
   method <- match.arg(method)
-  checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
+  if(!is.character(obj)) {
+    checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
+  }
   checkmate::assert_integerish(n_overlap, lower = 0, upper = n_feat - 1, len = 1, null.ok = FALSE, .var.name = "n_overlap")
   checkmate::assert_integerish(k, lower = 1, upper = n_feat - 1, len = 1, null.ok = FALSE, .var.name = "k")
   checkmate::assert_numeric(rowmax, lower = 0, upper = 1, len = 1, null.ok = FALSE, .var.name = "rowmax")
   checkmate::assert_numeric(colmax, lower = 0, upper = 1, len = 1, null.ok = FALSE, .var.name = "colmax")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
-  checkmate::assert_integerish(nboot, lower = 1, len = 1, null.ok = FALSE, .var.name = "nboot")
+  checkmate::assert_integerish(n_imp, lower = 1, len = 1, null.ok = FALSE, .var.name = "n_imp")
   checkmate::assert_integerish(seed, lower = 0, len = 1, null.ok = FALSE, .var.name = "seed")
   if (cores > 1) {
     tryCatch(
@@ -144,8 +152,8 @@ SlideKnn <- function(
     ),
     .var.name = "subset"
   )
-  if (nboot > 1 && weighted) {
-    warning("If nboot > 1, weighted will be forced to FALSE")
+  if (n_imp > 1 && n_pmm == 0 && weighted) {
+    warning("If bootstrapping nearest neighbors, weighted will be forced to FALSE")
   }
 
   # set.seed() ----
@@ -172,6 +180,7 @@ SlideKnn <- function(
       }
     }
     obj <- bigmemory::attach.big.matrix(obj)
+    checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
     TRUE
   } else if (bigmemory::is.big.matrix(obj)) {
     TRUE
@@ -181,8 +190,8 @@ SlideKnn <- function(
   } else {
     stop("`obj` has to be a numeric matrix or a (descriptor of a) double bigmemory::big.matrix.")
   }
-  if (nboot > 1 && !file_backed) {
-    warning("If nboot > 1 should be used with output to bigmemory::big.matrix. Change `output` to a path to enable this.")
+  if (n_imp > 1 && !file_backed) {
+    warning("If n_imp > 1 should be used with output to bigmemory::big.matrix. Change `obj` to a bigmemory::big.matrix/path to bigmemory::big.matrix .desc file to enable this.")
   }
   # Remove obj names temporary to reduce size of pointers being passed to workers
   rn <- rownames(obj)
@@ -288,9 +297,9 @@ SlideKnn <- function(
   )
 
   # Create lists for multiple bootstrap iterations
-  intermediate_list <- vector("list", nboot)
-  final_imputed_list <- vector("list", nboot)
-  counts_list <- vector("list", nboot)
+  intermediate_list <- vector("list", n_imp)
+  final_imputed_list <- vector("list", n_imp)
+  counts_list <- vector("list", n_imp)
 
   ### file_backed ----
   if (file_backed) {
@@ -300,9 +309,9 @@ SlideKnn <- function(
     temp_dir <- withr::local_tempdir(pattern = paste0("SlideKnn_", Sys.getpid()))
 
     # For file-backed matrices, create separate files for each bootstrap
-    for (boot_idx in seq_len(nboot)) {
+    for (boot_idx in seq_len(n_imp)) {
       # Check and handle output files
-      if (nboot > 1) {
+      if (n_imp > 1) {
         boot_backfile <- fs::path_ext_set(fs::path_ext_remove(backfile), paste0("_boot", boot_idx, ".", fs::path_ext(backfile)))
         boot_descfile <- fs::path_ext_set(fs::path_ext_remove(descfile), paste0("_boot", boot_idx, ".", fs::path_ext(descfile)))
       } else {
@@ -357,7 +366,7 @@ SlideKnn <- function(
     }
   } else {
     ### in-memory ----
-    for (boot_idx in seq_len(nboot)) {
+    for (boot_idx in seq_len(n_imp)) {
       intermediate_list[[boot_idx]] <- bigmemory::big.matrix(
         nrow = nr,
         ncol = sum(width),
@@ -411,7 +420,8 @@ SlideKnn <- function(
           weighted = weighted,
           dist_pow = dist_pow,
           subset = subset_list[[i]],
-          nboot = nboot,
+          n_imp = n_imp,
+          n_pmm = n_pmm,
           seed = seed,
           knn_imp = knn_imp,
           tree = tree,
@@ -421,7 +431,7 @@ SlideKnn <- function(
         )
 
         # Fill intermediate matrices for each bootstrap iteration
-        for (boot_idx in seq_len(nboot)) {
+        for (boot_idx in seq_len(n_imp)) {
           intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc_list[[boot_idx]])
           intermediate_big[, offset_start[i]:offset_end[i]] <- imp_list[[boot_idx]]
         }
@@ -446,7 +456,8 @@ SlideKnn <- function(
       post_imp = post_imp,
       offset_start = offset_start,
       offset_end = offset_end,
-      nboot = nboot,
+      n_imp = n_imp,
+      n_pmm = n_pmm,
       seed = seed
     ),
     .progress = .progress
@@ -458,7 +469,7 @@ SlideKnn <- function(
   }
 
   # Process each bootstrap iteration
-  for (boot_idx in seq_len(nboot)) {
+  for (boot_idx in seq_len(n_imp)) {
     purrr::walk(
       seq_along(start),
       function(i) {
@@ -500,7 +511,7 @@ SlideKnn <- function(
   }
 
   # Process averaging for each bootstrap iteration
-  for (boot_idx in seq_len(nboot)) {
+  for (boot_idx in seq_len(n_imp)) {
     purrr::walk(
       seq_along(w_start),
       fn(
@@ -541,7 +552,7 @@ SlideKnn <- function(
       message("Post-imputation")
     }
 
-    for (boot_idx in seq_len(nboot)) {
+    for (boot_idx in seq_len(n_imp)) {
       purrr::walk(
         seq_along(w_start),
         fn(
@@ -571,7 +582,7 @@ SlideKnn <- function(
   if (strip_dimnames) {
     rownames(obj) <- rn
     colnames(obj) <- cn
-    for (boot_idx in 1:nboot) {
+    for (boot_idx in 1:n_imp) {
       rownames(final_imputed_list[[boot_idx]]) <- rn
       colnames(final_imputed_list[[boot_idx]]) <- cn
     }
@@ -582,8 +593,8 @@ SlideKnn <- function(
     return(final_imputed_list)
   } else {
     # Convert to regular matrices and restore names
-    result_list <- vector("list", nboot)
-    for (boot_idx in seq_len(nboot)) {
+    result_list <- vector("list", n_imp)
+    for (boot_idx in seq_len(n_imp)) {
       out <- bigmemory::as.matrix(final_imputed_list[[boot_idx]])
       rownames(out) <- rn
       colnames(out) <- cn
@@ -612,7 +623,7 @@ SlideKnn <- function(
 #' @param ... Additional arguments passed to `knn_imp`.
 #'
 #' @return A list of imputed matrices, with only qualifying rows imputed via KNN;
-#'   others remain unchanged. Length of list equals `nboot`.
+#'   others remain unchanged. Length of list equals `n_imp`.
 #'
 #' @seealso [knn_imp()], [SlideKnn()]
 #'
@@ -630,7 +641,8 @@ impute_knn <- function(
     dist_pow,
     tree,
     knn_imp,
-    nboot,
+    n_imp,
+    n_pmm,
     seed,
     ...) {
   na_mat <- is.na(obj)
@@ -639,7 +651,7 @@ impute_knn <- function(
   good_rows <- rowSums(na_mat) / ncol(na_mat) < rowmax
   # If no rows meet the criteria for imputation, return list with original object.
   if (sum(good_rows) == 0) {
-    return(replicate(nboot, obj, simplify = FALSE))
+    return(replicate(n_imp, obj, simplify = FALSE))
   }
 
   # Call knn_imp on good rows - returns list of imputed objects
@@ -655,7 +667,8 @@ impute_knn <- function(
     weighted = weighted,
     dist_pow = dist_pow,
     tree = tree,
-    nboot = nboot,
+    n_imp = n_imp,
+    n_pmm = n_pmm,
     seed = seed,
     ...
   )
@@ -711,17 +724,17 @@ impute_knn <- function(
 #' mean imputation uses the imputed values and original values for the mean calculation
 #' instead of just the original values.
 #'
-#' When `nboot` > 1, output should be specified to use [bigmemory::big.matrix()] to
+#' When `n_imp` > 1, output should be specified to use [bigmemory::big.matrix()] to
 #' save memory.
 #'
 #' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param output Character; path to save the output as list of [bigmemory::big.matrix()]
-#' to save memory. Highly recommended for `nboot` > 1.
+#' to save memory. Highly recommended for `n_imp` > 1.
 #' @param ... Currently not implemented.
 #'
 #' @return A list of numeric matrices or big.matrix of the same dimensions as `obj`
-#' with missing values imputed. Length of list equals `nboot`.
+#' with missing values imputed. Length of list equals `n_imp`.
 #'
 #' @seealso [SlideKnn()], [mean_impute_col()], [mean_impute_row()]
 #'
@@ -736,7 +749,6 @@ impute_knn <- function(
 #' sum(is.na(khanmiss1))
 #'
 #' # Perform k-NN imputation. `khanmiss1` stores genes in rows so we transpose.
-#' # Set method to "impute.knn" to mimic how distance is scaled in impute::impute.knn.
 #' imputed <- knn_imp(
 #'   obj = t(khanmiss1),
 #'   k = 3,
@@ -758,13 +770,27 @@ impute_knn <- function(
 #'   method = "euclidean"
 #' )[[1]]
 #'
-#' # Bootstrap imputation for uncertainty quantification
+#' # PMM imputation with 5 imputations and 3 donors. Increase `n_pmm` in real
+#' # data to ensure realistic uncertainty.
+#' imputed_pmm <- knn_imp(
+#'   obj = t(khanmiss1),
+#'   k = 5,
+#'   n_imp = 5,
+#'   n_pmm = 3,
+#'   seed = 123
+#' )
+#'
+#' length(imputed_pmm) # Returns 5 imputed datasets
+#'
+#' # Bootstrap imputation for uncertainty injection.
 #' imputed_boot <- knn_imp(
 #'   obj = t(khanmiss1),
 #'   k = 3,
-#'   nboot = 5,
+#'   n_imp = 5,
+#'   n_pmm = 0, # n_pmm = 0 enable bootstrapping nearest neighbors
 #'   seed = 123
 #' )
+#'
 #' length(imputed_boot) # Returns 5 imputed datasets
 #'
 #' @export
@@ -773,14 +799,15 @@ knn_imp <- function(
     k,
     colmax = 0.9,
     rowmax = 0.9,
-    method = c("euclidean", "manhattan", "impute.knn"),
+    method = c("euclidean", "manhattan"),
     cores = 1,
     post_imp = TRUE,
     subset = NULL,
     weighted = FALSE,
     dist_pow = 1,
     tree = NULL,
-    nboot = 1,
+    n_imp = 1,
+    n_pmm = 10,
     seed = 42,
     output = NULL,
     overwrite = TRUE,
@@ -794,7 +821,8 @@ knn_imp <- function(
   checkmate::assert_numeric(colmax, lower = 0, upper = 1, len = 1, .var.name = "colmax")
   checkmate::assert_numeric(rowmax, lower = 0, upper = 1, len = 1, .var.name = "rowmax")
   checkmate::assert_logical(post_imp, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "post_imp")
-  checkmate::assert_integerish(nboot, lower = 1, len = 1, .var.name = "nboot")
+  checkmate::assert_integerish(n_imp, lower = 1, len = 1, .var.name = "n_imp")
+  checkmate::assert_integerish(n_pmm, lower = 0, upper = nrow(obj), len = 1, .var.name = "n_pmm")
   checkmate::assert_integerish(seed, lower = 0, len = 1, .var.name = "seed", null.ok = FALSE)
   checkmate::assert(
     checkmate::check_character(subset, min.len = 0, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
@@ -809,11 +837,7 @@ knn_imp <- function(
   checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
   checkmate::assert_string(output, null.ok = TRUE, .var.name = "output")
   checkmate::assert_logical(overwrite, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "overwrite")
-  if (!is.null(tree)) {
-    if (method == "impute.knn") {
-      method <- "euclidean"
-    }
-  }
+
   set.seed(seed)
   # Store original dimnames
   rn <- rownames(obj)
@@ -835,8 +859,8 @@ knn_imp <- function(
     ext <- fs::path_ext(file_name)
     base_no_ext <- fs::path_ext_remove(file_name)
     # Pre-compute all file paths
-    boot_indices <- seq_len(nboot)
-    suffix <- if (nboot == 1) "" else paste0("_boot", boot_indices)
+    boot_indices <- seq_len(n_imp)
+    suffix <- if (n_imp == 1) "" else paste0("_boot", boot_indices)
     if (ext == "" || ext == "desc") {
       backfiles <- paste0(base_no_ext, suffix, ".bin")
       descfiles <- paste0(base_no_ext, suffix, ".desc")
@@ -870,7 +894,7 @@ knn_imp <- function(
   } else {
     # Not file-backed - set to NULL
     backingpath <- NULL
-    boot_indices <- seq_len(nboot)
+    boot_indices <- seq_len(n_imp)
     backfiles <- NULL
     descfiles <- NULL
   }
@@ -896,7 +920,7 @@ knn_imp <- function(
     return(create_result_list(
       data_to_copy = obj,
       file_backed = file_backed,
-      nboot = nboot,
+      n_imp = n_imp,
       backfiles = backfiles,
       descfiles = descfiles,
       backingpath = backingpath,
@@ -938,12 +962,12 @@ knn_imp <- function(
       n_col_miss = pre_imp_cmiss,
       method = switch(method,
         "euclidean" = 0L,
-        "manhattan" = 1L,
-        "impute.knn" = 2L
+        "manhattan" = 1L
       ),
       weighted = weighted,
       dist_pow = dist_pow,
-      nboot = nboot,
+      n_imp = n_imp,
+      n_pmm = n_pmm,
       seed = seed,
       cores = cores
     )
@@ -961,7 +985,8 @@ knn_imp <- function(
       tree = tree,
       weighted = weighted,
       dist_pow = dist_pow,
-      nboot = nboot,
+      n_imp = n_imp,
+      n_pmm = n_pmm,
       seed = seed,
       cores = cores
     )
@@ -974,8 +999,8 @@ knn_imp <- function(
   # Fill in imputed values
   if (file_backed) {
     # Create bigmemory matrices and modify them directly
-    result_list <- vector("list", nboot)
-    for (i in seq_len(nboot)) {
+    result_list <- vector("list", n_imp)
+    for (i in seq_len(n_imp)) {
       # Create bigmemory matrix initialized with original data
       bigmat <- bigmemory::big.matrix(
         nrow = nrow(obj),
@@ -1009,8 +1034,8 @@ knn_imp <- function(
     return(result_list)
   } else {
     # Create all copies upfront with replicate
-    result_list <- replicate(nboot, obj, simplify = FALSE)
-    for (i in seq_len(nboot)) {
+    result_list <- replicate(n_imp, obj, simplify = FALSE)
+    for (i in seq_len(n_imp)) {
       # Directly modify result_list[[i]] with imputed values using pre-computed indices
       result_list[[i]][imp_indices] <- imputed_values[, i + 2]
       # Post-imputation step if needed
@@ -1032,16 +1057,16 @@ knn_imp <- function(
 create_result_list <- function(
     data_to_copy,
     file_backed,
-    nboot,
+    n_imp,
     backfiles = NULL,
     descfiles = NULL,
     backingpath = NULL,
     rn = NULL,
     cn = NULL) {
-  result_list <- vector("list", nboot)
+  result_list <- vector("list", n_imp)
 
   if (file_backed) {
-    for (i in seq_len(nboot)) {
+    for (i in seq_len(n_imp)) {
       bigmat <- bigmemory::big.matrix(
         nrow = nrow(data_to_copy),
         ncol = ncol(data_to_copy),
@@ -1056,8 +1081,8 @@ create_result_list <- function(
       result_list[[i]] <- bigmat
     }
   } else {
-    # For in-memory, create nboot copies
-    for (i in seq_len(nboot)) {
+    # For in-memory, create n_imp copies
+    for (i in seq_len(n_imp)) {
       result_list[[i]] <- data_to_copy
     }
   }

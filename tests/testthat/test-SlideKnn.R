@@ -12,7 +12,7 @@ test_that("impute_knn_brute and impute_knn_mlpack calculates the missing locatio
     miss = miss,
     k = 5,
     n_col_miss = n_col_miss,
-    method = 2,
+    method = 0,
     weighted = FALSE,
     dist_pow = 1,
     cores = 1
@@ -29,20 +29,21 @@ test_that("impute_knn_brute and impute_knn_mlpack calculates the missing locatio
     dist_pow = 1,
     cores = 1
   )
+
   imputed_index_brute[is.nan(imputed_index_brute)] <- NA
   imputed_index_mlpack[is.nan(imputed_index_mlpack)] <- NA
   expect_equal(imputed_index_brute[, c(1, 2)], missing)
   expect_equal(imputed_index_mlpack[, c(1, 2)], missing)
 })
 
-test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", {
+test_that("impute_knn_brute with n_imp > 1 produces correct bootstrap results", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.3, perc_col_NA = 1)$input)
   missing <- unname(which(is.na(to_test), arr.ind = TRUE))
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
-  nboot <- 5
+  n_imp <- 5
   k <- 5
   # Test with bootstrap
   imputed_bootstrap <- impute_knn_brute(
@@ -50,28 +51,28 @@ test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", 
     miss = miss,
     k = k,
     n_col_miss = n_col_miss,
-    method = 2,
-    weighted = TRUE, # Should be forced to FALSE when nboot > 1
+    method = 0,
+    weighted = TRUE, # Should be forced to FALSE when n_imp > 1
     dist_pow = 1,
-    nboot = nboot,
+    n_imp = n_imp,
     seed = 42,
     cores = 1
   )
   # Convert NaN to NA for easier testing
   imputed_bootstrap[is.nan(imputed_bootstrap)] <- NA
   # Correct dimensions
-  expect_equal(ncol(imputed_bootstrap), nboot + 2)
+  expect_equal(ncol(imputed_bootstrap), n_imp + 2)
   expect_equal(imputed_bootstrap[, 1:2], missing)
   # All bootstrap columns should contain imputed values
   # (some may be NA if no valid neighbors, but structure should be consistent)
-  for (b in 3:(2 + nboot)) {
+  for (b in 3:(2 + n_imp)) {
     expect_true(is.numeric(imputed_bootstrap[, b]))
   }
   # Bootstrap should produce some variability
   # Count how many missing values have at least 2 different imputed values across bootstraps
   n_with_variability <- 0
   for (i in 1:nrow(imputed_bootstrap)) {
-    bootstrap_vals <- imputed_bootstrap[i, 3:(2 + nboot)]
+    bootstrap_vals <- imputed_bootstrap[i, 3:(2 + n_imp)]
     bootstrap_vals <- bootstrap_vals[!is.na(bootstrap_vals)]
     if (length(bootstrap_vals) > 1 && length(unique(bootstrap_vals)) > 1) {
       n_with_variability <- n_with_variability + 1
@@ -81,13 +82,13 @@ test_that("impute_knn_brute with nboot > 1 produces correct bootstrap results", 
   expect_true(n_with_variability > 0)
 })
 
-test_that("impute_knn_brute with nboot > 1 produces reproducible results with same seed", {
+test_that("impute_knn_brute with n_imp > 1 produces reproducible results with same seed", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 30, m = 15, perc_NA = 0.4, perc_col_NA = 1)$input)
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
   storage.mode(miss) <- "integer"
   n_col_miss <- colSums(is.na(to_test))
-  nboot <- 3
+  n_imp <- 3
   seed_val <- 123
   # Run twice with same seed
   result1 <- impute_knn_brute(
@@ -95,10 +96,10 @@ test_that("impute_knn_brute with nboot > 1 produces reproducible results with sa
     miss = miss,
     k = 5,
     n_col_miss = n_col_miss,
-    method = 2,
+    method = 0,
     weighted = FALSE,
     dist_pow = 1,
-    nboot = nboot,
+    n_imp = n_imp,
     seed = seed_val,
     cores = 1
   )
@@ -107,10 +108,10 @@ test_that("impute_knn_brute with nboot > 1 produces reproducible results with sa
     miss = miss,
     k = 5,
     n_col_miss = n_col_miss,
-    method = 2,
+    method = 0,
     weighted = FALSE,
     dist_pow = 1,
-    nboot = nboot,
+    n_imp = n_imp,
     seed = seed_val,
     cores = 1
   )
@@ -456,14 +457,14 @@ test_that("`knn_imp` works", {
     t(khanmiss1),
     k = 3,
     rowmax = 1,
-    method = "impute.knn"
+    method = "euclidean"
   ))
 
   expect_no_error(knn_imp(
     t(khanmiss1),
     k = 3,
     rowmax = 1,
-    method = "euclidean",
+    method = "manhattan",
     tree = "kd"
   ))
 })
@@ -496,7 +497,8 @@ test_that("`impute_knn` ignore all na rows", {
     impute_knn_brute = impute_knn_brute,
     mean_impute_col = mean_impute_col,
     tree = NULL,
-    nboot = 1,
+    n_imp = 1,
+    n_pmm = 1,
     seed = 42
   )[[1]]
 
@@ -517,7 +519,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
   # Check if the 'impute' package is installed
   if (rlang::is_installed("impute")) {
     # Perform imputation using knn_imp with method "impute.knn" on transposed data
-    r1 <- knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "impute.knn")[[1]]
+    r1 <- knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "euclidean")[[1]]
 
     # Perform imputation using the original impute::impute.knn function
     # Transpose the result to match the orientation
@@ -544,7 +546,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
     pre_impute <- rowMeans(to_test, na.rm = TRUE)
 
     # Impute using knn_imp without post-imputation step; expect some NAs to remain
-    r1.1 <- knn_imp(to_test, k = 5, method = "impute.knn", post_imp = FALSE)[[1]]
+    r1.1 <- knn_imp(to_test, k = 5, method = "euclidean", post_imp = FALSE)[[1]]
     expect_true(anyNA(r1.1))
 
     # impute::impute.knn uses the pre-imputation row means to impute the data.
@@ -588,7 +590,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
     r1_subset <- knn_imp(
       to_test_subset,
       k = 10,
-      method = "impute.knn",
+      method = "euclidean",
       post_imp = FALSE,
       subset = subset_cols
     )[[1]][, subset_cols]
@@ -616,7 +618,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
       t(khanmiss1),
       k = 3,
       rowmax = 1,
-      method = "impute.knn"
+      method = "euclidean"
     ))
   }
 })
@@ -643,7 +645,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
       k = 3,
       output = output_path,
       overwrite = TRUE,
-      nboot = 3,
+      n_imp = 3,
       seed = 42
     )
   })
@@ -670,7 +672,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
         k = 3,
         output = output_path,
         overwrite = FALSE,
-        nboot = 3,
+        n_imp = 3,
         seed = 42
       )
     },
@@ -684,7 +686,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
       k = 3,
       output = output_path,
       overwrite = TRUE,
-      nboot = 3,
+      n_imp = 3,
       seed = 42
     )
   })
@@ -704,7 +706,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
     test_data,
     k = 3,
     output = NULL, # Memory version
-    nboot = 3,
+    n_imp = 3,
     seed = 42
   )
 
@@ -731,7 +733,7 @@ test_that("bigmemory functionality in knn_imp works correctly", {
   }
 })
 
-test_that("bigmemory with single bootstrap (nboot=1) works correctly", {
+test_that("bigmemory with single bootstrap (n_imp=1) works correctly", {
   # Set option
   old_opt <- getOption("bigmemory.allow.dimnames")
   options(bigmemory.allow.dimnames = TRUE)
@@ -745,13 +747,13 @@ test_that("bigmemory with single bootstrap (nboot=1) works correctly", {
   temp_dir <- withr::local_tempdir()
   output_path <- fs::path(temp_dir, "test_single_boot")
 
-  # Run with nboot=1 (should not add _boot suffix)
+  # Run with n_imp=1 (should not add _boot suffix)
   result_single <- knn_imp(
     test_data,
     k = 3,
     output = output_path,
     overwrite = TRUE,
-    nboot = 1,
+    n_imp = 1,
     seed = 42
   )
 
@@ -768,7 +770,7 @@ test_that("bigmemory with single bootstrap (nboot=1) works correctly", {
     test_data,
     k = 3,
     output = NULL,
-    nboot = 1,
+    n_imp = 1,
     seed = 42
   )
 
@@ -797,7 +799,7 @@ test_that("bigmemory with subset parameter works correctly", {
     overwrite = TRUE,
     subset = c(1, 3, 5),
     post_imp = FALSE,
-    nboot = 2,
+    n_imp = 2,
     seed = 42
   )
 
@@ -808,7 +810,7 @@ test_that("bigmemory with subset parameter works correctly", {
     output = NULL,
     subset = c(1, 3, 5),
     post_imp = FALSE,
-    nboot = 2,
+    n_imp = 2,
     seed = 42
   )
 
@@ -929,15 +931,15 @@ test_that("`mean_impute_col` works", {
   expect_identical(mean_impute_col(to_test, subset = c(1, 5, 10)), c_subset)
 })
 
-test_that("`knn_imp` with nboot = 2 and subset = first 2 columns works", {
+test_that("`knn_imp` with n_imp = 2 and subset = first 2 columns works", {
   set.seed(1234)
   to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)$input)
 
-  # Test with nboot = 2 and subset = first 2 columns
+  # Test with n_imp = 2 and subset = first 2 columns
   results <- knn_imp(
     to_test,
     k = 5,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
     post_imp = TRUE,
     seed = 123
@@ -962,72 +964,94 @@ test_that("`knn_imp` with nboot = 2 and subset = first 2 columns works", {
   expect_true(is.list(results) && length(results) == 2)
 })
 
-test_that("`SlideKnn` with nboot = 2 and subset = first 2 columns works", {
+test_that("`SlideKnn` with n_imp = 2 and subset = first 2 columns works", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 100, m = 50, perc_NA = 0.3, perc_col_NA = 1)$input)
-
-  # Test with nboot = 2 and subset = first 2 columns
+  to_test_bm <- bigmemory::as.big.matrix(to_test)
+  expect_warning(
+    results_in_memory <- SlideKnn(
+      to_test,
+      n_feat = 30,
+      n_overlap = 5,
+      k = 5,
+      n_imp = 2,
+      subset = c(1, 2),
+      post_imp = TRUE,
+      overwrite = TRUE,
+      seed = 123
+    )
+  )
+  # Test with n_imp = 2 and subset = first 2 columns
   results <- SlideKnn(
-    to_test,
+    to_test_bm,
     n_feat = 30,
     n_overlap = 5,
     k = 5,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
     post_imp = TRUE,
+    output = withr::local_tempdir(),
+    overwrite = TRUE,
     seed = 123
   )
-
+  for (i in 1:2) {
+    expect_identical(unname(results_in_memory[[i]]), results[[i]][, ])
+  }
   # Should return a list of length 2
   expect_equal(length(results), 2)
 
   # Each result should be a matrix with same dimensions as input
-  expect_true(all(sapply(results, function(x) all(dim(x) == dim(to_test)))))
+  expect_true(all(sapply(results, function(x) all(dim(x) == dim(to_test_bm[, ])))))
 
   # Only first 2 columns should be imputed (no NAs)
   expect_true(all(sapply(results, function(x) !anyNA(x[, 1:2]))))
 
   # Other columns should have same NA pattern as original
   expect_true(all(sapply(results, function(x) {
-    identical(is.na(x[, -(1:2)]), is.na(to_test[, -(1:2)]))
+    identical(is.na(x[, ][, -(1:2)]), unname(is.na(to_test[, -(1:2)])))
   })))
 
   # Results should be proper matrices with correct attributes
-  expect_true(all(sapply(results, is.matrix)))
-  expect_true(all(sapply(results, is.numeric)))
+  expect_true(all(sapply(results, \(x) is.matrix(x[, ]))))
+  expect_true(all(sapply(results, \(x) is.numeric(x[, ]))))
 })
 
 test_that("`knn_imp` and `SlideKnn` bootstrap reproducibility with seeds", {
   set.seed(1234)
   to_test <- t(sim_mat(m = 10, n = 30, perc_NA = 0.2, perc_col_NA = 1)$input)
+  to_test_bm <- bigmemory::as.big.matrix(to_test)
 
   # Test knn_imp reproducibility
-  result1_knn <- knn_imp(to_test, k = 3, nboot = 2, subset = c(1, 2), seed = 456)
-  result2_knn <- knn_imp(to_test, k = 3, nboot = 2, subset = c(1, 2), seed = 456)
+  result1_knn <- knn_imp(to_test, k = 3, n_imp = 2, subset = c(1, 2), seed = 456)
+  result2_knn <- knn_imp(to_test, k = 3, n_imp = 2, subset = c(1, 2), seed = 456)
 
   expect_identical(result1_knn, result2_knn)
 
   # Test SlideKnn reproducibility
   result1_slide <- SlideKnn(
-    to_test,
+    to_test_bm,
     n_feat = 15,
     n_overlap = 3,
     k = 3,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
+    output = withr::local_tempdir(),
     seed = 456
   )
   result2_slide <- SlideKnn(
-    to_test,
+    to_test_bm,
     n_feat = 15,
     n_overlap = 3,
     k = 3,
-    nboot = 2,
+    n_imp = 2,
     subset = c(1, 2),
+    output = withr::local_tempdir(),
     seed = 456
   )
 
-  expect_identical(result1_slide, result2_slide)
+  for (i in 1:2) {
+    expect_identical(result1_slide[[i]][, ], result2_slide[[i]][, ])
+  }
 })
 
 test_that("`find_knn_brute` returns correct neighbors as manual implementation", {
@@ -1054,7 +1078,6 @@ test_that("`find_knn_brute` returns correct neighbors as manual implementation",
   r_dist <- as.matrix(dist(t(to_test)))
 
   # For each of the two columns, compute expected neighbors
-  col_idx <- 1
   for (col_idx in 1:2) {
     col_name <- paste0("feat", col_idx)
 
@@ -1070,9 +1093,136 @@ test_that("`find_knn_brute` returns correct neighbors as manual implementation",
     expect_equal(result[[col_name]]$indices, k_nearest_indices)
 
     # Check that the function returned the correct distances
-    expect_equal(result[[col_name]]$distances, k_nearest_distances)
+    expect_equal(
+      sqrt(result[[col_name]]$distances * nrow(to_test)),
+      k_nearest_distances
+    )
 
     # Check that k neighbors were returned
     expect_equal(result[[col_name]]$n_neighbors, k)
+  }
+})
+
+test_that("weighted_row_means matches rowMeans with equal weights and all columns", {
+  # Generate test data
+  set.seed(123)
+  to_test <- t(sim_mat(n = 10, m = 10, perc_NA = 0.5, perc_col_NA = 1)$input)
+
+  # Create miss matrix (1 = missing, 0 = observed)
+  miss <- is.na(to_test)
+
+  # All columns with equal weights should match rowMeans
+  n_cols <- ncol(to_test)
+  nn_columns <- 0:(n_cols - 1) # 0-indexed for C++
+  nn_weights <- rep(1, n_cols) # Equal weights
+
+  # All Columns
+  r1 <- weighted_row_means(to_test, miss, nn_columns, nn_weights)[, 1]
+  e1 <- unname(rowMeans(to_test, na.rm = TRUE))
+
+  expect_equal(r1, e1)
+
+  # Selected Columns
+  selected_cols <- c(1, 3, 4) # R indexing
+  r2 <- weighted_row_means(to_test, miss, selected_cols - 1, nn_weights)[, 1]
+  e2 <- unname(rowMeans(to_test[, selected_cols, drop = FALSE], na.rm = TRUE))
+
+  expect_equal(r2, e2)
+
+  # Weighted all cols
+  set.seed(1234)
+  r_weights <- runif(n_cols, min = 0.1, max = 2)
+  r3 <- weighted_row_means(to_test, miss, nn_columns, r_weights)[, 1]
+
+  # Manual Calculation
+  weighted_mat <- sweep(to_test, MARGIN = 2, r_weights, FUN = "*")
+  weight_mat <- sweep(!is.na(to_test), MARGIN = 2, r_weights, FUN = "*")
+  e3 <- rowSums(weighted_mat, na.rm = TRUE) / rowSums(weight_mat, na.rm = TRUE)
+
+  expect_equal(r3, unname(e3))
+
+  # Weighted selected cols
+  r4 <- weighted_row_means(to_test, miss, selected_cols - 1, r_weights[selected_cols])[, 1]
+  sel_mat <- to_test[, selected_cols, drop = FALSE]
+  weighted_mat_sel <- sweep(sel_mat, MARGIN = 2, r_weights[selected_cols], FUN = "*")
+  weight_mat_sel <- sweep(!is.na(sel_mat), MARGIN = 2, r_weights[selected_cols], FUN = "*")
+  e4 <- rowSums(weighted_mat_sel, na.rm = TRUE) / rowSums(weight_mat_sel, na.rm = TRUE)
+
+  expect_equal(r4, unname(e4))
+})
+
+test_that("PMM works", {
+  # Manually use implement pmm in R
+  # Simulate a 30*6 matrix and column 0 has missing data. Column 1, 2 are the
+  # nearest neighbors. Let's do 5 donors, 2 nearest neighbors
+  set.seed(123)
+  nrow_obj <- 30
+  ncol_obj <- 6
+  n_miss <- 5
+  target_col <- 1 # Column with missing is column 1 (R based)
+  nn_col <- c(2, 3) # nearest neighbor is 2, 3
+  weights <- c(1, 0.5)
+  l <- nrow_obj * ncol_obj
+  # Just make sure generated values are unique for easy debug
+  while (TRUE) {
+    values <- rnorm(l)
+    if (length(values) == length(unique(values))) {
+      break
+    }
+  }
+  obj <- matrix(values, ncol = ncol_obj)
+  # 4 values that requires pmm imputation
+  obj[, target_col][sample.int(nrow_obj, size = n_miss)] <- NA
+  miss <- is.na(obj)
+
+  # Calculate the donor pool
+  y_hat <- weighted_row_means(
+    obj[, nn_col],
+    miss = miss[, nn_col],
+    seq_along(nn_col) - 1, # All columns of the subset matrix.
+    weights # Weights
+  )[, 1]
+  # miss rows
+  miss_rows <- which(miss[, target_col])
+  # Set values with missing to NA
+  y_hat_pool <- y_hat
+  y_hat_pool[miss_rows] <- NA
+  # Add names for easy tracking
+  names(y_hat_pool) <- seq_along(y_hat_pool)
+
+  n_pmm <- 5
+  donor_pool <- lapply(
+    miss_rows,
+    \(x) {
+      miss_hat <- y_hat[x]
+      # distance to all other rows
+      dist_vect <- abs(y_hat_pool - miss_hat)
+      # get the actual imputed value pool from the donors back
+      obj[as.numeric(names(sort(dist_vect)[seq_len(n_pmm)])), target_col]
+    }
+  )
+
+  # Initialize result matrix
+  n_imp <- 50
+  result <- matrix(0, nrow = n_miss, ncol = 2 + n_imp)
+
+  # Modify the data in place
+  impute_column_values_pmm(
+    result = result,
+    obj = obj,
+    miss = miss,
+    col_offset = 0, # first column
+    target_col_idx = target_col - 1, # C++ index is 0 based
+    nn_columns = nn_col - 1,
+    nn_weights = weights, # weight vec
+    n_imp = n_imp,
+    n_pmm = n_pmm,
+    seed = 42
+  )
+
+  # Simulated result matrix. Where column 2:2+n_imp holds each draw of the pmm
+  miss_rows_pred <- asplit(result[, c(3:(2 + n_imp)), drop = F], MARGIN = 1)
+  for (i in seq_along(miss_rows_pred)) {
+    expect_true(all(miss_rows_pred[[i]] %in% donor_pool[[i]]))
   }
 })
