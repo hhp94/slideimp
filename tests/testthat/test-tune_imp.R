@@ -79,7 +79,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
 
   # Create a complete matrix (no NAs) for testing
   obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
-  obj[is.na(obj)] <- 0  # Fill any existing NAs
+  obj[is.na(obj)] <- 0 # Fill any existing NAs
 
   # Create predefined NA location sets
   # Each set has 10 locations, all within matrix bounds
@@ -103,7 +103,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     SlideKnn_res <- tune_imp(
       obj,
       SlideKnn_par,
-      rep = na_loc_list,  # Using list instead of integer
+      rep = na_loc_list, # Using list instead of integer
       .f = "SlideKnn"
     )
   })
@@ -203,9 +203,9 @@ test_that("tune_imp correctly uses provided NA locations from list", {
 
   # Define specific NA locations
   na_locations <- list(
-    c(1, 11, 21),  # First column positions
+    c(1, 11, 21), # First column positions
     c(10, 20, 30), # Last position of first 3 rows
-    c(50, 60, 70)  # Middle positions
+    c(50, 60, 70) # Middle positions
   )
 
   # Simple imputation function that replaces NA with a fixed value

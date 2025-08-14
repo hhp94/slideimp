@@ -1,7 +1,7 @@
 Package: SlideKnn
 Type: Package
-Title: KNN Imputation of Numeric Data and Sliding KNN Imputation of Micro Array Data
-Version: 0.5.1
+Title: Fast KNN Imputation of Numeric Data and Sliding Window KNN Imputation of Large Numeric Data
+Version: 0.5.2
 Authors@R: c(
     person(
       "Hung", "Pham",
@@ -9,8 +9,8 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: Impute numeric data with KNN imputation or micro array data using sliding KNN imputation.
-License: MIT + file LICENSE
+Description: Impute numeric data with KNN imputation or large numeric data such as intensive longitudinal data or epi-genomic data
+License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true
 Suggests: 

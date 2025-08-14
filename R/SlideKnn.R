@@ -41,7 +41,7 @@
 #' @param cores Integer specifying the number of cores to use for parallel computation
 #'   of distances. Default is 1.
 #' @param method Character string specifying the distance metric for k-NN. One of
-#'   `"euclidean"`, `"manhattan"`, or `"impute.knn"`. Defaults to `"euclidean"`.
+#'   `"euclidean"`, `"manhattan"`. Defaults to `"euclidean"`.
 #' @param tree Character string specifying the k-NN method. `NULL` (default) uses
 #'   brute-force search. `"kd"` uses KDTree and `"ball"` uses BallTree as implemented by
 #'   the mlpack package where missing values are first filled with column means
@@ -56,6 +56,11 @@
 #'   1 apply a harsher penalty.
 #' @param n_imp Integer specifying the number of imputations to perform.
 #'   Default is 1.
+#' @param n_pmm Integer controlling multiple imputation method when n_imp > 1.
+#'   If n_pmm > 0: PMM multiple imputation using n_pmm closest donors (will not exceed
+#'   available non-missing values column wise).
+#'   If n_pmm = 0: Bootstrap multiple imputation via resampling from k nearest neighbors.
+#'   Ignored when n_imp = 1 (single imputation).
 #' @param seed Integer; random seed for reproducible bootstrap sampling. Default is 42.
 #' @param .progress Logical; if `TRUE`, show a progress bar. Default is `FALSE`.
 #' @param output Character; path to save the output big.matrix if `obj` is file-backed.
@@ -88,8 +93,8 @@
 #'   weighted = TRUE,
 #'   dist_pow = 2
 #' )
-#' # Bootstrap version
-#' # imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, n_imp = 3)
+#' # PMM version with 10 donors
+#' # imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, n_imp = 3, n_pmm = 10)
 #' @export
 SlideKnn <- function(
     obj,
@@ -100,12 +105,13 @@ SlideKnn <- function(
     rowmax = 0.9,
     colmax = 0.9,
     cores = 1,
-    method = c("euclidean", "manhattan", "impute.knn"),
+    method = c("euclidean", "manhattan"),
     tree = NULL,
     post_imp = TRUE,
     weighted = FALSE,
     dist_pow = 1,
     n_imp = 1,
+    n_pmm = 10,
     seed = 42,
     .progress = FALSE,
     output = NULL,
@@ -114,7 +120,9 @@ SlideKnn <- function(
     strip_dimnames = FALSE) {
   # Pre-conditioning ----
   method <- match.arg(method)
-  checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
+  if(!is.character(obj)) {
+    checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
+  }
   checkmate::assert_integerish(n_overlap, lower = 0, upper = n_feat - 1, len = 1, null.ok = FALSE, .var.name = "n_overlap")
   checkmate::assert_integerish(k, lower = 1, upper = n_feat - 1, len = 1, null.ok = FALSE, .var.name = "k")
   checkmate::assert_numeric(rowmax, lower = 0, upper = 1, len = 1, null.ok = FALSE, .var.name = "rowmax")
@@ -144,8 +152,8 @@ SlideKnn <- function(
     ),
     .var.name = "subset"
   )
-  if (n_imp > 1 && weighted) {
-    warning("If n_imp > 1, weighted will be forced to FALSE")
+  if (n_imp > 1 && n_pmm == 0 && weighted) {
+    warning("If bootstrapping nearest neighbors, weighted will be forced to FALSE")
   }
 
   # set.seed() ----
@@ -172,6 +180,7 @@ SlideKnn <- function(
       }
     }
     obj <- bigmemory::attach.big.matrix(obj)
+    checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
     TRUE
   } else if (bigmemory::is.big.matrix(obj)) {
     TRUE
@@ -182,7 +191,7 @@ SlideKnn <- function(
     stop("`obj` has to be a numeric matrix or a (descriptor of a) double bigmemory::big.matrix.")
   }
   if (n_imp > 1 && !file_backed) {
-    warning("If n_imp > 1 should be used with output to bigmemory::big.matrix. Change `output` to a path to enable this.")
+    warning("If n_imp > 1 should be used with output to bigmemory::big.matrix. Change `obj` to a bigmemory::big.matrix/path to bigmemory::big.matrix .desc file to enable this.")
   }
   # Remove obj names temporary to reduce size of pointers being passed to workers
   rn <- rownames(obj)
@@ -412,6 +421,7 @@ SlideKnn <- function(
           dist_pow = dist_pow,
           subset = subset_list[[i]],
           n_imp = n_imp,
+          n_pmm = n_pmm,
           seed = seed,
           knn_imp = knn_imp,
           tree = tree,
@@ -447,6 +457,7 @@ SlideKnn <- function(
       offset_start = offset_start,
       offset_end = offset_end,
       n_imp = n_imp,
+      n_pmm = n_pmm,
       seed = seed
     ),
     .progress = .progress
@@ -631,6 +642,7 @@ impute_knn <- function(
     tree,
     knn_imp,
     n_imp,
+    n_pmm,
     seed,
     ...) {
   na_mat <- is.na(obj)
@@ -656,6 +668,7 @@ impute_knn <- function(
     dist_pow = dist_pow,
     tree = tree,
     n_imp = n_imp,
+    n_pmm = n_pmm,
     seed = seed,
     ...
   )
@@ -736,7 +749,6 @@ impute_knn <- function(
 #' sum(is.na(khanmiss1))
 #'
 #' # Perform k-NN imputation. `khanmiss1` stores genes in rows so we transpose.
-#' # Set method to "impute.knn" to mimic how distance is scaled in impute::impute.knn.
 #' imputed <- knn_imp(
 #'   obj = t(khanmiss1),
 #'   k = 3,
@@ -758,13 +770,27 @@ impute_knn <- function(
 #'   method = "euclidean"
 #' )[[1]]
 #'
-#' # Bootstrap imputation for uncertainty quantification
+#' # PMM imputation with 5 imputations and 3 donors. Increase `n_pmm` in real
+#' # data to ensure realistic uncertainty.
+#' imputed_pmm <- knn_imp(
+#'   obj = t(khanmiss1),
+#'   k = 5,
+#'   n_imp = 5,
+#'   n_pmm = 3,
+#'   seed = 123
+#' )
+#'
+#' length(imputed_pmm) # Returns 5 imputed datasets
+#'
+#' # Bootstrap imputation for uncertainty injection.
 #' imputed_boot <- knn_imp(
 #'   obj = t(khanmiss1),
 #'   k = 3,
 #'   n_imp = 5,
+#'   n_pmm = 0, # n_pmm = 0 enable bootstrapping nearest neighbors
 #'   seed = 123
 #' )
+#'
 #' length(imputed_boot) # Returns 5 imputed datasets
 #'
 #' @export
@@ -773,7 +799,7 @@ knn_imp <- function(
     k,
     colmax = 0.9,
     rowmax = 0.9,
-    method = c("euclidean", "manhattan", "impute.knn"),
+    method = c("euclidean", "manhattan"),
     cores = 1,
     post_imp = TRUE,
     subset = NULL,
@@ -781,6 +807,7 @@ knn_imp <- function(
     dist_pow = 1,
     tree = NULL,
     n_imp = 1,
+    n_pmm = 10,
     seed = 42,
     output = NULL,
     overwrite = TRUE,
@@ -795,6 +822,7 @@ knn_imp <- function(
   checkmate::assert_numeric(rowmax, lower = 0, upper = 1, len = 1, .var.name = "rowmax")
   checkmate::assert_logical(post_imp, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "post_imp")
   checkmate::assert_integerish(n_imp, lower = 1, len = 1, .var.name = "n_imp")
+  checkmate::assert_integerish(n_pmm, lower = 0, upper = nrow(obj), len = 1, .var.name = "n_pmm")
   checkmate::assert_integerish(seed, lower = 0, len = 1, .var.name = "seed", null.ok = FALSE)
   checkmate::assert(
     checkmate::check_character(subset, min.len = 0, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
@@ -809,11 +837,7 @@ knn_imp <- function(
   checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
   checkmate::assert_string(output, null.ok = TRUE, .var.name = "output")
   checkmate::assert_logical(overwrite, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "overwrite")
-  if (!is.null(tree)) {
-    if (method == "impute.knn") {
-      method <- "euclidean"
-    }
-  }
+
   set.seed(seed)
   # Store original dimnames
   rn <- rownames(obj)
@@ -938,12 +962,12 @@ knn_imp <- function(
       n_col_miss = pre_imp_cmiss,
       method = switch(method,
         "euclidean" = 0L,
-        "manhattan" = 1L,
-        "impute.knn" = 2L
+        "manhattan" = 1L
       ),
       weighted = weighted,
       dist_pow = dist_pow,
       n_imp = n_imp,
+      n_pmm = n_pmm,
       seed = seed,
       cores = cores
     )
@@ -962,6 +986,7 @@ knn_imp <- function(
       weighted = weighted,
       dist_pow = dist_pow,
       n_imp = n_imp,
+      n_pmm = n_pmm,
       seed = seed,
       cores = cores
     )

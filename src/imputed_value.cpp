@@ -61,7 +61,7 @@ void impute_column_values(
     const arma::uword col_offset,
     const arma::uword target_col_idx,
     const arma::umat &nn_columns_mat,
-    const arma::vec &nn_weights, // Changed from arma::mat to arma::vec
+    const arma::vec &nn_weights,
     const arma::uword n_imp)
 {
     // Find which rows are missing in this specific column
@@ -93,56 +93,20 @@ void impute_column_values(
     }
 }
 
-// Prepare neighbor columns and weights for imputation.
-void prepare_imputation_neighbors(
-    arma::umat &nn_columns_mat,
-    arma::mat &nn_weights_mat,
-    const arma::uvec &nn_columns,
-    const arma::vec &nn_dists,
-    const arma::uword n_imp,
-    const bool weighted,
-    const double dist_pow)
-{
-    arma::uword n_neighbors = nn_columns.n_elem;
-
-    // Initialize matrices
-    nn_columns_mat.set_size(n_neighbors, n_imp);
-    nn_weights_mat.set_size(n_neighbors, n_imp);
-
-    // Init the neighbor matrix with the same neighbor for all n_imp. If the
-    // method is bootstrap, then the neighbor will be resampled later. If the
-    // method is pmm, then the neighbor will be the same for all n_imp, but the
-    // chosen donor will be random.
-    for (arma::uword b = 0; b < n_imp; ++b)
-    {
-        nn_columns_mat.col(b) = nn_columns;
-        // Compute weights based on distances
-        if (weighted)
-        {
-            nn_weights_mat.col(b) = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-        }
-        else
-        {
-            nn_weights_mat.col(b).fill(1.0); // Simple average
-        }
-    }
-}
-
 void resample_neighbor(
     arma::umat &nn_columns_mat,
     const arma::uword seed,
     const arma::uword target_col_idx)
 {
-    if (nn_columns_mat.n_cols <= 1)
-        return;
-
+    // if (nn_columns_mat.n_cols <= 1)
+    //     return;
     std::mt19937 gen(seed + target_col_idx);
 
-    arma::uword n_neighbors = nn_columns_mat.n_rows;
-    arma::uvec orig_columns = nn_columns_mat.col(0);
+    const arma::uword n_neighbors = nn_columns_mat.n_rows;
+    const arma::uvec orig_columns = nn_columns_mat.col(0);
 
     std::uniform_int_distribution<arma::uword> dist(0, n_neighbors - 1);
-
+    // sampling with replacement the neighbor matrix
     for (arma::uword b = 0; b < nn_columns_mat.n_cols; ++b)
     {
         for (arma::uword j = 0; j < n_neighbors; ++j)
@@ -153,8 +117,18 @@ void resample_neighbor(
     }
 }
 
-// Calculate predicted values for all rows of col i using k neighbor columns,
-// which is just the weighted_row_means
+//' @title Weighted Row Mean
+//'
+//' @description Calculate weighted row means for specified columns, accounting for missing values.
+//'
+//' @param obj A numeric matrix containing the data.
+//' @param miss An unsigned integer matrix indicating missing values (0 for observed, 1 for missing).
+//' @param nn_columns An unsigned integer vector of column indices for the neighbors.
+//' @param nn_weights A numeric vector of weights corresponding to the neighbors.
+//'
+//' @return A column vector containing the weighted row means, with NaN where computation is not possible.
+//'
+// [[Rcpp::export]]
 arma::vec weighted_row_means(
     const arma::mat &obj,
     const arma::umat &miss,
@@ -164,42 +138,50 @@ arma::vec weighted_row_means(
     const arma::uword n_rows = obj.n_rows;
     const arma::uword n_neighbors = nn_columns.n_elem;
     arma::vec predicted(n_rows);
-    predicted.fill(arma::datum::nan);
-    // Create subviews for efficiency
-    arma::mat neighbor_data(n_rows, n_neighbors);
-    arma::umat neighbor_miss(n_rows, n_neighbors);
-    for (arma::uword j = 0; j < n_neighbors; ++j)
-    {
-        neighbor_data.col(j) = obj.col(nn_columns(j));
-        neighbor_miss.col(j) = miss.col(nn_columns(j));
+    // Pre-fetch column pointers to avoid repeated indexing
+    std::vector<const double*> data_cols(n_neighbors);
+    std::vector<const arma::uword*> miss_cols(n_neighbors);
+    for (arma::uword j = 0; j < n_neighbors; ++j) {
+        data_cols[j] = obj.colptr(nn_columns(j));
+        miss_cols[j] = miss.colptr(nn_columns(j));
     }
-    // Transpose for contiguous access in column-major storage
-    arma::mat neighbor_data_t = neighbor_data.t();
-    arma::umat neighbor_miss_t = neighbor_miss.t();
-    for (arma::uword r = 0; r < n_rows; ++r)
-    {
-        const double *data_ptr = neighbor_data_t.colptr(r);
-        const arma::uword *miss_ptr = neighbor_miss_t.colptr(r);
-        const double *weight_ptr = nn_weights.memptr();
+    const double* weight_ptr = nn_weights.memptr();
+    // Process each row
+    for (arma::uword r = 0; r < n_rows; ++r) {
         double numerator = 0.0;
         double denominator = 0.0;
-        for (arma::uword j = 0; j < n_neighbors; ++j)
-        {
-            if (miss_ptr[j] == 0)
-            {
-                numerator += data_ptr[j] * weight_ptr[j];
-                denominator += weight_ptr[j];
+        for (arma::uword j = 0; j < n_neighbors; ++j) {
+            if (miss_cols[j][r] == 0) {
+                double weight = weight_ptr[j];
+                numerator += data_cols[j][r] * weight;
+                denominator += weight;
             }
         }
-        if (denominator > 0.0)
-        {
-            predicted(r) = numerator / denominator;
-        }
+        // If denominator is zero then return NaN
+        predicted(r) = (denominator > 0.0) ? (numerator / denominator) : arma::datum::nan;
     }
+
     return predicted;
 }
 
-// Impute using Predictive Mean Matching
+//' @title k-NN Impute using Predictive Mean Matching
+//'
+//' @description Rcpp implementation of predictive mean matching (PMM) for imputation. Exported for testing only.
+//'
+//' @param result Result matrix where column 2:2+n_imp contains imputed values (modified in place).
+//' @param obj R matrix
+//' @param miss is.na(obj).
+//' @param col_offset Basically `cumsum(colSums(is.na(obj)))`.
+//' @param target_col_idx The index of the target column to impute in obj.
+//' @param nn_columns Column idx of nearest neighbors.
+//' @param nn_weights Weights corresponding to nn_columns.
+//' @param n_imp The number of imputations to perform for each missing value.
+//' @param n_pmm The number of closest donors to consider for PMM.
+//' @param seed RNG seed.
+//'
+//' @return void (modifies the result matrix in place).
+//'
+// [[Rcpp::export]]
 void impute_column_values_pmm(
     arma::mat &result,
     const arma::mat &obj,

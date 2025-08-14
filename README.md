@@ -7,129 +7,45 @@
 
 <!-- badges: end -->
 
-The
-[`{impute}`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
-package available on Bioconductor is the go-to solution for k-nearest
-neighbors (KNN) imputation in R. It is extremely fast and battle-tested.
-However, the package has certain quirks:
+`{SlideKnn}` is an efficient R package for k-nearest neighbors (KNN)
+imputation of missing values in high-dimensional numeric matrices, such
+as those from intensive longitudinal data or epi-genomics. It introduces
+a sliding window approach to handle very large feature sets while
+preserving local structure, making it suitable for data where features
+are ordered (e.g., by time or distance).
 
-<ul>
+The package builds on proven KNN concepts (Bioconductor’s `impute`
+package) but adds enhancements: parallelization for speed, tree-based
+methods for efficiency, weighted imputation, multiple imputation
+strategies, and built-in tuning tools. It’s designed for matrices with
+samples in rows and features in columns.
 
-<li>
+Key features include:
 
-The data is expected to be in genes-by-samples format, and the
-clustering is done row-wise (i.e., finding genes that are close to each
-other for imputation). But in the final step, missing values that fail
-KNN imputation are imputed column-wise (i.e., using the mean value of
-all genes of a person). This might not be the expected behavior, as the
-mean value of a gene across the population makes more sense, whereas the
-mean value of all genes in one person doesn’t really have a biological
-meaning.
-</li>
-
-<li>
-
-The default `maxp` argument and how the package recursively breaks the
-data down using two-mean clustering until this size is reached before
-KNN imputation can be tricky to understand. This is done to save
-computation time but might not have the best results compared to a full
-KNN imputation.
-</li>
-
-<li>
-
-For really high dimensional data, this strategy is still very slow and
-the full KNN imputation is almost intractable.
-<ul>
-
-<li>
-
-For these data, the distance calculation is embarrassingly
-parallelizable, so you can speed up things massively with multiple
-cores.
-</li>
-
-<li>
-
-Modern KNN methods for high dimensional data using tree based methods
-may speed up calculations substantially at the expense of some accuracy
-due to the handling of missing value in distance calculations.
-</li>
-
-<li>
-
-For methylation data or any other data where features closer to each
-other spatially may be highly correlated, we don’t have to do a full KNN
-imputation over the full set of features. We can just impute features
-closer to each other within a predefined window of distance, move the
-window over, and iterate until we’ve imputed everything. This enables
-imputation of even very high-dimensional data.
-</li>
-
-</ul>
-
-</li>
-
-<li>
-
-Doesn’t support weighted average by inverse distance.
-</li>
-
-<li>
-
-Only Euclidean distance is available.
-</li>
-
-</ul>
-
-Key features:
-
-<ul>
-
-<li>
-
-Sliding window KNN imputation (`SlideKnn()`).
-</li>
-
-<li>
-
-Standard KNN imputation (`knn_imp()`) with multiple cores
-parallelization over numbers of columns with missing
-(`knn_imp(cores = 4)`).
-</li>
-
-<li>
-
-Tree KNN implementation by the [`{mlpack}`](https://www.mlpack.org/)
-package.
-</li>
-
-<li>
-
-Weighted average imputation by inverse distance to improve accuracy.
-</li>
-
-<li>
-
-Parameter tuning with artificial NA injection (`tune_imp()` and
-`inject_na()`).
-</li>
-
-<li>
-
-Mean imputation fallbacks (`mean_impute_row()`, `mean_impute_col()`).
-</li>
-
-<li>
-
-Support for Euclidean, Manhattan, or `impute.knn`-style distances.
-</li>
-
-</ul>
+- **Sliding Window KNN Imputation**: Break large data into overlapping
+  windows for computationally feasible imputation while maintaining
+  local structures (e.g., intensively sampled longitudinal data or
+  epi-genomic data).
+- **Full Matrix KNN Imputation**: Standard KNN for smaller data, with
+  multi-core parallelization over columns with missing values.
+- **Tree-Based KNN**: Integration with `{mlpack}` for KD-Tree or
+  Ball-Tree methods, accelerating imputation in high dimensions.
+- **Subset Imputation**: Only impute a subset of columns to save time.
+  Important for applications such as epi-genetic clocks calculations.
+- **Weighted Imputation**: Use inverse-distance weighting for more
+  accurate averages, with tunable penalties.
+- **Multiple Imputation**: Support for Predictive Mean Matching (PMM) or
+  bootstrap resampling from nearest neighbors.
+- **Fallback Imputation**: Optional post-KNN mean imputation by column
+  to handle remaining NAs.
+- **Parameter Tuning**: Inject artificial NAs to evaluate and tune
+  hyperparameters, with support for custom imputation functions.
+- **Big Matrix Support**: Compatible with `{bigmemory}` for file-backed
+  matrices to handle massive data without loading everything into RAM.
 
 ## Installation
 
-You can install the development version of SlideKnn from
+You can install the development version of `{SlideKnn}` from
 [GitHub](https://github.com/hhp94/SlideKnn) with:
 
 ``` r
@@ -139,8 +55,8 @@ remotes::install_github("hhp94/SlideKnn")
 
 ## Example
 
-This is a basic example using the `SlideKnn` function on the `khanmiss1`
-data. See `?khanmiss1`
+Load the package and use the built-in `khanmiss1` data (see `?khanmiss1`
+for details).
 
 ``` r
 library(SlideKnn)
@@ -148,105 +64,176 @@ library(SlideKnn)
 data(khanmiss1)
 
 # Transpose for samples in rows, features in columns
-imputed <- SlideKnn(t(khanmiss1), n_feat = 100, n_overlap = 10, k = 10)
-sum(is.na(imputed)) # Should be 0
+imputed <- SlideKnn(t(khanmiss1), n_feat = 2000, n_overlap = 100, k = 10)
+sum(is.na(imputed[[1]])) # Should be 0
 #> [1] 0
 ```
 
-For full matrix KNN imputation without sliding windows:
-
-``` r
-system.time(
-  imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
-)
-#>    user  system elapsed 
-#>    0.00    0.03    0.02
-```
-
-Importantly, we can speed this up using multiple cores:
+For full matrix KNN imputation without sliding windows (faster with
+parallelization):
 
 ``` r
 system.time(
   imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 4)
 )
 #>    user  system elapsed 
-#>    0.01    0.00    0.02
+#>    0.00    0.00    0.01
+sum(is.na(imputed_full[[1]])) # Should be 0
+#> [1] 0
 ```
+
+Using tree-based KNN with weighting and multiple imputation (PMM):
+
+``` r
+imputed_tree <- knn_imp(
+  t(khanmiss1),
+  k = 5,
+  tree = "kd",          # KD-Tree via mlpack
+  weighted = TRUE,      # Inverse-distance weighting
+  dist_pow = 2,         # Harsher penalty for distant neighbors
+  n_imp = 3,            # 3 imputations
+  n_pmm = 10            # PMM with 10 donors
+)
+#> [INFO ] 55839 node combinations were scored.
+#> [INFO ] 480166 base cases were calculated.
+length(imputed_tree) # 3 imputed matrices
+#> [1] 3
+```
+
+Optional simple mean imputation as a fallback or baseline that enables
+multi-step imputation strategies
+
+``` r
+# Inject extra NA into khanmiss1 to make KNN fails for first imputation
+set.seed(1234)
+obj <- t(sim_mat(n = 1000, m = 100, perc_NA = 0.8, perc_col_NA = 1)$input)
+# Disable fall back imputation with `post_imp == FALSE`
+imputed_by_col <- knn_imp(obj, cores = 4, k = 10, post_imp = FALSE)
+# Then if values are still missing, impute by rows
+imputed_by_row <- knn_imp(t(imputed_by_col[[1]]), cores = 4, k = 10, post_imp = FALSE)
+# Lastly, impute by mean
+imputed_mean <- mean_impute_col(t(imputed_by_row[[1]]))
+sum(is.na(imputed_mean))
+#> [1] 0
+```
+
+For very large matrices that don’t fit in memory, use `{bigmemory}` to
+create file-backed objects. `SlideKnn` supports passing a `big.matrix`
+object or the path to its descriptor file. Always specify `output` for
+the result (also file-backed).
+
+``` r
+library(withr)
+library(bigmemory)
+
+data(khanmiss1)
+mat <- t(khanmiss1)  # samples rows, features cols
+
+temp_dir <- withr::local_tempdir()
+
+# Create big.matrix with backing and descriptor files
+big_mat <- bigmemory::as.big.matrix(
+  mat,
+  type = "double",
+  backingfile = "khan.bin",
+  descriptorfile = "khan.desc",
+  backingpath = temp_dir
+)
+
+# Impute using the big.matrix object (returns list of big.matrix)
+imputed_obj <- SlideKnn(
+  obj = big_mat,
+  n_feat = 100,
+  n_overlap = 10,
+  k = 10,
+  output = file.path(temp_dir, "imputed.bin")
+)
+sum(is.na(imputed_obj[[1]][, ])) # Access the big.matrix result
+#> [1] 0
+
+# Alternatively, impute using the descriptor path
+desc_path <- file.path(temp_dir, "khan.desc")
+imputed_path <- SlideKnn(
+  obj = desc_path,
+  n_feat = 100,
+  n_overlap = 10,
+  k = 10,
+  output = file.path(temp_dir, "imputed.bin")
+)
+sum(is.na(imputed_path[[1]][, ]))
+#> [1] 0
+```
+
+Note: Results are lists of `big.matrix` objects (one per `n_imp`). Use
+`bigmemory::attach.big.matrix()` if needed to reload from descriptor
+later. Set `strip_dimnames = TRUE` for multi-core efficiency, and
+restore dimnames post-imputation if required (same dimnames as obj).
 
 ## Parameter Tuning
 
-Use `tune_imp()` to estimate the predictive performance of different
-parameter combinations by injecting artificial NAs into the data and
-measuring imputation accuracy. The `parameters` data.frame must have the
-following columns:
-
-<ul>
-
-<li>
-
-<code>n_feat</code>: number of features in a sliding window. Use
-<code>ncol(data)</code> to do KNN over the full set of features.
-</li>
-
-<li>
-
-<code>k</code>: number of neighbors.
-</li>
-
-<li>
-
-<code>n_overlap</code>: when the number of features is smaller than the
-total number of features, the number of features in the overlap region
-to slide the window over.
-</li>
-
-<li>
-
-<code>method</code>: one of “euclidean”, “manhattan”, or “impute.knn”
-(for the <code>impute::impute.knn</code> implementation of distance).
-</li>
-
-<li>
-
-<code>post_imp</code>: whether values that failed KNN imputation should
-be filled with the mean of the feature or not.
-</li>
-
-</ul>
+Use `tune_imp()` to tune hyperparameters by injecting artificial NAs and
+evaluating imputation accuracy. It supports built-in methods or custom
+functions.
 
 ``` r
 parameters <- dplyr::tibble(
-  n_feat = c(100, 200),
   k = c(5, 10),
-  n_overlap = c(10, 20),
   method = "euclidean",
+  weighted = TRUE,
+  dist_pow = c(2, 5),
   post_imp = TRUE
 )
+parameters
+#> # A tibble: 2 × 5
+#>       k method    weighted dist_pow post_imp
+#>   <dbl> <chr>     <lgl>       <dbl> <lgl>   
+#> 1     5 euclidean TRUE            2 TRUE    
+#> 2    10 euclidean TRUE            5 TRUE
 
-results <- tune_imp(t(khanmiss1), parameters, rep = 3, num_na = 50)
-```
+# Subset for faster tuning
+obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 
-You can then use [`{yardstick}`](https://yardstick.tidymodels.org/) to
-calculate the prediction metrics.
+# 3 repeats, each time inject 50 NAs
+results <- tune_imp(obj, parameters, rep = 3, .f = "knn_imp", num_na = 50)
 
-``` r
+# Compute metrics with {yardstick}
 library(yardstick)
 met_set <- metric_set(mae, rmse, rsq)
 results$metrics <- lapply(results$result, function(x) met_set(x, truth = truth, estimate = estimate))
 head(
   dplyr::select(
     tidyr::unnest(dplyr::select(results, -result), cols = "metrics"),
-    -(.progress:cores),
-    -c(post_imp, rowmax, colmax)
+    all_of(names(parameters)), contains(".")
   )
 )
-#> # A tibble: 6 × 9
-#>   n_feat     k n_overlap method    param_set   rep .metric .estimator .estimate
-#>    <dbl> <dbl>     <dbl> <chr>         <int> <int> <chr>   <chr>          <dbl>
-#> 1    100     5        10 euclidean         1     1 mae     standard    386.    
-#> 2    100     5        10 euclidean         1     1 rmse    standard    519.    
-#> 3    100     5        10 euclidean         1     1 rsq     standard      0.0501
-#> 4    200    10        20 euclidean         2     1 mae     standard    350.    
-#> 5    200    10        20 euclidean         2     1 rmse    standard    481.    
-#> 6    200    10        20 euclidean         2     1 rsq     standard      0.123
+#> # A tibble: 6 × 8
+#>       k method    weighted dist_pow post_imp .metric .estimator .estimate
+#>   <dbl> <chr>     <lgl>       <dbl> <lgl>    <chr>   <chr>          <dbl>
+#> 1     5 euclidean TRUE            2 TRUE     mae     standard     472.   
+#> 2     5 euclidean TRUE            2 TRUE     rmse    standard     604.   
+#> 3     5 euclidean TRUE            2 TRUE     rsq     standard       0.221
+#> 4    10 euclidean TRUE            5 TRUE     mae     standard     472.   
+#> 5    10 euclidean TRUE            5 TRUE     rmse    standard     597.   
+#> 6    10 euclidean TRUE            5 TRUE     rsq     standard       0.235
 ```
+
+Tuning a custom imputation function:
+
+``` r
+# This custom function impute NAs with rnorm values
+custom_imp <- function(obj, mean = 0, sd = 1) {
+  na_pos <- is.na(obj)
+  obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
+  return(obj)
+}
+
+parameters_custom <- dplyr::tibble(
+  mean = c(0, 1),
+  sd = c(1, 2)
+)
+
+results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 2, num_na = 20)
+```
+
+For more details, see the function documentation (e.g., `?SlideKnn`,
+`?knn_imp`, `?tune_imp`). \`\`\`

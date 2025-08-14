@@ -27,7 +27,7 @@ impute_knn_brute(
 
 \item{n_col_miss}{Integer vector specifying the count of missing values per column.}
 
-\item{method}{Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan, 2 = impute.knn method.}
+\item{method}{Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.}
 
 \item{weighted}{Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
 Note: Forced to FALSE when \code{n_imp > 1}.}

@@ -111,7 +111,7 @@ obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 anyNA(obj)
 
 # Method 1: Random NA injection with integer rep
-results <- tune_imp(obj, parameters, .f = "SlideKnn", rep = 1, num_na = 20)
+results <- tune_imp(obj, parameters, .f = "knn_imp", rep = 1, num_na = 20)
 
 # Method 2: Specific NA locations with list rep
 # Create a complete matrix for demonstration
@@ -126,13 +126,14 @@ na_positions <- list(
 )
 
 # Tune with predefined NA locations (useful for reproducible benchmarking)
+\dontrun{
 results_fixed <- tune_imp(
   obj_complete,
   parameters,
   .f = "SlideKnn",
-  rep = na_positions  # No num_na needed
+  rep = na_positions # No num_na needed
 )
-
+}
 # # Install {yardstick} or calculate any other metrics using the result
 # library(yardstick)
 # met_set <- metric_set(mae, rmse, rsq)

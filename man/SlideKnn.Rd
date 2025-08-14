@@ -13,12 +13,13 @@ SlideKnn(
   rowmax = 0.9,
   colmax = 0.9,
   cores = 1,
-  method = c("euclidean", "manhattan", "impute.knn"),
+  method = c("euclidean", "manhattan"),
   tree = NULL,
   post_imp = TRUE,
   weighted = FALSE,
   dist_pow = 1,
   n_imp = 1,
+  n_pmm = 10,
   seed = 42,
   .progress = FALSE,
   output = NULL,
@@ -56,7 +57,7 @@ instead of k-NN if \code{post_imp} is true.}
 of distances. Default is 1.}
 
 \item{method}{Character string specifying the distance metric for k-NN. One of
-\code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
+\code{"euclidean"}, \code{"manhattan"}. Defaults to \code{"euclidean"}.}
 
 \item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses
 brute-force search. \code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by
@@ -76,6 +77,12 @@ and 1 apply a softer penalty, 1 is linear (default), and values greater than
 
 \item{n_imp}{Integer specifying the number of imputations to perform.
 Default is 1.}
+
+\item{n_pmm}{Integer controlling multiple imputation method when n_imp > 1.
+If n_pmm > 0: PMM multiple imputation using n_pmm closest donors (will not exceed
+available non-missing values column wise).
+If n_pmm = 0: Bootstrap multiple imputation via resampling from k nearest neighbors.
+Ignored when n_imp = 1 (single imputation).}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
@@ -134,8 +141,8 @@ imputed_weighted <- SlideKnn(
   weighted = TRUE,
   dist_pow = 2
 )
-# Bootstrap version
-# imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, n_imp = 3)
+# PMM version with 10 donors
+# imputed <- SlideKnn(t(khanmiss1), k = 10, n_feat = 100, n_overlap = 10, n_imp = 3, n_pmm = 10)
 }
 \seealso{
 \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}

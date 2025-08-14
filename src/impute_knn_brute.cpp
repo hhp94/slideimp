@@ -101,8 +101,10 @@ double calc_distance_euclid(
   {
     return arma::datum::inf;
   }
-  double weight = static_cast<double>(obj.n_rows) / n_valid;
-  return std::sqrt(weight * dist);
+
+  dist /= static_cast<double>(n_valid);
+
+  return dist;
 }
 
 // Helper function for Manhattan (method 1)
@@ -131,38 +133,8 @@ double calc_distance_manhattan(
   {
     return arma::datum::inf;
   }
-  double weight = static_cast<double>(obj.n_rows) / n_valid;
-  return weight * dist;
-}
 
-// Helper function for impute.knn (method 2)
-double calc_distance_knn(
-    const arma::mat &obj,
-    const arma::umat &miss,
-    const arma::uword idx1,
-    const arma::uword idx2)
-{
-  const double *col1_ptr = obj.colptr(idx1);
-  const double *col2_ptr = obj.colptr(idx2);
-  const arma::uword *miss1_ptr = miss.colptr(idx1);
-  const arma::uword *miss2_ptr = miss.colptr(idx2);
-  double dist = 0.0;
-  arma::uword n_valid = 0;
-  for (arma::uword r = 0; r < obj.n_rows; ++r)
-  {
-    if (miss1_ptr[r] == 0 && miss2_ptr[r] == 0)
-    {
-      double diff = col1_ptr[r] - col2_ptr[r];
-      dist += diff * diff;
-      ++n_valid;
-    }
-  }
-  if (n_valid == 0)
-  {
-    return arma::datum::inf;
-  }
-
-  dist /= n_valid;
+  dist /= static_cast<double>(n_valid);
 
   return dist;
 }
@@ -244,7 +216,7 @@ std::vector<NeighborInfo> distance_vector(
     insert_if_better(top_k_neighbors, dist, i, k);
   }
 
-  // Process non-missing columns (unchanged)
+  // Process missing column to all non-missing columns
   for (arma::uword i = 0; i < index_not_miss.n_elem; ++i)
   {
     double dist = calc_dist(obj, miss, index_miss(index), index_not_miss(i));
@@ -269,7 +241,7 @@ std::vector<NeighborInfo> distance_vector(
 //' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 //' @param k Number of nearest neighbors to use for imputation.
 //' @param n_col_miss Integer vector specifying the count of missing values per column.
-//' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan, 2 = impute.knn method.
+//' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
 //' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
 //'   Note: Forced to FALSE when `n_imp > 1`.
 //' @param dist_pow A positive double that controls the penalty for larger distances in
@@ -289,7 +261,7 @@ arma::mat impute_knn_brute(
     const arma::umat &miss,       // Matrix of same size as obj, with 1 for missing (NA) and 0 for present
     const arma::uword k,          // Number of nearest neighbors to use
     const arma::uvec &n_col_miss, // Vector containing the count of missing values per column
-    const int method,             // Distance metric: 0=Euclidean, 1=Manhattan, 2=impute.knn's method
+    const int method,             // Distance metric: 0=Euclidean, 1=Manhattan method.
     bool weighted,                // TRUE for a weighted average, FALSE for a simple average
     const double dist_pow,        // Power for distance penalty in weighted average
     const arma::uword n_imp = 1,  // Number of imputation
@@ -307,11 +279,8 @@ arma::mat impute_knn_brute(
   case 1:
     calc_dist = calc_distance_manhattan;
     break;
-  case 2:
-    calc_dist = calc_distance_knn;
-    break;
   default:
-    throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan, 2=impute.knn");
+    throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan");
   }
 
   // Find columns that contain missing values
@@ -349,21 +318,13 @@ arma::mat impute_knn_brute(
       cache(row, col) = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col));
     }
   }
-
-  // Determine imputation method
-  bool use_pmm = false;
-  if (n_imp > 1 && n_pmm > 0)
-  {
-    use_pmm = true;
-  }
+  // Determine imputation method and adjust weighted flag for bootstrap
+  // Bootstrap with weights might lower uncertainty, so we force weighted = false
   if (n_imp > 1 && n_pmm == 0)
   {
-    // if n_imp > 1, and n_pmm == 0, then it's bootstrapping. In which case
-    // we fix weighted to false. Weighted bootstrap might not be a good
-    // idea because it can lower uncertainty.
     weighted = false;
   }
-  // Main imputation loop: iterate through only the columns that need imputation
+  // Main imputation loop
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -385,48 +346,47 @@ arma::mat impute_knn_brute(
       nn_columns(j) = neighbor_index(top_k[j].index);
       nn_dists(j) = top_k[j].distance;
     }
-    // Copy below here for mlpack
-    arma::uword target_col_idx = col_index_miss(i);
-    if (use_pmm)
+    // Calculate weights once (same for all methods)
+    arma::vec weights(n_neighbors);
+    if (weighted)
     {
-      arma::vec weights(n_neighbors);
-      if (weighted)
-      {
-        weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-      }
-      else
-      {
-        weights.fill(1.0);
-      }
+      weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
+    }
+    else
+    {
+      weights.fill(1.0);
+    }
+    arma::uword target_col_idx = col_index_miss(i);
+    // Single Imputation
+    if (n_imp == 1)
+    {
+      arma::umat nn_columns_mat(n_neighbors, 1);
+      nn_columns_mat.col(0) = nn_columns;
+
+      impute_column_values(
+          result, obj, miss,
+          col_offsets(i), target_col_idx,
+          nn_columns_mat, weights,
+          n_imp);
+    }
+    else if (n_imp > 1 && n_pmm > 0)
+    {
+      // PMM
       impute_column_values_pmm(
           result, obj, miss,
           col_offsets(i), target_col_idx,
           nn_columns, weights,
           n_imp, n_pmm, seed);
     }
-    else
+    else if (n_imp > 1 && n_pmm == 0)
     {
-      // Bootstrap or single imputation
+      // Neighbor Boot strap
       arma::umat nn_columns_mat(n_neighbors, n_imp);
-      // Calculate weights once
-      arma::vec weights(n_neighbors);
-      if (weighted)
-      {
-        weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-      }
-      else
-      {
-        weights.fill(1.0);
-      }
-      // Fill columns matrix for all imputations
       for (arma::uword b = 0; b < n_imp; ++b)
       {
         nn_columns_mat.col(b) = nn_columns;
       }
-      if (n_imp > 1)
-      {
-        resample_neighbor(nn_columns_mat, seed, target_col_idx);
-      }
+      resample_neighbor(nn_columns_mat, seed, target_col_idx);
       impute_column_values(
           result, obj, miss,
           col_offsets(i), target_col_idx,
@@ -434,6 +394,7 @@ arma::mat impute_knn_brute(
           n_imp);
     }
   }
+
   return result;
 }
 
@@ -471,7 +432,7 @@ Rcpp::List find_knn_brute(
     const arma::uword k,                     // Number of nearest neighbors to use
     const arma::uvec &n_col_miss,            // Vector containing the count of missing values per column
     const Rcpp::CharacterVector &n_col_name, // Vector of column names (same length as n_col_miss)
-    const int method,                        // Distance metric: 0=Euclidean, 1=Manhattan, 2=impute.knn's method
+    const int method,                        // Distance metric: 0=Euclidean, 1=Manhattan method
     int cores = 1)                           // Number of cores for parallel processing
 {
   // Select the distance calculation function based on the method
@@ -483,9 +444,6 @@ Rcpp::List find_knn_brute(
     break;
   case 1:
     calc_dist = calc_distance_manhattan;
-    break;
-  case 2:
-    calc_dist = calc_distance_knn;
     break;
   default:
     throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan, 2=impute.knn");

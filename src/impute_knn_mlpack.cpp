@@ -2,8 +2,8 @@
 
 #include "imputed_value.h"
 #include <mlpack.h>
-#include <RcppArmadillo.h>
 #include <mlpack/methods/neighbor_search/neighbor_search.hpp>
+#include <RcppArmadillo.h>
 #include <stdexcept>
 #if defined(_OPENMP)
 #include <omp.h>
@@ -96,12 +96,6 @@ arma::mat impute_knn_mlpack(
   {
     throw std::invalid_argument("Invalid `tree` or `method`. Use 'kd' or 'ball' for `tree`, and 0 for 'euclidean' or 1 for 'manhattan' for `method`.");
   }
-  // Determine imputation method
-  bool use_pmm = false;
-  if (n_imp > 1 && n_pmm > 0)
-  {
-    use_pmm = true;
-  }
   if (n_imp > 1 && n_pmm == 0)
   {
     // if n_imp > 1, and n_pmm == 0, then it's bootstrapping. In which case
@@ -120,47 +114,47 @@ arma::mat impute_knn_mlpack(
     arma::vec nn_dists = resultingDistances(arma::span(1, k), i);
     // Copy pasted from impute_knn_brute
     const arma::uword n_neighbors = nn_columns.n_elem;
-    arma::uword target_col_idx = col_index_miss(i);
-    if (use_pmm)
+    // Calculate weights once (same for all methods)
+    arma::vec weights(n_neighbors);
+    if (weighted)
     {
-      arma::vec weights(n_neighbors);
-      if (weighted)
-      {
-        weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-      }
-      else
-      {
-        weights.fill(1.0);
-      }
+      weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
+    }
+    else
+    {
+      weights.fill(1.0);
+    }
+    arma::uword target_col_idx = col_index_miss(i);
+    // Single Imputation
+    if (n_imp == 1)
+    {
+      arma::umat nn_columns_mat(n_neighbors, 1);
+      nn_columns_mat.col(0) = nn_columns;
+
+      impute_column_values(
+          result, obj, miss,
+          col_offsets(i), target_col_idx,
+          nn_columns_mat, weights,
+          n_imp);
+    }
+    else if (n_imp > 1 && n_pmm > 0)
+    {
+      // PMM
       impute_column_values_pmm(
           result, obj, miss,
           col_offsets(i), target_col_idx,
           nn_columns, weights,
           n_imp, n_pmm, seed);
     }
-    else
+    else if (n_imp > 1 && n_pmm == 0)
     {
-      // Bootstrap or single imputation
+      // Neighbor Boot strap
       arma::umat nn_columns_mat(n_neighbors, n_imp);
-      // Calculate weights once
-      arma::vec weights(n_neighbors);
-      if (weighted)
-      {
-        weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-      }
-      else
-      {
-        weights.fill(1.0);
-      }
-      // Fill columns matrix for all imputations
       for (arma::uword b = 0; b < n_imp; ++b)
       {
         nn_columns_mat.col(b) = nn_columns;
       }
-      if (n_imp > 1)
-      {
-        resample_neighbor(nn_columns_mat, seed, target_col_idx);
-      }
+      resample_neighbor(nn_columns_mat, seed, target_col_idx);
       impute_column_values(
           result, obj, miss,
           col_offsets(i), target_col_idx,
@@ -168,5 +162,6 @@ arma::mat impute_knn_mlpack(
           n_imp);
     }
   }
+
   return result;
 }

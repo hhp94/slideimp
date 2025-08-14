@@ -9,7 +9,7 @@ knn_imp(
   k,
   colmax = 0.9,
   rowmax = 0.9,
-  method = c("euclidean", "manhattan", "impute.knn"),
+  method = c("euclidean", "manhattan"),
   cores = 1,
   post_imp = TRUE,
   subset = NULL,
@@ -17,6 +17,7 @@ knn_imp(
   dist_pow = 1,
   tree = NULL,
   n_imp = 1,
+  n_pmm = 10,
   seed = 42,
   output = NULL,
   overwrite = TRUE,
@@ -37,7 +38,7 @@ instead of k-NN if \code{post_imp} is true.}
 of missing values in any row. If exceeded, the function stops with an error.}
 
 \item{method}{Character string specifying the distance metric for k-NN. One of
-\code{"euclidean"}, \code{"manhattan"}, or \code{"impute.knn"}. Defaults to \code{"euclidean"}.}
+\code{"euclidean"}, \code{"manhattan"}. Defaults to \code{"euclidean"}.}
 
 \item{cores}{Integer specifying the number of cores to use for parallel computation
 of distances. Default is 1.}
@@ -64,6 +65,12 @@ the mlpack package where missing values are first filled with column means
 
 \item{n_imp}{Integer specifying the number of imputations to perform.
 Default is 1.}
+
+\item{n_pmm}{Integer controlling multiple imputation method when n_imp > 1.
+If n_pmm > 0: PMM multiple imputation using n_pmm closest donors (will not exceed
+available non-missing values column wise).
+If n_pmm = 0: Bootstrap multiple imputation via resampling from k nearest neighbors.
+Ignored when n_imp = 1 (single imputation).}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
@@ -122,7 +129,6 @@ data(khanmiss1)
 sum(is.na(khanmiss1))
 
 # Perform k-NN imputation. `khanmiss1` stores genes in rows so we transpose.
-# Set method to "impute.knn" to mimic how distance is scaled in impute::impute.knn.
 imputed <- knn_imp(
   obj = t(khanmiss1),
   k = 3,
@@ -144,13 +150,27 @@ imputed_weighted <- knn_imp(
   method = "euclidean"
 )[[1]]
 
-# Bootstrap imputation for uncertainty quantification
+# PMM imputation with 5 imputations and 3 donors. Increase `n_pmm` in real
+# data to ensure realistic uncertainty.
+imputed_pmm <- knn_imp(
+  obj = t(khanmiss1),
+  k = 5,
+  n_imp = 5,
+  n_pmm = 3,
+  seed = 123
+)
+
+length(imputed_pmm) # Returns 5 imputed datasets
+
+# Bootstrap imputation for uncertainty injection.
 imputed_boot <- knn_imp(
   obj = t(khanmiss1),
   k = 3,
   n_imp = 5,
+  n_pmm = 0, # n_pmm = 0 enable bootstrapping nearest neighbors
   seed = 123
 )
+
 length(imputed_boot) # Returns 5 imputed datasets
 
 }
