@@ -679,12 +679,6 @@ test_that("bigmemory functionality in knn_imp works correctly", {
     "Output files already exist"
   )
 
-  if (.Platform$OS.type == "windows") {
-    # Force garbage collection to release memory mapped files
-    invisible(gc(verbose = FALSE, full = TRUE))
-    Sys.sleep(0.1)
-  }
-
   # Test 3: Rerun with overwrite = TRUE, check files exist
   expect_no_error({
     result_bigmem_overwrite <- knn_imp(
@@ -696,6 +690,12 @@ test_that("bigmemory functionality in knn_imp works correctly", {
       seed = 42
     )
   })
+
+  if (.Platform$OS.type == "windows") {
+    # Force garbage collection to release memory mapped files
+    invisible(gc(verbose = FALSE, full = TRUE))
+    Sys.sleep(0.1)
+  }
 
   # Verify files still exist after overwrite
   for (i in 1:3) {

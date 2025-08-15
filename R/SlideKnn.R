@@ -437,21 +437,11 @@ SlideKnn <- function(
 
         # Force garbage collection to release any file handles
         # This is especially important for memory-mapped files
+        unlink(files_to_check, force = TRUE)
         if (.Platform$OS.type == "windows") {
-          invisible(gc(verbose = FALSE, full = TRUE))
+          Sys.sleep(0.1)
         }
-
-        # Try to delete
-        tryCatch(
-          {
-            unlink(files_to_check, force = TRUE)
-            if (.Platform$OS.type == "windows") {
-              Sys.sleep(0.1)
-              invisible(gc(verbose = FALSE, full = TRUE))
-            }
-          },
-          warning = function(w) { }
-        )
+        invisible(gc(verbose = FALSE, full = TRUE))
 
         # If files still exist after attempt, warn but continue
         if (any(file.exists(files_to_check))) {
@@ -674,7 +664,9 @@ SlideKnn <- function(
   # Remove all the intermediate files to save memory
   if (file_backed) {
     rm(intermediate_list, counts_list)
-    Sys.sleep(0.1)
+    if (.Platform$OS.type == "windows") {
+      Sys.sleep(0.1)
+    }
     invisible(gc(verbose = FALSE, full = TRUE))
   }
 
@@ -1042,8 +1034,12 @@ knn_imp <- function(
       descfile_path <- fs::path(backingpath, descfiles[i])
       if (overwrite) {
         # Proceed to delete if overwrite is TRUE
-        unlink(backfile_path, force = TRUE)
-        unlink(descfile_path, force = TRUE)
+        unlink(c(backfile_path, descfile_path), force = TRUE)
+        if (.Platform$OS.type == "windows") {
+          Sys.sleep(0.1)
+          invisible(gc(verbose = FALSE, full = TRUE))
+        }
+
         if (fs::file_exists(backfile_path) || fs::file_exists(descfile_path)) {
           stop("Failed to delete existing files for `output`")
         }
