@@ -128,6 +128,8 @@ void resample_neighbor(
 //'
 //' @return A column vector containing the weighted row means, with NaN where computation is not possible.
 //'
+//' @keywords internal
+//' @noRd
 // [[Rcpp::export]]
 arma::vec weighted_row_means(
     const arma::mat &obj,
@@ -181,6 +183,8 @@ arma::vec weighted_row_means(
 //'
 //' @return void (modifies the result matrix in place).
 //'
+//' @keywords internal
+//' @noRd
 // [[Rcpp::export]]
 void impute_column_values_pmm(
     arma::mat &result,

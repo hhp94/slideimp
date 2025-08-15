@@ -1,44 +1,51 @@
-Package: SlideKnn
 Type: Package
-Title: Fast KNN Imputation of Numeric Data and Sliding Window KNN Imputation of Large Numeric Data
+Package: SlideKnn
+Title: K-NN and Sliding Window K-NN Imputation for Numeric Data
 Version: 0.5.2
-Authors@R: c(
-    person(
-      "Hung", "Pham",
-      email = "amser.hoanghung@gmail.com",
-      role = c("aut", "cre")
-    )
-  )
-Description: Impute numeric data with KNN imputation or large numeric data such as intensive longitudinal data or epi-genomic data
+Authors@R: 
+    person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
+           comment = c(ORCID = "0000-0002-8271-9355"))
+Description: k-nearest neighbors (k-NN) imputation algorithm for numeric
+    data with options for multiple imputation with predictive mean
+    matching. For large numeric datasets, such as intensive longitudinal
+    data or epigenomic data where features are ordered in columns and have
+    local structures, a sliding window approach for efficient k-NN
+    imputation that can leverage the 'bigmemory' backend to conserve RAM
+    is provided. This work is based on methods described in: Hastie, T.,
+    Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D.
+    (1999) "Imputing Missing Data for Gene Expression Arrays"
+    <https://hastie.su.domains/Papers/missing.pdf>.
 License: GPL (>= 2)
-Encoding: UTF-8
-LazyData: true
-Suggests: 
-    matrixStats,
-    testthat (>= 3.0.0),
-    yardstick,
-    stats,
-    impute
-Config/testthat/edition: 3
-RoxygenNote: 7.3.2
-LinkingTo: 
-    Rcpp,
-    RcppArmadillo,
-    RcppEnsmallen,
-    mlpack
+URL: https://github.com/hhp94/SlideKnn
+BugReports: https://github.com/hhp94/SlideKnn/issues
+Depends: 
+    R (>= 4.1.0)
 Imports:
+    bigmemory,
     carrier,
     checkmate,
+    fs,
     mirai,
     purrr,
     Rcpp,
-    tibble,
     rlang,
-    bigmemory,
-    withr,
-    fs
-Depends: 
-    R (>= 4.1.0)
-URL: https://github.com/hhp94/SlideKnn
-BugReports: https://github.com/hhp94/SlideKnn/issues
+    tibble,
+    withr
+Suggests:
+    dplyr,
+    impute,
+    matrixStats,
+    stats,
+    testthat (>= 3.0.0),
+    tidyr,
+    yardstick
+LinkingTo: 
+    mlpack,
+    Rcpp,
+    RcppArmadillo,
+    RcppEnsmallen
+Config/testthat/edition: 3
+Encoding: UTF-8
+LazyData: true
 Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2

@@ -6,3 +6,4 @@
 ^README\.Rmd$
 ^\.vscode$
 ^\.github$
+^cran-comments\.md$

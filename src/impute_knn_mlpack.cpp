@@ -35,7 +35,8 @@
 //' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 //' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 //'
-//' @export
+//' @keywords internal
+//' @noRd
 // [[Rcpp::export]]
 arma::mat impute_knn_mlpack(
     const arma::mat &obj,         // data with NA pre-filled. So there's no NA

@@ -25,6 +25,8 @@
 #' na_positions <- inject_na(mat, num_na = 10)
 #' mat[na_positions] <- NA
 #' }
+#' @keywords internal
+#' @noRd
 inject_na <- function(
     obj,
     num_na = 100,
@@ -89,7 +91,7 @@ inject_na <- function(
 #'
 #' For a custom function in `.f`, the `parameters` data.frame must have columns whose names match the
 #' argument names of `.f` (excluding `obj`). The custom function must take `obj` as its first input
-#' argument and output a numeric matrix of the same dimensions as `obj`.
+#' argument and output a numeric matrix of the same dimensions as `obj`. See examples.
 #'
 #' For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are required in `parameters`:
 #' - For 'SlideKnn': `n_feat`, `k`, and `n_overlap`
@@ -98,35 +100,35 @@ inject_na <- function(
 #' Default values are set for optional parameters if not provided (e.g., `method = "euclidean"`,
 #' `post_imp = FALSE`).
 #'
-#' **Note:** The `n_imp` parameter is always internally set to 1 for tuning purposes.
+#' @note The `n_imp` parameter is always internally set to 1 for tuning purposes for `SlideKnn` or `knn_imp`.
 #'
 #' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #'   Note: keep `obj` small since this function doesn't support `bigmemory`.
-#' @param parameters A data frame specifying the parameter combinations to tune. Duplicated rows are
+#' @param parameters A data.frame specifying the parameter combinations to tune. Duplicated rows are
 #'   removed. The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about
 #'   the parameters. Any `n_imp` values in this data frame will be ignored.
-#' @param .f The imputation function to tune. Can be the string "SlideKnn" (default), "knn_imp", or
+#' @param .f The imputation function to tune. Can be the string "knn_imp" (default), "SlideKnn", or
 #'   a custom function. See details.
 #' @param rep Either:
 #'   - A positive integer specifying the number of repetitions for randomly injecting missing values
 #'     to evaluate each parameter combination (default is 1).
 #'   - A list of integer vectors, where each vector contains the positions (1-indexed) in the matrix
 #'     where NAs should be injected. All vectors must have the same length, and all elements must be
-#'     unique (no duplicate NA location sets). The length of the list determines the number of repetitions.
+#'     unique (no duplicate NA location sets). The length of the list determines the number of
+#'     repetitions.
 #' @param num_na The number of missing values to inject randomly when `rep` is an integer.
 #'   Must be a positive integer when `rep` is an integer. This parameter is ignored (with a warning)
 #'   when `rep` is a list. Default is NULL.
+#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
 #'
-#' @inheritParams inject_na
-#'
-#' @return A tibble containing:
+#' @return A `tibble` containing:
 #' - All parameter columns from the input `parameters` data frame
 #' - `param_set`: Integer identifier for each unique parameter combination
 #' - `rep`: The repetition number (1 to length of `rep` if list, or 1 to `rep` if integer)
 #' - `result`: A nested tibble with columns `truth` (original values) and `estimate` (imputed values)
 #'
-#' @seealso [knn_imp()], [SlideKnn()], [inject_na()]
+#' @seealso [knn_imp()], [SlideKnn()]
 #'
 #' @examples
 #' data(khanmiss1)
@@ -161,25 +163,12 @@ inject_na <- function(
 #' )
 #'
 #' # Tune with predefined NA locations (useful for reproducible benchmarking)
-#' \dontrun{
 #' results_fixed <- tune_imp(
 #'   obj_complete,
 #'   parameters,
-#'   .f = "SlideKnn",
+#'   .f = "knn_imp",
 #'   rep = na_positions # No num_na needed
 #' )
-#' }
-#' # # Install {yardstick} or calculate any other metrics using the result
-#' # library(yardstick)
-#' # met_set <- metric_set(mae, rmse, rsq)
-#' # results$metrics <- lapply(
-#' #   results$result,
-#' #   function(x) {
-#' #     met_set(x, truth = truth, estimate = estimate)
-#' #   }
-#' # )
-#' # # Unnest the metrics
-#' # tidyr::unnest(dplyr::select(results, -result), cols = "metrics")
 #'
 #' # Example with a custom imputation function where missing values are filled with random values
 #' custom_imp <- function(obj, mean = 0, sd = 1) {
@@ -193,24 +182,36 @@ inject_na <- function(
 #'   sd = c(1, 2, 1)
 #' )
 #'
-#' set.seed(1234)
 #' # Reuse the same obj
+#' set.seed(1234)
 #' results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1, num_na = 20)
+#' @examplesIf rlang::is_installed("dplyr") && rlang::is_installed("yardstick") && rlang::is_installed("dplyr") && rlang::is_installed("tidyr")
+#' # Install {yardstick} to calculate any metrics using the result
+#' met_set <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::rsq)
+#' results$metrics <- lapply(
+#'   results$result,
+#'   function(x) {
+#'     met_set(x, truth = truth, estimate = estimate)
+#'   }
+#' )
 #'
-#' # # Similarly, compute metrics
-#' # results_custom$metrics <- lapply(
-#' #   results_custom$result,
-#' #   function(x) {
-#' #     met_set(x, truth = truth, estimate = estimate)
-#' #   }
-#' # )
-#' # tidyr::unnest(dplyr::select(results_custom, -result), cols = "metrics")
+#' # Unnest the metrics
+#' tidyr::unnest(dplyr::select(results, -result), cols = "metrics")
+#'
+#' # Similarly, compute metrics for the random values custom function
+#' results_custom$metrics <- lapply(
+#'   results_custom$result,
+#'   function(x) {
+#'     met_set(x, truth = truth, estimate = estimate)
+#'   }
+#' )
+#' tidyr::unnest(dplyr::select(results_custom, -result), cols = "metrics")
 #'
 #' @export
 tune_imp <- function(
     obj,
     parameters,
-    .f = "SlideKnn",
+    .f = "knn_imp",
     rep = 1,
     num_na = NULL,
     max_iter = 1000,

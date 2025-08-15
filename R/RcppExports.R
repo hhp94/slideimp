@@ -28,7 +28,8 @@
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
-#' @export
+#' @keywords internal
+#' @noRd
 impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
     .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, n_pmm, seed, cores)
 }
@@ -59,7 +60,8 @@ impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_po
 #'
 #' If no columns have missing values, an empty list is returned.
 #'
-#' @export
+#' @keywords internal
+#' @noRd
 find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores = 1L) {
     .Call(`_SlideKnn_find_knn_brute`, obj, miss, k, n_col_miss, n_col_name, method, cores)
 }
@@ -90,7 +92,8 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
-#' @export
+#' @keywords internal
+#' @noRd
 impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
     .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, n_pmm, seed, cores)
 }
@@ -106,6 +109,8 @@ impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, 
 #'
 #' @return A column vector containing the weighted row means, with NaN where computation is not possible.
 #'
+#' @keywords internal
+#' @noRd
 weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
     .Call(`_SlideKnn_weighted_row_means`, obj, miss, nn_columns, nn_weights)
 }
@@ -127,6 +132,8 @@ weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
 #'
 #' @return void (modifies the result matrix in place).
 #'
+#' @keywords internal
+#' @noRd
 impute_column_values_pmm <- function(result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed) {
     invisible(.Call(`_SlideKnn_impute_column_values_pmm`, result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed))
 }

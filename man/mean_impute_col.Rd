@@ -18,9 +18,8 @@ A numeric matrix of the same dimensions as \code{obj} with missing values
 in the specified columns replaced by column means.
 }
 \description{
-Imputes missing values (NA) in a matrix by replacing them with the mean of their
-respective columns. This is a simple imputation method that preserves column-wise
-patterns in the data.
+Imputes missing values in a matrix by replacing them with the mean of their
+respective columns.
 }
 \details{
 This function calculates the mean for each column excluding missing values and
@@ -34,29 +33,27 @@ The \code{subset} parameter allows for selective imputation of only specific col
 # Create example matrix with missing values
 mat <- matrix(c(1, 2, NA, 4, 5, 6, NA, 8, 9), nrow = 3)
 colnames(mat) <- c("A", "B", "C")
-print(mat)
+mat
 
 # Impute missing values with column means
 imputed_mat <- mean_impute_col(mat)
-print(imputed_mat)
+imputed_mat
 
 # Impute only specific columns by name
 imputed_subset <- mean_impute_col(mat, subset = c("A", "C"))
-print(imputed_subset)
+imputed_subset
 
 # Impute only specific columns by index
 imputed_idx <- mean_impute_col(mat, subset = c(1, 3))
-print(imputed_idx)
+imputed_idx
 
 # Example with real data
 data(khanmiss1)
+
 # Transpose since khanmiss1 has genes in rows
 khanmiss_t <- t(khanmiss1)
 imputed_khan <- mean_impute_col(khanmiss_t)
 sum(is.na(khanmiss_t)) # Original missing values
 sum(is.na(imputed_khan)) # After imputation
 
-}
-\seealso{
-\code{\link[=mean_impute_row]{mean_impute_row()}}, \code{\link[=knn_imp]{knn_imp()}}
 }

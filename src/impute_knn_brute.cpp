@@ -254,7 +254,8 @@ std::vector<NeighborInfo> distance_vector(
 //' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 //' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 //'
-//' @export
+//' @keywords internal
+//' @noRd
 // [[Rcpp::export]]
 arma::mat impute_knn_brute(
     const arma::mat &obj,         // Input data matrix with missing values as NaN
@@ -424,7 +425,8 @@ arma::mat impute_knn_brute(
 //'
 //' If no columns have missing values, an empty list is returned.
 //'
-//' @export
+//' @keywords internal
+//' @noRd
 // [[Rcpp::export]]
 Rcpp::List find_knn_brute(
     const arma::mat &obj,                    // Input data matrix with missing values as NaN

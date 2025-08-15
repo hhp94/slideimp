@@ -679,6 +679,12 @@ test_that("bigmemory functionality in knn_imp works correctly", {
     "Output files already exist"
   )
 
+  if (.Platform$OS.type == "windows") {
+    # Force garbage collection to release memory mapped files
+    invisible(gc(verbose = FALSE, full = TRUE))
+    Sys.sleep(0.1)
+  }
+
   # Test 3: Rerun with overwrite = TRUE, check files exist
   expect_no_error({
     result_bigmem_overwrite <- knn_imp(
@@ -919,9 +925,7 @@ test_that("`mean_impute_col` works", {
   row_means <- rowMeans(to_test, na.rm = TRUE)
 
   c_manual[na_indices] <- column_means[na_indices[, 2]]
-  r_manual[na_indices] <- row_means[na_indices[, 1]]
   expect_identical(mean_impute_col(to_test), c_manual)
-  expect_identical(mean_impute_row(to_test), r_manual)
 
   ## Test subset feature
   c_subset <- to_test
