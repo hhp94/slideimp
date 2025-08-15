@@ -40,6 +40,8 @@ Suggests:
     tidyr,
     yardstick
 LinkingTo: 
+    BH,
+    bigmemory,
     mlpack,
     Rcpp,
     RcppArmadillo,

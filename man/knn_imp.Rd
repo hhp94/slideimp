@@ -20,7 +20,7 @@ knn_imp(
   n_pmm = 10,
   seed = 42,
   output = NULL,
-  overwrite = TRUE,
+  overwrite = FALSE,
   ...
 )
 }
@@ -74,10 +74,11 @@ Ignored when \code{n_imp} = 1 (single imputation).}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
-\item{output}{Character; path to save the output big.matrix if \code{obj} is file-backed.
-Required when \code{obj} is a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} or path to big.matrix descriptor.}
+\item{output}{Character; path to save the output big.matrix. Format should be
+\code{path/stem}. If provided, the back end will switch to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}}
+instead of in-memory matrix.}
 
-\item{overwrite}{Logical; if \code{TRUE} (default), overwrite existing files at \code{output}.}
+\item{overwrite}{Logical; if \code{TRUE}, overwrite existing files at \code{output}. Default to \code{FALSE}.}
 
 \item{...}{Currently not implemented.}
 }

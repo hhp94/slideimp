@@ -23,7 +23,7 @@ SlideKnn(
   seed = 42,
   .progress = FALSE,
   output = NULL,
-  overwrite = TRUE,
+  overwrite = FALSE,
   block = NULL,
   strip_dimnames = FALSE
 )
@@ -88,10 +88,11 @@ Ignored when \code{n_imp} = 1 (single imputation).}
 
 \item{.progress}{Logical; if \code{TRUE}, show a progress bar. Default is \code{FALSE}.}
 
-\item{output}{Character; path to save the output big.matrix if \code{obj} is file-backed.
-Required when \code{obj} is a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} or path to big.matrix descriptor.}
+\item{output}{Character; path to save the output big.matrix. Format should be
+\code{path/stem}. If provided, the back end will switch to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}}
+instead of in-memory matrix.}
 
-\item{overwrite}{Logical; if \code{TRUE} (default), overwrite existing files at \code{output}.}
+\item{overwrite}{Logical; if \code{TRUE}, overwrite existing files at \code{output}. Default to \code{FALSE}.}
 
 \item{block}{Integer; block size for processing large matrices. If \code{NULL} (default),
 calculated automatically based on the matrix size and number of cores.}
@@ -199,7 +200,7 @@ imputed_filebacked <- SlideKnn(
   k = 5,
   n_feat = 50,
   output = file.path(temp_dir, "imputed_result.bin"),
-  overwrite = TRUE
+  overwrite = FALSE
 )
 
 # Alternative: Load directly from descriptor file
@@ -209,7 +210,7 @@ imputed_from_file <- SlideKnn(
   k = 5,
   n_feat = 50,
   output = file.path(temp_dir, "imputed_from_desc.bin"),
-  overwrite = TRUE
+  overwrite = FALSE
 )
 
 # ========================================
@@ -224,7 +225,7 @@ imputed_pmm <- SlideKnn(
   n_imp = 3, # 3 imputations
   n_pmm = 5, # 5 donors for PMM
   output = temp_dir,
-  overwrite = TRUE,
+  overwrite = FALSE,
   .progress = TRUE
 )
 

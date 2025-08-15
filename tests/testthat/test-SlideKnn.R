@@ -1107,7 +1107,7 @@ test_that("`find_knn_brute` returns correct neighbors as manual implementation",
   }
 })
 
-test_that("weighted_row_means matches rowMeans with equal weights and all columns", {
+test_that("`weighted_row_means` works", {
   # Generate test data
   set.seed(123)
   to_test <- t(sim_mat(n = 10, m = 10, perc_NA = 0.5, perc_col_NA = 1)$input)
@@ -1229,4 +1229,27 @@ test_that("PMM works", {
   for (i in seq_along(miss_rows_pred)) {
     expect_true(all(miss_rows_pred[[i]] %in% donor_pool[[i]]))
   }
+})
+
+test_that("`bigmem_impute_colmeans` works", {
+  set.seed(1234)
+  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
+  to_test_bm <- bigmemory::as.big.matrix(
+    to_test,
+    backingpath = withr::local_tempdir(),
+    backingfile = "temp.bin",
+    descriptorfile = "temp.desc",
+    type = "double"
+  )
+
+  to_test_sub <- mean_impute_col(to_test, subset = c(1, 2))
+  bigmem_impute_colmeans(to_test_bm@address, col_indices = c(1, 2), cores = 1)
+  expect_equal(to_test_bm[, ], to_test_sub)
+
+  to_test_all <- mean_impute_col(to_test_sub)
+  bigmem_impute_colmeans(to_test_bm@address, col_indices = seq_len(ncol(to_test)), cores = 4)
+
+  expect_equal(to_test_bm[, ], to_test_all)
+  rm(to_test_bm)
+  invisible(gc())
 })

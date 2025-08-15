@@ -12,6 +12,18 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// bigmem_impute_colmeans
+void bigmem_impute_colmeans(SEXP pBigMat, const std::vector<size_t>& col_indices, int cores);
+RcppExport SEXP _SlideKnn_bigmem_impute_colmeans(SEXP pBigMatSEXP, SEXP col_indicesSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type pBigMat(pBigMatSEXP);
+    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type col_indices(col_indicesSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    bigmem_impute_colmeans(pBigMat, col_indices, cores);
+    return R_NilValue;
+END_RCPP
+}
 // impute_knn_brute
 arma::mat impute_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, bool weighted, const double dist_pow, const arma::uword n_imp, arma::uword n_pmm, const arma::uword seed, int cores);
 RcppExport SEXP _SlideKnn_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP weightedSEXP, SEXP dist_powSEXP, SEXP n_impSEXP, SEXP n_pmmSEXP, SEXP seedSEXP, SEXP coresSEXP) {
@@ -107,6 +119,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_SlideKnn_bigmem_impute_colmeans", (DL_FUNC) &_SlideKnn_bigmem_impute_colmeans, 3},
     {"_SlideKnn_impute_knn_brute", (DL_FUNC) &_SlideKnn_impute_knn_brute, 11},
     {"_SlideKnn_find_knn_brute", (DL_FUNC) &_SlideKnn_find_knn_brute, 7},
     {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 12},
