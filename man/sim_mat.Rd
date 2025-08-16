@@ -4,7 +4,15 @@
 \alias{sim_mat}
 \title{Simulate Methylation Beta Values with Metadata}
 \usage{
-sim_mat(n = 100, m = 100, nchr = 2, ngrp = 1, perc_NA = 0.5, perc_col_NA = 0.5)
+sim_mat(
+  n = 100,
+  m = 100,
+  nchr = 2,
+  ngrp = 1,
+  perc_NA = 0.5,
+  perc_col_NA = 0.5,
+  beta = TRUE
+)
 }
 \arguments{
 \item{n}{An integer specifying the number of rows (features). Default is \code{100}.}
@@ -18,6 +26,8 @@ sim_mat(n = 100, m = 100, nchr = 2, ngrp = 1, perc_NA = 0.5, perc_col_NA = 0.5)
 \item{perc_NA}{A numeric value between 0 and 1 indicating the proportion of values to set to \code{NA} within each selected row. Default is \code{0.5}.}
 
 \item{perc_col_NA}{A numeric value between 0 and 1 indicating the proportion of rows to select for \code{NA} introduction. Default is \code{0.5}.}
+
+\item{beta}{If TRUE (default) then simulate beta values by scaling the values between 0 and 1.}
 }
 \value{
 A \code{list} containing three elements:
@@ -28,7 +38,7 @@ A \code{list} containing three elements:
 }
 }
 \description{
-This function generates a matrix of random numeric data, scaled between 0 and 1
+This function generates a matrix of random normal data, scaled between 0 and 1
 per column. It also creates corresponding data frames for feature and sample
 metadata and can optionally introduce \code{NA} values into a specified proportion
 of rows.

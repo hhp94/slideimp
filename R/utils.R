@@ -1,7 +1,7 @@
 #' Simulate Methylation Beta Values with Metadata
 #'
 #' @description
-#' This function generates a matrix of random numeric data, scaled between 0 and 1
+#' This function generates a matrix of random normal data, scaled between 0 and 1
 #' per column. It also creates corresponding data frames for feature and sample
 #' metadata and can optionally introduce `NA` values into a specified proportion
 #' of rows.
@@ -12,6 +12,7 @@
 #' @param ngrp An integer for the number of groups to assign to samples. Default is `1`.
 #' @param perc_NA A numeric value between 0 and 1 indicating the proportion of values to set to `NA` within each selected row. Default is `0.5`.
 #' @param perc_col_NA A numeric value between 0 and 1 indicating the proportion of rows to select for `NA` introduction. Default is `0.5`.
+#' @param beta If TRUE (default) then simulate beta values by scaling the values between 0 and 1.
 #'
 #' @return A `list` containing three elements:
 #' \itemize{
@@ -42,32 +43,24 @@ sim_mat <- function(
     nchr = 2,
     ngrp = 1,
     perc_NA = 0.5,
-    perc_col_NA = 0.5) {
-  stopifnot(
-    n > 1,
-    m > 1,
-    nchr >= 1,
-    nchr <= 22,
-    perc_NA >= 0,
-    perc_NA <= 1,
-    perc_col_NA >= 0,
-    perc_col_NA <= 1
-  )
-  if (!rlang::is_installed("matrixStats")) {
-    stop(
-      "sim_mat requires {matrixStats}, which can be installed with install.packages('matrixStats')"
-    )
-  }
-
+    perc_col_NA = 0.5,
+    beta = TRUE) {
+  checkmate::assert_int(n, lower = 2)
+  checkmate::assert_int(m, lower = 2)
+  checkmate::assert_int(nchr, lower = 1, upper = 25)
+  checkmate::assert_number(perc_NA, lower = 0, upper = 1)
+  checkmate::assert_number(perc_col_NA, lower = 0, upper = 1)
+  checkmate::assert_flag(beta)
   # Create and scale the matrix to between 0 and 1 per column
   d_length <- n * m
   d <- matrix(stats::rnorm(d_length), nrow = n, ncol = m)
-  mins <- matrixStats::colMins(d)
-  maxs <- matrixStats::colMaxs(d)
-  ranges <- maxs - mins
-  d <- sweep(d, 2, mins, "-")
-  d <- sweep(d, 2, ranges, "/")
-
+  if (beta) {
+    mins <- colMMs(d, 0)[1, ]
+    maxs <- colMMs(d, 1)[1, ]
+    ranges <- maxs - mins
+    d <- sweep(d, 2, mins, "-")
+    d <- sweep(d, 2, ranges, "/")
+  }
   # Generate realistic feature and sample names
   feature <- seq_len(n)
   chr <- sample(paste0("chr", seq_len(nchr)), size = n, replace = TRUE)

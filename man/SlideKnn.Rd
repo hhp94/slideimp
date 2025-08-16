@@ -19,12 +19,11 @@ SlideKnn(
   weighted = FALSE,
   dist_pow = 1,
   n_imp = 1,
-  n_pmm = 10,
+  n_pmm = -1,
   seed = 42,
   .progress = FALSE,
   output = NULL,
   overwrite = FALSE,
-  block = NULL,
   strip_dimnames = FALSE
 )
 }
@@ -75,27 +74,24 @@ in the weighted mean imputation. Must be greater than zero: values between 0
 and 1 apply a softer penalty, 1 is linear (default), and values greater than
 1 apply a harsher penalty.}
 
-\item{n_imp}{Integer specifying the number of imputations to perform.
-Default is 1 for single imputation.}
+\item{n_imp}{Integer specifying the number of imputations to perform. Forced
+to 1 if \code{n_pmm} = -1.}
 
-\item{n_pmm}{Integer controlling the multiple imputation method when \code{n_imp} > 1.
-If \code{n_pmm} > 0: PMM multiple imputation using \code{n_pmm} closest donors (will not exceed
-available non-missing values column-wise).
-If \code{n_pmm} = 0: Bootstrap multiple imputation via resampling from k nearest neighbors.
-Ignored when \code{n_imp} = 1 (single imputation).}
+\item{n_pmm}{Integer controlling the multiple imputation method.
+If \code{n_pmm} = -1 (default): Deterministic single imputation.
+If \code{n_pmm} > 0: (recommended for MI) PMM multiple imputation using \code{n_pmm} closest
+donors (will not exceed available non-missing values row-wise).
+If \code{n_pmm} = 0: Bootstrap multiple imputation via resampling from k-Nearest Neighbors.}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
 \item{.progress}{Logical; if \code{TRUE}, show a progress bar. Default is \code{FALSE}.}
 
 \item{output}{Character; path to save the output big.matrix. Format should be
-\code{path/stem}. If provided, the back end will switch to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}}
-instead of in-memory matrix.}
+\code{path/stem} (e.g. "./my_results"). If provided, the back end will switch
+to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}} instead of in-memory matrix.}
 
 \item{overwrite}{Logical; if \code{TRUE}, overwrite existing files at \code{output}. Default to \code{FALSE}.}
-
-\item{block}{Integer; block size for processing large matrices. If \code{NULL} (default),
-calculated automatically based on the matrix size and number of cores.}
 
 \item{strip_dimnames}{Logical; if \code{FALSE} (default), dimnames will not be removed,
 which will increase memory usage. Should be set to \code{TRUE} to save memory from
@@ -129,11 +125,11 @@ the \code{obj}. Alternatively, you can re-add the dimnames to the output using t
 dimnames of the original object after setting \code{options(bigmemory.allow.dimnames = TRUE)}.
 }
 \examples{
-# Generate sample data with missing values with 10 samples and 200 columns
+# Generate sample data with missing values with 20 samples and 100 columns
 # where the column order is sorted (e.g., by genomic position or time)
 
 set.seed(1234)
-beta_matrix <- t(sim_mat(200, 10)$input)
+beta_matrix <- t(sim_mat(100, 20)$input)
 
 # ========================================
 # Basic Sliding k-NN Imputation
@@ -157,11 +153,21 @@ imputed_basic[[1]][1:5, 1:5]
 # Convert to big.matrix for better memory management
 big_data <- bigmemory::as.big.matrix(beta_matrix, type = "double")
 
+# output is NULL, the backend is still in-memory
+imputed_big_in_memory <- SlideKnn(
+  big_data,
+  k = 5,
+  n_feat = 50,
+  output = NULL
+)
+
+# output is now set to a location to save. The backend is now filebacked matrix
+# to handle massive data
 imputed_big <- SlideKnn(
   big_data,
   k = 5,
   n_feat = 50,
-  output = withr::local_tempdir()
+  output = withr::local_tempfile()
   # strip_dimnames = TRUE  # Recommended to set to TRUE for efficiency
 )
 
@@ -176,42 +182,6 @@ if (interactive()) {
   colnames(imputed_big[[1]]) <- colnames(big_data)
   imputed_big[[1]][, ][1:5, 1:5]
 }
-# ========================================
-# File-backed Matrices (Large Datasets)
-# ========================================
-
-# Create file-backed matrix for very large datasets
-temp_dir <- withr::local_tempdir()
-file_backed_data <- bigmemory::filebacked.big.matrix(
-  nrow = nrow(beta_matrix),
-  ncol = ncol(beta_matrix),
-  type = "double",
-  backingfile = "large_data.bin",
-  descriptorfile = "large_data.desc",
-  backingpath = temp_dir
-)
-
-# Copy data to file-backed matrix
-file_backed_data[, ] <- beta_matrix
-
-# Impute with automatic file output
-imputed_filebacked <- SlideKnn(
-  file_backed_data,
-  k = 5,
-  n_feat = 50,
-  output = file.path(temp_dir, "imputed_result.bin"),
-  overwrite = FALSE
-)
-
-# Alternative: Load directly from descriptor file
-desc_path <- file.path(temp_dir, "large_data.desc")
-imputed_from_file <- SlideKnn(
-  desc_path,
-  k = 5,
-  n_feat = 50,
-  output = file.path(temp_dir, "imputed_from_desc.bin"),
-  overwrite = FALSE
-)
 
 # ========================================
 # Multiple Imputation
@@ -219,13 +189,12 @@ imputed_from_file <- SlideKnn(
 
 # Predictive Mean Matching (PMM) - recommended
 imputed_pmm <- SlideKnn(
-  bigmemory::as.big.matrix(beta_matrix),
+  beta_matrix,
   k = 8,
   n_feat = 60,
   n_imp = 3, # 3 imputations
   n_pmm = 5, # 5 donors for PMM
-  output = temp_dir,
-  overwrite = FALSE,
+  output = withr::local_tempfile(),
   .progress = TRUE
 )
 

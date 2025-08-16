@@ -17,7 +17,7 @@
 //' by resampling the k nearest neighbors with replacement and using simple averages (weighted is forced to FALSE).
 //' This provides variability estimates for imputation uncertainty.
 //'
-//' @param obj Numeric matrix with missing values pre-filled with colMeans.
+//' @param obj Numeric matrix with missing values represented as NA (NaN).
 //' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 //' @param k Number of nearest neighbors to use for imputation.
 //' @param n_col_miss Integer vector specifying the count of missing values per column.
@@ -28,8 +28,8 @@
 //' @param dist_pow A positive double that controls the penalty for larger distances in
 //' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 //' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-//' @param n_imp Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
-//' @param n_pmm Integer specifying the number of donors for pmm.
+//' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
+//' @param n_pmm Short specifying the number of donors for pmm: -1=single, 0=bootstrap, >0=PMM donors.
 //' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
 //' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
@@ -48,7 +48,7 @@ arma::mat impute_knn_mlpack(
     bool weighted,                // weighted average for imputation or not
     const double dist_pow,        // controls distance penalty for weighted average
     const arma::uword n_imp = 1,  // Number of imputation
-    arma::uword n_pmm = 0,        // Number of pmm donors. If n_imp = 1, then n_pmm = 0 else if n_pmm > 0, then use pmm, else use bootstrap
+    const arma::sword n_pmm = -1, // PMM control: -1=single, 0=bootstrap, >0=PMM donors
     const arma::uword seed = 42,  // seed for RNG
     const int cores = 1)          // Number of cores for parallel processing
 {
@@ -97,7 +97,7 @@ arma::mat impute_knn_mlpack(
   {
     throw std::invalid_argument("Invalid `tree` or `method`. Use 'kd' or 'ball' for `tree`, and 0 for 'euclidean' or 1 for 'manhattan' for `method`.");
   }
-  if (n_imp > 1 && n_pmm == 0)
+  if (n_pmm == 0)
   {
     // if n_imp > 1, and n_pmm == 0, then it's bootstrapping. In which case
     // we fix weighted to false
@@ -126,9 +126,10 @@ arma::mat impute_knn_mlpack(
       weights.fill(1.0);
     }
     arma::uword target_col_idx = col_index_miss(i);
-    // Single Imputation
-    if (n_imp == 1)
+    // Choose imputation method based on n_pmm
+    if (n_pmm == -1)
     {
+      // Single deterministic imputation
       arma::umat nn_columns_mat(n_neighbors, 1);
       nn_columns_mat.col(0) = nn_columns;
 
@@ -138,31 +139,36 @@ arma::mat impute_knn_mlpack(
           nn_columns_mat, weights,
           n_imp);
     }
-    else if (n_imp > 1 && n_pmm > 0)
+    else if (n_pmm == 0)
     {
-      // PMM
-      impute_column_values_pmm(
-          result, obj, miss,
-          col_offsets(i), target_col_idx,
-          nn_columns, weights,
-          n_imp, n_pmm, seed);
-    }
-    else if (n_imp > 1 && n_pmm == 0)
-    {
-      // Neighbor Boot strap
+      // Bootstrap: resample neighbors
       arma::umat nn_columns_mat(n_neighbors, n_imp);
       for (arma::uword b = 0; b < n_imp; ++b)
       {
         nn_columns_mat.col(b) = nn_columns;
       }
       resample_neighbor(nn_columns_mat, seed, target_col_idx);
+
       impute_column_values(
           result, obj, miss,
           col_offsets(i), target_col_idx,
           nn_columns_mat, weights,
           n_imp);
     }
+    else if (n_pmm > 0)
+    {
+      // PMM: Predictive Mean Matching
+      impute_column_values_pmm(
+          result, obj, miss,
+          col_offsets(i), target_col_idx,
+          nn_columns, weights,
+          n_imp, static_cast<arma::uword>(n_pmm), seed);
+    }
+    else
+    {
+      throw std::invalid_argument("Invalid n_pmm value: must be -1 (single), 0 (bootstrap), or >0 (PMM)");
+    }
   }
-
   return result;
 }
+

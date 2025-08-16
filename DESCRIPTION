@@ -7,14 +7,16 @@ Authors@R:
            comment = c(ORCID = "0000-0002-8271-9355"))
 Description: k-nearest neighbors (k-NN) imputation algorithm for numeric
     data with options for multiple imputation with predictive mean
-    matching. For large numeric datasets, such as intensive longitudinal
-    data or epigenomic data where features are ordered in columns and have
-    local structures, a sliding window approach for efficient k-NN
-    imputation that can leverage the 'bigmemory' backend to conserve RAM
-    is provided. This work is based on methods described in: Hastie, T.,
-    Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D.
-    (1999) "Imputing Missing Data for Gene Expression Arrays"
-    <https://hastie.su.domains/Papers/missing.pdf>.
+    matching (PMM). For large numeric datasets, such as intensive
+    longitudinal data or epigenomic data where features are ordered in
+    columns and have local structures, a sliding window approach for
+    efficient k-NN imputation that can leverage the 'bigmemory' backend to
+    conserve RAM is provided. The k-NN algorithm is described in: Hastie,
+    T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein,
+    D.  (1999) <https://hastie.su.domains/Papers/missing.pdf> "Imputing
+    Missing Data for Gene Expression Arrays". The PMM algorithm is
+    described in Stef van Buuren (2018) <https://stefvanbuuren.name/fimd/>
+    "Flexible Imputation of Missing Data".
 License: GPL (>= 2)
 URL: https://github.com/hhp94/SlideKnn
 BugReports: https://github.com/hhp94/SlideKnn/issues
@@ -28,13 +30,12 @@ Imports:
     mirai,
     purrr,
     Rcpp,
-    rlang,
     tibble,
     withr
 Suggests:
     dplyr,
     impute,
-    matrixStats,
+    rlang,
     stats,
     testthat (>= 3.0.0),
     tidyr,

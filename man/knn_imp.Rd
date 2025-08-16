@@ -17,7 +17,7 @@ knn_imp(
   dist_pow = 1,
   tree = NULL,
   n_imp = 1,
-  n_pmm = 10,
+  n_pmm = -1,
   seed = 42,
   output = NULL,
   overwrite = FALSE,
@@ -63,20 +63,20 @@ brute-force search. \code{"kd"} uses KDTree and \code{"ball"} uses BallTree as i
 the mlpack package, where missing values are first filled with column means
 (biased at high percentage of missing values and less efficient at lower dimensions).}
 
-\item{n_imp}{Integer specifying the number of imputations to perform.
-Default is 1 for single imputation.}
+\item{n_imp}{Integer specifying the number of imputations to perform. Forced
+to 1 if \code{n_pmm} = -1.}
 
-\item{n_pmm}{Integer controlling the multiple imputation method when \code{n_imp} > 1.
-If \code{n_pmm} > 0: PMM multiple imputation using \code{n_pmm} closest donors (will not exceed
-available non-missing values column-wise).
-If \code{n_pmm} = 0: Bootstrap multiple imputation via resampling from k nearest neighbors.
-Ignored when \code{n_imp} = 1 (single imputation).}
+\item{n_pmm}{Integer controlling the multiple imputation method.
+If \code{n_pmm} = -1 (default): Deterministic single imputation.
+If \code{n_pmm} > 0: (recommended for MI) PMM multiple imputation using \code{n_pmm} closest
+donors (will not exceed available non-missing values row-wise).
+If \code{n_pmm} = 0: Bootstrap multiple imputation via resampling from k-Nearest Neighbors.}
 
 \item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
 
 \item{output}{Character; path to save the output big.matrix. Format should be
-\code{path/stem}. If provided, the back end will switch to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}}
-instead of in-memory matrix.}
+\code{path/stem} (e.g. "./my_results"). If provided, the back end will switch
+to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}} instead of in-memory matrix.}
 
 \item{overwrite}{Logical; if \code{TRUE}, overwrite existing files at \code{output}. Default to \code{FALSE}.}
 
@@ -161,57 +161,60 @@ data(khanmiss1)
 sum(is.na(khanmiss1))
 
 # Basic k-NN imputation (khanmiss1 has genes in rows, so transpose)
-result <- knn_imp(t(khanmiss1), k = 5)[[1]]
+t_khanmiss1 <- t(khanmiss1)
+result <- knn_imp(t_khanmiss1, k = 5)[[1]]
 sum(is.na(result)) # Should be 0
 
-# Detailed k-NN imputation with custom parameters
-imputed <- knn_imp(
-  obj = t(khanmiss1),
-  k = 3,
-  colmax = 0.5,
-  rowmax = 0.8,
-  method = "euclidean"
-)[[1]]
-
-# Check results
-imputed[1:5, 1:10]
-sum(is.na(imputed))
-
-# Using weighted imputation with custom distance power
+# Using weighted imputation with custom distance power multiple cores
 imputed_weighted <- knn_imp(
-  obj = t(khanmiss1),
+  obj = t_khanmiss1,
   k = 5,
+  cores = 4,
   weighted = TRUE,
   dist_pow = 2,
   method = "euclidean"
 )[[1]]
 
-# PMM imputation with 5 imputations and 3 donors. Increase `n_pmm` in real
+# Using only a subset of columns. Massive time saver
+imputed_subset <- knn_imp(
+  obj = t_khanmiss1,
+  k = 5,
+  cores = 4,
+  weighted = TRUE,
+  dist_pow = 2,
+  subset = c("g189", "g299", "g361"),
+  method = "euclidean"
+)[[1]]
+
+# PMM imputation with 5 imputations and 5 donors. Increase `n_pmm` in real
 # data to ensure realistic uncertainty quantification.
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
 imputed_pmm <- knn_imp(
-  obj = t(khanmiss1),
+  obj = t_khanmiss1,
   k = 5,
   n_imp = 5,
-  n_pmm = 10,
-  output = withr::local_tempdir(), # Enables results as list of bigmatrix
+  n_pmm = 5,
+  output = withr::local_tempfile(), # Enables results as list of bigmatrix
   seed = 123
 )
 # The default of the bigmatrix package is to not allow dimnames so the output
 # lost the dimnames
 imputed_pmm[[1]][, ][1:5, 1:5]
 
-# But this can be reassigned after setting the options to be TRUE like so
-options(bigmemory.allow.dimnames = TRUE)
-rownames(imputed_pmm[[1]]) <- rownames(big_data)
-colnames(imputed_pmm[[1]]) <- colnames(big_data)
-imputed_pmm[[1]][, ][1:5, 1:5]
+if (interactive()) {
+  # But this can be reassigned after setting the options to be TRUE like so
+  options(bigmemory.allow.dimnames = TRUE)
+  for (i in length(imputed_pmm)) {
+    rownames(imputed_pmm[[i]]) <- rownames(t_khanmiss1)
+    colnames(imputed_pmm[[i]]) <- colnames(t_khanmiss1)
+  }
+  imputed_pmm[[1]][, ][1:5, 1:5]
+}
 
 length(imputed_pmm) # Returns 5 imputed datasets
 
 # Bootstrap imputation for uncertainty injection
 imputed_boot <- knn_imp(
-  obj = t(khanmiss1),
+  obj = t_khanmiss1,
   k = 3,
   n_imp = 5,
   n_pmm = 0, # n_pmm = 0 enables bootstrapping nearest neighbors
@@ -219,7 +222,7 @@ imputed_boot <- knn_imp(
 )
 
 length(imputed_boot) # Returns 5 imputed datasets
-\dontshow{\}) # examplesIf}
+
 }
 \references{
 Troyanskaya, Olga, Michael Cantor, Gavin Sherlock, et al.

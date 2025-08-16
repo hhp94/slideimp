@@ -86,52 +86,87 @@ void bigmem_impute_colmeans(SEXP pBigMat, const std::vector<size_t> &col_indices
   }
 }
 
+// Divide columns at certain regions by counts_vec
+// [[Rcpp::export]]
 void bigmem_avg(
-    SEXP pBigMat, const std::vector<size_t> &start,
-    const std::vector<size_t> &end, std::vector<int> &denom_vec,
+    SEXP pBigMat,
+    const std::vector<size_t> &start,
+    const std::vector<size_t> &end,
+    std::vector<int> &counts_vec,
     int cores = 1)
 {
 #ifdef _OPENMP
   omp_set_num_threads(cores);
 #endif
-
   Rcpp::XPtr<BigMatrix> pMat(pBigMat);
   MatrixAccessor<double> mat(*pMat);
   size_t n_rows = pMat->nrow();
   size_t n_cols = pMat->ncol();
-  // Check that denom_vec has the correct length
-  if (denom_vec.size() != n_cols)
+
+  // Check that counts_vec has the correct length
+  if (counts_vec.size() != n_cols)
   {
-    throw std::runtime_error("denom_vec must have the same length as number of columns");
+    throw std::runtime_error("counts_vec must have the same length as number of columns");
   }
+
   // Check that start and end vectors have the same length
   if (start.size() != end.size())
   {
     throw std::runtime_error("start and end vectors must have the same length");
   }
-  // Process each range. Parallel over range instead of columns.
+
+  // If start is length 0 vec then immediate return
+  if (start.size() == 0)
+  {
+    return;
+  }
+
+  // Validation: check all start <= end and find min/max bounds
+  size_t min_start = std::numeric_limits<size_t>::max();
+  size_t max_end = 0;
+
+  for (size_t i = 0; i < start.size(); ++i)
+  {
+    // Check for 1-based indexing validity
+    if (start[i] == 0 || end[i] == 0)
+    {
+      throw std::runtime_error("Column indices must be >= 1 (1-based indexing)");
+    }
+
+    // Check start <= end
+    if (start[i] > end[i])
+    {
+      throw std::runtime_error("start index must be <= end index");
+    }
+
+    // Track min and max for bounds checking
+    min_start = std::min(min_start, start[i]);
+    max_end = std::max(max_end, end[i]);
+  }
+
+  // Bounds check against matrix dimensions
+  if (min_start > n_cols || max_end > n_cols)
+  {
+    throw std::runtime_error("Column indices exceed matrix dimensions");
+  }
+
+  // Process each range. Parallel over each range.
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
   for (size_t i = 0; i < start.size(); ++i)
   {
-    // Convert to 0-based indexing and validate bounds
-    if (start[i] == 0 || start[i] > n_cols || end[i] == 0 || end[i] > n_cols)
-    {
-      throw std::runtime_error("Invalid column index");
-    }
+    // Convert to 0-based indexing
     const size_t start_col = start[i] - 1;
     const size_t end_col = end[i] - 1;
 
-    if (start_col > end_col)
-    {
-      throw std::runtime_error("start index must be <= end index");
-    }
     for (size_t col = start_col; col <= end_col; ++col)
     {
-      // No need to check for division by zero
-      double divisor = static_cast<double>(denom_vec[col]);
+      const double divisor = static_cast<double>(counts_vec[col]);
       // Divide all values in this column by the denominator
+#ifdef _OPENMP
+#pragma omp simd
+#endif
       for (size_t row = 0; row < n_rows; ++row)
       {
         mat[col][row] /= divisor;

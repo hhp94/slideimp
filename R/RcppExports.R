@@ -5,6 +5,10 @@ bigmem_impute_colmeans <- function(pBigMat, col_indices, cores = 1L) {
     invisible(.Call(`_SlideKnn_bigmem_impute_colmeans`, pBigMat, col_indices, cores))
 }
 
+bigmem_avg <- function(pBigMat, start, end, counts_vec, cores = 1L) {
+    invisible(.Call(`_SlideKnn_bigmem_avg`, pBigMat, start, end, counts_vec, cores))
+}
+
 #' Impute missing values in a matrix using k-nearest neighbors (k-NN) with brute-force
 #'
 #' This function imputes missing values in a matrix using a k-nearest neighbors
@@ -26,7 +30,7 @@ bigmem_impute_colmeans <- function(pBigMat, col_indices, cores = 1L) {
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 #' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
-#' @param n_pmm Integer specifying the number of donors for pmm.
+#' @param n_pmm Short specifying the number of donors for pmm: -1=single, 0=bootstrap, >0=PMM donors.
 #' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
@@ -34,7 +38,7 @@ bigmem_impute_colmeans <- function(pBigMat, col_indices, cores = 1L) {
 #'
 #' @keywords internal
 #' @noRd
-impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
+impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp = 1L, n_pmm = -1L, seed = 42L, cores = 1L) {
     .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, n_pmm, seed, cores)
 }
 
@@ -78,7 +82,7 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #' by resampling the k nearest neighbors with replacement and using simple averages (weighted is forced to FALSE).
 #' This provides variability estimates for imputation uncertainty.
 #'
-#' @param obj Numeric matrix with missing values pre-filled with colMeans.
+#' @param obj Numeric matrix with missing values represented as NA (NaN).
 #' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 #' @param k Number of nearest neighbors to use for imputation.
 #' @param n_col_miss Integer vector specifying the count of missing values per column.
@@ -89,8 +93,8 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #' @param dist_pow A positive double that controls the penalty for larger distances in
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param n_imp Integer specifying the number of bootstrap replicates for imputation (default = 1). If > 1, enables bootstrapping.
-#' @param n_pmm Integer specifying the number of donors for pmm.
+#' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
+#' @param n_pmm Short specifying the number of donors for pmm: -1=single, 0=bootstrap, >0=PMM donors.
 #' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
@@ -98,7 +102,7 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #'
 #' @keywords internal
 #' @noRd
-impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp = 1L, n_pmm = 0L, seed = 42L, cores = 1L) {
+impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp = 1L, n_pmm = -1L, seed = 42L, cores = 1L) {
     .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, n_pmm, seed, cores)
 }
 
@@ -140,5 +144,9 @@ weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
 #' @noRd
 impute_column_values_pmm <- function(result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed) {
     invisible(.Call(`_SlideKnn_impute_column_values_pmm`, result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed))
+}
+
+colMMs <- function(mat, min = 0L) {
+    .Call(`_SlideKnn_colMMs`, mat, min)
 }
 

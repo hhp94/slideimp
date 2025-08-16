@@ -95,7 +95,7 @@ mean_impute_col <- function(obj, subset = NULL) {
 # Handle the creation of output files and handle the overwriting
 check_result_list <- function(output, n_imp, overwrite) {
   # Return NULL if no output specified. Same as !file_backed
-  if (is.null(output) || length(out) == 0) {
+  if (is.null(output) || length(output) == 0) {
     return(list(backingpath = NULL, backfiles = NULL, descfiles = NULL))
   }
   # Prepare file paths
@@ -106,7 +106,7 @@ check_result_list <- function(output, n_imp, overwrite) {
     stop("Provided path to `output` doesn't exist or is not readable/writable")
   }
   base <- fs::path_file(output)
-  # Generate file names for all bootstrap iterations
+  # Generate file names for all imputation iterations
   imp_indicies <- seq_len(n_imp)
   suffix <- paste0("_imp", imp_indicies)
   backfiles <- paste0(base, suffix, ".bin")
@@ -117,7 +117,7 @@ check_result_list <- function(output, n_imp, overwrite) {
     if (any(fs::file_exists(files_to_check))) {
       if (!overwrite) {
         stop(
-          "Output files already exist. Set overwrite = FALSE to overwrite them."
+          "Output files already exist. Set `overwrite = TRUE` to overwrite them."
         )
       }
       # Delete existing files
@@ -139,7 +139,7 @@ check_result_list <- function(output, n_imp, overwrite) {
   ))
 }
 
-# Helper function for knn_imp to create bigmatrix or copy for a single bootstrap.
+# Helper function for knn_imp to create bigmatrix or copy for a single imputation.
 # No need to pass to SlideKnn because knn_imp is always in memory there.
 create_result_list <- function(
     data_to_copy,
@@ -256,57 +256,60 @@ create_result_list <- function(
 #' sum(is.na(khanmiss1))
 #'
 #' # Basic k-NN imputation (khanmiss1 has genes in rows, so transpose)
-#' result <- knn_imp(t(khanmiss1), k = 5)[[1]]
+#' t_khanmiss1 <- t(khanmiss1)
+#' result <- knn_imp(t_khanmiss1, k = 5)[[1]]
 #' sum(is.na(result)) # Should be 0
 #'
-#' # Detailed k-NN imputation with custom parameters
-#' imputed <- knn_imp(
-#'   obj = t(khanmiss1),
-#'   k = 3,
-#'   colmax = 0.5,
-#'   rowmax = 0.8,
-#'   method = "euclidean"
-#' )[[1]]
-#'
-#' # Check results
-#' imputed[1:5, 1:10]
-#' sum(is.na(imputed))
-#'
-#' # Using weighted imputation with custom distance power
+#' # Using weighted imputation with custom distance power multiple cores
 #' imputed_weighted <- knn_imp(
-#'   obj = t(khanmiss1),
+#'   obj = t_khanmiss1,
 #'   k = 5,
+#'   cores = 4,
 #'   weighted = TRUE,
 #'   dist_pow = 2,
 #'   method = "euclidean"
 #' )[[1]]
 #'
-#' # PMM imputation with 5 imputations and 3 donors. Increase `n_pmm` in real
+#' # Using only a subset of columns. Massive time saver
+#' imputed_subset <- knn_imp(
+#'   obj = t_khanmiss1,
+#'   k = 5,
+#'   cores = 4,
+#'   weighted = TRUE,
+#'   dist_pow = 2,
+#'   subset = c("g189", "g299", "g361"),
+#'   method = "euclidean"
+#' )[[1]]
+#'
+#' # PMM imputation with 5 imputations and 5 donors. Increase `n_pmm` in real
 #' # data to ensure realistic uncertainty quantification.
-#' @examplesIf interactive()
 #' imputed_pmm <- knn_imp(
-#'   obj = t(khanmiss1),
+#'   obj = t_khanmiss1,
 #'   k = 5,
 #'   n_imp = 5,
-#'   n_pmm = 10,
-#'   output = withr::local_tempdir(), # Enables results as list of bigmatrix
+#'   n_pmm = 5,
+#'   output = withr::local_tempfile(), # Enables results as list of bigmatrix
 #'   seed = 123
 #' )
 #' # The default of the bigmatrix package is to not allow dimnames so the output
 #' # lost the dimnames
 #' imputed_pmm[[1]][, ][1:5, 1:5]
 #'
-#' # But this can be reassigned after setting the options to be TRUE like so
-#' options(bigmemory.allow.dimnames = TRUE)
-#' rownames(imputed_pmm[[1]]) <- rownames(big_data)
-#' colnames(imputed_pmm[[1]]) <- colnames(big_data)
-#' imputed_pmm[[1]][, ][1:5, 1:5]
+#' if (interactive()) {
+#'   # But this can be reassigned after setting the options to be TRUE like so
+#'   options(bigmemory.allow.dimnames = TRUE)
+#'   for (i in length(imputed_pmm)) {
+#'     rownames(imputed_pmm[[i]]) <- rownames(t_khanmiss1)
+#'     colnames(imputed_pmm[[i]]) <- colnames(t_khanmiss1)
+#'   }
+#'   imputed_pmm[[1]][, ][1:5, 1:5]
+#' }
 #'
 #' length(imputed_pmm) # Returns 5 imputed datasets
 #'
 #' # Bootstrap imputation for uncertainty injection
 #' imputed_boot <- knn_imp(
-#'   obj = t(khanmiss1),
+#'   obj = t_khanmiss1,
 #'   k = 3,
 #'   n_imp = 5,
 #'   n_pmm = 0, # n_pmm = 0 enables bootstrapping nearest neighbors
@@ -329,7 +332,7 @@ knn_imp <- function(
     dist_pow = 1,
     tree = NULL,
     n_imp = 1,
-    n_pmm = 10,
+    n_pmm = -1,
     seed = 42,
     output = NULL,
     overwrite = FALSE,
@@ -356,7 +359,9 @@ knn_imp <- function(
     stopifnot(length(dist_pow) == 1, dist_pow > 0, !is.infinite(dist_pow))
   }
   checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
-  checkmate::assert_path_for_output(output, null.ok = TRUE, .var.name = "output")
+  if (!is.null(output)) {
+    checkmate::assert_path_for_output(output, .var.name = "output")
+  }
   checkmate::assert_logical(overwrite, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "overwrite")
 
   set.seed(seed)
@@ -595,7 +600,7 @@ impute_knn <- function(
   for (i in seq_along(imputed_good_list)) {
     # Initialize the result matrix with the original object's values.
     result <- obj
-    # Place the imputed values from this bootstrap iteration back into the
+    # Place the imputed values from this imputation iteration back into the
     # corresponding 'good_rows' in the result matrix.
     result[good_rows, ] <- imputed_good_list[[i]]
     result_list[[i]] <- result
@@ -613,19 +618,23 @@ find_overlap_regions <- function(start, end) {
   valid_ends <- end + 1 <= max_pos + 1
   delta[end[valid_ends] + 1] <- delta[end[valid_ends] + 1] - 1
   counts_vec <- cumsum(delta)[seq_len(max_pos)]
-
+  storage.mode(counts_vec) <- "integer"
   # Extract regions where counts > 1
   overlaps <- counts_vec > 1
   # Run Length Encoding
   rle_over <- rle(overlaps)
-
   # Compute start and end positions of the TRUE runs
   ends <- cumsum(rle_over$lengths)
   starts <- ends - rle_over$lengths + 1
-
-  list(
-    region = cbind(start = starts[rle_over$values], end = ends[rle_over$values]),
-    counts_vec = counts_vec
+  # Return the region and counts_vec
+  return(
+    list(
+      region = cbind(
+        start = starts[rle_over$values],
+        end = ends[rle_over$values]
+      ),
+      counts_vec = counts_vec
+    )
   )
 }
 
@@ -686,21 +695,19 @@ find_overlap_regions <- function(start, end) {
 #'   in the weighted mean imputation. Must be greater than zero: values between 0
 #'   and 1 apply a softer penalty, 1 is linear (default), and values greater than
 #'   1 apply a harsher penalty.
-#' @param n_imp Integer specifying the number of imputations to perform.
-#'   Default is 1 for single imputation.
-#' @param n_pmm Integer controlling the multiple imputation method when `n_imp` > 1.
-#'   If `n_pmm` > 0: PMM multiple imputation using `n_pmm` closest donors (will not exceed
-#'   available non-missing values column-wise).
-#'   If `n_pmm` = 0: Bootstrap multiple imputation via resampling from k nearest neighbors.
-#'   Ignored when `n_imp` = 1 (single imputation).
+#' @param n_imp Integer specifying the number of imputations to perform. Forced
+#'   to 1 if `n_pmm` = -1.
+#' @param n_pmm Integer controlling the multiple imputation method.
+#'   If `n_pmm` = -1 (default): Deterministic single imputation.
+#'   If `n_pmm` > 0: (recommended for MI) PMM multiple imputation using `n_pmm` closest
+#'   donors (will not exceed available non-missing values row-wise).
+#'   If `n_pmm` = 0: Bootstrap multiple imputation via resampling from k-Nearest Neighbors.
 #' @param seed Integer; random seed for reproducible bootstrap sampling. Default is 42.
 #' @param .progress Logical; if `TRUE`, show a progress bar. Default is `FALSE`.
 #' @param output Character; path to save the output big.matrix. Format should be
-#'   `path/stem`. If provided, the back end will switch to [bigmemory::filebacked.big.matrix()]
-#'   instead of in-memory matrix.
+#'   `path/stem` (e.g. "./my_results"). If provided, the back end will switch
+#'   to [bigmemory::filebacked.big.matrix()] instead of in-memory matrix.
 #' @param overwrite Logical; if `TRUE`, overwrite existing files at `output`. Default to `FALSE`.
-#' @param block Integer; block size for processing large matrices. If `NULL` (default),
-#'   calculated automatically based on the matrix size and number of cores.
 #' @param strip_dimnames Logical; if `FALSE` (default), dimnames will not be removed,
 #'   which will increase memory usage. Should be set to `TRUE` to save memory from
 #'   overhead, especially when `cores` > 1. See details.
@@ -712,11 +719,11 @@ find_overlap_regions <- function(start, end) {
 #' @seealso [knn_imp()], [mean_impute_col()], [bigmemory::big.matrix()]
 #'
 #' @examples
-#' # Generate sample data with missing values with 10 samples and 200 columns
+#' # Generate sample data with missing values with 20 samples and 100 columns
 #' # where the column order is sorted (e.g., by genomic position or time)
 #'
 #' set.seed(1234)
-#' beta_matrix <- t(sim_mat(200, 10)$input)
+#' beta_matrix <- t(sim_mat(100, 20)$input)
 #'
 #' # ========================================
 #' # Basic Sliding k-NN Imputation
@@ -740,11 +747,21 @@ find_overlap_regions <- function(start, end) {
 #' # Convert to big.matrix for better memory management
 #' big_data <- bigmemory::as.big.matrix(beta_matrix, type = "double")
 #'
+#' # output is NULL, the backend is still in-memory
+#' imputed_big_in_memory <- SlideKnn(
+#'   big_data,
+#'   k = 5,
+#'   n_feat = 50,
+#'   output = NULL
+#' )
+#'
+#' # output is now set to a location to save. The backend is now filebacked matrix
+#' # to handle massive data
 #' imputed_big <- SlideKnn(
 #'   big_data,
 #'   k = 5,
 #'   n_feat = 50,
-#'   output = withr::local_tempdir()
+#'   output = withr::local_tempfile()
 #'   # strip_dimnames = TRUE  # Recommended to set to TRUE for efficiency
 #' )
 #'
@@ -759,42 +776,6 @@ find_overlap_regions <- function(start, end) {
 #'   colnames(imputed_big[[1]]) <- colnames(big_data)
 #'   imputed_big[[1]][, ][1:5, 1:5]
 #' }
-#' # ========================================
-#' # File-backed Matrices (Large Datasets)
-#' # ========================================
-#'
-#' # Create file-backed matrix for very large datasets
-#' temp_dir <- withr::local_tempdir()
-#' file_backed_data <- bigmemory::filebacked.big.matrix(
-#'   nrow = nrow(beta_matrix),
-#'   ncol = ncol(beta_matrix),
-#'   type = "double",
-#'   backingfile = "large_data.bin",
-#'   descriptorfile = "large_data.desc",
-#'   backingpath = temp_dir
-#' )
-#'
-#' # Copy data to file-backed matrix
-#' file_backed_data[, ] <- beta_matrix
-#'
-#' # Impute with automatic file output
-#' imputed_filebacked <- SlideKnn(
-#'   file_backed_data,
-#'   k = 5,
-#'   n_feat = 50,
-#'   output = file.path(temp_dir, "imputed_result.bin"),
-#'   overwrite = FALSE
-#' )
-#'
-#' # Alternative: Load directly from descriptor file
-#' desc_path <- file.path(temp_dir, "large_data.desc")
-#' imputed_from_file <- SlideKnn(
-#'   desc_path,
-#'   k = 5,
-#'   n_feat = 50,
-#'   output = file.path(temp_dir, "imputed_from_desc.bin"),
-#'   overwrite = FALSE
-#' )
 #'
 #' # ========================================
 #' # Multiple Imputation
@@ -802,13 +783,12 @@ find_overlap_regions <- function(start, end) {
 #'
 #' # Predictive Mean Matching (PMM) - recommended
 #' imputed_pmm <- SlideKnn(
-#'   bigmemory::as.big.matrix(beta_matrix),
+#'   beta_matrix,
 #'   k = 8,
 #'   n_feat = 60,
 #'   n_imp = 3, # 3 imputations
 #'   n_pmm = 5, # 5 donors for PMM
-#'   output = temp_dir,
-#'   overwrite = FALSE,
+#'   output = withr::local_tempfile(),
 #'   .progress = TRUE
 #' )
 #'
@@ -853,22 +833,19 @@ SlideKnn <- function(
     weighted = FALSE,
     dist_pow = 1,
     n_imp = 1,
-    n_pmm = 10,
+    n_pmm = -1,
     seed = 42,
     .progress = FALSE,
     output = NULL,
     overwrite = FALSE,
-    block = NULL,
     strip_dimnames = FALSE) {
   # Pre-conditioning ----
   method <- match.arg(method)
-  checkmate::assert_integerish(n_overlap, lower = 0, upper = n_feat - 1, len = 1, null.ok = FALSE, .var.name = "n_overlap")
-  checkmate::assert_integerish(k, lower = 1, upper = n_feat - 1, len = 1, null.ok = FALSE, .var.name = "k")
-  checkmate::assert_numeric(rowmax, lower = 0, upper = 1, len = 1, null.ok = FALSE, .var.name = "rowmax")
-  checkmate::assert_numeric(colmax, lower = 0, upper = 1, len = 1, null.ok = FALSE, .var.name = "colmax")
-  checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
-  checkmate::assert_integerish(n_imp, lower = 1, len = 1, null.ok = FALSE, .var.name = "n_imp")
-  checkmate::assert_integerish(seed, lower = 0, len = 1, null.ok = FALSE, .var.name = "seed")
+  checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
+  checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
+  checkmate::assert_int(cores, lower = 1, null.ok = FALSE, .var.name = "cores")
+  checkmate::assert_int(n_imp, lower = -1, null.ok = FALSE, .var.name = "n_imp")
+  checkmate::assert_int(seed, null.ok = FALSE, .var.name = "seed")
   if (cores > 1) {
     tryCatch(
       mirai::require_daemons(),
@@ -882,7 +859,9 @@ SlideKnn <- function(
   }
   checkmate::assert_flag(post_imp, .var.name = "post_imp", null.ok = FALSE)
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
-  checkmate::assert_path_for_output(output, len = 1, null.ok = TRUE, .var.name = "output")
+  if (!is.null(output)) {
+    checkmate::assert_path_for_output(output, .var.name = "output")
+  }
   checkmate::assert(
     checkmate::check_character(subset, min.len = 1, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
     checkmate::check_integerish(
@@ -893,16 +872,14 @@ SlideKnn <- function(
   )
   if (n_imp > 1 && n_pmm == 0 && weighted) {
     warning("If bootstrapping nearest neighbors, weighted will be forced to FALSE")
+    weighted <- FALSE
   }
-  set.seed(seed)
-
   # Default is options(bigmemory.allow.dimnames = NULL or FALSE) which prevents
   # strip names and assigning names to outputs so we have to guard
   if (strip_dimnames) {
     on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")))
     options(bigmemory.allow.dimnames = TRUE)
   }
-
   # Handle input matrix
   if (!bigmemory::is.big.matrix(obj)) {
     if (is.character(obj)) {
@@ -914,15 +891,18 @@ SlideKnn <- function(
     }
   }
   checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
+  checkmate::assert_int(n_overlap, lower = 0, upper = n_feat - 1, null.ok = FALSE, .var.name = "n_overlap")
+  checkmate::assert_int(k, lower = 1, upper = n_feat - 1, null.ok = FALSE, .var.name = "k")
 
   # Determine if output should be file-backed
   file_backed <- !is.null(output)
-
   # Warning for multiple imputations without file backing
   if (n_imp > 1 && !file_backed) {
     warning("n_imp > 1 should be used with output to file-backed big.matrix. Provide `output` parameter to enable file backing.")
   }
-
+  if (n_imp > 1 && n_pmm == -1) {
+    n_imp <- 1
+  }
   # Remove obj names temporarily to reduce size of pointers being passed to workers
   rn <- rownames(obj)
   cn <- colnames(obj)
@@ -932,7 +912,6 @@ SlideKnn <- function(
     colnames(obj) <- NULL
     dn <- NULL
   }
-
   ## subset ----
   if (!is.null(subset)) {
     if (is.character(subset)) {
@@ -950,7 +929,6 @@ SlideKnn <- function(
     # If subset is NULL, set it to all columns
     subset <- seq_len(ncol(obj))
   }
-
   # Windowing Logic ----
   # Calculate the total number of steps/windows needed.
   idx <- 1 # R index at 1
@@ -968,24 +946,16 @@ SlideKnn <- function(
   end[corrected_length] <- ncol(obj)
   # Calculate where the subset lies, offset by the start index
   # Offset the subset_list to make indices relative to each window's start
-  subset_list <- purrr::map2(
-    start,
-    end,
-    function(x, y) {
-      r <- intersect(subset, x:y)
-      r <- r[!is.na(r)]
-      if (length(r) == length(x:y)) {
-        # Don't need this if line, But its fine. Makes the code more robust
-        return(NULL)
-      }
-      if (length(r) > 0) {
-        return(sort(r - x + 1))
-      } else {
-        return(r)
-      }
+  subset_list <- lapply(seq_along(start), function(i) {
+    # Find range of subset that falls in window [start[i], end[i]]
+    first <- findInterval(start[i] - 1, subset) + 1
+    last <- findInterval(end[i], subset)
+    if (first <= last) {
+      subset[first:last] - start[i] + 1
+    } else {
+      integer(0)
     }
-  )
-
+  })
   # Then, we calculate the offsets needed to subset the intermediate matrix
   width <- end - start + 1
   offset_start <- c(1, cumsum(width)[-length(width)] + 1)
@@ -995,51 +965,20 @@ SlideKnn <- function(
   ## Init ----
   nr <- nrow(obj)
   nc <- ncol(obj)
-  if (is.null(block)) {
-    # whichever is smaller, ncol(obj) or
-    # whichever is larger, 1, number of cores * 100 iterations each core, or 0.005 * ncol()
-    block <- min(nc, max(1, nc %/% (cores * 100), floor(0.005 * nc)))
-  }
-  checkmate::assert_integerish(
-    block,
-    lower = 1,
-    upper = ncol(obj),
-    len = 1,
-    null.ok = FALSE,
-    .var.name = "block"
-  )
-
   # Getting the backingpath and backfiles/descfiles. NULL if output is NULL.
-  output_info <- check_result_list(output, n_imp, overwrite)
   temp_dir <- if (file_backed) {
     checkmate::assert_flag(overwrite, .var.name = "overwrite", null.ok = FALSE)
     withr::local_tempdir(pattern = paste0("SlideKnn_", Sys.getpid()))
   } else {
     NULL
   }
-
-  # Create lists for multiple imputation. If temp_dir is NULL, all the elements
-  # will be NULL and the matrix will in-memory
-  intermediate_info <- check_result_list(
-    fs::path(temp_dir, "intermediate"), n_imp, overwrite
-  )
-  final_imputed_info <- check_result_list(
-    fs::path(temp_dir, "final_imputed"), n_imp, overwrite
-  )
-  intermediate_list <- vector("list", n_imp)
-  final_imputed_list <- vector("list", n_imp)
-
-  for (imp_idx in seq_len(n_imp)) {
-    intermediate_list[[imp_idx]] <- bigmemory::big.matrix(
-      nrow = nr,
-      ncol = sum(width),
-      type = "double",
-      init = 0.0,
-      backingpath = intermediate_info$backingpath,
-      descriptorfile = intermediate_info$descfiles[[imp_idx]],
-      backingfile = intermediate_info$backfiles[[imp_idx]]
-    )
-    final_imputed_list[[imp_idx]] <- bigmemory::big.matrix(
+  # Create descriptors to pass around on workers
+  obj_desc <- bigmemory::describe(obj)
+  # Get final imputed info (multiple if n_imp > 1)
+  final_imputed_info <- check_result_list(output, n_imp, overwrite)
+  # Create all final imputed big.matrices upfront
+  final_imputed_list <- lapply(seq_len(n_imp), function(imp_idx) {
+    bigmemory::big.matrix(
       nrow = nr,
       ncol = nc,
       type = "double",
@@ -1048,219 +987,150 @@ SlideKnn <- function(
       descriptorfile = final_imputed_info$descfiles[[imp_idx]],
       backingfile = final_imputed_info$backfiles[[imp_idx]]
     )
-  }
-  counts_vector <- 1
-
-  # Create descriptors to pass around on workers
-  obj_desc <- bigmemory::describe(obj)
-  intermediate_desc_list <- lapply(intermediate_list, bigmemory::describe)
-  final_imputed_desc_list <- lapply(final_imputed_list, bigmemory::describe)
-
-  ## Impute ----
-  if (.progress) {
-    message("Step 1/3: Imputing")
-  }
-  purrr::walk(
-    seq_along(start),
-    fn(
-      function(i, ...) {
-        window_cols <- start[i]:end[i]
-        obj_big <- bigmemory::attach.big.matrix(obj_desc)
-
-        # Get imputation results for all iterations
-        imp_list <- impute_knn(
-          # Realize in memory
-          obj = obj_big[, window_cols, drop = FALSE],
-          k = k,
-          rowmax = rowmax,
-          colmax = colmax,
-          cores = 1L, # For Slide k-NN, fix cores = 1
-          method = method,
-          post_imp = post_imp,
-          weighted = weighted,
-          dist_pow = dist_pow,
-          subset = subset_list[[i]],
-          n_imp = n_imp,
-          n_pmm = n_pmm,
-          seed = seed,
-          knn_imp = knn_imp,
-          tree = tree,
-          impute_knn_brute = impute_knn_brute,
-          impute_knn_mlpack = impute_knn_mlpack,
-          mean_impute_col = mean_impute_col
-        )
-
-        # Fill intermediate matrices for each bootstrap iteration
-        for (imp_idx in seq_len(n_imp)) {
-          intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc_list[[imp_idx]])
-          intermediate_big[, offset_start[i]:offset_end[i]] <- imp_list[[imp_idx]]
-        }
-      },
-      impute_knn = impute_knn,
-      subset_list = subset_list,
-      knn_imp = knn_imp,
-      weighted = weighted,
-      dist_pow = dist_pow,
-      impute_knn_brute = impute_knn_brute,
-      mean_impute_col = mean_impute_col,
-      impute_knn_mlpack = impute_knn_mlpack,
-      start = start,
-      end = end,
-      obj_desc = obj_desc,
-      tree = tree,
-      intermediate_desc_list = intermediate_desc_list,
-      k = k,
-      rowmax = rowmax,
-      colmax = colmax,
-      method = method,
-      post_imp = post_imp,
-      offset_start = offset_start,
-      offset_end = offset_end,
-      n_imp = n_imp,
-      n_pmm = n_pmm,
-      seed = seed
-    ),
-    .progress = .progress
-  )
-
-  ## Averaging ----
-  if (.progress) {
-    message("Step 2/3: Overlapping")
-  }
-  # We fill out the counts_vec. Values > 1 are where the overlaps are and will
-  # be used to normalize the final_imputed matrices
-  max_pos <- max(end)
-  delta <- rep(0, max_pos + 1)
-  delta[start] <- delta[start] + 1
-  valid_ends <- end + 1 <= max_pos + 1
-  delta[end[valid_ends] + 1] <- delta[end[valid_ends] + 1] - 1
-  counts_vec <- cumsum(delta)[seq_len(max_pos)]
-
-  # Add the windows from intermediate list
+  })
+  # Overlap regions (computed once, shared)
+  overlap <- find_overlap_regions(start, end)
+  # Process each imputation sequentially for each n_imp
   for (imp_idx in seq_len(n_imp)) {
+    if (.progress) {
+      message(sprintf("Processing imputation %d/%d", imp_idx, n_imp))
+    }
+    # Seed for this imputation
+    seed_imp <- seed + (imp_idx - 1)
+    # Create single intermediate for this imp (overwritten if file-backed)
+    intermediate_info <- check_result_list(
+      fs::path(temp_dir, "intermediate"), 1,
+      overwrite = TRUE
+    )
+    intermediate <- bigmemory::big.matrix(
+      nrow = nr,
+      ncol = sum(width),
+      type = "double",
+      init = 0.0,
+      backingpath = intermediate_info$backingpath,
+      descriptorfile = intermediate_info$descfiles[[1]],
+      backingfile = intermediate_info$backfiles[[1]]
+    )
+    intermediate_desc <- bigmemory::describe(intermediate)
+    ## Impute ----
+    if (.progress) {
+      message("Step 1/3: Imputing")
+    }
+    purrr::walk(
+      seq_along(start),
+      fn(
+        function(i, ...) {
+          window_cols <- start[i]:end[i]
+          obj_big <- bigmemory::attach.big.matrix(obj_desc)
+          # Get imputation results
+          imp_list <- impute_knn(
+            # Realize in memory
+            obj = obj_big[, window_cols, drop = FALSE],
+            k = k,
+            rowmax = rowmax,
+            colmax = colmax,
+            cores = 1L, # For Slide k-NN, fix cores = 1
+            method = method,
+            post_imp = post_imp,
+            weighted = weighted,
+            dist_pow = dist_pow,
+            subset = subset_list[[i]],
+            n_imp = 1L, # Fix n_imp to 1
+            n_pmm = n_pmm, # Control multiple imputation only through `n_pmm`
+            seed = seed_imp,
+            knn_imp = knn_imp,
+            tree = tree,
+            impute_knn_brute = impute_knn_brute,
+            impute_knn_mlpack = impute_knn_mlpack,
+            mean_impute_col = mean_impute_col,
+            check_result_list = check_result_list
+          )
+          # Fill single intermediate matrix
+          intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc)
+          intermediate_big[, offset_start[i]:offset_end[i]] <- imp_list[[1]]
+        },
+        impute_knn = impute_knn,
+        subset_list = subset_list,
+        knn_imp = knn_imp,
+        weighted = weighted,
+        dist_pow = dist_pow,
+        impute_knn_brute = impute_knn_brute,
+        mean_impute_col = mean_impute_col,
+        check_result_list = check_result_list,
+        impute_knn_mlpack = impute_knn_mlpack,
+        start = start,
+        end = end,
+        obj_desc = obj_desc,
+        tree = tree,
+        intermediate_desc = intermediate_desc,
+        k = k,
+        rowmax = rowmax,
+        colmax = colmax,
+        method = method,
+        post_imp = post_imp,
+        offset_start = offset_start,
+        offset_end = offset_end,
+        n_pmm = n_pmm,
+        seed_imp = seed_imp
+      ),
+      .progress = .progress
+    )
+    if (file_backed) {
+      bigmemory::flush(intermediate)
+    }
+    # Get the current final imputed
+    final_imputed <- final_imputed_list[[imp_idx]]
+    ## Averaging ----
+    if (.progress) {
+      message("Step 2/3: Overlapping")
+    }
+    # Add the windows from intermediate
     purrr::walk(
       seq_along(start),
       function(i) {
         window_cols <- start[i]:end[i]
-        final_imputed_list[[imp_idx]][, window_cols] <- {
-          final_imputed_list[[imp_idx]][, window_cols] + intermediate_list[[imp_idx]][, offset_start[i]:offset_end[i]]
+        final_imputed[, window_cols] <- {
+          final_imputed[, window_cols] + intermediate[, offset_start[i]:offset_end[i]]
         }
       },
       .progress = FALSE
     )
-  }
-
-  if (.progress) {
-    message("Step 3/3: Averaging")
-  }
-
-  # post-processing, average out values.
-  # Block is the size of the block of columns to process the data by. Have to
-  # recalculate the subset relative to w_start
-  w_start <- seq(1, nc, by = block)
-  w_end <- c(w_start[-1] - 1, nc)
-  w_subset_list <- purrr::map2(
-    w_start,
-    w_end,
-    function(x, y) {
-      r <- intersect(subset, x:y)
-      r <- r[!is.na(r)]
-      if (length(r) == length(x:y)) {
-        # Don't need this if line, But its fine. Makes the code more robust
-        return(NULL)
-      }
-      if (length(r) > 0) {
-        return(sort(r - x + 1))
-      } else {
-        return(r)
-      }
+    if (file_backed) {
+      bigmemory::flush(final_imputed)
     }
-  )
-
-  # Process averaging for each multiple iteration
-  for (imp_idx in seq_len(n_imp)) {
-    purrr::walk(
-      seq_along(w_start),
-      fn(
-        function(i) {
-          window_cols <- w_start[i]:w_end[i]
-          final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc_list[[imp_idx]])
-          average <- counts_vec[window_cols] > 1
-
-          if (length(window_cols[average]) > 0) {
-            final_imputed_big[, window_cols[average]] <- sweep(
-              final_imputed_big[, window_cols[average], drop = F],
-              MARGIN = 2,
-              STATS = counts_vec[window_cols[average]],
-              FUN = "/"
-            )
-          }
-        },
-        counts_desc_list = counts_desc_list,
-        final_imputed_desc_list = final_imputed_desc_list,
-        w_start = w_start,
-        w_end = w_end,
-        imp_idx = imp_idx,
-        counts_vec = counts_vec
-      ),
-      .progress = FALSE
-    )
-  }
-
-  ## post_imp ----
-  if (post_imp) {
     if (.progress) {
-      message("Post-imputation")
+      message("Step 3/3: Averaging")
     }
-
-    for (imp_idx in seq_len(n_imp)) {
-      purrr::walk(
-        seq_along(w_start),
-        fn(
-          function(i) {
-            window_cols <- w_start[i]:w_end[i]
-            final_imputed_big <- bigmemory::attach.big.matrix(final_imputed_desc_list[[imp_idx]])
-            if (anyNA(final_imputed_big[, window_cols])) {
-              final_imputed_big[, window_cols] <- mean_impute_col(
-                final_imputed_big[, window_cols, drop = FALSE],
-                subset = w_subset_list[[i]]
-              )
-            }
-          },
-          mean_impute_col = mean_impute_col,
-          final_imputed_desc_list = final_imputed_desc_list,
-          w_subset_list = w_subset_list,
-          w_start = w_start,
-          w_end = w_end,
-          imp_idx = imp_idx
-        ),
-        .progress = FALSE
+    # Process averaging
+    bigmem_avg(
+      final_imputed@address,
+      start = overlap$region[, "start"],
+      end = overlap$region[, "end"],
+      counts_vec = overlap$counts_vec,
+      cores = cores
+    )
+    ## post_imp ----
+    if (post_imp) {
+      if (.progress) {
+        message("Post-imputation")
+      }
+      bigmem_impute_colmeans(
+        final_imputed@address,
+        col_indices = subset,
+        cores = cores
       )
     }
-  }
-
-  # Restore names for all bootstrap iterations
-  if (strip_dimnames) {
-    rownames(obj) <- rn
-    colnames(obj) <- cn
-    for (imp_idx in 1:n_imp) {
-      rownames(final_imputed_list[[imp_idx]]) <- rn
-      colnames(final_imputed_list[[imp_idx]]) <- cn
+    # Restore names
+    if (strip_dimnames) {
+      rownames(final_imputed) <- rn
+      colnames(final_imputed) <- cn
+    }
+    # If not file-backed, convert back to normal matrix
+    if (!file_backed) {
+      final_imputed_list[[imp_idx]] <- bigmemory::as.matrix(final_imputed)
+      gc()
     }
   }
-
   # Return results
-  if (file_backed) {
-    return(final_imputed_list)
-  } else {
-    # Convert to regular matrices and restore names
-    result_list <- vector("list", n_imp)
-    for (imp_idx in seq_len(n_imp)) {
-      out <- bigmemory::as.matrix(final_imputed_list[[imp_idx]])
-      rownames(out) <- rn
-      colnames(out) <- cn
-      result_list[[imp_idx]] <- out
-    }
-    return(result_list)
-  }
+  return(final_imputed_list)
 }
