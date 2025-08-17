@@ -5,6 +5,7 @@
 
 <!-- badges: start -->
 
+[![R-CMD-check](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 `{SlideKnn}` is an efficient R package for k-nearest neighbors (k-NN)
@@ -113,9 +114,9 @@ bench::mark(
 #> # A tibble: 3 × 6
 #>   expression        min   median `itr/sec` mem_alloc `gc/sec`
 #>   <chr>        <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-#> 1 knn_1         14.75ms  15.76ms      62.9    7.28MB     14.5
-#> 2 knn_4          5.32ms   5.72ms     175.     7.28MB     40.6
-#> 3 impute.knn_1  14.67ms  14.82ms      66.7   12.42MB     30.0
+#> 1 knn_1          14.9ms  15.62ms      63.9    7.28MB     14.7
+#> 2 knn_4           5.3ms   5.67ms     173.     7.28MB     40.8
+#> 3 impute.knn_1   14.6ms  14.76ms      67.3   12.42MB     49.6
 ```
 
 Sliding window k-NN imputation for epigenetics data with 1000 CpGs and
@@ -196,7 +197,7 @@ obj <- t(sim_mat(n = 1000, m = 100, perc_NA = 0.8, perc_col_NA = 1)$input)
 # of the same person/sample). Disable fall back imputation with `post_imp = FALSE`
 imputed_by_col <- knn_imp(obj, cores = 4, k = 10, post_imp = FALSE)
 # Step 2: Then if values are still missing, impute by rows. (impute the same features
-# using the values of the same person).
+# using values from OTHER people/samples).
 imputed_by_row <- knn_imp(t(imputed_by_col[[1]]), cores = 4, k = 10, post_imp = FALSE)
 # Step 3: Lastly, impute by column mean for any remaining missing.
 imputed_mean <- mean_impute_col(t(imputed_by_row[[1]]))

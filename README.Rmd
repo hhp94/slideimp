@@ -16,6 +16,7 @@ knitr::opts_chunk$set(
 # SlideKnn
 
 <!-- badges: start -->
+[![R-CMD-check](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 `{SlideKnn}` is an efficient R package for k-nearest neighbors (k-NN) imputation of missing values in high-dimensional numeric matrices, such as those from intensive longitudinal data or epigenetics. It introduces a sliding window approach to handle very large feature sets while preserving local structure, making it suitable for data where features are ordered (e.g., by time or distance).
@@ -115,7 +116,7 @@ obj <- t(sim_mat(n = 1000, m = 100, perc_NA = 0.8, perc_col_NA = 1)$input)
 # of the same person/sample). Disable fall back imputation with `post_imp = FALSE`
 imputed_by_col <- knn_imp(obj, cores = 4, k = 10, post_imp = FALSE)
 # Step 2: Then if values are still missing, impute by rows. (impute the same features
-# using the values of the same person).
+# using values from OTHER people/samples).
 imputed_by_row <- knn_imp(t(imputed_by_col[[1]]), cores = 4, k = 10, post_imp = FALSE)
 # Step 3: Lastly, impute by column mean for any remaining missing.
 imputed_mean <- mean_impute_col(t(imputed_by_row[[1]]))
