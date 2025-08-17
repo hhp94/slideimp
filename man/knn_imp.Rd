@@ -223,9 +223,9 @@ length(imputed_boot) # Returns 5 imputed data
 
 }
 \references{
-Robert Tibshirani, Trevor Hastie, Balasubramanian Narasimhan, and Gilbert Chu  (2002).
+Robert Tibshirani, Trevor Hastie, Balasubramanian Narasimhan, and Gilbert Chu (2002).
 Diagnosis of multiple cancer types by shrunken centroids of gene expression
-PNAS 99: 6567-6572.   Available at www.pnas.org
+PNAS 99: 6567-6572. Available at www.pnas.org
 }
 \seealso{
 \code{\link[=SlideKnn]{SlideKnn()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}

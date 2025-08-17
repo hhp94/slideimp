@@ -9,12 +9,12 @@
 
 `{SlideKnn}` is an efficient R package for k-nearest neighbors (k-NN)
 imputation of missing values in high-dimensional numeric matrices, such
-as those from intensive longitudinal data or epi-genomics. It introduces
+as those from intensive longitudinal data or epigenetics. It introduces
 a sliding window approach to handle very large feature sets while
 preserving local structure, making it suitable for data where features
 are ordered (e.g., by time or distance).
 
-The package builds on proven k-NN algorithm (Bioconductor’s
+The package builds on the proven k-NN algorithm (Bioconductor’s
 [`impute`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
 package) but adds enhancements: parallelization for speed, tree-based
 methods for efficiency, weighted imputation, multiple imputation
@@ -26,13 +26,13 @@ Key features include:
 - **Sliding Window k-NN Imputation**: Break large data into overlapping
   windows for computationally feasible imputation while maintaining
   local structures (e.g., intensively sampled longitudinal data or
-  epi-genomic data).
+  epigenetics data).
 - **Full Matrix k-NN Imputation**: Standard k-NN for smaller data, with
   multi-core parallelization over columns with missing values.
 - **Tree-Based k-NN**: Integration with `{mlpack}` for KD-Tree or
   Ball-Tree methods, accelerating imputation in high dimensions.
 - **Subset Imputation**: Only impute a subset of columns to save time.
-  Important for applications such as epi-genetic clocks calculations.
+  Important for applications such as epigenetics clocks calculations.
 - **Weighted Imputation**: Use inverse-distance weighting for more
   accurate averages, with tunable penalties.
 - **Multiple Imputation**: Support for Predictive Mean Matching (PMM) or
@@ -88,18 +88,19 @@ sum(is.na(imputed_full[[1]]))
 #> [1] 0
 ```
 
-Yield same results as `{impute::impute.knn()}`. Is faster in larger data
-and almost as fast in smaller data. Scaling well with multiple `cores`.
+Yields the same results as `{impute::impute.knn()}`. `SlideKnn::knn_imp`
+is faster in larger data and almost as fast in smaller data given
+`cores = 1`. Scaling well with multiple `cores`.
 
 ``` r
 set.seed(1234)
-obj_t <- khanmiss1
+obj_t <- t(khanmiss1)
 
 bench::mark(
   # Single Core
-  knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "euclidean")[[1]],
+  knn_imp(obj_t, k = 3, rowmax = 1, method = "euclidean")[[1]],
   # Multiple Cores
-  knn_imp(t(khanmiss1), k = 3, rowmax = 1, cores = 4, method = "euclidean")[[1]],
+  knn_imp(obj_t, k = 3, rowmax = 1, cores = 4, method = "euclidean")[[1]],
   t(impute::impute.knn(khanmiss1, k = 3, rowmax = 1, maxp = nrow(khanmiss1))$data)
 ) |>
   dplyr::mutate(expression = c("knn_1", "knn_4", "impute.knn_1")) |>
@@ -107,13 +108,13 @@ bench::mark(
 #> # A tibble: 3 × 6
 #>   expression        min   median `itr/sec` mem_alloc `gc/sec`
 #>   <chr>        <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-#> 1 knn_1         14.93ms  15.61ms      64.4    8.39MB     21.5
-#> 2 knn_4          5.36ms   5.88ms     169.     8.39MB     72.3
-#> 3 impute.knn_1  14.61ms  14.77ms      67.1   12.42MB     42.4
+#> 1 knn_1          14.9ms  15.76ms      63.0    7.28MB     14.5
+#> 2 knn_4          5.24ms   5.72ms     175.     7.28MB     41.1
+#> 3 impute.knn_1  14.67ms  14.77ms      67.1   12.42MB     49.5
 ```
 
-Sliding window k-NN imputation for epi-genetics data with 1000 CpGs and
-10 Samples
+Sliding window k-NN imputation for epigenetics data with 1000 CpGs and
+10 samples
 
 ``` r
 set.seed(1234)
@@ -183,10 +184,10 @@ Optional simple mean imputation as a fallback or baseline that enables
 multi-step imputation strategies
 
 ``` r
-# Inject extra NA into simulated data to make k-NN fails for first imputation
+# Inject extra NA into simulated data to make k-NN fail for first imputation
 set.seed(1234)
 obj <- t(sim_mat(n = 1000, m = 100, perc_NA = 0.8, perc_col_NA = 1)$input)
-# Step 1: Column-wise imputation. Disable fall back imputation with `post_imp == FALSE`
+# Step 1: Column-wise imputation. Disable fall back imputation with `post_imp = FALSE`
 imputed_by_col <- knn_imp(obj, cores = 4, k = 10, post_imp = FALSE)
 # Step 2: Row-wise imputation. Then if values are still missing, impute by rows
 imputed_by_row <- knn_imp(t(imputed_by_col[[1]]), cores = 4, k = 10, post_imp = FALSE)
@@ -200,7 +201,7 @@ For very large matrices that don’t fit in memory, use `{bigmemory}` to
 create file-backed objects. `SlideKnn` supports passing a `big.matrix`
 object or the path to its descriptor file. Always specify `output` for
 the result (also file-backed). <b>NOTE</b>: see `?restore_dimnames` if
-outputs dimnames are stripped.
+output’s dimnames are stripped.
 
 ``` r
 library(bigmemory)
@@ -226,7 +227,7 @@ imputed_obj <- SlideKnn(
   obj = big_mat,
   n_feat = 100,
   n_overlap = 10,
-  k = 10,,
+  k = 10,
   overwrite = TRUE, # Overwrite any existing results
   output = file.path(temp_dir, "imputed.bin")
 )
@@ -282,7 +283,7 @@ parameters
 # Subset for faster tuning
 obj <- t(khanmiss1)
 
-# 3 repeats, each time inject 50 NAs
+# 3 repeats, each time inject 100 NAs
 results <- tune_imp(obj, parameters, rep = 3, .f = "knn_imp", num_na = 100)
 
 # Compute metrics with {yardstick}
@@ -309,7 +310,7 @@ head(
 Tuning a custom imputation function:
 
 ``` r
-# This custom function impute NAs with rnorm values
+# This custom function imputes NAs with rnorm values
 custom_imp <- function(obj, mean = 0, sd = 1) {
   na_pos <- is.na(obj)
   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
