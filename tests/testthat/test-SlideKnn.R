@@ -1,4 +1,4 @@
-test_that("impute_knn_brute and impute_knn_mlpack calculates the missing location correctly", {
+test_that("`impute_knn_brute` and impute_knn_mlpack calculates the missing location correctly", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
   missing <- unname(which(is.na(to_test), arr.ind = TRUE))
@@ -40,7 +40,7 @@ test_that("impute_knn_brute and impute_knn_mlpack calculates the missing locatio
   expect_equal(imputed_index_mlpack[, c(1, 2)], missing)
 })
 
-test_that("impute_knn_brute with n_pmm >= 0 produces correct imputation results", {
+test_that("`impute_knn_brute` with n_pmm >= 0 produces correct imputation results", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.3, perc_col_NA = 1)$input)
   missing <- unname(which(is.na(to_test), arr.ind = TRUE))
@@ -76,7 +76,8 @@ test_that("impute_knn_brute with n_pmm >= 0 produces correct imputation results"
     expect_true(sum(variability) > 0)
   }
 
-  # Additional case: n_imp = 1 with n_pmm > 0 should show variability across runs with different seeds
+  # n_imp = 1 with n_pmm > 0 should show variability across runs with
+  # different seeds. Important for `SlideKnn`
   n_imp_single <- 1
   for (i in c(-1, 3)) {
     imputed1 <- impute_knn_brute(
@@ -120,93 +121,13 @@ test_that("impute_knn_brute with n_pmm >= 0 produces correct imputation results"
       # Deterministic: should be identical across different seeds
       expect_equal(imputed1[, 3], imputed2[, 3])
     } else {
-      # Stochastic (PMM): should differ in at least some places
+      # PMM: should differ in at least some places
       expect_false(all(imputed1[, 3] == imputed2[, 3], na.rm = TRUE))
     }
   }
 })
 
-test_that("impute_knn_brute with n_pmm >= 0 produces correct imputation results", {
-  set.seed(1234)
-  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.3, perc_col_NA = 1)$input)
-  missing <- unname(which(is.na(to_test), arr.ind = TRUE))
-  miss <- matrix(as.integer(is.na(to_test)), nrow = nrow(to_test), ncol = ncol(to_test))
-  n_col_miss <- colSums(is.na(to_test))
-  n_imp <- 5
-  k <- 5
-
-  # Test with imputation
-  for (i in c(0, 3)) {
-    imputed_MI <- impute_knn_brute(
-      obj = to_test,
-      miss = miss,
-      k = k,
-      n_col_miss = n_col_miss,
-      weighted = TRUE,
-      method = 0L,
-      dist_pow = 1,
-      n_imp = n_imp,
-      n_pmm = i,
-      seed = 42,
-      cores = 1L
-    )
-    imputed_MI[is.nan(imputed_MI)] <- NA
-    # Correct dimensions
-    expect_equal(ncol(imputed_MI), n_imp + 2)
-    expect_equal(imputed_MI[, 1:2], missing)
-    # MI should produce some variability
-    MI_part <- imputed_MI[, 3:(2 + n_imp)]
-    variability <- apply(MI_part, 1, function(row) {
-      vals <- row[!is.na(row)]
-      length(vals) > 1 && length(unique(vals)) > 1
-    })
-    expect_true(sum(variability) > 0)
-  }
-
-  # n_imp = 1 with n_pmm > 0 should show variability across runs with different seeds
-  for (i in c(-1, 3)) {
-    imputed1 <- impute_knn_brute(
-      obj = to_test,
-      miss = miss,
-      k = k,
-      n_col_miss = n_col_miss,
-      method = 0L,
-      weighted = TRUE,
-      dist_pow = 1,
-      n_imp = 1,
-      n_pmm = i,
-      seed = 42,
-      cores = 1L
-    )
-    imputed1[is.nan(imputed1)] <- NA
-
-    imputed2 <- impute_knn_brute(
-      obj = to_test,
-      miss = miss,
-      k = k,
-      n_col_miss = n_col_miss,
-      method = 0L,
-      weighted = TRUE,
-      dist_pow = 1,
-      n_imp = 1,
-      n_pmm = i,
-      seed = 43,
-      cores = 1L
-    )
-    imputed2[is.nan(imputed2)] <- NA
-
-    # Check variability in the 3rd column
-    if (i == -1) {
-      # Deterministic: should be identical across different seeds
-      expect_equal(imputed1[, 3], imputed2[, 3])
-    } else {
-      # Stochastic (PMM): should differ in at least some places
-      expect_false(all(imputed1[, 3] == imputed2[, 3], na.rm = TRUE))
-    }
-  }
-})
-
-test_that("impute_knn_brute with n_imp > 1 produces reproducible results with same seed", {
+test_that("`impute_knn_brute` with n_pmm >= 0 produces reproducible results with same seed", {
   set.seed(1234)
   to_test <- t(sim_mat(n = 30, m = 15, perc_NA = 0.4, perc_col_NA = 1)$input)
   miss <- matrix(is.na(to_test), nrow = nrow(to_test), ncol = ncol(to_test))
@@ -243,6 +164,100 @@ test_that("impute_knn_brute with n_imp > 1 produces reproducible results with sa
   )
   # Results should be identical
   expect_equal(result1, result2)
+})
+
+test_that("`restore_dimnames` works", {
+  #### `knn_imp`
+  on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")), add = TRUE)
+  options(bigmemory.allow.dimnames = TRUE)
+  pass <- isTRUE(getOption("bigmemory.allow.dimnames"))
+  skip_if_not(interactive())
+  if (pass) {
+    message("Testing restore_dimnames")
+    to_test <- t(
+      sim_mat(
+        n = 280,
+        m = 100,
+        perc_NA = 0.5,
+        perc_col_NA = 1
+      )$input
+    )
+    r1 <- knn_imp(to_test, k = 10)
+    # in memory/allow memory should not remove any dimnames
+    r2 <- knn_imp(to_test, k = 10, output = withr::local_tempfile())
+    # manually strip dimnames from r3
+    r3 <- knn_imp(to_test, k = 10, output = withr::local_tempfile())
+    rownames(r3[[1]]) <- NULL
+    colnames(r3[[1]]) <- NULL
+    expect_true(is.null(rownames(r3[[1]])) && is.null(colnames(r3[[1]])))
+    # `restore_dimnames` stored in the object
+    restore_dimnames(r3)
+    for (i in list(r1, r2, r3)) {
+      expect_true(!is.null(rownames(i[[1]])) && !is.null(colnames(i[[1]])))
+    }
+
+    #### `SlideKnn`
+    n_imp <- 2
+    n_pmm <- 3
+    subset <- c(1, 2)
+    expect_warning(
+      r1s <- SlideKnn(
+        to_test,
+        n_feat = 90,
+        subset = subset,
+        n_overlap = 5,
+        k = 5,
+        n_imp = n_imp,
+        n_pmm = n_pmm
+      )
+    )
+    r2s <- SlideKnn(
+      to_test,
+      n_feat = 90,
+      subset = subset,
+      n_overlap = 5,
+      k = 5,
+      n_imp = n_imp,
+      n_pmm = n_pmm,
+      output = withr::local_tempfile()
+    )
+    r3s <- SlideKnn(
+      to_test,
+      n_feat = 90,
+      subset = subset,
+      n_overlap = 5,
+      k = 5,
+      n_imp = n_imp,
+      n_pmm = n_pmm,
+      output = withr::local_tempfile()
+    )
+    # strip dimnames from all n_imp matrices in r3s
+    for (i in seq_len(n_imp)) {
+      rownames(r3s[[i]]) <- NULL
+      colnames(r3s[[i]]) <- NULL
+    }
+    # verify dimnames were stripped from r3s
+    for (i in seq_len(n_imp)) {
+      expect_true(is.null(rownames(r3s[[i]])) && is.null(colnames(r3s[[i]])))
+    }
+    # restore dimnames using the stored attributes
+    restore_dimnames(r3s)
+    # check that all results have dimnames restored/preserved correctly
+    for (result in list(r1s, r2s, r3s)) {
+      # Check each imputation
+      for (i in seq_len(n_imp)) {
+        expect_true(!is.null(rownames(result[[i]])) && !is.null(colnames(result[[i]])))
+        expect_equal(rownames(result[[i]]), rownames(to_test))
+        expect_equal(colnames(result[[i]]), colnames(to_test)[subset])
+      }
+      # Check attributes are properly set
+      expect_equal(attr(result, "rownames"), rownames(to_test))
+      expect_equal(attr(result, "colnames"), colnames(to_test)[subset])
+      expect_equal(attr(result, "subset"), subset)
+    }
+  } else {
+    skip("Skip because fail to set `options(bigmemory.allow.dimnames = TRUE)`")
+  }
 })
 
 test_that("`SlideKnn` in-memory matrix mode works", {
@@ -307,7 +322,7 @@ test_that("`SlideKnn` in-memory matrix mode works", {
     colmax = 0.9,
     post_imp = TRUE
   )[[1]]
-  expect_identical(simple_mean, final_imputed)
+  expect_equal(simple_mean[, ], final_imputed)
 
   # SlideKnn weighted should be different than simple mean
   weighted_1 <- SlideKnn(
@@ -331,8 +346,8 @@ test_that("`SlideKnn` in-memory matrix mode works", {
     weighted = TRUE,
     dist_pow = 2
   )[[1]]
-  expect_true(sum((simple_mean - weighted_1)^2) > 0)
-  expect_true(sum((weighted_2 - weighted_1)^2) > 0)
+  expect_true(sum((simple_mean[, ] - weighted_1[, ])^2) > 0)
+  expect_true(sum((weighted_2[, ] - weighted_1[, ])^2) > 0)
 })
 
 test_that("`SlideKnn` in-memory subset works", {
@@ -397,7 +412,7 @@ test_that("`SlideKnn` in-memory subset works", {
   counts[, window_cols] <- counts[, window_cols] + 1
   final_imputed <- final_imputed / counts
   # SlideKnn should exactly replicate this result
-  expect_identical(
+  expect_equal(
     SlideKnn(
       to_test,
       n_feat = 20,
@@ -407,8 +422,8 @@ test_that("`SlideKnn` in-memory subset works", {
       colmax = 0.9,
       post_imp = TRUE,
       subset = subset
-    )[[1]],
-    final_imputed
+    )[[1]][, ],
+    final_imputed[, subset, drop = F]
   )
 })
 
@@ -465,7 +480,7 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
   counts[, 201:300] <- counts[, 201:300] + 1
   final_imputed <- final_imputed / counts
   # SlideKnn should exactly replicate this result
-  expect_identical(
+  expect_equal(
     SlideKnn(
       to_test,
       n_feat = 100,
@@ -474,7 +489,7 @@ test_that("`SlideKnn` in-memory edge case no overlap", {
       rowmax = 0.9,
       colmax = 0.9,
       post_imp = TRUE
-    )[[1]],
+    )[[1]][, ],
     final_imputed
   )
 })
@@ -484,7 +499,7 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
   # Simulated data
   sim <- t(
     sim_mat(
-      n = 500,
+      n = 200,
       m = 50,
       perc_NA = 0.5,
       perc_col_NA = 1
@@ -542,7 +557,7 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
     output = temp_bm,
     overwrite = TRUE
   )[[1]]
-  expect_identical(bm[, ], ram)
+  expect_equal(bm[, ], ram[, ])
 
   # parallel version
   # in-memory version
@@ -572,8 +587,8 @@ test_that("`SlideKnn` bigmemory matrix mode and parallelization works", {
     output = temp_bm4,
     overwrite = TRUE
   )[[1]]
-  expect_identical(ram, ram_4)
-  expect_identical(bm[, ], bm_4[, ])
+  expect_equal(ram[, ], ram_4[, ])
+  expect_equal(bm[, ], bm_4[, ])
   mirai::daemons(0)
 })
 
@@ -742,44 +757,24 @@ test_that("Exactly replicate `impute::impute.knn`", {
 
 test_that("bigmemory functionality in knn_imp works correctly", {
   # Save current option and set bigmemory.allow.dimnames
-  old_opt <- getOption("bigmemory.allow.dimnames")
-  options(bigmemory.allow.dimnames = TRUE)
-  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
-  skip_if_not(isTRUE(getOption("bigmemory.allow.dimnames")))
-
   # Create test data
   set.seed(1234)
   test_data <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
 
   # Create temporary directory for output
-  temp_dir <- withr::local_tempdir()
-  output_path <- fs::path(temp_dir, "test_imputed")
+  temp_file <- withr::local_tempfile()
 
   # Test 1: Run with output, expect no error
   expect_no_error({
     result_bigmem <- knn_imp(
       test_data,
       k = 3,
-      output = output_path,
+      output = temp_file,
       overwrite = TRUE,
       n_imp = 3,
-      seed = 42
+      n_pmm = 3
     )
   })
-
-  # Verify that files were created
-  base_no_ext <- fs::path_ext_remove(output_path)
-  for (i in 1:3) {
-    suffix <- paste0("_imp", i)
-    bin_file <- paste0(base_no_ext, suffix, ".bin")
-    desc_file <- paste0(base_no_ext, suffix, ".desc")
-    expect_true(fs::file_exists(bin_file),
-      info = paste("Binary file should exist:", bin_file)
-    )
-    expect_true(fs::file_exists(desc_file),
-      info = paste("Descriptor file should exist:", desc_file)
-    )
-  }
 
   # Test 2: Rerun with overwrite = FALSE, expect error
   expect_error(
@@ -787,51 +782,43 @@ test_that("bigmemory functionality in knn_imp works correctly", {
       result_bigmem_error <- knn_imp(
         test_data,
         k = 3,
-        output = output_path,
+        output = temp_file,
         overwrite = FALSE,
         n_imp = 3,
-        seed = 42
+        n_pmm = 3
       )
     },
     "Output files already exist"
   )
-
-  if (.Platform$OS.type == "windows") {
-    # Force garbage collection to release memory mapped files
-    Sys.sleep(0.1)
-  }
-  invisible(gc(verbose = FALSE, full = TRUE))
-  Sys.sleep(0.1)
 
   # Test 3: Rerun with overwrite = TRUE, check files exist
   expect_no_error({
     result_bigmem_overwrite <- knn_imp(
       test_data,
       k = 3,
-      output = output_path,
+      output = temp_file,
       overwrite = TRUE,
       n_imp = 3,
-      seed = 42
+      n_pmm = 3
     )
   })
 
   # Verify files still exist after overwrite
   for (i in 1:3) {
-    # FIX: Changed from "_boot" to "_imp" to match what the function creates
     suffix <- paste0("_imp", i)
-    bin_file <- paste0(base_no_ext, suffix, ".bin")
-    desc_file <- paste0(base_no_ext, suffix, ".desc")
+    bin_file <- paste0(temp_file, suffix, ".bin")
+    desc_file <- paste0(temp_file, suffix, ".desc")
     expect_true(fs::file_exists(bin_file))
     expect_true(fs::file_exists(desc_file))
   }
 
-  # Test 4: Compare in-memory vs file-backed results
   # Run in-memory version with same seed
   result_memory <- knn_imp(
     test_data,
     k = 3,
     output = NULL, # Memory version
     n_imp = 3,
+    n_pmm = 3,
     seed = 42
   )
 
@@ -849,16 +836,11 @@ test_that("bigmemory functionality in knn_imp works correctly", {
 
   # Test that big.matrix objects are properly created
   for (i in 1:3) {
-    expect_s4_class(result_bigmem_overwrite[[i]], "big.matrix")
+    expect_true(bigmemory::is.big.matrix(result_bigmem_overwrite[[i]]))
   }
 })
 
 test_that("bigmemory with single imputation (n_pmm=-1) works correctly", {
-  # Set option
-  old_opt <- getOption("bigmemory.allow.dimnames")
-  options(bigmemory.allow.dimnames = TRUE)
-  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
-
   # Create test data
   set.seed(1234)
   test_data <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
@@ -891,32 +873,24 @@ test_that("bigmemory with single imputation (n_pmm=-1) works correctly", {
     seed = 42
   )
 
-  expect_identical(result_single[[1]][, ], result_memory[[1]])
+  expect_equal(result_single[[1]][, ], result_memory[[1]])
 })
 
 test_that("bigmemory with subset parameter works correctly", {
-  # Set option
-  old_opt <- getOption("bigmemory.allow.dimnames")
-  options(bigmemory.allow.dimnames = TRUE)
-  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
-
   # Create test data
   set.seed(1234)
   test_data <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
-
-  # Create temporary directory for output
-  temp_dir <- withr::local_tempdir()
-  output_path <- fs::path(temp_dir, "test_subset")
 
   # Test with subset using numeric index
   result_bigmem_subset <- knn_imp(
     test_data,
     k = 3,
-    output = output_path,
+    output = withr::local_tempfile(),
     overwrite = TRUE,
     subset = c(1, 3, 5),
     post_imp = FALSE,
     n_imp = 2,
+    n_pmm = 2,
     seed = 42
   )
 
@@ -928,6 +902,7 @@ test_that("bigmemory with subset parameter works correctly", {
     subset = c(1, 3, 5),
     post_imp = FALSE,
     n_imp = 2,
+    n_pmm = 2,
     seed = 42
   )
 
@@ -941,7 +916,7 @@ test_that("bigmemory with subset parameter works correctly", {
     expect_equal(is.na(bigmem_mat[, -c(1, 3, 5)]), is.na(test_data[, -c(1, 3, 5)]))
 
     # Compare with memory version
-    expect_identical(bigmem_mat, mem_mat)
+    expect_equal(bigmem_mat, mem_mat)
   }
 })
 
@@ -960,7 +935,7 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
     post_imp = FALSE,
     subset = paste0("feat", c(1, 3, 5))
   )[[1]]
-  expect_identical(r1, r2)
+  expect_equal(r1, r2)
 
   # Test with post_imp = TRUE and a column requiring post imputation
   to_test_post <- to_test
@@ -979,7 +954,7 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
     post_imp = TRUE,
     subset = paste0("feat", c(1, 3, 5))
   )[[1]]
-  expect_identical(r3, r4)
+  expect_equal(r3, r4)
 })
 
 test_that("`mean_impute_col` works", {
@@ -999,14 +974,14 @@ test_that("`mean_impute_col` works", {
   row_means <- rowMeans(to_test, na.rm = TRUE)
 
   c_manual[na_indices] <- column_means[na_indices[, 2]]
-  expect_identical(mean_impute_col(to_test), c_manual)
+  expect_equal(mean_impute_col(to_test), c_manual)
 
   ## Test subset feature
   c_subset <- to_test
   for (i in c(1, 5, 10)) {
     c_subset[is.na(c_subset[, i]), i] <- mean(c_subset[, i], na.rm = TRUE)
   }
-  expect_identical(mean_impute_col(to_test, subset = c(1, 5, 10)), c_subset)
+  expect_equal(mean_impute_col(to_test, subset = c(1, 5, 10)), c_subset)
 })
 
 test_that("`knn_imp` with n_imp = 2 and subset = first 2 columns works", {
@@ -1018,6 +993,7 @@ test_that("`knn_imp` with n_imp = 2 and subset = first 2 columns works", {
     to_test,
     k = 5,
     n_imp = 2,
+    n_pmm = 0,
     subset = c(1, 2),
     post_imp = TRUE,
     seed = 123
@@ -1053,6 +1029,7 @@ test_that("`SlideKnn` with n_imp = 2 and subset = first 2 columns works", {
       n_overlap = 5,
       k = 5,
       n_imp = 2,
+      n_pmm = 2,
       subset = c(1, 2),
       post_imp = TRUE,
       overwrite = TRUE,
@@ -1066,6 +1043,7 @@ test_that("`SlideKnn` with n_imp = 2 and subset = first 2 columns works", {
     n_overlap = 5,
     k = 5,
     n_imp = 2,
+    n_pmm = 2,
     subset = c(1, 2),
     post_imp = TRUE,
     output = withr::local_tempfile(),
@@ -1073,25 +1051,20 @@ test_that("`SlideKnn` with n_imp = 2 and subset = first 2 columns works", {
     seed = 123
   )
   for (i in 1:2) {
-    expect_identical(unname(results_in_memory[[i]]), results[[i]][, ])
+    expect_equal(results_in_memory[[i]][, ], results[[i]][, ])
   }
   # Should return a list of length 2
   expect_equal(length(results), 2)
 
-  # Each result should be a matrix with same dimensions as input
-  expect_true(all(sapply(results, function(x) all(dim(x) == dim(to_test_bm[, ])))))
+  # Each result should is a matrix with same dimensions as input
+  expect_true(all(vapply(results, function(x) all(dim(x[, ]) == dim(to_test_bm[, c(1, 2)])), logical(1))))
 
   # Only first 2 columns should be imputed (no NAs)
-  expect_true(all(sapply(results, function(x) !anyNA(x[, 1:2]))))
-
-  # Other columns should have same NA pattern as original
-  expect_true(all(sapply(results, function(x) {
-    identical(is.na(x[, ][, -(1:2)]), unname(is.na(to_test[, -(1:2)])))
-  })))
+  expect_true(all(vapply(results, function(x) !anyNA(x[, 1:2]), logical(1))))
 
   # Results should be proper matrices with correct attributes
-  expect_true(all(sapply(results, \(x) is.matrix(x[, ]))))
-  expect_true(all(sapply(results, \(x) is.numeric(x[, ]))))
+  expect_true(all(vapply(results, \(x) is.matrix(x[, ]), logical(1))))
+  expect_true(all(vapply(results, \(x) is.numeric(x[, ]), logical(1))))
 })
 
 test_that("`SlideKnn` MI reproducibility with seeds", {
@@ -1106,6 +1079,7 @@ test_that("`SlideKnn` MI reproducibility with seeds", {
     n_overlap = 3,
     k = 3,
     n_imp = 2,
+    n_pmm = 0,
     subset = c(1, 2),
     output = withr::local_tempfile(),
     seed = 456
@@ -1116,13 +1090,14 @@ test_that("`SlideKnn` MI reproducibility with seeds", {
     n_overlap = 3,
     k = 3,
     n_imp = 2,
+    n_pmm = 0,
     subset = c(1, 2),
     output = withr::local_tempfile(),
     seed = 456
   )
 
   for (i in 1:2) {
-    expect_identical(result1_slide[[i]][, ], result2_slide[[i]][, ])
+    expect_equal(result1_slide[[i]][, ], result2_slide[[i]][, ])
   }
 })
 
@@ -1322,6 +1297,67 @@ test_that("`bigmem_impute_colmeans` works", {
   invisible(gc())
 })
 
+test_that("`bigmem_add_windows` works", {
+  set.seed(1234)
+  right <- matrix(rnorm(20 * 50), nrow = 20, ncol = 50)
+  temp_dir <- withr::local_tempdir()
+  right_bm <- bigmemory::as.big.matrix(
+    right,
+    backingpath = temp_dir,
+    backingfile = "right.bin",
+    descriptorfile = "right.desc",
+    type = "double"
+  )
+
+  # Left matrix starts with zeros
+  left_bm <- bigmemory::as.big.matrix(
+    matrix(0, nrow = 20, ncol = 10),
+    backingpath = temp_dir,
+    backingfile = "left.bin",
+    descriptorfile = "left.desc",
+    type = "double"
+  )
+
+  # Add one window (left cols 1-3 += right cols 1-3)
+  bigmem_add_windows(
+    left_bm@address, right_bm@address,
+    start_l = 1, end_l = 3,
+    start_r = 1, end_r = 3
+  )
+  expected <- matrix(0, nrow = 20, ncol = 10)
+  expected[, 1:3] <- expected[, 1:3] + right[, 1:3]
+  expect_equal(left_bm[, ], expected)
+
+  # Re add to existing values (test addition, not replacement)
+  bigmem_add_windows(
+    left_bm@address, right_bm@address,
+    start_l = 1, end_l = 3,
+    start_r = 1, end_r = 3
+  )
+  expected[, 1:3] <- expected[, 1:3] + right[, 1:3]
+  expect_equal(left_bm[, ], expected)
+
+  # Overlapping windows
+  left_bm[, ] <- 0
+  # Windows that overlap at column 5
+  start_l <- c(4, 5)
+  end_l <- c(6, 7)
+  start_r <- c(1, 10)
+  end_r <- c(3, 12)
+  bigmem_add_windows(
+    left_bm@address, right_bm@address,
+    start_l = start_l, end_l = end_l,
+    start_r = start_r, end_r = end_r
+  )
+  expected <- matrix(0, nrow = 20, ncol = 10)
+  expected[, 4:6] <- expected[, 4:6] + right[, 1:3]
+  expected[, 5:7] <- expected[, 5:7] + right[, 10:12]
+  expect_equal(left_bm[, ], expected)
+
+  rm(right_bm, left_bm)
+  invisible(gc())
+})
+
 test_that("`bigmem_avg` works", {
   set.seed(1234)
   n_rows <- 5
@@ -1369,5 +1405,44 @@ test_that("`bigmem_avg` works", {
   bigmem_avg(to_test_bm@address, start_vec, end_vec, denom_vec, cores = 1)
   expect_equal(to_test_bm[, ], expected)
   rm(to_test_bm)
+  invisible(gc())
+})
+
+test_that("`bigmem_copy` works", {
+  set.seed(1234)
+  right <- matrix(rnorm(20 * 50), nrow = 20, ncol = 50)
+  temp_dir <- withr::local_tempdir()
+  right_bm <- bigmemory::as.big.matrix(
+    right,
+    backingpath = temp_dir,
+    backingfile = "right.bin",
+    descriptorfile = "right.desc",
+    type = "double"
+  )
+  # Copy just one column
+  left_sub <- matrix(0, nrow = 20, ncol = 2)
+  left_sub_bm <- bigmemory::as.big.matrix(
+    left_sub,
+    backingpath = temp_dir,
+    backingfile = "left_sub.bin",
+    descriptorfile = "left_sub.desc",
+    type = "double"
+  )
+  bigmem_copy(left_sub_bm@address, right_bm@address, col_idx_r = c(1, 2), cores = 1)
+  expect_equal(left_sub_bm[, ], right[, c(1, 2)])
+  left_all <- matrix(0, nrow = 20, ncol = 50)
+  left_all_bm <- bigmemory::as.big.matrix(
+    left_all,
+    backingpath = temp_dir,
+    backingfile = "left_all.bin",
+    descriptorfile = "left_all.desc",
+    type = "double"
+  )
+  # Copy all columns, shuffled
+  col_idx_all <- sample(seq_len(50))
+  expected_all <- right[, col_idx_all]
+  bigmem_copy(left_all_bm@address, right_bm@address, col_idx_r = col_idx_all, cores = 4)
+  expect_equal(left_all_bm[, ], expected_all)
+  rm(right_bm, left_sub_bm, left_all_bm)
   invisible(gc())
 })

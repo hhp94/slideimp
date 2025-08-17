@@ -24,6 +24,21 @@ BEGIN_RCPP
     return R_NilValue;
 END_RCPP
 }
+// bigmem_add_windows
+void bigmem_add_windows(SEXP pBigMat_l, const SEXP pBigMat_r, const std::vector<size_t>& start_l, const std::vector<size_t>& end_l, const std::vector<size_t>& start_r, const std::vector<size_t>& end_r);
+RcppExport SEXP _SlideKnn_bigmem_add_windows(SEXP pBigMat_lSEXP, SEXP pBigMat_rSEXP, SEXP start_lSEXP, SEXP end_lSEXP, SEXP start_rSEXP, SEXP end_rSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type pBigMat_l(pBigMat_lSEXP);
+    Rcpp::traits::input_parameter< const SEXP >::type pBigMat_r(pBigMat_rSEXP);
+    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type start_l(start_lSEXP);
+    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type end_l(end_lSEXP);
+    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type start_r(start_rSEXP);
+    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type end_r(end_rSEXP);
+    bigmem_add_windows(pBigMat_l, pBigMat_r, start_l, end_l, start_r, end_r);
+    return R_NilValue;
+END_RCPP
+}
 // bigmem_avg
 void bigmem_avg(SEXP pBigMat, const std::vector<size_t>& start, const std::vector<size_t>& end, std::vector<int>& counts_vec, int cores);
 RcppExport SEXP _SlideKnn_bigmem_avg(SEXP pBigMatSEXP, SEXP startSEXP, SEXP endSEXP, SEXP counts_vecSEXP, SEXP coresSEXP) {
@@ -35,6 +50,19 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<int>& >::type counts_vec(counts_vecSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
     bigmem_avg(pBigMat, start, end, counts_vec, cores);
+    return R_NilValue;
+END_RCPP
+}
+// bigmem_copy
+void bigmem_copy(SEXP pBigMat_l, const SEXP pBigMat_r, const std::vector<size_t>& col_idx_r, int cores);
+RcppExport SEXP _SlideKnn_bigmem_copy(SEXP pBigMat_lSEXP, SEXP pBigMat_rSEXP, SEXP col_idx_rSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type pBigMat_l(pBigMat_lSEXP);
+    Rcpp::traits::input_parameter< const SEXP >::type pBigMat_r(pBigMat_rSEXP);
+    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type col_idx_r(col_idx_rSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
+    bigmem_copy(pBigMat_l, pBigMat_r, col_idx_r, cores);
     return R_NilValue;
 END_RCPP
 }
@@ -146,7 +174,9 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_SlideKnn_bigmem_impute_colmeans", (DL_FUNC) &_SlideKnn_bigmem_impute_colmeans, 3},
+    {"_SlideKnn_bigmem_add_windows", (DL_FUNC) &_SlideKnn_bigmem_add_windows, 6},
     {"_SlideKnn_bigmem_avg", (DL_FUNC) &_SlideKnn_bigmem_avg, 5},
+    {"_SlideKnn_bigmem_copy", (DL_FUNC) &_SlideKnn_bigmem_copy, 4},
     {"_SlideKnn_impute_knn_brute", (DL_FUNC) &_SlideKnn_impute_knn_brute, 11},
     {"_SlideKnn_find_knn_brute", (DL_FUNC) &_SlideKnn_find_knn_brute, 7},
     {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 12},

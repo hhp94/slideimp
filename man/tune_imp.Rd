@@ -14,8 +14,7 @@ tune_imp(
   .progress = FALSE,
   rowmax = 0.9,
   colmax = 0.9,
-  cores = 1,
-  strip_dimnames = FALSE
+  cores = 1
 )
 }
 \arguments{
@@ -45,21 +44,18 @@ when \code{rep} is a list. Default is NULL.}
 
 \item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
 
-\item{.progress}{Logical; if \code{TRUE}, show a progress bar. Default is \code{FALSE}.}
+\item{.progress}{Logical. Whether to display progress messages during imputation.
+Default: \code{FALSE}.}
 
-\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
-of missing values in any row. If exceeded, the function stops with an error.}
+\item{rowmax}{Numeric. Maximum allowable proportion of missing values per row
+(0-1). Function stops with error if exceeded. Default: 0.9.}
 
-\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of
-missing values in a column above which the column is imputed using the mean
-instead of k-NN if \code{post_imp} is \code{TRUE}.}
+\item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
+Columns exceeding this threshold are imputed using column means instead of
+k-NN when \code{post_imp = TRUE}. Default: 0.9.}
 
-\item{cores}{Integer specifying the number of cores to use for parallel computation
-of distances. Default is 1.}
-
-\item{strip_dimnames}{Logical; if \code{FALSE} (default), dimnames will not be removed,
-which will increase memory usage. Should be set to \code{TRUE} to save memory from
-overhead, especially when \code{cores} > 1. See details.}
+\item{cores}{Integer. Number of CPU cores for parallel distance computation.
+Requires \code{\link[mirai:daemons]{mirai::daemons()}} setup for \code{cores} > 1. Default: 1.}
 }
 \value{
 A \code{tibble} containing:

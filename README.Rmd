@@ -20,7 +20,7 @@ knitr::opts_chunk$set(
 
 `{SlideKnn}` is an efficient R package for k-nearest neighbors (k-NN) imputation of missing values in high-dimensional numeric matrices, such as those from intensive longitudinal data or epi-genomics. It introduces a sliding window approach to handle very large feature sets while preserving local structure, making it suitable for data where features are ordered (e.g., by time or distance).
 
-The package builds on proven k-NN concepts (Bioconductor's `impute` package) but adds enhancements: parallelization for speed, tree-based methods for efficiency, weighted imputation, multiple imputation strategies, and built-in tuning tools. It's designed for matrices with samples in rows and features in columns.
+The package builds on proven k-NN algorithm (Bioconductor's [`impute`](https://www.bioconductor.org/packages/release/bioc/html/impute.html) package) but adds enhancements: parallelization for speed, tree-based methods for efficiency, weighted imputation, multiple imputation strategies, and built-in tuning tools. It's designed for matrices with samples in rows and features in columns.
 
 Key features include:
 
@@ -59,6 +59,7 @@ library(SlideKnn)
 data(khanmiss1)
 # Transpose for samples in rows, features in columns
 imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 1)
+imputed_full
 
 sum(is.na(imputed_full[[1]]))
 ```
@@ -86,7 +87,9 @@ beta_matrix <- t(sim_mat(m = 10, n = 1000, perc_NA = 0.3, perc_col_NA = 1)$input
 beta_matrix[1:10, 1:5]
 
 imputed <- SlideKnn(beta_matrix, n_feat = 500, n_overlap = 10, k = 10)
-sum(is.na(imputed[[1]]))
+
+imputed
+sum(is.na(imputed[[1]][, ]))
 ```
 
 Using tree-based k-NN with weighting and multiple imputation (PMM):
@@ -100,7 +103,7 @@ imputed_tree <- knn_imp(
   n_imp = 3, # 3 imputations
   n_pmm = 10 # PMM with 10 donors
 )
-length(imputed_tree) # 3 imputed matrices
+imputed_tree
 ```
 
 Optional simple mean imputation as a fallback or baseline that enables multi-step imputation strategies
@@ -117,10 +120,12 @@ imputed_mean <- mean_impute_col(t(imputed_by_row[[1]]))
 sum(is.na(imputed_mean))
 ```
 
-For very large matrices that don't fit in memory, use `{bigmemory}` to create file-backed objects. `SlideKnn` supports passing a `big.matrix` object or the path to its descriptor file. Always specify `output` for the result (also file-backed).
+For very large matrices that don't fit in memory, use `{bigmemory}` to create file-backed objects. `SlideKnn` supports passing a `big.matrix` object or the path to its descriptor file. Always specify `output` for the result (also file-backed). <b>NOTE</b>: see `?restore_dimnames` if outputs dimnames are stripped.
 
 ```{r}
 library(bigmemory)
+# Set this to allow dimnames in big.matrix
+options(bigmemory.allow.dimnames = TRUE)
 
 data(khanmiss1)
 mat <- t(khanmiss1) # samples rows, features cols
@@ -141,7 +146,8 @@ imputed_obj <- SlideKnn(
   obj = big_mat,
   n_feat = 100,
   n_overlap = 10,
-  k = 10,
+  k = 10,,
+  overwrite = TRUE, # Overwrite any existing results
   output = file.path(temp_dir, "imputed.bin")
 )
 sum(is.na(imputed_obj[[1]][, ])) # Access the big.matrix result
@@ -153,12 +159,12 @@ imputed_path <- SlideKnn(
   n_feat = 100,
   n_overlap = 10,
   k = 10,
+  overwrite = TRUE,
   output = file.path(temp_dir, "imputed.bin")
 )
-sum(is.na(imputed_path[[1]][, ]))
-```
 
-Note: Results are lists of `big.matrix` objects (one per `n_imp`). Use `bigmemory::attach.big.matrix()` if needed to reload from descriptor later. Set `strip_dimnames = TRUE` for multi-core efficiency, and restore dimnames post-imputation if required (same dimnames as `obj`).
+imputed_path
+```
 
 ## Parameter Tuning
 Use `tune_imp()` to tune hyperparameters by injecting artificial NAs and evaluating imputation accuracy. It supports built-in methods or custom functions.

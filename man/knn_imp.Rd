@@ -2,7 +2,7 @@
 % Please edit documentation in R/SlideKnn.R
 \name{knn_imp}
 \alias{knn_imp}
-\title{K-Nearest Neighbor (k-NN) Imputation}
+\title{K-Nearest Neighbor Imputation for Missing Values}
 \usage{
 knn_imp(
   obj,
@@ -25,133 +25,127 @@ knn_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
+Must have at least 1 row and 2 columns.}
 
-\item{k}{Integer specifying the number of nearest neighbors to use for imputation.
-Must be between 1 and (\code{n_feat} - 1).}
+\item{k}{Integer. Number of nearest neighbors for imputation. Must be between
+1 and \code{n_feat - 1}. Default: 10.}
 
-\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of
-missing values in a column above which the column is imputed using the mean
-instead of k-NN if \code{post_imp} is \code{TRUE}.}
+\item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
+Columns exceeding this threshold are imputed using column means instead of
+k-NN when \code{post_imp = TRUE}. Default: 0.9.}
 
-\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
-of missing values in any row. If exceeded, the function stops with an error.}
+\item{rowmax}{Numeric. Maximum allowable proportion of missing values per row
+(0-1). Function stops with error if exceeded. Default: 0.9.}
 
-\item{method}{Character string specifying the distance metric for k-NN. One of
-\code{"euclidean"} or \code{"manhattan"}. Defaults to \code{"euclidean"}.}
+\item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
+Default: \code{"euclidean"}.}
 
-\item{cores}{Integer specifying the number of cores to use for parallel computation
-of distances. Default is 1.}
+\item{cores}{Integer. Number of CPU cores for parallel distance computation.
+Requires \code{\link[mirai:daemons]{mirai::daemons()}} setup for \code{cores} > 1. Default: 1.}
 
-\item{post_imp}{Logical; if \code{TRUE} (default), any missing values remaining after
-k-NN imputation will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
+\item{post_imp}{Logical. Whether to impute remaining missing values with
+column means after k-NN imputation. Default: \code{TRUE}.}
 
-\item{subset}{Character vector of column names or integer vector of column indices
-specifying the subset of columns on which to perform imputation. If \code{NULL} (default),
-all columns are included.}
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute.}
 
-\item{weighted}{Logical; controls whether the imputed value should be a simple
-mean or weighted mean by inverse distance. Default is \code{FALSE}.}
+\item{weighted}{Logical. Whether to use distance-weighted mean for imputation.
+If \code{FALSE}, uses simple mean of k nearest neighbors. Default: \code{FALSE}.}
 
-\item{dist_pow}{A positive double that controls the penalty for larger distances
-in the weighted mean imputation. Must be greater than zero: values between 0
-and 1 apply a softer penalty, 1 is linear (default), and values greater than
-1 apply a harsher penalty.}
+\item{dist_pow}{Numeric. Positive value controlling distance penalty in weighted
+imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
+Only used when \code{weighted = TRUE}. Default: 1.}
 
-\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses
-brute-force search. \code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by
-the mlpack package, where missing values are first filled with column means
-(biased at high percentage of missing values and less efficient at lower dimensions).}
+\item{tree}{Character. k-NN search method: \code{NULL} (brute-force), \code{"kd"} (KDTree),
+or \code{"ball"} (BallTree). Tree methods may introduce bias with high missingness.
+Default: \code{NULL}.}
 
-\item{n_imp}{Integer specifying the number of imputations to perform. Forced
-to 1 if \code{n_pmm} = -1.}
+\item{n_imp}{Integer. Number of multiple imputations to perform. Automatically
+set to 1 if \code{n_pmm = -1}. Default: 1.}
 
-\item{n_pmm}{Integer controlling the multiple imputation method.
-If \code{n_pmm} = -1 (default): Deterministic single imputation.
-If \code{n_pmm} > 0: (recommended for MI) PMM multiple imputation using \code{n_pmm} closest
-donors (will not exceed available non-missing values row-wise).
-If \code{n_pmm} = 0: Bootstrap multiple imputation via resampling from k-Nearest Neighbors.}
+\item{n_pmm}{Integer. Multiple imputation method control:
+\itemize{
+\item \code{-1}: Deterministic single imputation (default)
+\item \verb{> 0}: Predictive Mean Matching using \code{n_pmm} closest donors
+(recommended for MI. \code{8} is a good starting point.).
+\item \code{0}: Bootstrap resampling from k-nearest neighbors
+}}
 
-\item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
+\item{seed}{Integer. Random seed for reproducible results in stochastic imputation
+methods. Default: 42.}
 
-\item{output}{Character; path to save the output big.matrix. Format should be
-\code{path/stem} (e.g. "./my_results"). If provided, the back end will switch
-to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}} instead of in-memory matrix.}
+\item{output}{Character. File path stem for saving file-backed big.matrix results
+(format: \code{"path/stem"}). If \code{NULL}, results are stored in memory. Recommended
+for large data and multiple imputations.}
 
-\item{overwrite}{Logical; if \code{TRUE}, overwrite existing files at \code{output}. Default to \code{FALSE}.}
+\item{overwrite}{Logical. Whether to overwrite existing files at \code{output} path.
+Default: \code{FALSE}.}
 
 \item{...}{Currently not implemented.}
 }
 \value{
-A list of length \code{n_imp} containing numeric matrices (or \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
-objects if \code{output} is specified) with the same dimensions as \code{obj}. Missing values are
-imputed using k-NN for columns with missingness below \code{colmax}, and mean imputation
-for remaining missing values if \code{post_imp = TRUE}. Each list element represents an
-independent imputation for uncertainty quantification.
+A list of length \code{n_imp} containing numeric matrices or \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
+objects (if \code{output} is specified) with the same dimensions as \code{obj}. Missing values
+are imputed using k-NN for columns with missingness below \code{colmax}, and mean
+imputation for remaining missing values if \code{post_imp = TRUE}.
+
+The list has class \code{"KnnImpList"} with attributes:
+\itemize{
+\item \code{rownames}: Original row names from input matrix
+\item \code{colnames}: Original column names from input matrix
+\item \code{subset}: Column indices that were processed for imputation
+\item \code{ncol}: Number of columns in original matrix
+}
+
+Each list element represents an independent imputation for uncertainty quantification.
 }
 \description{
-This function imputes missing values in a numeric matrix using the k-Nearest
-Neighbors algorithm. It follows a two-stage process: first, it imputes
-columns with a proportion of missing values below \code{colmax} using k-NN;
-second, if requested, any remaining missing values are imputed using the column mean.
+Imputes missing values in numeric matrices using the k-nearest neighbors algorithm
+with a two-stage approach: k-NN imputation for columns with missingness below a
+threshold, followed by optional mean imputation for remaining missing values.
 }
 \details{
-This function calculates the distances for neighbors column-wise. This is an
-\strong{extremely} important detail. Outside of epi-genomics data, most datasets have
-people in columns and features (e.g., weight, height, etc.) in rows for imputation.
-However, in epi-genomics data or intensive longitudinal data, features for the same
-sample that are spatially closer together may carry mutual information, so we have
-features in columns and samples in rows; the algorithm will then impute values based
-on nearby features for the same sample.
+This function performs \strong{column-wise} distance calculations, which is particularly
+important for understanding its application domain. Unlike typical data where
+samples are in columns and features in rows, this function is optimized for
+intensive longitudinal data and epi-genomics where:
+\itemize{
+\item \strong{Samples are in rows} and \strong{features are in columns}
+\item Spatially or temporally adjacent features carry mutual information
+\item Imputation leverages nearby features within the same sample
+}
+\subsection{Weighting and Tree Methods}{
 
-The distance calculation between columns for identifying nearest neighbors is
-scaled based on the number of non-missing value pairs. Specifically, the
-raw distance is penalized by scaling it up for columns that have fewer
-overlapping observations. This penalizes distances for columns with very few
-shared observations used for distance calculations. See also \code{\link[stats:dist]{stats::dist()}}.
+When \code{weighted = TRUE}, imputed values are computed as distance-weighted averages
+where weights are inverse distances raised to the power of \code{dist_pow}. This gives
+closer neighbors greater influence in the imputation process, which can increase
+predictive performance.
 
-When \code{weighted = TRUE}, imputed values are computed as weighted averages where
-weights are the inverse of distances raised to the power of \code{dist_pow}. This
-gives closer neighbors more influence in the imputation.
-
-The \code{tree} parameter allows for faster neighbor search using spatial data structures,
+The \code{tree} parameter enables faster neighbor search using spatial data structures
 but requires pre-filling missing values with column means, which may introduce bias
-in datasets with high missingness. The overhead of building the tree may make the function
-slower in lower dimensions and smaller k values. Use "kd" trees for low-dimensional
-data and "ball" trees for high-dimensional data or when using Manhattan distance.
+in high-missingness data. Tree construction overhead may reduce performance for
+low-dimensional data or small k values.
+}
 }
 \note{
-For file-backed storage using \code{output}, ensure \code{options(bigmemory.allow.dimnames = TRUE)}
-is set before calling this function. Else rownames and colnames will have to be
-restored (same as \code{obj})
+\strong{File-backed Storage}: For file-backed results using \code{output}, set
+\code{options(bigmemory.allow.dimnames = TRUE)} before calling this function to preserve
+dimnames, otherwise they can be manually restored from the original matrix with
+\code{\link[=restore_dimnames]{restore_dimnames()}}.
 
-Compared to \code{impute::impute.knn}, for columns with very high missingness, the
-mean imputation uses any imputed values with original values for the mean calculation
-instead of just the original values.
-
-When \code{n_imp} > 1 for large data, it is recommended to use \code{subset} and provide
-\code{output} to use \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} to save memory.
+\strong{Memory Considerations}: When \code{n_imp > 1} for large data, use \code{subset} to
+specify only required columns and provide \code{output} for file-backed storage to
+avoid memory constraints.
 }
-\section{Parameter Guidance}{
-
-For most applications, start with \code{k = 5}, \code{colmax = 0.8}, \code{rowmax = 0.9}.
-\itemize{
-\item \code{colmax = 0.5} means columns with > 50\% missing values will use mean imputation
-\item \code{rowmax = 0.9} means rows with > 90\% missing values will cause an error
-\item Set \code{n_pmm} to at least 10 in real applications for adequate uncertainty quantification
-\item Use \code{n_pmm > 0} for PMM-based uncertainty (recommended), and \code{n_pmm = 0} for
-bootstrap-based uncertainty.
-}
-}
-
-\section{Performance}{
+\section{Performance Optimization}{
 
 \itemize{
-\item Don't use \code{tree} unless imputation run-time is getting too slow and there's low missing.
-\item Use \code{tree = "kd"} for datasets with > 5000 columns and low missingness (< 20\%). Benchmark your data.
-\item Use \code{tree = "ball"} for extremely high-dimensional data or Manhattan distance
-\item Use \code{output} parameter when \code{n_imp > 1} to avoid memory issues with large datasets
-\item Consider \code{subset} to impute only specific columns of interest for efficiency
+\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and missingness is low
+\item \strong{KDTree} (\code{tree = "kd"}): Suitable for >5000 columns with <20\% missingness
+\item \strong{BallTree} (\code{tree = "ball"}): For high-dimensional data or Manhattan distance
+\item \strong{File backing}: Use \code{output} parameter for \code{n_imp > 1} to avoid memory issues
+\item \strong{Subset imputation}: Consider \code{subset} parameter for efficiency when only specific columns need imputation
 }
 }
 
@@ -173,7 +167,13 @@ imputed_weighted <- knn_imp(
   weighted = TRUE,
   dist_pow = 2,
   method = "euclidean"
-)[[1]]
+)
+
+# Preview
+imputed_weighted
+
+# Access the imputations just like a list
+imputed_weighted[[1]][1:5, 1:5]
 
 # Using only a subset of columns. Massive time saver
 imputed_subset <- knn_imp(
@@ -184,7 +184,7 @@ imputed_subset <- knn_imp(
   dist_pow = 2,
   subset = c("g189", "g299", "g361"),
   method = "euclidean"
-)[[1]]
+)
 
 # PMM imputation with 5 imputations and 5 donors. Increase `n_pmm` in real
 # data to ensure realistic uncertainty quantification.
@@ -193,39 +193,40 @@ imputed_pmm <- knn_imp(
   k = 5,
   n_imp = 5,
   n_pmm = 5,
-  output = withr::local_tempfile(), # Enables results as list of bigmatrix
+  output = withr::local_tempfile(),
+  # Enables results as list of bigmatrix
   seed = 123
 )
 # The default of the bigmatrix package is to not allow dimnames so the output
-# lost the dimnames
+# may lost the dimnames
 imputed_pmm[[1]][, ][1:5, 1:5]
 
 if (interactive()) {
   # But this can be reassigned after setting the options to be TRUE like so
   options(bigmemory.allow.dimnames = TRUE)
-  for (i in length(imputed_pmm)) {
-    rownames(imputed_pmm[[i]]) <- rownames(t_khanmiss1)
-    colnames(imputed_pmm[[i]]) <- colnames(t_khanmiss1)
-  }
-  imputed_pmm[[1]][, ][1:5, 1:5]
+  restore_dimnames(imputed_pmm)
 }
 
-length(imputed_pmm) # Returns 5 imputed datasets
+length(imputed_pmm) # Returns 5 imputed data
 
 # Bootstrap imputation for uncertainty injection
 imputed_boot <- knn_imp(
   obj = t_khanmiss1,
   k = 3,
   n_imp = 5,
-  n_pmm = 0, # n_pmm = 0 enables bootstrapping nearest neighbors
+  n_pmm = 0,
+  # n_pmm = 0 enables bootstrapping nearest neighbors
   seed = 123
 )
 
-length(imputed_boot) # Returns 5 imputed datasets
+length(imputed_boot) # Returns 5 imputed data
 
 }
 \references{
-Troyanskaya, Olga, Michael Cantor, Gavin Sherlock, et al.
-"Missing Value Estimation Methods for DNA Microarrays." Bioinformatics 17,
-no. 6 (2001): 520–25. https://doi.org/10.1093/bioinformatics/17.6.520.
+Robert Tibshirani, Trevor Hastie, Balasubramanian Narasimhan, and Gilbert Chu  (2002).
+Diagnosis of multiple cancer types by shrunken centroids of gene expression
+PNAS 99: 6567-6572.   Available at www.pnas.org
+}
+\seealso{
+\code{\link[=SlideKnn]{SlideKnn()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}
 }

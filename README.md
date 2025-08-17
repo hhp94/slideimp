@@ -14,7 +14,8 @@ a sliding window approach to handle very large feature sets while
 preserving local structure, making it suitable for data where features
 are ordered (e.g., by time or distance).
 
-The package builds on proven k-NN concepts (Bioconductor’s `impute`
+The package builds on proven k-NN algorithm (Bioconductor’s
+[`impute`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
 package) but adds enhancements: parallelization for speed, tree-based
 methods for efficiency, weighted imputation, multiple imputation
 strategies, and built-in tuning tools. It’s designed for matrices with
@@ -45,11 +46,17 @@ Key features include:
 
 ## Installation
 
+The stable version of `{SlideKnn}` can be installed from CRAN using:
+
+``` r
+install.packages("SlideKnn")
+```
+
 You can install the development version of `{SlideKnn}` from
 [GitHub](https://github.com/hhp94/SlideKnn) with:
 
 ``` r
-# install.packages("remotes")
+install.packages("remotes")
 remotes::install_github("hhp94/SlideKnn")
 ```
 
@@ -64,6 +71,18 @@ library(SlideKnn)
 data(khanmiss1)
 # Transpose for samples in rows, features in columns
 imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 1)
+imputed_full
+#> KnnImpList: List of 1 imputation of a 63 x 2308 matrix
+#> 
+#> Preview of imputation 1:
+#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
+#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
+#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
+#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
+#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
+#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
+#> 
+#> [ ... 58 more rows, 2298 more columns ]
 
 sum(is.na(imputed_full[[1]]))
 #> [1] 0
@@ -88,9 +107,9 @@ bench::mark(
 #> # A tibble: 3 × 6
 #>   expression        min   median `itr/sec` mem_alloc `gc/sec`
 #>   <chr>        <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-#> 1 knn_1         15.13ms  15.94ms      63.0    9.47MB     30.0
-#> 2 knn_4          5.76ms   6.11ms     162.     9.47MB     75.2
-#> 3 impute.knn_1  14.62ms  14.77ms      67.1   12.42MB     28.8
+#> 1 knn_1         14.93ms  15.61ms      64.4    8.39MB     21.5
+#> 2 knn_4          5.36ms   5.88ms     169.     8.39MB     72.3
+#> 3 impute.knn_1  14.61ms  14.77ms      67.1   12.42MB     42.4
 ```
 
 Sliding window k-NN imputation for epi-genetics data with 1000 CpGs and
@@ -113,7 +132,20 @@ beta_matrix[1:10, 1:5]
 #> s10        NA 0.5498897        NA 0.3738964        NA
 
 imputed <- SlideKnn(beta_matrix, n_feat = 500, n_overlap = 10, k = 10)
-sum(is.na(imputed[[1]]))
+
+imputed
+#> SlideKnnList: List of 1 imputation of a 10 x 1000 big.matrix
+#> 
+#> Preview of imputation 1:
+#>     feat1  feat2  feat3  feat4  feat5  feat6  feat7  feat8  feat9 feat10
+#> s1 0.3321 0.5573 0.6797 0.1593 0.5803 0.5920 0.4280 0.4323 0.4296 0.3802
+#> s2 0.3047 0.5442 0.2516 0.5973 0.6081 0.1933 0.6456 0.4606 0.3892 0.4934
+#> s3 0.3467 0.5617 0.4790 0.7008 0.2352 0.3350 0.2214 0.5486 0.4330 0.2052
+#> s4 0.3858 0.5772 0.5437 0.7922 0.7523 0.4356 0.3132 0.5742 0.5731 0.5602
+#> s5 0.3395 0.3664 0.5779 0.4325 0.6398 0.5558 0.5449 0.2616 0.5279 0.4761
+#> 
+#> [ ... 5 more rows, 990 more columns ]
+sum(is.na(imputed[[1]][, ]))
 #> [1] 0
 ```
 
@@ -131,8 +163,20 @@ imputed_tree <- knn_imp(
 )
 #> [INFO ] 55839 node combinations were scored.
 #> [INFO ] 480166 base cases were calculated.
-length(imputed_tree) # 3 imputed matrices
-#> [1] 3
+imputed_tree
+#> KnnImpList: List of 3 imputations of a 63 x 2308 matrix
+#> 
+#> Preview of imputation 1:
+#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
+#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
+#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
+#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
+#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
+#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
+#> 
+#> [ ... 58 more rows, 2298 more columns ]
+#> 
+#> [ ... and 2 more imputations ]
 ```
 
 Optional simple mean imputation as a fallback or baseline that enables
@@ -155,10 +199,13 @@ sum(is.na(imputed_mean))
 For very large matrices that don’t fit in memory, use `{bigmemory}` to
 create file-backed objects. `SlideKnn` supports passing a `big.matrix`
 object or the path to its descriptor file. Always specify `output` for
-the result (also file-backed).
+the result (also file-backed). <b>NOTE</b>: see `?restore_dimnames` if
+outputs dimnames are stripped.
 
 ``` r
 library(bigmemory)
+# Set this to allow dimnames in big.matrix
+options(bigmemory.allow.dimnames = TRUE)
 
 data(khanmiss1)
 mat <- t(khanmiss1) # samples rows, features cols
@@ -179,7 +226,8 @@ imputed_obj <- SlideKnn(
   obj = big_mat,
   n_feat = 100,
   n_overlap = 10,
-  k = 10,
+  k = 10,,
+  overwrite = TRUE, # Overwrite any existing results
   output = file.path(temp_dir, "imputed.bin")
 )
 sum(is.na(imputed_obj[[1]][, ])) # Access the big.matrix result
@@ -192,16 +240,23 @@ imputed_path <- SlideKnn(
   n_feat = 100,
   n_overlap = 10,
   k = 10,
+  overwrite = TRUE,
   output = file.path(temp_dir, "imputed.bin")
 )
-sum(is.na(imputed_path[[1]][, ]))
-#> [1] 0
-```
 
-Note: Results are lists of `big.matrix` objects (one per `n_imp`). Use
-`bigmemory::attach.big.matrix()` if needed to reload from descriptor
-later. Set `strip_dimnames = TRUE` for multi-core efficiency, and
-restore dimnames post-imputation if required (same dimnames as `obj`).
+imputed_path
+#> SlideKnnList: List of 1 imputation of a 63 x 2308 big.matrix
+#> 
+#> Preview of imputation 1:
+#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
+#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
+#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
+#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
+#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
+#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
+#> 
+#> [ ... 58 more rows, 2298 more columns ]
+```
 
 ## Parameter Tuning
 

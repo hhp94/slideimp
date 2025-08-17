@@ -5,8 +5,16 @@ bigmem_impute_colmeans <- function(pBigMat, col_indices, cores = 1L) {
     invisible(.Call(`_SlideKnn_bigmem_impute_colmeans`, pBigMat, col_indices, cores))
 }
 
+bigmem_add_windows <- function(pBigMat_l, pBigMat_r, start_l, end_l, start_r, end_r) {
+    invisible(.Call(`_SlideKnn_bigmem_add_windows`, pBigMat_l, pBigMat_r, start_l, end_l, start_r, end_r))
+}
+
 bigmem_avg <- function(pBigMat, start, end, counts_vec, cores = 1L) {
     invisible(.Call(`_SlideKnn_bigmem_avg`, pBigMat, start, end, counts_vec, cores))
+}
+
+bigmem_copy <- function(pBigMat_l, pBigMat_r, col_idx_r, cores = 1L) {
+    invisible(.Call(`_SlideKnn_bigmem_copy`, pBigMat_l, pBigMat_r, col_idx_r, cores))
 }
 
 #' Impute missing values in a matrix using k-nearest neighbors (k-NN) with brute-force

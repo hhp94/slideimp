@@ -2,7 +2,7 @@
 % Please edit documentation in R/SlideKnn.R
 \name{SlideKnn}
 \alias{SlideKnn}
-\title{Sliding k-NN Imputation}
+\title{Sliding Window k-NN Imputation for Large data}
 \usage{
 SlideKnn(
   obj,
@@ -23,106 +23,117 @@ SlideKnn(
   seed = 42,
   .progress = FALSE,
   output = NULL,
-  overwrite = FALSE,
-  strip_dimnames = FALSE
+  overwrite = FALSE
 )
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
-Ensure that the features in the columns are sorted (e.g., by genomic position).
-Can also be a path to the description file of, or a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}.}
+Features should be meaningfully ordered (e.g., by genomic position or time).
+Accepts: numeric matrix, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, or path to big.matrix
+description file.}
 
-\item{n_feat}{Integer specifying the number of features (columns) in each window.
-Must be between 2 and the number of columns in \code{obj}.}
+\item{n_feat}{Integer. Number of features (columns) per sliding window.
+Must be between 2 and \code{ncol(obj)}.}
 
-\item{subset}{Character vector of column names or integer vector of column indices
-specifying the subset of columns on which to perform imputation. If \code{NULL} (default),
-all columns are included.}
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute. If \code{NULL} (default), all columns
+are processed. Required when \code{n_imp} > 1 and \code{n_pmm} >= 0.}
 
-\item{n_overlap}{Integer specifying the number of features to overlap between
-consecutive windows. Default is 10. Must be between 0 and \code{n_feat - 1}.}
+\item{n_overlap}{Integer. Number of overlapping features between consecutive
+windows. Must be between 0 and \code{n_feat - 1}. Default: 10.}
 
-\item{k}{Integer specifying the number of nearest neighbors to use for imputation.
-Must be between 1 and (\code{n_feat} - 1).}
+\item{k}{Integer. Number of nearest neighbors for imputation. Must be between
+1 and \code{n_feat - 1}. Default: 10.}
 
-\item{rowmax}{Numeric between 0 and 1 specifying the maximum allowable proportion
-of missing values in any row. If exceeded, the function stops with an error.}
+\item{rowmax}{Numeric. Maximum allowable proportion of missing values per row
+(0-1). Function stops with error if exceeded. Default: 0.9.}
 
-\item{colmax}{Numeric between 0 and 1 specifying the threshold proportion of
-missing values in a column above which the column is imputed using the mean
-instead of k-NN if \code{post_imp} is \code{TRUE}.}
+\item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
+Columns exceeding this threshold are imputed using column means instead of
+k-NN when \code{post_imp = TRUE}. Default: 0.9.}
 
-\item{cores}{Integer specifying the number of cores to use for parallel computation
-of distances. Default is 1.}
+\item{cores}{Integer. Number of CPU cores for parallel distance computation.
+Requires \code{\link[mirai:daemons]{mirai::daemons()}} setup for \code{cores} > 1. Default: 1.}
 
-\item{method}{Character string specifying the distance metric for k-NN. One of
-\code{"euclidean"} or \code{"manhattan"}. Defaults to \code{"euclidean"}.}
+\item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
+Default: \code{"euclidean"}.}
 
-\item{tree}{Character string specifying the k-NN method. \code{NULL} (default) uses
-brute-force search. \code{"kd"} uses KDTree and \code{"ball"} uses BallTree as implemented by
-the mlpack package, where missing values are first filled with column means
-(biased at high percentage of missing values and less efficient at lower dimensions).}
+\item{tree}{Character. k-NN search method: \code{NULL} (brute-force), \code{"kd"} (KDTree),
+or \code{"ball"} (BallTree). Tree methods use mlpack implementation but may be
+biased with high missing value percentages. Default: \code{NULL}.}
 
-\item{post_imp}{Logical; if \code{TRUE} (default), any missing values remaining after
-k-NN imputation will be imputed with \code{\link[=mean_impute_col]{mean_impute_col()}}.}
+\item{post_imp}{Logical. Whether to impute remaining missing values with
+column means after k-NN imputation. Default: \code{TRUE}.}
 
-\item{weighted}{Logical; controls whether the imputed value should be a simple
-mean or weighted mean by inverse distance. Default is \code{FALSE}.}
+\item{weighted}{Logical. Whether to use distance-weighted mean for imputation.
+If \code{FALSE}, uses simple mean of k nearest neighbors. Default: \code{FALSE}.}
 
-\item{dist_pow}{A positive double that controls the penalty for larger distances
-in the weighted mean imputation. Must be greater than zero: values between 0
-and 1 apply a softer penalty, 1 is linear (default), and values greater than
-1 apply a harsher penalty.}
+\item{dist_pow}{Numeric. Positive value controlling distance penalty in weighted
+imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
+Only used when \code{weighted = TRUE}. Default: 1.}
 
-\item{n_imp}{Integer specifying the number of imputations to perform. Forced
-to 1 if \code{n_pmm} = -1.}
+\item{n_imp}{Integer. Number of multiple imputations to perform. Automatically
+set to 1 if \code{n_pmm = -1}. Default: 1.}
 
-\item{n_pmm}{Integer controlling the multiple imputation method.
-If \code{n_pmm} = -1 (default): Deterministic single imputation.
-If \code{n_pmm} > 0: (recommended for MI) PMM multiple imputation using \code{n_pmm} closest
-donors (will not exceed available non-missing values row-wise).
-If \code{n_pmm} = 0: Bootstrap multiple imputation via resampling from k-Nearest Neighbors.}
+\item{n_pmm}{Integer. Multiple imputation method control:
+\itemize{
+\item \code{-1}: Deterministic single imputation (default)
+\item \verb{> 0}: Predictive Mean Matching using \code{n_pmm} closest donors
+(recommended for MI. \code{8} is a good starting point.).
+\item \code{0}: Bootstrap resampling from k-nearest neighbors
+}}
 
-\item{seed}{Integer; random seed for reproducible bootstrap sampling. Default is 42.}
+\item{seed}{Integer. Random seed for reproducible results in stochastic imputation
+methods. Default: 42.}
 
-\item{.progress}{Logical; if \code{TRUE}, show a progress bar. Default is \code{FALSE}.}
+\item{.progress}{Logical. Whether to display progress messages during imputation.
+Default: \code{FALSE}.}
 
-\item{output}{Character; path to save the output big.matrix. Format should be
-\code{path/stem} (e.g. "./my_results"). If provided, the back end will switch
-to \code{\link[bigmemory:big.matrix]{bigmemory::filebacked.big.matrix()}} instead of in-memory matrix.}
+\item{output}{Character. File path stem for saving file-backed big.matrix results
+(format: \code{"path/stem"}). If \code{NULL}, results are stored in memory. Recommended
+for large data and multiple imputations.}
 
-\item{overwrite}{Logical; if \code{TRUE}, overwrite existing files at \code{output}. Default to \code{FALSE}.}
-
-\item{strip_dimnames}{Logical; if \code{FALSE} (default), dimnames will not be removed,
-which will increase memory usage. Should be set to \code{TRUE} to save memory from
-overhead, especially when \code{cores} > 1. See details.}
+\item{overwrite}{Logical. Whether to overwrite existing files at \code{output} path.
+Default: \code{FALSE}.}
 }
 \value{
-A list of numeric matrices/big.matrices of the same dimensions as \code{obj}
-with missing values imputed. Length of list equals \code{n_imp}. If \code{obj} is file-backed,
-returns a list of big.matrix objects; otherwise returns regular matrices.
+A list of \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} objects with length \code{n_imp}. Each
+matrix has \code{nrow(obj)} rows and \code{length(subset)} columns with missing values
+imputed. The list has class \code{"SlideKnnList"} with additional attributes:
+\itemize{
+\item \code{rownames}: Original row names
+\item \code{colnames}: Column names for imputed subset
+\item \code{ncol}: Number of columns in original matrix
+\item \code{subset}: Column indices that were imputed
+}
 }
 \description{
-Performs sliding window k-NN imputation on a numeric matrix to handle missing values.
-The matrix is divided into overlapping windows, and imputation is applied to each window.
-Overlapping regions are averaged to produce the final imputed matrix.
+Performs k-nearest neighbor imputation on large numeric matrices using a sliding
+window approach. The matrix is divided into overlapping windows to handle missing
+values while maintaining computational efficiency and preserving local data structures.
 }
 \details{
-The sliding window approach is particularly useful for large datasets where applying
-k-NN imputation to the entire matrix would be computationally prohibitive. By breaking
-the data into smaller, overlapping windows, the algorithm maintains local structures
-while keeping memory usage manageable.
+The sliding window approach divides the input matrix into smaller, overlapping
+segments and applies k-NN imputation to each window independently. This strategy
+is particularly advantageous for large data where applying k-NN imputation
+to the entire matrix would be computationally prohibitive or exceed memory limits.
 
-See \code{\link[=knn_imp]{knn_imp()}} for details about the underlying k-NN implementation.
+The algorithm maintains local data relationships by using overlapping regions
+between consecutive windows. Values in overlapping areas are averaged across
+windows to produce the final imputed result. This approach assumes that features
+(columns) are ordered meaningfully (e.g., by genomic position, time series, etc.).
+
+For the underlying k-NN implementation details, see \code{\link[=knn_imp]{knn_imp()}}.
 }
 \note{
-Setting \code{n_imp} > 1 (i.e., multiple imputation) is intended to be used with \code{subset}.
-and big.matrix.
+\strong{Multiple Imputation}: Setting \code{n_imp} > 1 requires \code{n_pmm} >= 0 and should
+be used with the \code{subset} parameter and \code{output} for file-backed storage to
+manage memory efficiently.
 
-If your \code{obj} is a \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} or description file, you must set
-\code{strip_dimnames} to \code{TRUE} for the output big.matrix to have the same dimnames as
-the \code{obj}. Alternatively, you can re-add the dimnames to the output using the
-dimnames of the original object after setting \code{options(bigmemory.allow.dimnames = TRUE)}.
+\strong{Big Matrix Compatibility}: When using \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} objects,
+dimnames may not be preserved in the output due to bigmemory package defaults.
+To retain dimnames, set \code{options(bigmemory.allow.dimnames = TRUE)} and manually
+reassign dimnames to the output using the original object's dimnames.
 }
 \examples{
 # Generate sample data with missing values with 20 samples and 100 columns
@@ -143,7 +154,10 @@ imputed_basic <- SlideKnn(
   n_overlap = 10
 )
 
-# Access the result (returns a list, even for single imputation)
+# Preview
+imputed_basic
+
+# Access the result like a list
 imputed_basic[[1]][1:5, 1:5]
 
 # ========================================
@@ -168,19 +182,24 @@ imputed_big <- SlideKnn(
   k = 5,
   n_feat = 50,
   output = withr::local_tempfile()
-  # strip_dimnames = TRUE  # Recommended to set to TRUE for efficiency
 )
 
 # Because strip_dimnames is `FALSE` and the default of the bigmatrix package
-# is to not allow dimnames, the output lost the dimnames
-imputed_big[[1]][, ][1:5, 1:5]
+# is to not allow dimnames, the output may lost the dimnames. We strip it here to
+# demonstrate
 
 # But this can be reassigned after setting the options to be TRUE like so
 if (interactive()) {
+  on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")), add = TRUE)
   options(bigmemory.allow.dimnames = TRUE)
-  rownames(imputed_big[[1]]) <- rownames(big_data)
-  colnames(imputed_big[[1]]) <- colnames(big_data)
-  imputed_big[[1]][, ][1:5, 1:5]
+  rownames(imputed_big[[1]]) <- NULL
+  colnames(imputed_big[[1]]) <- NULL
+  # Names are now strip
+  print(imputed_big)
+  # Restore dimnames
+  restore_dimnames(imputed_big)
+  # Now restored
+  print(imputed_big)
 }
 
 # ========================================
@@ -194,16 +213,17 @@ imputed_pmm <- SlideKnn(
   n_feat = 60,
   n_imp = 3, # 3 imputations
   n_pmm = 5, # 5 donors for PMM
+  subset = c("feat1", "feat2"),
   output = withr::local_tempfile(),
   .progress = TRUE
 )
 
+imputed_pmm
+
 # ========================================
 # Parallel Processing
 # ========================================
-
 \dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
-
 # Set up parallel processing
 library(mirai)
 daemons(4) # Use 4 cores
@@ -216,14 +236,15 @@ imputed_parallel <- SlideKnn(
   beta_matrix,
   k = 5,
   n_feat = 50,
-  cores = 4,
-  strip_dimnames = TRUE # Important for parallel efficiency
+  cores = 4
 )
+
+imputed_parallel
 
 # Clean up
 daemons(0)
 \dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
+\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}
 }

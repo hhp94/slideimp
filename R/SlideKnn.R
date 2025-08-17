@@ -122,10 +122,10 @@ check_result_list <- function(output, n_imp, overwrite) {
       }
       # Delete existing files
       unlink(files_to_check, force = TRUE)
-      if (.Platform$OS.type == "windows") {
-        Sys.sleep(0.1)
-      }
-      invisible(gc(verbose = FALSE, full = TRUE))
+      # if (.Platform$OS.type == "windows") {
+      #   Sys.sleep(0.1)
+      # }
+      # invisible(gc(verbose = FALSE, full = TRUE))
       # Verify deletion
       if (any(fs::file_exists(files_to_check))) {
         stop("Failed to delete output files.")
@@ -147,8 +147,7 @@ create_result_list <- function(
     n_imp,
     backfiles = NULL,
     descfiles = NULL,
-    backingpath = NULL,
-    dimnames = NULL) {
+    backingpath = NULL) {
   result_list <- vector("list", n_imp)
   if (file_backed) {
     for (i in seq_len(n_imp)) {
@@ -159,8 +158,7 @@ create_result_list <- function(
         init = NA,
         backingpath = backingpath,
         backingfile = backfiles[i],
-        descriptorfile = descfiles[i],
-        dimnames = dimnames
+        descriptorfile = descfiles[i]
       )
       bigmat[, ] <- data_to_copy
       bigmemory::flush(bigmat)
@@ -175,80 +173,81 @@ create_result_list <- function(
   return(result_list)
 }
 
-#' K-Nearest Neighbor (k-NN) Imputation
+#' K-Nearest Neighbor Imputation for Missing Values
 #'
 #' @description
-#' This function imputes missing values in a numeric matrix using the k-Nearest
-#' Neighbors algorithm. It follows a two-stage process: first, it imputes
-#' columns with a proportion of missing values below `colmax` using k-NN;
-#' second, if requested, any remaining missing values are imputed using the column mean.
+#' Imputes missing values in numeric matrices using the k-nearest neighbors algorithm
+#' with a two-stage approach: k-NN imputation for columns with missingness below a
+#' threshold, followed by optional mean imputation for remaining missing values.
 #'
 #' @details
-#' This function calculates the distances for neighbors column-wise. This is an
-#' **extremely** important detail. Outside of epi-genomics data, most datasets have
-#' people in columns and features (e.g., weight, height, etc.) in rows for imputation.
-#' However, in epi-genomics data or intensive longitudinal data, features for the same
-#' sample that are spatially closer together may carry mutual information, so we have
-#' features in columns and samples in rows; the algorithm will then impute values based
-#' on nearby features for the same sample.
+#' This function performs **column-wise** distance calculations, which is particularly
+#' important for understanding its application domain. Unlike typical data where
+#' samples are in columns and features in rows, this function is optimized for
+#' intensive longitudinal data and epi-genomics where:
+#' - **Samples are in rows** and **features are in columns**
+#' - Spatially or temporally adjacent features carry mutual information
+#' - Imputation leverages nearby features within the same sample
 #'
-#' The distance calculation between columns for identifying nearest neighbors is
-#' scaled based on the number of non-missing value pairs. Specifically, the
-#' raw distance is penalized by scaling it up for columns that have fewer
-#' overlapping observations. This penalizes distances for columns with very few
-#' shared observations used for distance calculations. See also [stats::dist()].
+#' ## Weighting and Tree Methods
+#' When `weighted = TRUE`, imputed values are computed as distance-weighted averages
+#' where weights are inverse distances raised to the power of `dist_pow`. This gives
+#' closer neighbors greater influence in the imputation process, which can increase
+#' predictive performance.
 #'
-#' When `weighted = TRUE`, imputed values are computed as weighted averages where
-#' weights are the inverse of distances raised to the power of `dist_pow`. This
-#' gives closer neighbors more influence in the imputation.
-#'
-#' The `tree` parameter allows for faster neighbor search using spatial data structures,
+#' The `tree` parameter enables faster neighbor search using spatial data structures
 #' but requires pre-filling missing values with column means, which may introduce bias
-#' in datasets with high missingness. The overhead of building the tree may make the function
-#' slower in lower dimensions and smaller k values. Use "kd" trees for low-dimensional
-#' data and "ball" trees for high-dimensional data or when using Manhattan distance.
+#' in high-missingness data. Tree construction overhead may reduce performance for
+#' low-dimensional data or small k values.
 #'
-#' @section Parameter Guidance:
-#' For most applications, start with `k = 5`, `colmax = 0.8`, `rowmax = 0.9`.
-#' - `colmax = 0.5` means columns with > 50% missing values will use mean imputation
-#' - `rowmax = 0.9` means rows with > 90% missing values will cause an error
-#' - Set `n_pmm` to at least 10 in real applications for adequate uncertainty quantification
-#' - Use `n_pmm > 0` for PMM-based uncertainty (recommended), and `n_pmm = 0` for
-#' bootstrap-based uncertainty.
+#' @section Performance Optimization:
+#' - **Tree methods**: Only use when imputation runtime becomes prohibitive and missingness is low
+#' - **KDTree** (`tree = "kd"`): Suitable for >5000 columns with <20% missingness
+#' - **BallTree** (`tree = "ball"`): For high-dimensional data or Manhattan distance
+#' - **File backing**: Use `output` parameter for `n_imp > 1` to avoid memory issues
+#' - **Subset imputation**: Consider `subset` parameter for efficiency when only specific columns need imputation
 #'
-#' @section Performance:
-#' - Don't use `tree` unless imputation run-time is getting too slow and there's low missing.
-#' - Use `tree = "kd"` for datasets with > 5000 columns and low missingness (< 20%). Benchmark your data.
-#' - Use `tree = "ball"` for extremely high-dimensional data or Manhattan distance
-#' - Use `output` parameter when `n_imp > 1` to avoid memory issues with large datasets
-#' - Consider `subset` to impute only specific columns of interest for efficiency
-#'
-#' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
+#'   Must have at least 1 row and 2 columns.
+#' @inheritParams SlideKnn
+#' @param subset Character vector of column names or integer vector of column
+#'   indices specifying which columns to impute.
+#' @param tree Character. k-NN search method: `NULL` (brute-force), `"kd"` (KDTree),
+#'   or `"ball"` (BallTree). Tree methods may introduce bias with high missingness.
+#'   Default: `NULL`.
 #' @param ... Currently not implemented.
 #'
-#' @return A list of length `n_imp` containing numeric matrices (or [bigmemory::big.matrix()]
-#'   objects if `output` is specified) with the same dimensions as `obj`. Missing values are
-#'   imputed using k-NN for columns with missingness below `colmax`, and mean imputation
-#'   for remaining missing values if `post_imp = TRUE`. Each list element represents an
-#'   independent imputation for uncertainty quantification.
+#' @return A list of length `n_imp` containing numeric matrices or [bigmemory::big.matrix()]
+#'   objects (if `output` is specified) with the same dimensions as `obj`. Missing values
+#'   are imputed using k-NN for columns with missingness below `colmax`, and mean
+#'   imputation for remaining missing values if `post_imp = TRUE`.
+#'
+#'   The list has class `"KnnImpList"` with attributes:
+#'   \itemize{
+#'     \item `rownames`: Original row names from input matrix
+#'     \item `colnames`: Original column names from input matrix
+#'     \item `subset`: Column indices that were processed for imputation
+#'     \item `ncol`: Number of columns in original matrix
+#'   }
+#'
+#'   Each list element represents an independent imputation for uncertainty quantification.
 #'
 #' @note
-#' For file-backed storage using `output`, ensure `options(bigmemory.allow.dimnames = TRUE)`
-#' is set before calling this function. Else rownames and colnames will have to be
-#' restored (same as `obj`)
+#' **File-backed Storage**: For file-backed results using `output`, set
+#' `options(bigmemory.allow.dimnames = TRUE)` before calling this function to preserve
+#' dimnames, otherwise they can be manually restored from the original matrix with
+#' [restore_dimnames()].
 #'
-#' Compared to `impute::impute.knn`, for columns with very high missingness, the
-#' mean imputation uses any imputed values with original values for the mean calculation
-#' instead of just the original values.
-#'
-#' When `n_imp` > 1 for large data, it is recommended to use `subset` and provide
-#' `output` to use [bigmemory::big.matrix()] to save memory.
+#' **Memory Considerations**: When `n_imp > 1` for large data, use `subset` to
+#' specify only required columns and provide `output` for file-backed storage to
+#' avoid memory constraints.
 #'
 #' @references
-#' Troyanskaya, Olga, Michael Cantor, Gavin Sherlock, et al.
-#' "Missing Value Estimation Methods for DNA Microarrays." Bioinformatics 17,
-#' no. 6 (2001): 520–25. https://doi.org/10.1093/bioinformatics/17.6.520.
+#' Robert Tibshirani, Trevor Hastie, Balasubramanian Narasimhan, and Gilbert Chu (2002).
+#' Diagnosis of multiple cancer types by shrunken centroids of gene expression
+#' PNAS 99: 6567-6572. Available at www.pnas.org
+#'
+#' @seealso [SlideKnn()], [mean_impute_col()], [bigmemory::big.matrix()], [restore_dimnames()]
 #'
 #' @examples
 #' # Quick start example
@@ -268,7 +267,13 @@ create_result_list <- function(
 #'   weighted = TRUE,
 #'   dist_pow = 2,
 #'   method = "euclidean"
-#' )[[1]]
+#' )
+#'
+#' # Preview
+#' imputed_weighted
+#'
+#' # Access the imputations just like a list
+#' imputed_weighted[[1]][1:5, 1:5]
 #'
 #' # Using only a subset of columns. Massive time saver
 #' imputed_subset <- knn_imp(
@@ -279,7 +284,7 @@ create_result_list <- function(
 #'   dist_pow = 2,
 #'   subset = c("g189", "g299", "g361"),
 #'   method = "euclidean"
-#' )[[1]]
+#' )
 #'
 #' # PMM imputation with 5 imputations and 5 donors. Increase `n_pmm` in real
 #' # data to ensure realistic uncertainty quantification.
@@ -288,35 +293,33 @@ create_result_list <- function(
 #'   k = 5,
 #'   n_imp = 5,
 #'   n_pmm = 5,
-#'   output = withr::local_tempfile(), # Enables results as list of bigmatrix
+#'   output = withr::local_tempfile(),
+#'   # Enables results as list of bigmatrix
 #'   seed = 123
 #' )
 #' # The default of the bigmatrix package is to not allow dimnames so the output
-#' # lost the dimnames
+#' # may lost the dimnames
 #' imputed_pmm[[1]][, ][1:5, 1:5]
 #'
 #' if (interactive()) {
 #'   # But this can be reassigned after setting the options to be TRUE like so
 #'   options(bigmemory.allow.dimnames = TRUE)
-#'   for (i in length(imputed_pmm)) {
-#'     rownames(imputed_pmm[[i]]) <- rownames(t_khanmiss1)
-#'     colnames(imputed_pmm[[i]]) <- colnames(t_khanmiss1)
-#'   }
-#'   imputed_pmm[[1]][, ][1:5, 1:5]
+#'   restore_dimnames(imputed_pmm)
 #' }
 #'
-#' length(imputed_pmm) # Returns 5 imputed datasets
+#' length(imputed_pmm) # Returns 5 imputed data
 #'
 #' # Bootstrap imputation for uncertainty injection
 #' imputed_boot <- knn_imp(
 #'   obj = t_khanmiss1,
 #'   k = 3,
 #'   n_imp = 5,
-#'   n_pmm = 0, # n_pmm = 0 enables bootstrapping nearest neighbors
+#'   n_pmm = 0,
+#'   # n_pmm = 0 enables bootstrapping nearest neighbors
 #'   seed = 123
 #' )
 #'
-#' length(imputed_boot) # Returns 5 imputed datasets
+#' length(imputed_boot) # Returns 5 imputed data
 #'
 #' @export
 knn_imp <- function(
@@ -340,14 +343,18 @@ knn_imp <- function(
   # Pre-conditioning
   method <- match.arg(method)
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
-  checkmate::assert_integerish(k, lower = 1, upper = ncol(obj) - 1, len = 1, .var.name = "k")
-  checkmate::assert_integerish(cores, lower = 1, len = 1, .var.name = "cores")
-  checkmate::assert_numeric(colmax, lower = 0, upper = 1, len = 1, .var.name = "colmax")
-  checkmate::assert_numeric(rowmax, lower = 0, upper = 1, len = 1, .var.name = "rowmax")
-  checkmate::assert_logical(post_imp, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "post_imp")
-  checkmate::assert_integerish(n_imp, lower = 1, len = 1, .var.name = "n_imp")
-  checkmate::assert_integerish(n_pmm, lower = 0, upper = nrow(obj), len = 1, .var.name = "n_pmm")
-  checkmate::assert_integerish(seed, lower = 0, len = 1, .var.name = "seed", null.ok = FALSE)
+  checkmate::assert_int(k, lower = 1, upper = ncol(obj) - 1, .var.name = "k")
+  checkmate::assert_int(cores, lower = 1, .var.name = "cores")
+  checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
+  checkmate::assert_number(rowmax, lower = 0, upper = 1, .var.name = "rowmax")
+  checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
+  checkmate::assert_int(n_imp, lower = 1, .var.name = "n_imp")
+  checkmate::assert_int(n_pmm, lower = -1, upper = nrow(obj), .var.name = "n_pmm")
+  if (n_imp > 1 && n_pmm == -1) {
+    warning("n_imp > 1 requires n_pmm >= 0. Setting n_imp = 1.")
+    n_imp <- 1
+  }
+  checkmate::assert_int(seed, lower = 0, .var.name = "seed", null.ok = FALSE)
   checkmate::assert(
     checkmate::check_character(subset, min.len = 0, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
     checkmate::check_integerish(subset, lower = 1, upper = ncol(obj), min.len = 0, any.missing = FALSE, null.ok = TRUE, unique = TRUE),
@@ -362,23 +369,12 @@ knn_imp <- function(
   if (!is.null(output)) {
     checkmate::assert_path_for_output(output, .var.name = "output")
   }
-  checkmate::assert_logical(overwrite, len = 1, null.ok = FALSE, any.missing = FALSE, .var.name = "overwrite")
-
+  checkmate::assert_flag(overwrite, null.ok = FALSE, .var.name = "overwrite")
   set.seed(seed)
-
-  # Store original dimnames
-  rn <- rownames(obj)
-  cn <- colnames(obj)
-  dn <- list(rn, cn)
   # Determine if output should be file-backed
   file_backed <- !is.null(output)
   # Handle file-backed output preparation
   paths <- check_result_list(output = output, n_imp = n_imp, overwrite = overwrite)
-  if (file_backed) {
-    if (!isTRUE(getOption("bigmemory.allow.dimnames"))) {
-      dn <- NULL
-    }
-  }
   backingpath <- paths$backingpath
   backfiles <- paths$backfiles
   descfiles <- paths$descfiles
@@ -396,20 +392,34 @@ knn_imp <- function(
   } else {
     subset
   }
+  # Calculate subset names for metadata
+  old_opt <- getOption("bigmemory.allow.dimnames")
+  options(bigmemory.allow.dimnames = TRUE)
+  can_store_dimnames <- isTRUE(getOption("bigmemory.allow.dimnames")) || !file_backed
+  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
+  rn <- rownames(obj)
+  cn <- colnames(obj)
   # Early return for empty subset or no missing data
   if (length(subset) == 0 || !anyNA(obj[, subset, drop = FALSE])) {
     if (length(subset) > 0) {
       message("No missing data in subset columns")
     }
-    return(create_result_list(
+    # Create result with proper dimnames handling
+    result_list <- create_result_list(
       data_to_copy = obj,
       file_backed = file_backed,
       n_imp = n_imp,
       backfiles = backfiles,
       descfiles = descfiles,
-      backingpath = backingpath,
-      dimnames = dn
-    ))
+      backingpath = backingpath
+    )
+    # Add metadata
+    attr(result_list, "rownames") <- rn
+    attr(result_list, "colnames") <- cn
+    attr(result_list, "subset") <- subset
+    attr(result_list, "ncol") <- ncol(obj)
+    class(result_list) <- c("KnnImpList", class(result_list))
+    return(result_list)
   }
   # Calculate complement for further processing
   complement <- setdiff(seq_len(ncol(obj)), subset)
@@ -474,10 +484,8 @@ knn_imp <- function(
       cores = cores
     )
   }
-
   # Convert NaN values back to NA
   imputed_values[is.nan(imputed_values)] <- NA_real_
-
   # Map column indices from pre_imp_cols to original matrix columns and create
   # the index matrix for direct assignment
   imp_indices <- cbind(imputed_values[, 1], knn_indices[imputed_values[, 2]])
@@ -488,15 +496,13 @@ knn_imp <- function(
     n_imp = n_imp,
     backfiles = backfiles,
     descfiles = descfiles,
-    backingpath = backingpath,
-    dimnames = dn
+    backingpath = backingpath
   )
   # Fill in imputed values
   for (i in seq_len(n_imp)) {
     result_list[[i]][imp_indices] <- imputed_values[, i + 2]
   }
-
-  # Flush file-backed matrices to disk
+  # Flush file-backed matrices to disk and post-impute
   if (file_backed) {
     for (i in seq_len(n_imp)) {
       bigmemory::flush(result_list[[i]])
@@ -521,8 +527,22 @@ knn_imp <- function(
       }
     }
   }
+  # S3 OOPs
+  if (can_store_dimnames) {
+    for (i in seq_len(n_imp)) {
+      rownames(result_list[[i]]) <- rn
+      colnames(result_list[[i]]) <- cn
+    }
+  }
+  attr(result_list, "rownames") <- rn
+  attr(result_list, "colnames") <- cn
+  attr(result_list, "subset") <- subset
+  attr(result_list, "ncol") <- ncol(obj)
+  class(result_list) <- c("KnnImpList", class(result_list))
+
   return(result_list)
 }
+
 
 #' k-NN Imputation Wrapper
 #'
@@ -574,7 +594,6 @@ impute_knn <- function(
   if (sum(good_rows) == 0) {
     return(replicate(n_imp, obj, simplify = FALSE))
   }
-
   # Call knn_imp on good rows - returns list of imputed objects
   imputed_good_list <- knn_imp(
     obj = obj[good_rows, , drop = FALSE],
@@ -593,7 +612,6 @@ impute_knn <- function(
     seed = seed,
     ...
   )
-
   # Process each imputed object in the list
   result_list <- vector("list", length(imputed_good_list))
 
@@ -619,14 +637,13 @@ find_overlap_regions <- function(start, end) {
   delta[end[valid_ends] + 1] <- delta[end[valid_ends] + 1] - 1
   counts_vec <- cumsum(delta)[seq_len(max_pos)]
   storage.mode(counts_vec) <- "integer"
-  # Extract regions where counts > 1
+  # extract regions where counts > 1
   overlaps <- counts_vec > 1
-  # Run Length Encoding
   rle_over <- rle(overlaps)
-  # Compute start and end positions of the TRUE runs
+  # compute start and end positions of the TRUE runs
   ends <- cumsum(rle_over$lengths)
   starts <- ends - rle_over$lengths + 1
-  # Return the region and counts_vec
+  # return the region and counts_vec
   return(
     list(
       region = cbind(
@@ -638,85 +655,98 @@ find_overlap_regions <- function(start, end) {
   )
 }
 
-#' Sliding k-NN Imputation
+#' Sliding Window k-NN Imputation for Large data
 #'
 #' @description
-#' Performs sliding window k-NN imputation on a numeric matrix to handle missing values.
-#' The matrix is divided into overlapping windows, and imputation is applied to each window.
-#' Overlapping regions are averaged to produce the final imputed matrix.
+#' Performs k-nearest neighbor imputation on large numeric matrices using a sliding
+#' window approach. The matrix is divided into overlapping windows to handle missing
+#' values while maintaining computational efficiency and preserving local data structures.
 #'
 #' @details
-#' The sliding window approach is particularly useful for large datasets where applying
-#' k-NN imputation to the entire matrix would be computationally prohibitive. By breaking
-#' the data into smaller, overlapping windows, the algorithm maintains local structures
-#' while keeping memory usage manageable.
+#' The sliding window approach divides the input matrix into smaller, overlapping
+#' segments and applies k-NN imputation to each window independently. This strategy
+#' is particularly advantageous for large data where applying k-NN imputation
+#' to the entire matrix would be computationally prohibitive or exceed memory limits.
 #'
-#' See [knn_imp()] for details about the underlying k-NN implementation.
+#' The algorithm maintains local data relationships by using overlapping regions
+#' between consecutive windows. Values in overlapping areas are averaged across
+#' windows to produce the final imputed result. This approach assumes that features
+#' (columns) are ordered meaningfully (e.g., by genomic position, time series, etc.).
+#'
+#' For the underlying k-NN implementation details, see [knn_imp()].
 #'
 #' @note
-#' Setting `n_imp` > 1 (i.e., multiple imputation) is intended to be used with `subset`.
-#' and big.matrix.
+#' **Multiple Imputation**: Setting `n_imp` > 1 requires `n_pmm` >= 0 and should
+#' be used with the `subset` parameter and `output` for file-backed storage to
+#' manage memory efficiently.
 #'
-#' If your `obj` is a [bigmemory::big.matrix()] or description file, you must set
-#' `strip_dimnames` to `TRUE` for the output big.matrix to have the same dimnames as
-#' the `obj`. Alternatively, you can re-add the dimnames to the output using the
-#' dimnames of the original object after setting `options(bigmemory.allow.dimnames = TRUE)`.
+#' **Big Matrix Compatibility**: When using [bigmemory::big.matrix()] objects,
+#' dimnames may not be preserved in the output due to bigmemory package defaults.
+#' To retain dimnames, set `options(bigmemory.allow.dimnames = TRUE)` and manually
+#' reassign dimnames to the output using the original object's dimnames.
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#'   Ensure that the features in the columns are sorted (e.g., by genomic position).
-#'   Can also be a path to the description file of, or a [bigmemory::big.matrix()].
-#' @param n_feat Integer specifying the number of features (columns) in each window.
-#'   Must be between 2 and the number of columns in `obj`.
-#' @param subset Character vector of column names or integer vector of column indices
-#'   specifying the subset of columns on which to perform imputation. If `NULL` (default),
-#'   all columns are included.
-#' @param n_overlap Integer specifying the number of features to overlap between
-#'   consecutive windows. Default is 10. Must be between 0 and `n_feat - 1`.
-#' @param k Integer specifying the number of nearest neighbors to use for imputation.
-#'   Must be between 1 and (`n_feat` - 1).
-#' @param rowmax Numeric between 0 and 1 specifying the maximum allowable proportion
-#'   of missing values in any row. If exceeded, the function stops with an error.
-#' @param colmax Numeric between 0 and 1 specifying the threshold proportion of
-#'   missing values in a column above which the column is imputed using the mean
-#'   instead of k-NN if `post_imp` is `TRUE`.
-#' @param cores Integer specifying the number of cores to use for parallel computation
-#'   of distances. Default is 1.
-#' @param method Character string specifying the distance metric for k-NN. One of
-#'   `"euclidean"` or `"manhattan"`. Defaults to `"euclidean"`.
-#' @param tree Character string specifying the k-NN method. `NULL` (default) uses
-#'   brute-force search. `"kd"` uses KDTree and `"ball"` uses BallTree as implemented by
-#'   the mlpack package, where missing values are first filled with column means
-#'   (biased at high percentage of missing values and less efficient at lower dimensions).
-#' @param post_imp Logical; if `TRUE` (default), any missing values remaining after
-#'   k-NN imputation will be imputed with [mean_impute_col()].
-#' @param weighted Logical; controls whether the imputed value should be a simple
-#'   mean or weighted mean by inverse distance. Default is `FALSE`.
-#' @param dist_pow A positive double that controls the penalty for larger distances
-#'   in the weighted mean imputation. Must be greater than zero: values between 0
-#'   and 1 apply a softer penalty, 1 is linear (default), and values greater than
-#'   1 apply a harsher penalty.
-#' @param n_imp Integer specifying the number of imputations to perform. Forced
-#'   to 1 if `n_pmm` = -1.
-#' @param n_pmm Integer controlling the multiple imputation method.
-#'   If `n_pmm` = -1 (default): Deterministic single imputation.
-#'   If `n_pmm` > 0: (recommended for MI) PMM multiple imputation using `n_pmm` closest
-#'   donors (will not exceed available non-missing values row-wise).
-#'   If `n_pmm` = 0: Bootstrap multiple imputation via resampling from k-Nearest Neighbors.
-#' @param seed Integer; random seed for reproducible bootstrap sampling. Default is 42.
-#' @param .progress Logical; if `TRUE`, show a progress bar. Default is `FALSE`.
-#' @param output Character; path to save the output big.matrix. Format should be
-#'   `path/stem` (e.g. "./my_results"). If provided, the back end will switch
-#'   to [bigmemory::filebacked.big.matrix()] instead of in-memory matrix.
-#' @param overwrite Logical; if `TRUE`, overwrite existing files at `output`. Default to `FALSE`.
-#' @param strip_dimnames Logical; if `FALSE` (default), dimnames will not be removed,
-#'   which will increase memory usage. Should be set to `TRUE` to save memory from
-#'   overhead, especially when `cores` > 1. See details.
+#'   Features should be meaningfully ordered (e.g., by genomic position or time).
+#'   Accepts: numeric matrix, [bigmemory::big.matrix()], or path to big.matrix
+#'   description file.
+#' @param n_feat Integer. Number of features (columns) per sliding window.
+#'   Must be between 2 and `ncol(obj)`.
+#' @param subset Character vector of column names or integer vector of column
+#'   indices specifying which columns to impute. If `NULL` (default), all columns
+#'   are processed. Required when `n_imp` > 1 and `n_pmm` >= 0.
+#' @param n_overlap Integer. Number of overlapping features between consecutive
+#'   windows. Must be between 0 and `n_feat - 1`. Default: 10.
+#' @param k Integer. Number of nearest neighbors for imputation. Must be between
+#'   1 and `n_feat - 1`. Default: 10.
+#' @param rowmax Numeric. Maximum allowable proportion of missing values per row
+#'   (0-1). Function stops with error if exceeded. Default: 0.9.
+#' @param colmax Numeric. Threshold proportion of missing values per column (0-1).
+#'   Columns exceeding this threshold are imputed using column means instead of
+#'   k-NN when `post_imp = TRUE`. Default: 0.9.
+#' @param cores Integer. Number of CPU cores for parallel distance computation.
+#'   Requires [mirai::daemons()] setup for `cores` > 1. Default: 1.
+#' @param method Character. Distance metric for k-NN: `"euclidean"` or `"manhattan"`.
+#'   Default: `"euclidean"`.
+#' @param tree Character. k-NN search method: `NULL` (brute-force), `"kd"` (KDTree),
+#'   or `"ball"` (BallTree). Tree methods use mlpack implementation but may be
+#'   biased with high missing value percentages. Default: `NULL`.
+#' @param post_imp Logical. Whether to impute remaining missing values with
+#'   column means after k-NN imputation. Default: `TRUE`.
+#' @param weighted Logical. Whether to use distance-weighted mean for imputation.
+#'   If `FALSE`, uses simple mean of k nearest neighbors. Default: `FALSE`.
+#' @param dist_pow Numeric. Positive value controlling distance penalty in weighted
+#'   imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
+#'   Only used when `weighted = TRUE`. Default: 1.
+#' @param n_imp Integer. Number of multiple imputations to perform. Automatically
+#'   set to 1 if `n_pmm = -1`. Default: 1.
+#' @param n_pmm Integer. Multiple imputation method control:
+#'   \itemize{
+#'     \item `-1`: Deterministic single imputation (default)
+#'     \item `> 0`: Predictive Mean Matching using `n_pmm` closest donors
+#'     (recommended for MI. `8` is a good starting point.).
+#'     \item `0`: Bootstrap resampling from k-nearest neighbors
+#'   }
+#' @param seed Integer. Random seed for reproducible results in stochastic imputation
+#'   methods. Default: 42.
+#' @param .progress Logical. Whether to display progress messages during imputation.
+#'   Default: `FALSE`.
+#' @param output Character. File path stem for saving file-backed big.matrix results
+#'   (format: `"path/stem"`). If `NULL`, results are stored in memory. Recommended
+#'   for large data and multiple imputations.
+#' @param overwrite Logical. Whether to overwrite existing files at `output` path.
+#'   Default: `FALSE`.
 #'
-#' @return A list of numeric matrices/big.matrices of the same dimensions as `obj`
-#'   with missing values imputed. Length of list equals `n_imp`. If `obj` is file-backed,
-#'   returns a list of big.matrix objects; otherwise returns regular matrices.
+#' @return A list of [bigmemory::big.matrix()] objects with length `n_imp`. Each
+#'   matrix has `nrow(obj)` rows and `length(subset)` columns with missing values
+#'   imputed. The list has class `"SlideKnnList"` with additional attributes:
+#'   \itemize{
+#'     \item `rownames`: Original row names
+#'     \item `colnames`: Column names for imputed subset
+#'     \item `ncol`: Number of columns in original matrix
+#'     \item `subset`: Column indices that were imputed
+#'   }
 #'
-#' @seealso [knn_imp()], [mean_impute_col()], [bigmemory::big.matrix()]
+#' @seealso [knn_imp()], [mean_impute_col()], [bigmemory::big.matrix()], [restore_dimnames()]
 #'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
@@ -737,7 +767,10 @@ find_overlap_regions <- function(start, end) {
 #'   n_overlap = 10
 #' )
 #'
-#' # Access the result (returns a list, even for single imputation)
+#' # Preview
+#' imputed_basic
+#'
+#' # Access the result like a list
 #' imputed_basic[[1]][1:5, 1:5]
 #'
 #' # ========================================
@@ -762,19 +795,24 @@ find_overlap_regions <- function(start, end) {
 #'   k = 5,
 #'   n_feat = 50,
 #'   output = withr::local_tempfile()
-#'   # strip_dimnames = TRUE  # Recommended to set to TRUE for efficiency
 #' )
 #'
 #' # Because strip_dimnames is `FALSE` and the default of the bigmatrix package
-#' # is to not allow dimnames, the output lost the dimnames
-#' imputed_big[[1]][, ][1:5, 1:5]
+#' # is to not allow dimnames, the output may lost the dimnames. We strip it here to
+#' # demonstrate
 #'
 #' # But this can be reassigned after setting the options to be TRUE like so
 #' if (interactive()) {
+#'   on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")), add = TRUE)
 #'   options(bigmemory.allow.dimnames = TRUE)
-#'   rownames(imputed_big[[1]]) <- rownames(big_data)
-#'   colnames(imputed_big[[1]]) <- colnames(big_data)
-#'   imputed_big[[1]][, ][1:5, 1:5]
+#'   rownames(imputed_big[[1]]) <- NULL
+#'   colnames(imputed_big[[1]]) <- NULL
+#'   # Names are now strip
+#'   print(imputed_big)
+#'   # Restore dimnames
+#'   restore_dimnames(imputed_big)
+#'   # Now restored
+#'   print(imputed_big)
 #' }
 #'
 #' # ========================================
@@ -788,16 +826,17 @@ find_overlap_regions <- function(start, end) {
 #'   n_feat = 60,
 #'   n_imp = 3, # 3 imputations
 #'   n_pmm = 5, # 5 donors for PMM
+#'   subset = c("feat1", "feat2"),
 #'   output = withr::local_tempfile(),
 #'   .progress = TRUE
 #' )
 #'
+#' imputed_pmm
+#'
 #' # ========================================
 #' # Parallel Processing
 #' # ========================================
-#'
 #' @examplesIf interactive()
-#'
 #' # Set up parallel processing
 #' library(mirai)
 #' daemons(4) # Use 4 cores
@@ -810,9 +849,10 @@ find_overlap_regions <- function(start, end) {
 #'   beta_matrix,
 #'   k = 5,
 #'   n_feat = 50,
-#'   cores = 4,
-#'   strip_dimnames = TRUE # Important for parallel efficiency
+#'   cores = 4
 #' )
+#'
+#' imputed_parallel
 #'
 #' # Clean up
 #' daemons(0)
@@ -837,8 +877,7 @@ SlideKnn <- function(
     seed = 42,
     .progress = FALSE,
     output = NULL,
-    overwrite = FALSE,
-    strip_dimnames = FALSE) {
+    overwrite = FALSE) {
   # Pre-conditioning ----
   method <- match.arg(method)
   checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
@@ -870,16 +909,19 @@ SlideKnn <- function(
     ),
     .var.name = "subset"
   )
+
+  # Enforce subset requirement for multiple imputations
+  if (n_imp > 1 && n_pmm >= 0 && is.null(subset)) {
+    stop(
+      "When n_imp > 1 and n_pmm >= 0, subset must be explicitly specified. ",
+      "Please provide a subset of columns to impute."
+    )
+  }
   if (n_imp > 1 && n_pmm == 0 && weighted) {
     warning("If bootstrapping nearest neighbors, weighted will be forced to FALSE")
     weighted <- FALSE
   }
-  # Default is options(bigmemory.allow.dimnames = NULL or FALSE) which prevents
-  # strip names and assigning names to outputs so we have to guard
-  if (strip_dimnames) {
-    on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")))
-    options(bigmemory.allow.dimnames = TRUE)
-  }
+
   # Handle input matrix
   if (!bigmemory::is.big.matrix(obj)) {
     if (is.character(obj)) {
@@ -890,28 +932,23 @@ SlideKnn <- function(
       stop("`obj` has to be a numeric matrix or a (descriptor of a) double bigmemory::big.matrix.")
     }
   }
-  checkmate::assert_integerish(n_feat, lower = 2, upper = ncol(obj), len = 1, null.ok = FALSE, .var.name = "n_feat")
+  checkmate::assert_int(n_feat, lower = 2, upper = ncol(obj), null.ok = FALSE, .var.name = "n_feat")
   checkmate::assert_int(n_overlap, lower = 0, upper = n_feat - 1, null.ok = FALSE, .var.name = "n_overlap")
   checkmate::assert_int(k, lower = 1, upper = n_feat - 1, null.ok = FALSE, .var.name = "k")
 
-  # Determine if output should be file-backed
-  file_backed <- !is.null(output)
+  if (n_imp > 1 && n_pmm == -1) {
+    warning("n_imp > 1 requires n_pmm >= 0. Setting n_imp = 1.")
+    n_imp <- 1
+  }
+
   # Warning for multiple imputations without file backing
+  file_backed <- !is.null(output)
   if (n_imp > 1 && !file_backed) {
     warning("n_imp > 1 should be used with output to file-backed big.matrix. Provide `output` parameter to enable file backing.")
   }
-  if (n_imp > 1 && n_pmm == -1) {
-    n_imp <- 1
-  }
-  # Remove obj names temporarily to reduce size of pointers being passed to workers
+
   rn <- rownames(obj)
   cn <- colnames(obj)
-  dn <- list(rn, cn)
-  if (strip_dimnames) {
-    rownames(obj) <- NULL
-    colnames(obj) <- NULL
-    dn <- NULL
-  }
   ## subset ----
   if (!is.null(subset)) {
     if (is.character(subset)) {
@@ -926,11 +963,12 @@ SlideKnn <- function(
       stop("`subset` is not found in `colnames(obj)`")
     }
   } else {
-    # If subset is NULL, set it to all columns
+    # If subset is NULL, set it to all columns. Fine for n_pmm == -1
     subset <- seq_len(ncol(obj))
   }
+
   # Windowing Logic ----
-  # Calculate the total number of steps/windows needed.
+  # [Keep all the windowing logic as is - lines for calculating start, end, etc.]
   idx <- 1 # R index at 1
   max_step <- ceiling((ncol(obj) - idx) / (n_feat - n_overlap))
   step <- 0:max_step
@@ -945,9 +983,7 @@ SlideKnn <- function(
   # And make the last window extra wide to cover the full end
   end[corrected_length] <- ncol(obj)
   # Calculate where the subset lies, offset by the start index
-  # Offset the subset_list to make indices relative to each window's start
   subset_list <- lapply(seq_along(start), function(i) {
-    # Find range of subset that falls in window [start[i], end[i]]
     first <- findInterval(start[i] - 1, subset) + 1
     last <- findInterval(end[i], subset)
     if (first <= last) {
@@ -974,13 +1010,29 @@ SlideKnn <- function(
   }
   # Create descriptors to pass around on workers
   obj_desc <- bigmemory::describe(obj)
-  # Get final imputed info (multiple if n_imp > 1)
+  # Check if we can store dimnames
+  old_opt <- getOption("bigmemory.allow.dimnames")
+  options(bigmemory.allow.dimnames = TRUE)
+  can_store_dimnames <- isTRUE(getOption("bigmemory.allow.dimnames"))
+  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
+  if (can_store_dimnames) {
+    # strip dimnames if can store dimnames to be restored to save memory
+    rownames(obj) <- NULL
+    colnames(obj) <- NULL
+  }
+  final_colnames <- if (!is.null(cn)) {
+    cn[subset]
+  } else {
+    as.character(subset)
+  }
+  # Get final imputed info
   final_imputed_info <- check_result_list(output, n_imp, overwrite)
-  # Create all final imputed big.matrices upfront
+
+  # Create all final imputed big.matrices
   final_imputed_list <- lapply(seq_len(n_imp), function(imp_idx) {
     bigmemory::big.matrix(
       nrow = nr,
-      ncol = nc,
+      ncol = length(subset),
       type = "double",
       init = 0.0,
       backingpath = final_imputed_info$backingpath,
@@ -988,8 +1040,10 @@ SlideKnn <- function(
       backingfile = final_imputed_info$backfiles[[imp_idx]]
     )
   })
-  # Overlap regions (computed once, shared)
+
+  # Overlap regions to average over
   overlap <- find_overlap_regions(start, end)
+
   # Process each imputation sequentially for each n_imp
   for (imp_idx in seq_len(n_imp)) {
     if (.progress) {
@@ -997,7 +1051,7 @@ SlideKnn <- function(
     }
     # Seed for this imputation
     seed_imp <- seed + (imp_idx - 1)
-    # Create single intermediate for this imp (overwritten if file-backed)
+    # Init/overwrite one intermediate matrix per imputation to avoid race conds
     intermediate_info <- check_result_list(
       fs::path(temp_dir, "intermediate"), 1,
       overwrite = TRUE
@@ -1012,6 +1066,7 @@ SlideKnn <- function(
       backingfile = intermediate_info$backfiles[[1]]
     )
     intermediate_desc <- bigmemory::describe(intermediate)
+
     ## Impute ----
     if (.progress) {
       message("Step 1/3: Imputing")
@@ -1024,7 +1079,7 @@ SlideKnn <- function(
           obj_big <- bigmemory::attach.big.matrix(obj_desc)
           # Get imputation results
           imp_list <- impute_knn(
-            # Realize in memory
+            # Realize in memory just the window cols
             obj = obj_big[, window_cols, drop = FALSE],
             k = k,
             rowmax = rowmax,
@@ -1045,7 +1100,7 @@ SlideKnn <- function(
             mean_impute_col = mean_impute_col,
             check_result_list = check_result_list
           )
-          # Fill single intermediate matrix
+          # Fill intermediate matrix
           intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc)
           intermediate_big[, offset_start[i]:offset_end[i]] <- imp_list[[1]]
         },
@@ -1078,32 +1133,37 @@ SlideKnn <- function(
     if (file_backed) {
       bigmemory::flush(intermediate)
     }
-    # Get the current final imputed
-    final_imputed <- final_imputed_list[[imp_idx]]
+
+    # Init/overwrite the temporary result_imp matrix once per imputation
+    result_imp_info <- check_result_list(
+      fs::path(temp_dir, "result_imp"), 1,
+      overwrite = TRUE
+    )
+    result_imp <- bigmemory::big.matrix(
+      nrow = nr,
+      ncol = nc,
+      type = "double",
+      init = 0.0,
+      backingpath = result_imp_info$backingpath,
+      descriptorfile = result_imp_info$descfiles[[1]],
+      backingfile = result_imp_info$backfiles[[1]]
+    )
+
     ## Averaging ----
     if (.progress) {
       message("Step 2/3: Overlapping")
     }
-    # Add the windows from intermediate
-    purrr::walk(
-      seq_along(start),
-      function(i) {
-        window_cols <- start[i]:end[i]
-        final_imputed[, window_cols] <- {
-          final_imputed[, window_cols] + intermediate[, offset_start[i]:offset_end[i]]
-        }
-      },
-      .progress = FALSE
+    # Add the windows from intermediate. Single threaded
+    bigmem_add_windows(
+      result_imp@address,
+      intermediate@address, start, end, offset_start, offset_end
     )
-    if (file_backed) {
-      bigmemory::flush(final_imputed)
-    }
     if (.progress) {
       message("Step 3/3: Averaging")
     }
-    # Process averaging
+    # Averaging the overlaps
     bigmem_avg(
-      final_imputed@address,
+      result_imp@address,
       start = overlap$region[, "start"],
       end = overlap$region[, "end"],
       counts_vec = overlap$counts_vec,
@@ -1115,22 +1175,129 @@ SlideKnn <- function(
         message("Post-imputation")
       }
       bigmem_impute_colmeans(
-        final_imputed@address,
+        result_imp@address,
         col_indices = subset,
         cores = cores
       )
     }
-    # Restore names
-    if (strip_dimnames) {
-      rownames(final_imputed) <- rn
-      colnames(final_imputed) <- cn
-    }
-    # If not file-backed, convert back to normal matrix
-    if (!file_backed) {
-      final_imputed_list[[imp_idx]] <- bigmemory::as.matrix(final_imputed)
-      gc()
+    # Store result
+    bigmem_copy(
+      final_imputed_list[[imp_idx]]@address,
+      result_imp@address,
+      col_idx_r = subset,
+      cores = cores
+    )
+
+    # Set dimnames if possible
+    if (can_store_dimnames) {
+      rownames(final_imputed_list[[imp_idx]]) <- rn
+      colnames(final_imputed_list[[imp_idx]]) <- final_colnames
     }
   }
-  # Return results
+  # S3 OOPs
+  if (can_store_dimnames) {
+    rownames(obj) <- rn
+    colnames(obj) <- cn
+  }
+  attr(final_imputed_list, "rownames") <- rn
+  attr(final_imputed_list, "colnames") <- final_colnames
+  attr(final_imputed_list, "ncol") <- ncol(obj)
+  attr(final_imputed_list, "subset") <- subset
+  class(final_imputed_list) <- c("SlideKnnList", class(final_imputed_list))
   return(final_imputed_list)
+}
+
+#' Restore Dimnames of [SlideKnn()]/[knn_imp()] Output
+#'
+#' [SlideKnn()]/[knn_imp()] can return a list of [bigmemory::big.matrix()] objects
+#' that will have dimnames stripped if `options(bigmemory.allow.dimnames = TRUE)`
+#' is not set beforehand. This function attempts to restore the dimnames of each
+#' object in the returned list using the "rownames" and "colnames" attributes
+#' stored on the list.
+#'
+#' @param obj Output of [SlideKnn()] or [knn_imp()]; a list with class
+#'   `SlideKnnList` or `KnnImpList`.
+#'
+#' @return The invisible input `obj` with dimnames restored if possible.
+#'
+#' @export
+#'
+#' @examples
+#' to_test <- t(
+#'   sim_mat(
+#'     n = 280,
+#'     m = 100,
+#'     perc_NA = 0.5,
+#'     perc_col_NA = 1
+#'   )$input
+#' )
+#' # manually strip dimnames from results
+#' results <- knn_imp(to_test, k = 10, output = withr::local_tempfile())
+#' on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")), add = TRUE)
+#' options(bigmemory.allow.dimnames = TRUE)
+#' rownames(results[[1]]) <- NULL
+#' colnames(results[[1]]) <- NULL
+#' # We see that dimnames have been stripped
+#' results
+#' # `restore_dimnames` stored in the object
+#' restore_dimnames(results)
+#' results
+restore_dimnames <- function(obj) {
+  UseMethod("restore_dimnames")
+}
+
+#' @rdname restore_dimnames
+#' @export
+restore_dimnames.SlideKnnList <- function(obj) {
+  old_opt <- getOption("bigmemory.allow.dimnames")
+  options(bigmemory.allow.dimnames = TRUE)
+  can_store_dimnames <- isTRUE(getOption("bigmemory.allow.dimnames")) || is.numeric(obj[[1]])
+  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
+
+  if (!can_store_dimnames) {
+    stop("Failed to set `options(bigmemory.allow.dimnames = TRUE)` to restore dimnames")
+  }
+
+  # Get attributes and current dimnames
+  attr_rn <- attr(obj, "rownames")
+  attr_cn <- attr(obj, "colnames")
+  curr_rn <- lapply(obj, rownames)
+  curr_cn <- lapply(obj, colnames)
+
+  # Helper to check if all elements are identical
+  all_same <- function(x) length(unique(x)) <= 1
+
+  # Early return if nothing to do
+  if (is.null(attr_rn) && is.null(attr_cn) && all(sapply(curr_rn, is.null)) && all(sapply(curr_cn, is.null))) {
+    return(invisible(obj))
+  }
+
+  # Validate consistency
+  if (!all_same(curr_rn)) stop("All objects must have the same rownames or all NULL")
+  if (!all_same(curr_cn)) stop("All objects must have the same colnames or all NULL")
+
+  # Check for missing attributes when dimnames exist
+  if (!is.null(curr_rn[[1]]) && is.null(attr_rn)) stop("Objects have rownames but no rownames attribute found")
+  if (!is.null(curr_cn[[1]]) && is.null(attr_cn)) stop("Objects have colnames but no colnames attribute found")
+
+  # Early return if already matching
+  if (identical(curr_rn[[1]], attr_rn) && identical(curr_cn[[1]], attr_cn)) {
+    return(invisible(obj))
+  }
+
+  # Restore dimnames from attributes
+  if (is.null(curr_rn[[1]]) && !is.null(attr_rn)) {
+    for (i in seq_along(obj)) rownames(obj[[i]]) <- attr_rn
+  }
+  if (is.null(curr_cn[[1]]) && !is.null(attr_cn)) {
+    for (i in seq_along(obj)) colnames(obj[[i]]) <- attr_cn
+  }
+
+  return(invisible(obj))
+}
+
+#' @rdname restore_dimnames
+#' @export
+restore_dimnames.KnnImpList <- function(obj) {
+  restore_dimnames.SlideKnnList(obj)
 }
