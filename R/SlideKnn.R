@@ -125,9 +125,9 @@ check_result_list <- function(output, n_imp, overwrite) {
         tryCatch(
           {
             # reattach and rm and gc() to try to overcome lock on windows
-            temp_mat <- bigmemory::attach.big.matrix(descfiles[i])
+            temp_mat <- bigmemory::attach.big.matrix(fs::path(backingpath, descfiles[i]))
             rm(temp_mat)
-            gc(verbose = FALSE, full = TRUE)
+            gc(verbose = FALSE)
           },
           error = function(e) {
             # If attach fails, just continue with regular deletion
@@ -170,6 +170,7 @@ create_result_list <- function(
   result_list <- vector("list", n_imp)
   if (file_backed) {
     for (i in seq_len(n_imp)) {
+      # Create and populate the matrix
       bigmat <- bigmemory::big.matrix(
         nrow = nrow(data_to_copy),
         ncol = ncol(data_to_copy),
@@ -181,10 +182,15 @@ create_result_list <- function(
       )
       bigmat[, ] <- data_to_copy
       bigmemory::flush(bigmat)
-      result_list[[i]] <- bigmat
+      # clean up the original reference
+      rm(bigmat)
+      gc(verbose = FALSE)
+      # hope this helps with windows
+      result_list[[i]] <- bigmemory::attach.big.matrix(
+        file.path(backingpath, descfiles[i])
+      )
     }
   } else {
-    # For in-memory, create n_imp copies
     for (i in seq_len(n_imp)) {
       result_list[[i]] <- data_to_copy[, , drop = FALSE]
     }
@@ -954,6 +960,14 @@ SlideKnn <- function(
   checkmate::assert_int(n_feat, lower = 2, upper = ncol(obj), null.ok = FALSE, .var.name = "n_feat")
   checkmate::assert_int(n_overlap, lower = 0, upper = n_feat - 1, null.ok = FALSE, .var.name = "n_overlap")
   checkmate::assert_int(k, lower = 1, upper = n_feat - 1, null.ok = FALSE, .var.name = "k")
+  # clean up local reference to obj to help release file locks on Windows
+  on.exit(
+    {
+      rm(obj)
+      gc(verbose = FALSE)
+    },
+    add = TRUE
+  )
 
   if (n_imp > 1 && n_pmm == -1) {
     warning("n_imp > 1 requires n_pmm >= 0. Setting n_imp = 1.")
@@ -1122,6 +1136,9 @@ SlideKnn <- function(
           # Fill intermediate matrix
           intermediate_big <- bigmemory::attach.big.matrix(intermediate_desc)
           intermediate_big[, offset_start[i]:offset_end[i]] <- imp_list[[1]]
+          rm(obj_big)
+          rm(intermediate_big)
+          gc(verbose = FALSE)
         },
         impute_knn = impute_knn,
         subset_list = subset_list,
@@ -1149,9 +1166,6 @@ SlideKnn <- function(
       ),
       .progress = .progress
     )
-    if (file_backed) {
-      bigmemory::flush(intermediate)
-    }
 
     # Init/overwrite the temporary result_imp matrix once per imputation
     result_imp_info <- check_result_list(
@@ -1207,10 +1221,19 @@ SlideKnn <- function(
       cores = cores
     )
 
-    # Set dimnames if possible
+    # restore dimnames if possible
     if (can_store_dimnames) {
       rownames(final_imputed_list[[imp_idx]]) <- rn
       colnames(final_imputed_list[[imp_idx]]) <- final_colnames
+    }
+
+    # clean up intermediate and result_imp matrices to release file locks
+    if (file_backed) {
+      bigmemory::flush(intermediate)
+      bigmemory::flush(result_imp)
+      rm(intermediate)
+      rm(result_imp)
+      gc(verbose = FALSE)
     }
   }
   # S3 OOPs
