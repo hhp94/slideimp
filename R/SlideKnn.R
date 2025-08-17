@@ -120,20 +120,7 @@ check_result_list <- function(output, n_imp, overwrite) {
           "Output files already exist. Set `overwrite = TRUE` to overwrite them."
         )
       }
-#       if (any(fs::file_exists(files_to_check)) && .Platform$OS.type == "windows") {
-#         tryCatch(
-#           {
-#             # reattach and rm and gc() to try to overcome lock on windows
-#             temp_mat <- bigmemory::attach.big.matrix(fs::path(backingpath, descfiles[i]))
-#             rm(temp_mat)
-#             gc(verbose = FALSE)
-#           },
-#           error = function(e) {
-#             # If attach fails, just continue with regular deletion
-#             NULL
-#           }
-#         )
-#       }
+
       unlink(files_to_check, force = TRUE)
 
       # Check if deletion succeeded
@@ -144,7 +131,7 @@ check_result_list <- function(output, n_imp, overwrite) {
           "Please manually delete the following files and try again:\n",
           paste("  -", existing_files, collapse = "\n"),
           if (.Platform$OS.type == "windows") {
-            "\nOn Windows, ensure any previous results are removed with rm() and gc() before overwriting."
+            "\nWindows file lock: First rm() any bigmemory objects pointing to these files, then gc() before overwriting."
           }
         )
       }

@@ -15,7 +15,7 @@ preserving local structure, making it suitable for data where features
 are ordered (e.g., by time or distance).
 
 The package builds on the proven k-NN algorithm (Bioconductor’s
-[`impute`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
+[`{impute}`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
 package) but adds enhancements: parallelization for speed, tree-based
 methods for efficiency, weighted imputation, multiple imputation
 strategies, and built-in tuning tools. It’s designed for matrices with
@@ -29,8 +29,9 @@ Key features include:
   epigenetics data).
 - **Full Matrix k-NN Imputation**: Standard k-NN for smaller data, with
   multi-core parallelization over columns with missing values.
-- **Tree-Based k-NN**: Integration with `{mlpack}` for KD-Tree or
-  Ball-Tree methods, accelerating imputation in high dimensions.
+- **Tree-Based k-NN**: Integration with
+  [`{mlpack}`](https://www.mlpack.org/) for KD-Tree or Ball-Tree
+  methods, accelerating imputation in high dimensions.
 - **Subset Imputation**: Only impute a subset of columns to save time.
   Important for applications such as epigenetics clocks calculations.
 - **Weighted Imputation**: Use inverse-distance weighting for more
@@ -41,8 +42,10 @@ Key features include:
   to handle remaining NAs.
 - **Parameter Tuning**: Inject artificial NAs to evaluate and tune
   hyperparameters, with support for custom imputation functions.
-- **Big Matrix Support**: Compatible with `{bigmemory}` for file-backed
-  matrices to handle massive data without loading everything into RAM.
+- **Big Matrix Support**: Compatible with
+  [`{bigmemory}`](https://doi.org/10.32614/CRAN.package.bigmemory) for
+  file-backed matrices to handle massive data without loading everything
+  into RAM.
 
 ## Installation
 
@@ -61,6 +64,8 @@ remotes::install_github("hhp94/SlideKnn")
 ```
 
 ## Example
+
+### Features
 
 Load the package and use the built-in `khanmiss1` data (see `?khanmiss1`
 for details). For full matrix k-NN imputation without sliding windows:
@@ -88,7 +93,7 @@ sum(is.na(imputed_full[[1]]))
 #> [1] 0
 ```
 
-Yields the same results as `{impute::impute.knn()}`. `SlideKnn::knn_imp`
+Yields the same results as `impute::impute.knn()`. `SlideKnn::knn_imp`
 is faster in larger data and almost as fast in smaller data given
 `cores = 1`. Scaling well with multiple `cores`.
 
@@ -108,9 +113,9 @@ bench::mark(
 #> # A tibble: 3 × 6
 #>   expression        min   median `itr/sec` mem_alloc `gc/sec`
 #>   <chr>        <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-#> 1 knn_1          14.9ms  15.76ms      63.0    7.28MB     14.5
-#> 2 knn_4          5.24ms   5.72ms     175.     7.28MB     41.1
-#> 3 impute.knn_1  14.67ms  14.77ms      67.1   12.42MB     49.5
+#> 1 knn_1         14.75ms  15.76ms      62.9    7.28MB     14.5
+#> 2 knn_4          5.32ms   5.72ms     175.     7.28MB     40.6
+#> 3 impute.knn_1  14.67ms  14.82ms      66.7   12.42MB     30.0
 ```
 
 Sliding window k-NN imputation for epigenetics data with 1000 CpGs and
@@ -187,33 +192,44 @@ multi-step imputation strategies
 # Inject extra NA into simulated data to make k-NN fail for first imputation
 set.seed(1234)
 obj <- t(sim_mat(n = 1000, m = 100, perc_NA = 0.8, perc_col_NA = 1)$input)
-# Step 1: Column-wise imputation. Disable fall back imputation with `post_imp = FALSE`
+# Step 1: Column-wise imputation (impute the features using neighbor features
+# of the same person/sample). Disable fall back imputation with `post_imp = FALSE`
 imputed_by_col <- knn_imp(obj, cores = 4, k = 10, post_imp = FALSE)
-# Step 2: Row-wise imputation. Then if values are still missing, impute by rows
+# Step 2: Then if values are still missing, impute by rows. (impute the same features
+# using the values of the same person).
 imputed_by_row <- knn_imp(t(imputed_by_col[[1]]), cores = 4, k = 10, post_imp = FALSE)
-# Step 3: Lastly, impute by column mean
+# Step 3: Lastly, impute by column mean for any remaining missing.
 imputed_mean <- mean_impute_col(t(imputed_by_row[[1]]))
 sum(is.na(imputed_mean))
 #> [1] 0
 ```
 
+### File-backed big.matrix
+
 For very large matrices that don’t fit in memory, use `{bigmemory}` to
 create file-backed objects. `SlideKnn` supports passing a `big.matrix`
-object or the path to its descriptor file. Always specify `output` for
-the result (also file-backed). <b>NOTE</b>: see `?restore_dimnames` if
-output’s dimnames are stripped.
+object or the path to its descriptor file. Specify `output` for the
+result to change the whole backend to using file-backed big.matrix as
+well to minimize memory at a cost of performance.
+
+**NOTE**: See `?restore_dimnames` if output’s dimnames are stripped.
 
 ``` r
 library(bigmemory)
-# Set this to allow dimnames in big.matrix
+
+# IMPORTANT: Enable dimnames support for big.matrix objects
 options(bigmemory.allow.dimnames = TRUE)
 
+# Load example data
 data(khanmiss1)
-mat <- t(khanmiss1) # samples rows, features cols
-
+mat <- t(khanmiss1) # samples as rows, features as columns
 temp_dir <- withr::local_tempdir()
+```
 
-# Create big.matrix with backing and descriptor files
+### Create file-backed big.matrix
+
+``` r
+# Convert t(khanmiss1) to big.matrix with backing files for large data
 big_mat <- bigmemory::as.big.matrix(
   mat,
   type = "double",
@@ -221,8 +237,14 @@ big_mat <- bigmemory::as.big.matrix(
   descriptorfile = "khan.desc",
   backingpath = temp_dir
 )
+```
 
-# Impute using the big.matrix object (returns list of big.matrix)
+### Method 1: Impute using big.matrix object
+
+Impute a `bigmemory::big.matrix` and optionally save results to
+file-backed big.matrix
+
+``` r
 imputed_obj <- SlideKnn(
   obj = big_mat,
   n_feat = 100,
@@ -231,13 +253,48 @@ imputed_obj <- SlideKnn(
   overwrite = TRUE, # Overwrite any existing results
   output = file.path(temp_dir, "imputed.bin")
 )
-sum(is.na(imputed_obj[[1]][, ])) # Access the big.matrix result
-#> [1] 0
 
-# Alternatively, impute using the descriptor path
+# Access the imputed data (returns list of big.matrix objects)
+sum(is.na(imputed_obj[[1]][, ])) # Check for remaining NAs
+#> [1] 0
+imputed_obj
+#> SlideKnnList: List of 1 imputation of a 63 x 2308 big.matrix
+#> 
+#> Preview of imputation 1:
+#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
+#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
+#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
+#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
+#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
+#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
+#> 
+#> [ ... 58 more rows, 2298 more columns ]
+```
+
+### ⚠️ Regarding objects pointing to the same bigmemory matrices
+
+On Windows, file-backed objects hold file locks. You MUST remove any
+variables that point to the same files before overwriting them. This
+only removes the R variables, not the files on disk.
+
+In general, always remove references to big.matrix objects before
+attempting to overwrite or modify their backing files.
+
+``` r
+rm(imputed_obj)
+invisible(gc(verbose = FALSE))  # Force garbage collection to release file handles
+```
+
+### Method 2: Impute using descriptor file path
+
+Alternatively, pass descriptor file path instead of object. This is
+useful for distributed computing or when object isn’t in memory.
+
+``` r
 desc_path <- file.path(temp_dir, "khan.desc")
+
 imputed_path <- SlideKnn(
-  obj = desc_path,
+  obj = desc_path, # Using path instead of object
   n_feat = 100,
   n_overlap = 10,
   k = 10,
@@ -280,11 +337,10 @@ parameters
 #> 1     5 euclidean TRUE            2 TRUE    
 #> 2    10 euclidean TRUE            5 TRUE
 
-# Subset for faster tuning
-obj <- t(khanmiss1)
+obj_t <- t(khanmiss1)
 
 # 3 repeats, each time inject 100 NAs
-results <- tune_imp(obj, parameters, rep = 3, .f = "knn_imp", num_na = 100)
+results <- tune_imp(obj_t, parameters, rep = 3, .f = "knn_imp", num_na = 100)
 
 # Compute metrics with {yardstick}
 library(yardstick)
@@ -331,15 +387,39 @@ head(
   )
 )
 #> # A tibble: 6 × 5
-#>    mean    sd .metric .estimator  .estimate
-#>   <dbl> <dbl> <chr>   <chr>           <dbl>
-#> 1     0     1 mae     standard   1038.     
-#> 2     0     1 rmse    standard   1238.     
-#> 3     0     1 rsq     standard      0.00312
-#> 4     1     2 mae     standard   1037.     
-#> 5     1     2 rmse    standard   1238.     
-#> 6     1     2 rsq     standard      0.0810
+#>    mean    sd .metric .estimator .estimate
+#>   <dbl> <dbl> <chr>   <chr>          <dbl>
+#> 1     0     1 mae     standard      0.729 
+#> 2     0     1 rmse    standard      0.923 
+#> 3     0     1 rsq     standard      0.0413
+#> 4     1     2 mae     standard      1.92  
+#> 5     1     2 rmse    standard      2.29  
+#> 6     1     2 rsq     standard      0.105
 ```
 
 For more details, see the function documentation (e.g., `?SlideKnn`,
 `?knn_imp`, `?tune_imp`).
+
+# Developer notes for [`{mlpack}`](https://www.mlpack.org/)
+
+`{mlpack}` is an awesome library and works seamlessly with integration
+in R. For other developers who are looking to integrate `{mlpack}` into
+their own work, make sure to structure the .cpp file as follows. Most
+importantly is the inclusion of `<mlpack.h>` first before including any
+other `mlpack` headers. This appropriately directs the output of
+`std::cout` and `std::cerr` to R and won’t trip `R CMD check` (i.e.,
+`'_ZSt4cerr', possibly from 'std::cerr' (C++)` or
+`'_ZSt4cout', possibly from 'std::out' (C++)`). Full implementation is
+found under `src/impute_knn_mlpack.cpp`. I would like to thank the
+developers and the community for the maintenance and development of
+`mlpack`. I would like to especially thank Dirk Eddelbuettel for his
+development of the R + C++ environment and guidance throughout the
+development of this package.
+
+``` cpp
+// [[Rcpp::depends(mlpack, RcppArmadillo)]]
+#include <mlpack.h>
+#include "imputed_value.h"
+#include <mlpack/methods/neighbor_search/neighbor_search.hpp>
+#include <RcppArmadillo.h>
+```
