@@ -80,7 +80,7 @@ methods. Default: 42.}
 for large data and multiple imputations.}
 
 \item{overwrite}{Logical. Whether to overwrite existing files at \code{output} path.
-Default: \code{FALSE}.}
+Default: \code{FALSE}. See Notes for Windows.}
 
 \item{...}{Currently not implemented.}
 }
@@ -133,6 +133,10 @@ low-dimensional data or small k values.
 \code{options(bigmemory.allow.dimnames = TRUE)} before calling this function to preserve
 dimnames, otherwise they can be manually restored from the original matrix with
 \code{\link[=restore_dimnames]{restore_dimnames()}}.
+
+\strong{File locks On Windows}: file-backed big.matrix objects hold file locks.
+If you need to overwrite existing files, ensure previous results that points
+to the same files are removed with \code{\link[=rm]{rm()}} and \code{\link[=gc]{gc()}} first.
 
 \strong{Memory Considerations}: When \code{n_imp > 1} for large data, use \code{subset} to
 specify only required columns and provide \code{output} for file-backed storage to

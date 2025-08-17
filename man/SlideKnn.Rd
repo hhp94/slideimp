@@ -94,7 +94,7 @@ Default: \code{FALSE}.}
 for large data and multiple imputations.}
 
 \item{overwrite}{Logical. Whether to overwrite existing files at \code{output} path.
-Default: \code{FALSE}.}
+Default: \code{FALSE}. See Notes for Windows.}
 }
 \value{
 A list of \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} objects with length \code{n_imp}. Each
@@ -126,6 +126,10 @@ windows to produce the final imputed result. This approach assumes that features
 For the underlying k-NN implementation details, see \code{\link[=knn_imp]{knn_imp()}}.
 }
 \note{
+\strong{File locks On Windows}: file-backed big.matrix objects hold file locks.
+If you need to overwrite existing files, ensure previous results that points
+to the same files are removed with \code{\link[=rm]{rm()}} and \code{\link[=gc]{gc()}} first.
+
 \strong{Multiple Imputation}: Setting \code{n_imp} > 1 requires \code{n_pmm} >= 0 and should
 be used with the \code{subset} parameter and \code{output} for file-backed storage to
 manage memory efficiently.

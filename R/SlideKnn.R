@@ -120,22 +120,20 @@ check_result_list <- function(output, n_imp, overwrite) {
           "Output files already exist. Set `overwrite = TRUE` to overwrite them."
         )
       }
-
-      if (any(fs::file_exists(files_to_check)) && .Platform$OS.type == "windows") {
-        tryCatch(
-          {
-            # reattach and rm and gc() to try to overcome lock on windows
-            temp_mat <- bigmemory::attach.big.matrix(fs::path(backingpath, descfiles[i]))
-            rm(temp_mat)
-            gc(verbose = FALSE)
-          },
-          error = function(e) {
-            # If attach fails, just continue with regular deletion
-            NULL
-          }
-        )
-      }
-
+#       if (any(fs::file_exists(files_to_check)) && .Platform$OS.type == "windows") {
+#         tryCatch(
+#           {
+#             # reattach and rm and gc() to try to overcome lock on windows
+#             temp_mat <- bigmemory::attach.big.matrix(fs::path(backingpath, descfiles[i]))
+#             rm(temp_mat)
+#             gc(verbose = FALSE)
+#           },
+#           error = function(e) {
+#             # If attach fails, just continue with regular deletion
+#             NULL
+#           }
+#         )
+#       }
       unlink(files_to_check, force = TRUE)
 
       # Check if deletion succeeded
@@ -145,7 +143,9 @@ check_result_list <- function(output, n_imp, overwrite) {
           "Failed to delete existing output files. ",
           "Please manually delete the following files and try again:\n",
           paste("  -", existing_files, collapse = "\n"),
-          "\n\nNote: On some systems, files may be locked if they're in use by another process."
+          if (.Platform$OS.type == "windows") {
+            "\nOn Windows, ensure any previous results are removed with rm() and gc() before overwriting."
+          }
         )
       }
     }
@@ -262,6 +262,11 @@ create_result_list <- function(
 #' `options(bigmemory.allow.dimnames = TRUE)` before calling this function to preserve
 #' dimnames, otherwise they can be manually restored from the original matrix with
 #' [restore_dimnames()].
+#'
+#' @note
+#' **File locks On Windows**: file-backed big.matrix objects hold file locks.
+#' If you need to overwrite existing files, ensure previous results that points
+#' to the same files are removed with [rm()] and [gc()] first.
 #'
 #' **Memory Considerations**: When `n_imp > 1` for large data, use `subset` to
 #' specify only required columns and provide `output` for file-backed storage to
@@ -701,6 +706,10 @@ find_overlap_regions <- function(start, end) {
 #' For the underlying k-NN implementation details, see [knn_imp()].
 #'
 #' @note
+#' **File locks On Windows**: file-backed big.matrix objects hold file locks.
+#' If you need to overwrite existing files, ensure previous results that points
+#' to the same files are removed with [rm()] and [gc()] first.
+#'
 #' **Multiple Imputation**: Setting `n_imp` > 1 requires `n_pmm` >= 0 and should
 #' be used with the `subset` parameter and `output` for file-backed storage to
 #' manage memory efficiently.
@@ -759,7 +768,7 @@ find_overlap_regions <- function(start, end) {
 #'   (format: `"path/stem"`). If `NULL`, results are stored in memory. Recommended
 #'   for large data and multiple imputations.
 #' @param overwrite Logical. Whether to overwrite existing files at `output` path.
-#'   Default: `FALSE`.
+#'   Default: `FALSE`. See Notes for Windows.
 #'
 #' @return A list of [bigmemory::big.matrix()] objects with length `n_imp`. Each
 #'   matrix has `nrow(obj)` rows and `length(subset)` columns with missing values

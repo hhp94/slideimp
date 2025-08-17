@@ -789,11 +789,11 @@ test_that("bigmemory functionality in knn_imp works correctly", {
     "Output files already exist"
   )
 
-  # skip_on_os("windows")
-  # Skip the rest on Windows due to file locking issues. Function already
-  # guarantees to not delete user's files if overwrite = FALSE as default.
-  # Save current option and set bigmemory.allow.dimnames
-  # Create test data
+  # Function already guarantees to not delete user's files if overwrite = FALSE.
+  # These tests are just extra.
+  # should release file lock on windows
+  rm(result_bigmem)
+  gc(verbose = FALSE)
 
   # Test 3: Rerun with overwrite = TRUE
   result_bigmem_overwrite <- knn_imp(
