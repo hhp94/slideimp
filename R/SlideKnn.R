@@ -157,8 +157,8 @@ create_result_list <- function(
   result_list <- vector("list", n_imp)
   if (file_backed) {
     for (i in seq_len(n_imp)) {
-      # Create and populate the matrix
-      bigmat <- bigmemory::big.matrix(
+      # create the matrix directly in the list
+      result_list[[i]] <- bigmemory::big.matrix(
         nrow = nrow(data_to_copy),
         ncol = ncol(data_to_copy),
         type = "double",
@@ -167,15 +167,9 @@ create_result_list <- function(
         backingfile = backfiles[i],
         descriptorfile = descfiles[i]
       )
-      bigmat[, ] <- data_to_copy
-      bigmemory::flush(bigmat)
-      # clean up the original reference
-      rm(bigmat)
-      gc(verbose = FALSE)
-      # hope this helps with windows
-      result_list[[i]] <- bigmemory::attach.big.matrix(
-        file.path(backingpath, descfiles[i])
-      )
+      # populate and flush
+      result_list[[i]][, ] <- data_to_copy
+      bigmemory::flush(result_list[[i]])
     }
   } else {
     for (i in seq_len(n_imp)) {

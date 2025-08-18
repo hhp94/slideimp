@@ -114,9 +114,9 @@ bench::mark(
 #> # A tibble: 3 × 6
 #>   expression        min   median `itr/sec` mem_alloc `gc/sec`
 #>   <chr>        <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-#> 1 knn_1          14.9ms  15.62ms      63.9    7.28MB     14.7
-#> 2 knn_4           5.3ms   5.67ms     173.     7.28MB     40.8
-#> 3 impute.knn_1   14.6ms  14.76ms      67.3   12.42MB     49.6
+#> 1 knn_1          14.3ms  15.14ms      65.4    7.28MB     14.5
+#> 2 knn_4           5.2ms   5.63ms     178.     7.28MB     40.7
+#> 3 impute.knn_1   14.6ms  14.83ms      66.6   12.42MB     49.1
 ```
 
 Sliding window k-NN imputation for epigenetics data with 1000 CpGs and

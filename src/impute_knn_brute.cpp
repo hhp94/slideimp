@@ -139,55 +139,49 @@ double calc_distance_manhattan(
   return dist;
 }
 
+// struct hold the distance and index relative to distance_vector for each neighbor
+struct NeighborInfo
+{
+  double distance;   // calculated distance to this neighbor
+  arma::uword index; // index of this neighbor relative to distance_vector
+  NeighborInfo(double d, arma::uword i) : distance(d), index(i) {}
+};
+
+// always insert when we have fewer than k neighbors
+inline void insert_before_k(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
+{
+  // inf will always sort to the end. So 1 branch only
+  auto it = std::upper_bound(
+      top_k.begin(),
+      top_k.end(),
+      dist,
+      [](double d, const NeighborInfo &ni)
+      {
+        return d < ni.distance;
+      });
+  top_k.insert(it, NeighborInfo(dist, idx));
+}
+
+// only insert if better than worst when we have exactly k neighbors
+inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
+{
+  // inf automatically return. Only 1 branch left
+  if (dist >= top_k.back().distance)
+    return;
+  // replace the worst neighbor
+  top_k.back() = NeighborInfo(dist, idx);
+  // Bubble up to maintain sorted order
+  for (size_t i = top_k.size() - 1; i > 0 && top_k[i].distance < top_k[i - 1].distance; --i)
+  {
+    std::swap(top_k[i], top_k[i - 1]);
+  }
+}
+
 using dist_func_t = double (*)(
     const arma::mat &,
     const arma::umat &,
     const arma::uword,
     const arma::uword);
-
-// struct hold the distance and index relative to distance_vector for each neighbor
-struct NeighborInfo
-{
-  double distance;   // The calculated distance to this neighbor
-  arma::uword index; // The index of this neighbor relative to distance_vector
-  NeighborInfo(double d, arma::uword i) : distance(d), index(i) {}
-};
-
-void insert_if_better(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx, arma::uword k)
-{
-  // Step 1: Reject infinite distances immediately
-  if (!std::isfinite(dist))
-    return;
-  // Step 2: If we haven't filled k neighbors yet, always insert
-  if (top_k.size() < k)
-  {
-    // Find the correct position to maintain sorted order (smallest distances first)
-    auto it = std::upper_bound(
-        top_k.begin(),
-        top_k.end(),
-        dist,
-        [](double d, const NeighborInfo &ni)
-        {
-          return d < ni.distance;
-        });
-    // Insert the new neighbor at the correct position
-    top_k.insert(it, NeighborInfo(dist, idx));
-  }
-  // Step 3: If we already have k neighbors, only insert if this one is better
-  else if (dist < top_k.back().distance)
-  {
-    // Replace the worst neighbor (last in sorted list)
-    top_k.back() = NeighborInfo(dist, idx);
-
-    // Bubble the new element to its correct position
-    // Since we only changed the last element, we just need to bubble it forward
-    for (size_t i = top_k.size() - 1; i > 0 && top_k[i].distance < top_k[i - 1].distance; --i)
-    {
-      std::swap(top_k[i], top_k[i - 1]);
-    }
-  }
-  // Step 4: If dist >= top_k.back().distance, do nothing (this neighbor is worse)
-}
 
 std::vector<NeighborInfo> distance_vector(
     const arma::mat &obj,
@@ -201,29 +195,54 @@ std::vector<NeighborInfo> distance_vector(
 {
   std::vector<NeighborInfo> top_k_neighbors;
   top_k_neighbors.reserve(k);
+  // how many neighbors we need to process before changing strategy
+  arma::uword remaining_to_fill = k;
 
-  // Process missing columns before current index (0 to index-1)
-  for (arma::uword i = 0; i < index; ++i)
+  // From 1 to k: fill up to k neighbors
+  // Same strategy as before of splitting from 1 -> index -> beyond
+  arma::uword i = 0;
+  for (; i < index && remaining_to_fill > 0; ++i)
   {
     double dist = cache(index, i);
-    insert_if_better(top_k_neighbors, dist, i, k);
+    insert_before_k(top_k_neighbors, dist, i);
+    --remaining_to_fill;
   }
-
-  // Process missing columns after current index (index+1 to n_elem-1)
-  for (arma::uword i = index + 1; i < index_miss.n_elem; ++i)
+  // columns after current index
+  arma::uword j = index + 1;
+  for (; j < index_miss.n_elem && remaining_to_fill > 0; ++j)
   {
-    double dist = cache(i, index);
-    insert_if_better(top_k_neighbors, dist, i, k);
+    double dist = cache(j, index);
+    insert_before_k(top_k_neighbors, dist, j);
+    --remaining_to_fill;
   }
-
-  // Process missing column to all non-missing columns
-  for (arma::uword i = 0; i < index_not_miss.n_elem; ++i)
+  // non-missing columns
+  arma::uword m = 0;
+  for (; m < index_not_miss.n_elem && remaining_to_fill > 0; ++m)
   {
-    double dist = calc_dist(obj, miss, index_miss(index), index_not_miss(i));
-    arma::uword global_idx = index_miss.n_elem + i; // Offset to match original indexing
-    insert_if_better(top_k_neighbors, dist, global_idx, k);
+    double dist = calc_dist(obj, miss, index_miss(index), index_not_miss(m));
+    arma::uword global_idx = index_miss.n_elem + m;
+    insert_before_k(top_k_neighbors, dist, global_idx);
+    --remaining_to_fill;
   }
-
+  // From k to n: replacement phase - only insert if better than worst and no k left
+  for (; i < index; ++i)
+  {
+    double dist = cache(index, i);
+    insert_if_better_than_worst(top_k_neighbors, dist, i);
+  }
+  // columns after current index
+  for (; j < index_miss.n_elem; ++j)
+  {
+    double dist = cache(j, index);
+    insert_if_better_than_worst(top_k_neighbors, dist, j);
+  }
+  // non-missing columns (if still building)
+  for (; m < index_not_miss.n_elem; ++m)
+  {
+    double dist = calc_dist(obj, miss, index_miss(index), index_not_miss(m));
+    arma::uword global_idx = index_miss.n_elem + m;
+    insert_if_better_than_worst(top_k_neighbors, dist, global_idx);
+  }
   return top_k_neighbors;
 }
 
@@ -302,7 +321,8 @@ arma::mat impute_knn_brute(
 #ifdef _OPENMP
   omp_set_num_threads(cores);
 #endif
-  // Pre-fill the cache with distances in parallel
+  // Pre-fill the cache with distances in parallel. A bit unoptimal because it can be
+  // that k neighbors
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic)
 #endif
