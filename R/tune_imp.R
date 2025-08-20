@@ -325,16 +325,20 @@ tune_imp <- function(
       )
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     }
+    # for `SlideKnn` and `knn_imp`, just use single thread because the overhead of
+    # mirai is high
     # core allocation
-    total_work <- nrow(parameters) * n_reps
-    if (cores <= total_work) {
-      # Parallelize over iterations
-      parameters$cores <- 1
-    } else {
-      # Parallelize within each knn_imp call
-      parameters$cores <- cores
-      cores <- 1
-    }
+    # total_work <- nrow(parameters) * n_reps
+    # if (cores <= total_work) {
+    #   # Parallelize over iterations
+    #   parameters$cores <- 1
+    # } else {
+    #   # Parallelize within each knn_imp call
+    #   parameters$cores <- cores
+    #   cores <- 1
+    # }
+    parameters$cores <- cores
+    cores <- 1
   } else {
     if ("n_imp" %in% names(parameters)) {
       warning("Removing 'n_imp' and 'n_pmm', from parameters for custom function")
@@ -384,7 +388,9 @@ tune_imp <- function(
     )
     fn <- purrr::in_parallel
   } else {
-    fn <- carrier::crate
+    fn <- function(x, ...) {
+      x
+    }
   }
   # Create the crated function based on the type of imputation
   # Determine the target function and validation requirements
