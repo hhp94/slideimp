@@ -1063,9 +1063,6 @@ SlideKnn <- function(
     }
     # Sequential processing of windows
     for (i in seq_along(start)) {
-      if (.progress && length(start) > 10 && i %% 10 == 0) {
-        message(sprintf("  Processing window %d/%d", i, length(start)))
-      }
       window_cols <- start[i]:end[i]
       # Get imputation results for this window
       imp_list <- impute_knn(
