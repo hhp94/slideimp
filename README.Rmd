@@ -175,7 +175,7 @@ On Windows, file-backed objects hold file locks. You MUST remove any variables t
 In general, always remove references to big.matrix objects before attempting to overwrite or modify their backing files.
 ```{r, echo=TRUE, message=FALSE}
 rm(imputed_obj)
-invisible(gc(verbose = FALSE))  # Force garbage collection to release file handles
+invisible(gc(verbose = FALSE)) # Force garbage collection to release file handles
 ```
 
 ### Method 2: Impute using descriptor file path

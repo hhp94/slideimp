@@ -35,6 +35,23 @@ inject_na <- function(
     max_iter = 1000) {
   # subset the matrix to the specified features and samples
   na_mat <- !is.na(obj)
+  # check if existing NA pattern already exceeds thresholds
+  max_col_miss <- floor(nrow(na_mat) * colmax)
+  max_row_miss <- floor(ncol(na_mat) * rowmax)
+  # calculate current missingness
+  current_col_miss <- nrow(na_mat) - colSums(na_mat)
+  current_row_miss <- ncol(na_mat) - rowSums(na_mat)
+  # Check if any columns already exceed the threshold
+  bad_cols <- which(current_col_miss > max_col_miss)
+  if (length(bad_cols) > 0) {
+    stop("Some columns have missing > colmax before na injections")
+  }
+
+  # check if any rows already exceed the threshold
+  bad_rows <- which(current_row_miss > max_row_miss)
+  if (length(bad_rows) > 0) {
+    stop("Some rows have missing > rowmax before na injections")
+  }
   not_na <- which(na_mat)
   # ensure 'num_na' does not exceed the number of available non-NA elements
   if (num_na > length(not_na)) {
@@ -47,11 +64,6 @@ inject_na <- function(
       )
     )
   }
-
-  # max allowed missing counts per column and row
-  max_col_miss <- floor(nrow(na_mat) * colmax)
-  max_row_miss <- floor(ncol(na_mat) * rowmax)
-
   # initialize variables for the while loop
   c_miss <- TRUE
   r_miss <- TRUE
@@ -278,30 +290,15 @@ tune_imp <- function(
     .var.name = "parameters",
     null.ok = FALSE
   )
-
-  # Process parameters based on function type
+  # parameters ----
   if (is.character(.f)) {
     parameters <- unique(parameters)
     # Force Single Imputation
     parameters$n_imp <- NULL
-    parameters$n_pmm <- -1
+    parameters$n_pmm <- NULL
     # Add fixed parameters
     parameters$rowmax <- rowmax
     parameters$colmax <- colmax
-    # Set defaults for optional parameters if not provided
-    if (!"method" %in% names(parameters)) {
-      parameters$method <- "euclidean"
-    }
-    if (!"weighted" %in% names(parameters)) {
-      parameters$weighted <- FALSE
-    }
-    if (!"dist_pow" %in% names(parameters)) {
-      parameters$dist_pow <- 1
-    }
-    if (!"post_imp" %in% names(parameters)) {
-      parameters$post_imp <- FALSE
-    }
-
     if (.f == "SlideKnn") {
       # Validate required parameters
       required_params <- c("n_feat", "k", "n_overlap")
@@ -312,36 +309,15 @@ tune_imp <- function(
           paste(missing_params, collapse = ", ")
         ))
       }
-
       parameters$.progress <- FALSE
-      # For SlideKnn, cores passed to SlideKnn instead
-      parameters$cores <- cores
-      cores <- 1
-
       # Select only relevant columns for SlideKnn
-      valid_cols <- c(
-        "n_feat", "k", "n_overlap", "rowmax", "colmax",
-        "post_imp", "method", ".progress", "weighted",
-        "dist_pow", "cores", "n_imp"
-      )
+      valid_cols <- c("n_feat", "k", "n_overlap", "rowmax", "colmax", "cores")
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     } else if (.f == "knn_imp") {
       # Validate required parameters
       if (!"k" %in% names(parameters)) {
         stop("`knn_imp` requires `k` in parameters")
       }
-
-      # Optimize core allocation
-      total_work <- nrow(parameters) * n_reps
-      if (cores <= total_work) {
-        # Parallelize over iterations
-        parameters$cores <- 1
-      } else {
-        # Parallelize within each knn_imp call
-        parameters$cores <- cores
-        cores <- 1
-      }
-
       # Select only relevant columns for knn_imp
       valid_cols <- c(
         "k", "rowmax", "colmax", "post_imp", "method",
@@ -349,14 +325,23 @@ tune_imp <- function(
       )
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     }
+    # core allocation
+    total_work <- nrow(parameters) * n_reps
+    if (cores <= total_work) {
+      # Parallelize over iterations
+      parameters$cores <- 1
+    } else {
+      # Parallelize within each knn_imp call
+      parameters$cores <- cores
+      cores <- 1
+    }
   } else {
-    # For custom functions, ensure n_imp is not in parameters or set to 1
     if ("n_imp" %in% names(parameters)) {
-      warning("Removing 'n_imp' from parameters for custom function - tuning always uses n_imp=1")
+      warning("Removing 'n_imp' and 'n_pmm', from parameters for custom function")
       parameters$n_imp <- NULL
+      parameters$n_pmm <- NULL
     }
   }
-
   # Remove duplicates after processing
   parameters <- unique(parameters)
 
@@ -386,7 +371,6 @@ tune_imp <- function(
       simplify = FALSE
     )
   }
-
   # Setup parallelization
   if (cores > 1) {
     tryCatch(
@@ -402,167 +386,85 @@ tune_imp <- function(
   } else {
     fn <- carrier::crate
   }
-
   # Create the crated function based on the type of imputation
-  if (is.character(.f) && .f == "SlideKnn") {
-    # SlideKnn must run sequentially (but can parallelize internally)
-    # Note: we don't use fn here since SlideKnn handles its own parallelization
-    crated_fn <- function(i) {
+  # Determine the target function and validation requirements
+  if (is.character(.f)) {
+    if (.f == "SlideKnn") {
+      target_function <- SlideKnn
+      validate_output <- FALSE
+    } else if (.f == "knn_imp") {
+      target_function <- knn_imp
+      validate_output <- FALSE
+    }
+  } else {
+    target_function <- .f
+    validate_output <- TRUE
+  }
+  # Create a single unified crated function
+  crated_fn <- fn(
+    function(i) {
       tryCatch(
         {
           # Create matrix with injected NAs
           pre <- obj
           na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
           pre[na_positions] <- NA
-
           # Get true values
           truth_vec <- obj[na_positions]
-
           # Get parameters for this iteration
           param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
-
-          # Run SlideKnn (returns a list, extract first element)
-          imputed_result <- SlideKnn(
-            obj = pre,
-            n_feat = param_vec$n_feat,
-            subset = NULL,
-            n_overlap = param_vec$n_overlap,
-            k = param_vec$k,
-            rowmax = param_vec$rowmax,
-            colmax = param_vec$colmax,
-            cores = param_vec$cores,
-            method = param_vec$method,
-            post_imp = param_vec$post_imp,
-            weighted = param_vec$weighted,
-            dist_pow = param_vec$dist_pow,
-            n_imp = 1L, # Always use n_imp = 1 for tuning
-            .progress = FALSE
+          # Run imputation function
+          imputed_result <- do.call(
+            target_function,
+            args = c(list(obj = pre), param_vec)
           )
-
-          # Extract imputed values from first (and only) list element
-          estimate_vec <- imputed_result[[1]][na_positions]
-
-          tibble::tibble(truth = truth_vec, estimate = estimate_vec)
-        },
-        error = function(e) {
-          warning(sprintf("Iteration %d failed: %s", i, e$message))
-          tibble::tibble(truth = numeric(), estimate = numeric())
-        }
-      )
-    }
-  } else if (is.character(.f) && .f == "knn_imp") {
-    # knn_imp can be parallelized
-    crated_fn <- fn(
-      function(i) {
-        tryCatch(
-          {
-            # Create matrix with injected NAs
-            pre <- obj
-            na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
-            pre[na_positions] <- NA
-
-            # Get true values
-            truth_vec <- obj[na_positions]
-
-            # Get parameters for this iteration
-            param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
-
-            # Run knn_imp (returns a list, extract first element)
-            imputed_result <- do.call(
-              knn_imp,
-              args = c(list(obj = pre), param_vec)
-            )
-
-            # Extract imputed values from first (and only) list element
-            estimate_vec <- imputed_result[[1]][na_positions]
-
-            tibble::tibble(truth = truth_vec, estimate = estimate_vec)
-          },
-          error = function(e) {
-            message(e)
-            tibble::tibble(truth = numeric(), estimate = numeric())
-          }
-        )
-      },
-      obj = obj,
-      na_loc = na_loc,
-      indices = indices,
-      parameters_list = parameters_list,
-      knn_imp = knn_imp # Explicitly pass knn_imp to avoid environment issues
-    )
-  } else {
-    # For custom functions
-    nrow_obj <- nrow(obj)
-    ncol_obj <- ncol(obj)
-    crated_fn <- fn(
-      function(i) {
-        tryCatch(
-          {
-            # Create matrix with injected NAs
-            pre <- obj
-            na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
-            pre[na_positions] <- NA
-
-            # Get true values
-            truth_vec <- obj[na_positions]
-
-            # Get parameters for this iteration
-            param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
-
-            # Run imputation function (expects matrix return)
-            imputed_result <- do.call(
-              fun,
-              args = c(list(obj = pre), param_vec)
-            )
+          # validate result if it's a custom function
+          if (validate_output) {
             checkmate::assert_matrix(
               imputed_result,
               mode = "numeric",
-              nrows = nrow_obj,
-              ncols = ncol_obj,
+              nrows = nrow(obj),
+              ncols = ncol(obj),
               null.ok = FALSE,
               .var.name = "imputed_result"
             )
             checkmate::assert_true(sum(is.infinite(imputed_result)) == 0, .var.name = "imputed_result")
-
             # Extract imputed values directly from matrix
             estimate_vec <- imputed_result[na_positions]
-
-            tibble::tibble(truth = truth_vec, estimate = estimate_vec)
-          },
-          error = function(e) {
-            message(e)
-            tibble::tibble(truth = numeric(), estimate = numeric())
+          } else {
+            # For SlideKnn and knn_imp (returns a list, extract first element)
+            estimate_vec <- imputed_result[[1]][na_positions]
           }
-        )
-      },
-      fun = .f,
-      obj = obj,
-      na_loc = na_loc,
-      indices = indices,
-      parameters_list = parameters_list,
-      nrow_obj = nrow_obj,
-      ncol_obj = ncol_obj
-    )
-  }
-
+          tibble::tibble(truth = truth_vec, estimate = estimate_vec)
+        },
+        error = function(e) {
+          message(e)
+          tibble::tibble(truth = numeric(), estimate = numeric())
+        }
+      )
+    },
+    target_function = target_function,
+    validate_output = validate_output,
+    obj = obj,
+    na_loc = na_loc,
+    indices = indices,
+    parameters_list = parameters_list
+  )
   # Execute the mapping with the crated function
   result_list <- purrr::map(
     seq_len(nrow(indices)),
     crated_fn,
     .progress = .progress
   )
-
   # Check for failed iterations (empty results or all NA estimates)
   failed_iterations <- vapply(result_list, function(res) {
     nrow(res) == 0 || all(is.na(res$estimate))
   }, logical(1))
-
   # Combine parameters with results
   result_df <- tibble::as_tibble(cbind(
     parameters[indices$param_set, , drop = FALSE],
     indices,
     tibble::tibble(result = result_list)
   ))
-
   return(result_df)
 }
