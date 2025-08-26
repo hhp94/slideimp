@@ -23,7 +23,7 @@ Note: keep \code{obj} small since this function doesn't support \code{bigmemory}
 
 \item{parameters}{A data.frame specifying the parameter combinations to tune. Duplicated rows are
 removed. The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=SlideKnn]{SlideKnn()}} for details about
-the parameters. Any \code{n_imp} values in this data frame will be ignored.}
+the parameters. Any \code{n_imp} values in this data frame will be ignored. Support list columns.}
 
 \item{.f}{The imputation function to tune. Can be the string "knn_imp" (default), "SlideKnn", or
 a custom function. See details.}
@@ -54,8 +54,7 @@ Default: \code{FALSE}.}
 Columns exceeding this threshold are imputed using column means instead of
 k-NN when \code{post_imp = TRUE}. Default: 0.9.}
 
-\item{cores}{Integer. Number of CPU cores for parallel distance computation.
-Requires \code{\link[mirai:daemons]{mirai::daemons()}} setup for \code{cores} > 1. Default: 1.}
+\item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
 }
 \value{
 A \code{tibble} containing:

@@ -35,8 +35,7 @@ Must have at least 1 row and 2 columns.}
 \item{parameters}{(Optional) A list column containing group-specific parameters that override global settings. Allowed parameters: \code{k}, \code{weighted}, \code{method}, \code{tree}, \code{dist_pow}}
 }}
 
-\item{k}{Integer. Number of nearest neighbors for imputation. Must be between
-1 and \code{n_feat - 1}. Default: 10.}
+\item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
 \item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
 Columns exceeding this threshold are imputed using column means instead of
@@ -48,8 +47,7 @@ k-NN when \code{post_imp = TRUE}. Default: 0.9.}
 \item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
 Default: \code{"euclidean"}.}
 
-\item{cores}{Integer. Number of CPU cores for parallel distance computation.
-Requires \code{\link[mirai:daemons]{mirai::daemons()}} setup for \code{cores} > 1. Default: 1.}
+\item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
 
 \item{post_imp}{Logical. Whether to impute remaining missing values with
 column means after k-NN imputation. Default: \code{TRUE}.}
@@ -76,8 +74,7 @@ set to 1 if \code{n_pmm = -1}. Default: 1.}
 \item \code{0}: Bootstrap resampling from k-nearest neighbors
 }}
 
-\item{seed}{Integer. Random seed for reproducible results in stochastic imputation
-methods. Default: 42.}
+\item{seed}{Integer. Random seed for multiple imputation. Default: 42.}
 
 \item{output}{Character. File path stem for saving file-backed big.matrix results
 (format: \code{"path/stem"}). If \code{NULL}, results are stored in memory. Recommended

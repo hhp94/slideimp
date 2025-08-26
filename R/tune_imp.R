@@ -119,7 +119,7 @@ inject_na <- function(
 #'   Note: keep `obj` small since this function doesn't support `bigmemory`.
 #' @param parameters A data.frame specifying the parameter combinations to tune. Duplicated rows are
 #'   removed. The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about
-#'   the parameters. Any `n_imp` values in this data frame will be ignored.
+#'   the parameters. Any `n_imp` values in this data frame will be ignored. Support list columns.
 #' @param .f The imputation function to tune. Can be the string "knn_imp" (default), "SlideKnn", or
 #'   a custom function. See details.
 #' @param rep Either:
@@ -351,7 +351,20 @@ tune_imp <- function(
 
   # Create parameter sets and repetition indices
   .rowid <- seq_len(nrow(parameters))
-  parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), as.list)
+  # Handle list cols by getting the first value of the list after a split
+  parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
+    row_list <- as.list(row)
+    # Extract first element from list columns
+    row_list <- lapply(row_list, function(x) {
+      if (is.list(x) && length(x) == 1) {
+        x[[1]]
+      } else {
+        x
+      }
+    })
+    row_list
+  })
+
   indices <- tibble::as_tibble(expand.grid(
     param_set = .rowid,
     rep = seq_len(n_reps)

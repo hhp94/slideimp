@@ -216,6 +216,7 @@ create_result_list <- function(
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #'   Must have at least 1 row and 2 columns.
 #' @inheritParams SlideKnn
+#' @param k Number of nearest neighbors for imputation. 10 is a good starting point.
 #' @param subset Character vector of column names or integer vector of column
 #'   indices specifying which columns to impute.
 #' @param tree Character. k-NN search method: `NULL` (brute-force), `"kd"` (KDTree),
@@ -719,8 +720,7 @@ find_overlap_regions <- function(start, end) {
 #' @param colmax Numeric. Threshold proportion of missing values per column (0-1).
 #'   Columns exceeding this threshold are imputed using column means instead of
 #'   k-NN when `post_imp = TRUE`. Default: 0.9.
-#' @param cores Integer. Number of CPU cores for parallel distance computation.
-#'   Requires [mirai::daemons()] setup for `cores` > 1. Default: 1.
+#' @param cores Integer. Number of CPU cores for parallel distance computation. Default: 1.
 #' @param method Character. Distance metric for k-NN: `"euclidean"` or `"manhattan"`.
 #'   Default: `"euclidean"`.
 #' @param tree Character. k-NN search method: `NULL` (brute-force), `"kd"` (KDTree),
@@ -742,8 +742,7 @@ find_overlap_regions <- function(start, end) {
 #'     (recommended for MI. `8` is a good starting point.).
 #'     \item `0`: Bootstrap resampling from k-nearest neighbors
 #'   }
-#' @param seed Integer. Random seed for reproducible results in stochastic imputation
-#'   methods. Default: 42.
+#' @param seed Integer. Random seed for multiple imputation. Default: 42.
 #' @param .progress Logical. Whether to display progress messages during imputation.
 #'   Default: `FALSE`.
 #' @param output Character. File path stem for saving file-backed big.matrix results

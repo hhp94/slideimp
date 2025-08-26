@@ -52,8 +52,7 @@ windows. Must be between 0 and \code{n_feat - 1}. Default: 10.}
 Columns exceeding this threshold are imputed using column means instead of
 k-NN when \code{post_imp = TRUE}. Default: 0.9.}
 
-\item{cores}{Integer. Number of CPU cores for parallel distance computation.
-Requires \code{\link[mirai:daemons]{mirai::daemons()}} setup for \code{cores} > 1. Default: 1.}
+\item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
 
 \item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
 Default: \code{"euclidean"}.}
@@ -83,8 +82,7 @@ set to 1 if \code{n_pmm = -1}. Default: 1.}
 \item \code{0}: Bootstrap resampling from k-nearest neighbors
 }}
 
-\item{seed}{Integer. Random seed for reproducible results in stochastic imputation
-methods. Default: 42.}
+\item{seed}{Integer. Random seed for multiple imputation. Default: 42.}
 
 \item{.progress}{Logical. Whether to display progress messages during imputation.
 Default: \code{FALSE}.}
