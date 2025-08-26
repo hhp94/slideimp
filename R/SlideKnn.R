@@ -223,20 +223,21 @@ create_result_list <- function(
 #'   Default: `NULL`.
 #' @param ... Currently not implemented.
 #'
-#' @return A list of length `n_imp` containing numeric matrices or [bigmemory::big.matrix()]
-#'   objects (if `output` is specified) with the same dimensions as `obj`. Missing values
-#'   are imputed using k-NN for columns with missingness below `colmax`, and mean
-#'   imputation for remaining missing values if `post_imp = TRUE`.
+#' @returns A list of length `n_imp` containing numeric matrices or [bigmemory::big.matrix()]
+#' objects (if `output` is specified) with the same dimensions as `obj`. Missing values
+#' are imputed using k-NN for columns with missingness below `colmax`, and mean
+#' imputation for remaining missing values if `post_imp = TRUE`.
 #'
-#'   The list has class `"KnnImpList"` with attributes:
-#'   \itemize{
-#'     \item `rownames`: Original row names from input matrix
-#'     \item `colnames`: Original column names from input matrix
-#'     \item `subset`: Column indices that were processed for imputation
-#'     \item `ncol`: Number of columns in original matrix
-#'   }
+#' The list has class `"KnnImpList"` with attributes:
+#' \itemize{
+#' \item `rownames`: Original row names from input matrix
+#' \item `colnames`: Original column names from input matrix
+#' \item `subset`: Column indices that were processed for imputation
+#' \item `ncol`: Number of columns in original matrix
+#' }
 #'
-#'   Each list element represents an independent imputation for uncertainty quantification.
+#' Each list element represents an independent imputation. The only element of the
+#' list when  `n_pmm == -1` is a single imputed matrix.
 #'
 #' @note
 #' **File-backed Storage**: For file-backed results using `output`, set
@@ -555,7 +556,7 @@ knn_imp <- function(
 }
 
 
-#' k-NN Imputation Wrapper
+#' K-NN Imputation Wrapper
 #'
 #' @description
 #' A wrapper function for k-NN imputation that filters rows based on missing value

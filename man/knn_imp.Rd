@@ -98,7 +98,8 @@ The list has class \code{"KnnImpList"} with attributes:
 \item \code{ncol}: Number of columns in original matrix
 }
 
-Each list element represents an independent imputation for uncertainty quantification.
+Each list element represents an independent imputation. The only element of the
+list when  \code{n_pmm == -1} is a single imputed matrix.
 }
 \description{
 Imputes missing values in numeric matrices using the k-nearest neighbors algorithm
