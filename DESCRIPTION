@@ -25,16 +25,19 @@ Depends:
 Imports:
     bigmemory,
     checkmate,
+    cli,
     fs,
+    glue,
+    lifecycle,
     mirai,
     purrr,
     Rcpp,
+    rlang,
     tibble,
     withr
 Suggests:
     dplyr,
     impute,
-    rlang,
     stats,
     testthat (>= 3.0.0),
     tidyr,
