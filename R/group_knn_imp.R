@@ -15,7 +15,7 @@
 #' This function performs K-NN imputation on groups of features independently, which will significantly
 #' reduce imputation time for large datasets. Typical strategies for grouping may include:
 #' \itemize{
-#' \item Breaking down search space by chromosome for epigenetics data
+#' \item Breaking down search space by chromosomes
 #' \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
 #' \item Using clusters identified by column clustering techniques
 #' }
@@ -25,18 +25,10 @@
 #' but not in any features will be left unchanged.
 #'
 #' @returns A list of length `n_imp` containing numeric matrices or [bigmemory::big.matrix()]
-#' objects (if `output` is specified) with the same dimensions as `obj`. Missing values
+#' objects (if `output` is specified) where only imputed features are returned. Missing values
 #' are imputed using k-NN for columns with missingness below `colmax`, and mean
 #' imputation for remaining missing values if `post_imp = TRUE`. Only the features
 #' specified in the groups are imputed; other columns remain unchanged.
-#'
-#' The list has class `"KnnImpList"` with attributes:
-#' \itemize{
-#' \item `rownames`: Original row names from input matrix
-#' \item `colnames`: Original column names from input matrix
-#' \item `subset`: Column indices that were processed for imputation
-#' \item `ncol`: Number of columns in original matrix
-#' }
 #'
 #' Each list element represents an independent imputation. The only element of the
 #' list when `n_pmm == -1` is a single imputed matrix.

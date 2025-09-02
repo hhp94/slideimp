@@ -9,7 +9,7 @@ tune_imp(
   parameters,
   .f = "knn_imp",
   rep = 1,
-  num_na = NULL,
+  num_na = 100,
   max_iter = 1000,
   .progress = FALSE,
   rowmax = 0.9,
@@ -19,11 +19,11 @@ tune_imp(
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
-Note: keep \code{obj} small since this function doesn't support \code{bigmemory}.}
+Tip: keep \code{obj} size small to manage memory overhead.}
 
 \item{parameters}{A data.frame specifying the parameter combinations to tune. Duplicated rows are
 removed. The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=SlideKnn]{SlideKnn()}} for details about
-the parameters. Any \code{n_imp} values in this data frame will be ignored. Support list columns.}
+the parameters. sSupport list columns.}
 
 \item{.f}{The imputation function to tune. Can be the string "knn_imp" (default), "SlideKnn", or
 a custom function. See details.}
@@ -39,10 +39,10 @@ repetitions.
 }}
 
 \item{num_na}{The number of missing values to inject randomly when \code{rep} is an integer.
-Must be a positive integer when \code{rep} is an integer. This parameter is ignored (with a warning)
-when \code{rep} is a list. Default is NULL.}
+Must be a positive integer when \code{rep} is an integer. This parameter is ignored when \code{rep} is a list.
+Default is 100.}
 
-\item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
+\item{max_iter}{Maximum number of iterations to attempt finding valid NA positions. Default is 1000.}
 
 \item{.progress}{Logical. Whether to display progress messages during imputation.
 Default: \code{FALSE}.}
@@ -61,14 +61,14 @@ A \code{tibble} containing:
 \itemize{
 \item All parameter columns from the input \code{parameters} data frame
 \item \code{param_set}: Integer identifier for each unique parameter combination
-\item \code{rep}: The repetition number (1 to length of \code{rep} if list, or 1 to \code{rep} if integer)
+\item \code{rep}: The repetition number
 \item \code{result}: A nested tibble with columns \code{truth} (original values) and \code{estimate} (imputed values)
 }
 }
 \description{
 This function tunes the parameters for the \code{\link[=SlideKnn]{SlideKnn()}} or \code{\link[=knn_imp]{knn_imp()}} imputation methods by injecting
-missing values into the dataset multiple times and evaluating the imputation performance for different
-parameter combinations. Can also tune custom imputation functions. Can also accept list of NA locations.
+missing values (or list of pre-determined NA locations) into the dataset multiple times and evaluating the imputation performance for different
+parameter combinations. Can also tune custom imputation functions.
 }
 \details{
 This function allows tuning of hyperparameters for matrix imputation methods, including the built-in

@@ -29,7 +29,7 @@
 #' @noRd
 inject_na <- function(
     obj,
-    num_na = 100,
+    num_na = NULL,
     rowmax = 0.9,
     colmax = 0.9,
     max_iter = 1000) {
@@ -94,8 +94,8 @@ inject_na <- function(
 #'
 #' @description
 #' This function tunes the parameters for the [SlideKnn()] or [knn_imp()] imputation methods by injecting
-#' missing values into the dataset multiple times and evaluating the imputation performance for different
-#' parameter combinations. Can also tune custom imputation functions. Can also accept list of NA locations.
+#' missing values (or list of pre-determined NA locations) into the dataset multiple times and evaluating the imputation performance for different
+#' parameter combinations. Can also tune custom imputation functions.
 #'
 #' @details
 #' This function allows tuning of hyperparameters for matrix imputation methods, including the built-in
@@ -116,10 +116,10 @@ inject_na <- function(
 #'
 #' @inheritParams SlideKnn
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#'   Note: keep `obj` small since this function doesn't support `bigmemory`.
+#'   Tip: keep `obj` size small to manage memory overhead.
 #' @param parameters A data.frame specifying the parameter combinations to tune. Duplicated rows are
 #'   removed. The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about
-#'   the parameters. Any `n_imp` values in this data frame will be ignored. Support list columns.
+#'   the parameters. sSupport list columns.
 #' @param .f The imputation function to tune. Can be the string "knn_imp" (default), "SlideKnn", or
 #'   a custom function. See details.
 #' @param rep Either:
@@ -130,14 +130,14 @@ inject_na <- function(
 #'     unique (no duplicate NA location sets). The length of the list determines the number of
 #'     repetitions.
 #' @param num_na The number of missing values to inject randomly when `rep` is an integer.
-#'   Must be a positive integer when `rep` is an integer. This parameter is ignored (with a warning)
-#'   when `rep` is a list. Default is NULL.
-#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
+#'   Must be a positive integer when `rep` is an integer. This parameter is ignored when `rep` is a list.
+#'   Default is 100.
+#' @param max_iter Maximum number of iterations to attempt finding valid NA positions. Default is 1000.
 #'
 #' @return A `tibble` containing:
 #' - All parameter columns from the input `parameters` data frame
 #' - `param_set`: Integer identifier for each unique parameter combination
-#' - `rep`: The repetition number (1 to length of `rep` if list, or 1 to `rep` if integer)
+#' - `rep`: The repetition number
 #' - `result`: A nested tibble with columns `truth` (original values) and `estimate` (imputed values)
 #'
 #' @seealso [knn_imp()], [SlideKnn()]
@@ -225,7 +225,7 @@ tune_imp <- function(
     parameters,
     .f = "knn_imp",
     rep = 1,
-    num_na = NULL,
+    num_na = 100,
     max_iter = 1000,
     .progress = FALSE,
     rowmax = 0.9,
@@ -326,17 +326,7 @@ tune_imp <- function(
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     }
     # for `SlideKnn` and `knn_imp`, just use single thread because the overhead of
-    # mirai is high
-    # core allocation
-    # total_work <- nrow(parameters) * n_reps
-    # if (cores <= total_work) {
-    #   # Parallelize over iterations
-    #   parameters$cores <- 1
-    # } else {
-    #   # Parallelize within each knn_imp call
-    #   parameters$cores <- cores
-    #   cores <- 1
-    # }
+    # mirai is high. parallelize at knn_imp level has much lower overhead.
     parameters$cores <- cores
     cores <- 1
   } else {
@@ -351,7 +341,7 @@ tune_imp <- function(
 
   # Create parameter sets and repetition indices
   .rowid <- seq_len(nrow(parameters))
-  # Handle list cols by getting the first value of the list after a split
+  # List cols handling by getting the first value of the list after asplit
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
     row_list <- as.list(row)
     # Extract first element from list columns
@@ -470,15 +460,14 @@ tune_imp <- function(
     parameters_list = parameters_list
   )
   # Execute the mapping with the crated function
-  result_list <- purrr::map(
-    seq_len(nrow(indices)),
-    crated_fn,
-    .progress = .progress
-  )
+  result_list <- purrr::map(seq_len(nrow(indices)), crated_fn, .progress = .progress)
   # Check for failed iterations (empty results or all NA estimates)
-  failed_iterations <- vapply(result_list, function(res) {
-    nrow(res) == 0 || all(is.na(res$estimate))
-  }, logical(1))
+  # failed_iterations <- vapply(result_list, function(res) {
+  #   nrow(res) == 0 || all(is.na(res$estimate))
+  # }, logical(1))
+  # if(any(failed_iterations)) {
+  #   warning("Some iterations failed. Check results carefully")
+  # }
   # Combine parameters with results
   result_df <- tibble::as_tibble(cbind(
     parameters[indices$param_set, , drop = FALSE],

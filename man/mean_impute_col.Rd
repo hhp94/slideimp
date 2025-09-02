@@ -7,11 +7,10 @@
 mean_impute_col(obj, subset = NULL)
 }
 \arguments{
-\item{obj}{A numeric matrix with samples in rows and features in columns.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{subset}{Character vector of column names or integer vector of column indices
-specifying the subset of columns to perform imputation. If \code{NULL} (default),
-all columns are processed.}
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values
@@ -46,14 +45,4 @@ imputed_subset
 # Impute only specific columns by index
 imputed_idx <- mean_impute_col(mat, subset = c(1, 3))
 imputed_idx
-
-# Example with real data
-data(khanmiss1)
-
-# Transpose since khanmiss1 has genes in rows
-khanmiss_t <- t(khanmiss1)
-imputed_khan <- mean_impute_col(khanmiss_t)
-sum(is.na(khanmiss_t)) # Original missing values
-sum(is.na(imputed_khan)) # After imputation
-
 }

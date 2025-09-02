@@ -25,8 +25,7 @@ group_knn_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
-Must have at least 1 row and 2 columns.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{group}{A data.frame with columns:
 \describe{
@@ -60,8 +59,8 @@ imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
 Only used when \code{weighted = TRUE}. Default: 1.}
 
 \item{tree}{Character. k-NN search method: \code{NULL} (brute-force), \code{"kd"} (KDTree),
-or \code{"ball"} (BallTree). Tree methods may introduce bias with high missingness.
-Default: \code{NULL}.}
+or \code{"ball"} (BallTree). Tree methods use mlpack implementation but may be
+biased with high missing value percentages. Default: \code{NULL}.}
 
 \item{n_imp}{Integer. Number of multiple imputations to perform. Automatically
 set to 1 if \code{n_pmm = -1}. Default: 1.}
@@ -87,18 +86,10 @@ Default: \code{FALSE}. See Notes for Windows.}
 }
 \value{
 A list of length \code{n_imp} containing numeric matrices or \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
-objects (if \code{output} is specified) with the same dimensions as \code{obj}. Missing values
+objects (if \code{output} is specified) where only imputed features are returned. Missing values
 are imputed using k-NN for columns with missingness below \code{colmax}, and mean
 imputation for remaining missing values if \code{post_imp = TRUE}. Only the features
 specified in the groups are imputed; other columns remain unchanged.
-
-The list has class \code{"KnnImpList"} with attributes:
-\itemize{
-\item \code{rownames}: Original row names from input matrix
-\item \code{colnames}: Original column names from input matrix
-\item \code{subset}: Column indices that were processed for imputation
-\item \code{ncol}: Number of columns in original matrix
-}
 
 Each list element represents an independent imputation. The only element of the
 list when \code{n_pmm == -1} is a single imputed matrix.
@@ -110,7 +101,7 @@ K-NN imputation by groups, such as chromosomes, flanking columns, or clusters id
 This function performs K-NN imputation on groups of features independently, which will significantly
 reduce imputation time for large datasets. Typical strategies for grouping may include:
 \itemize{
-\item Breaking down search space by chromosome for epigenetics data
+\item Breaking down search space by chromosomes
 \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
 \item Using clusters identified by column clustering techniques
 }
@@ -125,7 +116,7 @@ but not in any features will be left unchanged.
 dimnames, otherwise they can be manually restored from the original matrix with
 \code{\link[=restore_dimnames]{restore_dimnames()}}.
 
-\strong{File locks On Windows}: file-backed big.matrix objects hold file locks.
+\strong{File locks On Windows}: File-backed big.matrix objects hold file locks.
 If you need to overwrite existing files, ensure previous results that points
 to the same files are removed with \code{\link[=rm]{rm()}} and \code{\link[=gc]{gc()}} first.
 

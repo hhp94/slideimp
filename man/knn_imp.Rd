@@ -25,8 +25,7 @@ knn_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
-Must have at least 1 row and 2 columns.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
@@ -56,8 +55,8 @@ imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
 Only used when \code{weighted = TRUE}. Default: 1.}
 
 \item{tree}{Character. k-NN search method: \code{NULL} (brute-force), \code{"kd"} (KDTree),
-or \code{"ball"} (BallTree). Tree methods may introduce bias with high missingness.
-Default: \code{NULL}.}
+or \code{"ball"} (BallTree). Tree methods use mlpack implementation but may be
+biased with high missing value percentages. Default: \code{NULL}.}
 
 \item{n_imp}{Integer. Number of multiple imputations to perform. Automatically
 set to 1 if \code{n_pmm = -1}. Default: 1.}
@@ -87,14 +86,6 @@ objects (if \code{output} is specified) with the same dimensions as \code{obj}. 
 are imputed using k-NN for columns with missingness below \code{colmax}, and mean
 imputation for remaining missing values if \code{post_imp = TRUE}.
 
-The list has class \code{"KnnImpList"} with attributes:
-\itemize{
-\item \code{rownames}: Original row names from input matrix
-\item \code{colnames}: Original column names from input matrix
-\item \code{subset}: Column indices that were processed for imputation
-\item \code{ncol}: Number of columns in original matrix
-}
-
 Each list element represents an independent imputation. The only element of the
 list when  \code{n_pmm == -1} is a single imputed matrix.
 }
@@ -104,16 +95,7 @@ with a two-stage approach: k-NN imputation for columns with missingness below a
 threshold, followed by optional mean imputation for remaining missing values.
 }
 \details{
-This function performs \strong{column-wise} distance calculations, which is particularly
-important for understanding its application domain. Unlike typical data where
-samples are in columns and features in rows, this function is optimized for
-intensive longitudinal data and epi-genomics where:
-\itemize{
-\item \strong{Samples are in rows} and \strong{features are in columns}
-\item Spatially or temporally adjacent features carry mutual information
-\item Imputation leverages nearby features within the same sample
-}
-\subsection{Weighting and Tree Methods}{
+This function performs \strong{column-wise} nearest neighbor calculations.
 
 When \code{weighted = TRUE}, imputed values are computed as distance-weighted averages
 where weights are inverse distances raised to the power of \code{dist_pow}. This gives
@@ -125,14 +107,13 @@ but requires pre-filling missing values with column means, which may introduce b
 in high-missingness data. Tree construction overhead may reduce performance for
 low-dimensional data or small k values.
 }
-}
 \note{
 \strong{File-backed Storage}: For file-backed results using \code{output}, set
 \code{options(bigmemory.allow.dimnames = TRUE)} before calling this function to preserve
 dimnames, otherwise they can be manually restored from the original matrix with
 \code{\link[=restore_dimnames]{restore_dimnames()}}.
 
-\strong{File locks On Windows}: file-backed big.matrix objects hold file locks.
+\strong{File locks On Windows}: File-backed big.matrix objects hold file locks.
 If you need to overwrite existing files, ensure previous results that points
 to the same files are removed with \code{\link[=rm]{rm()}} and \code{\link[=gc]{gc()}} first.
 
@@ -143,23 +124,20 @@ avoid memory constraints.
 \section{Performance Optimization}{
 
 \itemize{
-\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and missingness is low
-\item \strong{KDTree} (\code{tree = "kd"}): Suitable for >5000 columns with <20\% missingness
-\item \strong{BallTree} (\code{tree = "ball"}): For high-dimensional data or Manhattan distance
+\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and missingness is low (<20\% missing)
 \item \strong{File backing}: Use \code{output} parameter for \code{n_imp > 1} to avoid memory issues
-\item \strong{Subset imputation}: Consider \code{subset} parameter for efficiency when only specific columns need imputation
+\item \strong{Subset imputation}: Use \code{subset} parameter for efficiency when only specific columns need imputation
 }
 }
 
 \examples{
-# Quick start example
 data(khanmiss1)
 sum(is.na(khanmiss1))
 
 # Basic k-NN imputation (khanmiss1 has genes in rows, so transpose)
 t_khanmiss1 <- t(khanmiss1)
 result <- knn_imp(t_khanmiss1, k = 5)[[1]]
-sum(is.na(result)) # Should be 0
+result
 
 # Using weighted imputation with custom distance power multiple cores
 imputed_weighted <- knn_imp(
@@ -170,8 +148,6 @@ imputed_weighted <- knn_imp(
   dist_pow = 2,
   method = "euclidean"
 )
-
-# Preview
 imputed_weighted
 
 # Access the imputations just like a list
@@ -207,6 +183,7 @@ if (interactive()) {
   # But this can be reassigned after setting the options to be TRUE like so
   options(bigmemory.allow.dimnames = TRUE)
   restore_dimnames(imputed_pmm)
+  imputed_pmm
 }
 
 length(imputed_pmm) # Returns 5 imputed data
@@ -220,9 +197,7 @@ imputed_boot <- knn_imp(
   # n_pmm = 0 enables bootstrapping nearest neighbors
   seed = 123
 )
-
-length(imputed_boot) # Returns 5 imputed data
-
+imputed_boot
 }
 \references{
 Robert Tibshirani, Trevor Hastie, Balasubramanian Narasimhan, and Gilbert Chu (2002).
@@ -230,5 +205,5 @@ Diagnosis of multiple cancer types by shrunken centroids of gene expression
 PNAS 99: 6567-6572. Available at www.pnas.org
 }
 \seealso{
-\code{\link[=SlideKnn]{SlideKnn()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}
+\code{\link[=SlideKnn]{SlideKnn()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}, \code{\link[=group_knn_imp]{group_knn_imp()}}
 }

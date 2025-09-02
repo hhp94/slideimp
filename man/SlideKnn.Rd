@@ -2,7 +2,7 @@
 % Please edit documentation in R/SlideKnn.R
 \name{SlideKnn}
 \alias{SlideKnn}
-\title{Sliding Window k-NN Imputation for Large data}
+\title{Sliding Window k-NN Imputation}
 \usage{
 SlideKnn(
   obj,
@@ -97,18 +97,11 @@ Default: \code{FALSE}. See Notes for Windows.}
 \value{
 A list of \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} objects with length \code{n_imp}. Each
 matrix has \code{nrow(obj)} rows and \code{length(subset)} columns with missing values
-imputed. The list has class \code{"SlideKnnList"} with additional attributes:
-\itemize{
-\item \code{rownames}: Original row names
-\item \code{colnames}: Column names for imputed subset
-\item \code{ncol}: Number of columns in original matrix
-\item \code{subset}: Column indices that were imputed
-}
+imputed.
 }
 \description{
 Performs k-nearest neighbor imputation on large numeric matrices using a sliding
-window approach. The matrix is divided into overlapping windows to handle missing
-values while maintaining computational efficiency and preserving local data structures.
+window approach column-wise. This method assumes that columns are meaningfully sorted.
 }
 \details{
 The sliding window approach divides the input matrix into smaller, overlapping
@@ -116,10 +109,9 @@ segments and applies k-NN imputation to each window independently. This strategy
 is particularly advantageous for large data where applying k-NN imputation
 to the entire matrix would be computationally prohibitive or exceed memory limits.
 
-The algorithm maintains local data relationships by using overlapping regions
-between consecutive windows. Values in overlapping areas are averaged across
-windows to produce the final imputed result. This approach assumes that features
-(columns) are ordered meaningfully (e.g., by genomic position, time series, etc.).
+Values in overlapping areas are averaged across windows to produce the final imputed result.
+This approach assumes that features (columns) are ordered meaningfully (e.g.,
+by genomic position, time series, etc.).
 
 For the underlying k-NN implementation details, see \code{\link[=knn_imp]{knn_imp()}}.
 }
@@ -155,8 +147,6 @@ imputed_basic <- SlideKnn(
   n_feat = 50,
   n_overlap = 10
 )
-
-# Preview
 imputed_basic
 
 # Access the result like a list
@@ -177,8 +167,8 @@ imputed_big_in_memory <- SlideKnn(
   output = NULL
 )
 
-# output is now set to a location to save. The backend is now filebacked matrix
-# to handle massive data
+# output is now set to a location to save. The backend is now file-backed matrix
+# to handle large data
 imputed_big <- SlideKnn(
   big_data,
   k = 5,
@@ -186,21 +176,17 @@ imputed_big <- SlideKnn(
   output = withr::local_tempfile()
 )
 
-# Because strip_dimnames is `FALSE` and the default of the bigmatrix package
-# is to not allow dimnames, the output may lost the dimnames. We strip it here to
-# demonstrate
-
-# But this can be reassigned after setting the options to be TRUE like so
+# Results may lose dimnames because bigmemory.allow.dimnames can't be set to TRUE.
+# We can restore this with `restore_dimnames()`.
 if (interactive()) {
   on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")), add = TRUE)
   options(bigmemory.allow.dimnames = TRUE)
   rownames(imputed_big[[1]]) <- NULL
   colnames(imputed_big[[1]]) <- NULL
-  # Names are now strip
+  # We strip the dimnames manually as an example
   print(imputed_big)
   # Restore dimnames
   restore_dimnames(imputed_big)
-  # Now restored
   print(imputed_big)
 }
 
@@ -208,13 +194,13 @@ if (interactive()) {
 # Multiple Imputation
 # ========================================
 
-# Predictive Mean Matching (PMM) - recommended
+# Predictive Mean Matching (PMM)
 imputed_pmm <- SlideKnn(
   beta_matrix,
   k = 8,
   n_feat = 60,
   n_imp = 3, # 3 imputations
-  n_pmm = 5, # 5 donors for PMM
+  n_pmm = 5, # 5 donors for PMM. n_pmm = 0 enables neighbor bootstrapping.
   subset = c("feat1", "feat2"),
   output = withr::local_tempfile(),
   .progress = TRUE
@@ -222,31 +208,7 @@ imputed_pmm <- SlideKnn(
 
 imputed_pmm
 
-# ========================================
-# Parallel Processing
-# ========================================
-\dontshow{if (interactive()) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
-# Set up parallel processing
-library(mirai)
-daemons(4) # Use 4 cores
-
-# Enable for multi-core efficiency
-options(bigmemory.allow.dimnames = TRUE)
-
-# Parallel imputation
-imputed_parallel <- SlideKnn(
-  beta_matrix,
-  k = 5,
-  n_feat = 50,
-  cores = 4
-)
-
-imputed_parallel
-
-# Clean up
-daemons(0)
-\dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}
+\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}, \code{\link[=group_knn_imp]{group_knn_imp()}}
 }
