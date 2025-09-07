@@ -272,7 +272,7 @@ parameters_custom <- dplyr::tibble(
 # Similarly, use `{yardstick}` to get the prediction metrics
 results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 2, num_na = 20)
 results_custom$metrics <- lapply(
-  results_custom$result, 
+  results_custom$result,
   function(x) met_set(x, truth = truth, estimate = estimate)
 )
 

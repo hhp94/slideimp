@@ -963,20 +963,29 @@ SlideKnn <- function(
     }
     # seed for this imputation
     seed_imp <- seed + (imp_idx - 1)
-    # Create intermediate matrix for this imputation
-    intermediate_info <- check_result_list(
-      fs::path(temp_dir, "intermediate"), 1,
-      overwrite = TRUE
-    )
-    intermediate <- bigmemory::big.matrix(
-      nrow = nr,
-      ncol = sum(width),
-      type = "double",
-      init = 0.0,
-      backingpath = intermediate_info$backingpath,
-      descriptorfile = intermediate_info$descfiles[[1]],
-      backingfile = intermediate_info$backfiles[[1]]
-    )
+    # intermediate matrix for this imputation. In memory if not file backed
+    if (file_backed) {
+      intermediate_info <- check_result_list(
+        fs::path(temp_dir, "intermediate"), 1,
+        overwrite = TRUE
+      )
+      intermediate <- bigmemory::filebacked.big.matrix(
+        nrow = nr,
+        ncol = sum(width),
+        type = "double",
+        init = 0.0,
+        backingpath = intermediate_info$backingpath,
+        descriptorfile = intermediate_info$descfiles[[1]],
+        backingfile = intermediate_info$backfiles[[1]]
+      )
+    } else {
+      intermediate <- bigmemory::big.matrix(
+        nrow = nr,
+        ncol = sum(width),
+        type = "double",
+        init = 0.0
+      )
+    }
     if (.progress) {
       message("Step 1/3: Imputing")
     }
@@ -1013,19 +1022,28 @@ SlideKnn <- function(
       }
     }
     # Create result matrix for this imputation
-    result_imp_info <- check_result_list(
-      fs::path(temp_dir, "result_imp"), 1,
-      overwrite = TRUE
-    )
-    result_imp <- bigmemory::big.matrix(
-      nrow = nr,
-      ncol = nc,
-      type = "double",
-      init = 0.0,
-      backingpath = result_imp_info$backingpath,
-      descriptorfile = result_imp_info$descfiles[[1]],
-      backingfile = result_imp_info$backfiles[[1]]
-    )
+    if (file_backed) {
+      result_imp_info <- check_result_list(
+        fs::path(temp_dir, "result_imp"), 1,
+        overwrite = TRUE
+      )
+      result_imp <- bigmemory::filebacked.big.matrix(
+        nrow = nr,
+        ncol = nc,
+        type = "double",
+        init = 0.0,
+        backingpath = result_imp_info$backingpath,
+        descriptorfile = result_imp_info$descfiles[[1]],
+        backingfile = result_imp_info$backfiles[[1]]
+      )
+    } else {
+      result_imp <- bigmemory::big.matrix(
+        nrow = nr,
+        ncol = nc,
+        type = "double",
+        init = 0.0
+      )
+    }
     ## Averaging ----
     if (.progress) {
       message("Step 2/3: Overlapping")

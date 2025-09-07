@@ -136,7 +136,7 @@ test_that("duplicate features across groups throws error", {
   group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
 
   group_df <- tibble::tibble(
-    features = list(group_1[1:5], c(group_1[5], group_2[1:3])),  # group_1[5] in both
+    features = list(group_1[1:5], c(group_1[5], group_2[1:3])), # group_1[5] in both
     aux = list(group_1, group_2)
   )
 

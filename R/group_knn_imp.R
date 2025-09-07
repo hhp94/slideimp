@@ -85,8 +85,7 @@ group_knn_imp <- function(
     seed = 42,
     output = NULL,
     overwrite = FALSE,
-    .progress = TRUE
-) {
+    .progress = TRUE) {
   # most pre-conditioning handled by knn_imp
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
   checkmate::assert_data_frame(group, min.rows = 1)
@@ -148,7 +147,7 @@ group_knn_imp <- function(
   on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
   # main for loop over groups. Parallel at `knn_imp` level only for minimal overhead
   for (g in seq_len(nrow(group))) {
-    if(.progress) {
+    if (.progress) {
       message("Imputing group ", g, "/", nrow(group))
     }
     # behavior: all unique columns in feat will be imputed using unique columns in
