@@ -145,7 +145,7 @@ parameters_custom <- data.frame(
 # Reuse the same obj
 set.seed(1234)
 results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1, num_na = 20)
-\dontshow{if (rlang::is_installed("dplyr") && rlang::is_installed("yardstick") && rlang::is_installed("dplyr") && rlang::is_installed("tidyr")) (if (getRversion() >= "3.4") withAutoprint else force)(\{ # examplesIf}
+\dontshow{if (rlang::is_installed("dplyr") && rlang::is_installed("yardstick") && rlang::is_installed("dplyr") && rlang::is_installed("tidyr")) withAutoprint(\{ # examplesIf}
 # Install {yardstick} to calculate any metrics using the result
 met_set <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::rsq)
 results$metrics <- lapply(

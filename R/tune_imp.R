@@ -291,6 +291,9 @@ tune_imp <- function(
     null.ok = FALSE
   )
   # parameters ----
+  valid_cols <- c(
+    "k", "colmax", "rowmax", "method", "post_imp", "weighted", "dist_pow", "tree"
+  )
   if (is.character(.f)) {
     parameters <- unique(parameters)
     # Force Single Imputation
@@ -310,8 +313,7 @@ tune_imp <- function(
         ))
       }
       parameters$.progress <- FALSE
-      # Select only relevant columns for SlideKnn
-      valid_cols <- c("n_feat", "k", "n_overlap", "rowmax", "colmax", "cores")
+      valid_cols <- c("n_feat", "n_overlap", valid_cols)
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     } else if (.f == "knn_imp") {
       # Validate required parameters
@@ -319,10 +321,6 @@ tune_imp <- function(
         stop("`knn_imp` requires `k` in parameters")
       }
       # Select only relevant columns for knn_imp
-      valid_cols <- c(
-        "k", "rowmax", "colmax", "post_imp", "method",
-        "cores", "weighted", "dist_pow", "n_imp"
-      )
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     }
     # for `SlideKnn` and `knn_imp`, just use single thread because the overhead of
