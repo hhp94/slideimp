@@ -40,9 +40,6 @@ group_knn_imp(
 Columns exceeding this threshold are imputed using column means instead of
 k-NN when \code{post_imp = TRUE}. Default: 0.9.}
 
-\item{rowmax}{Numeric. Maximum allowable proportion of missing values per row
-(0-1). Function stops with error if exceeded. Default: 0.9.}
-
 \item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
 Default: \code{"euclidean"}.}
 
@@ -51,9 +48,6 @@ Default: \code{"euclidean"}.}
 \item{post_imp}{Logical. Whether to impute remaining missing values with
 column means after k-NN imputation. Default: \code{TRUE}.}
 
-\item{weighted}{Logical. Whether to use distance-weighted mean for imputation.
-If \code{FALSE}, uses simple mean of k nearest neighbors. Default: \code{FALSE}.}
-
 \item{dist_pow}{Numeric. Positive value controlling distance penalty in weighted
 imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
 Only used when \code{weighted = TRUE}. Default: 1.}
@@ -61,26 +55,6 @@ Only used when \code{weighted = TRUE}. Default: 1.}
 \item{tree}{Character. k-NN search method: \code{NULL} (brute-force), \code{"kd"} (KDTree),
 or \code{"ball"} (BallTree). Tree methods use mlpack implementation but may be
 biased with high missing value percentages. Default: \code{NULL}.}
-
-\item{n_imp}{Integer. Number of multiple imputations to perform. Automatically
-set to 1 if \code{n_pmm = -1}. Default: 1.}
-
-\item{n_pmm}{Integer. Multiple imputation method control:
-\itemize{
-\item \code{-1}: Deterministic single imputation (default)
-\item \verb{> 0}: Predictive Mean Matching using \code{n_pmm} closest donors
-(recommended for MI. \code{8} is a good starting point.).
-\item \code{0}: Bootstrap resampling from k-nearest neighbors
-}}
-
-\item{seed}{Integer. Random seed for multiple imputation. Default: 42.}
-
-\item{output}{Character. File path stem for saving file-backed big.matrix results
-(format: \code{"path/stem"}). If \code{NULL}, results are stored in memory. Recommended
-for large data and multiple imputations.}
-
-\item{overwrite}{Logical. Whether to overwrite existing files at \code{output} path.
-Default: \code{FALSE}. See Notes for Windows.}
 
 \item{.progress}{Shows progress}
 }
@@ -109,20 +83,6 @@ reduce imputation time for large datasets. Typical strategies for grouping may i
 Only features in each group (each row of the data.frame) will be imputed, using the search space
 defined as the union of the features and aux columns of that group. Columns that are in aux or in the object
 but not in any features will be left unchanged.
-}
-\note{
-\strong{File-backed Storage}: For file-backed results using \code{output}, set
-\code{options(bigmemory.allow.dimnames = TRUE)} before calling this function to preserve
-dimnames, otherwise they can be manually restored from the original matrix with
-\code{\link[=restore_dimnames]{restore_dimnames()}}.
-
-\strong{File locks On Windows}: File-backed big.matrix objects hold file locks.
-If you need to overwrite existing files, ensure previous results that points
-to the same files are removed with \code{\link[=rm]{rm()}} and \code{\link[=gc]{gc()}} first.
-
-\strong{Memory Considerations}: When \code{n_imp > 1} for large data, use \code{subset} to
-specify only required columns and provide \code{output} for file-backed storage to
-avoid memory constraints.
 }
 \examples{
 # Generate example data with missing values. This simulates a 20x50 matrix with missing values
@@ -153,7 +113,4 @@ group_df
 obj <- t(to_test$input)
 grouped_results <- group_knn_imp(obj, group = group_df, k = 5)
 grouped_results
-}
-\seealso{
-\code{\link[=SlideKnn]{SlideKnn()}}, \code{\link[=mean_impute_col]{mean_impute_col()}}, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, \code{\link[=restore_dimnames]{restore_dimnames()}}, \code{\link[=knn_imp]{knn_imp()}}
 }

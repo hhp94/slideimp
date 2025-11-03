@@ -32,22 +32,17 @@ bigmem_copy <- function(pBigMat_l, pBigMat_r, col_idx_r, cores = 1L) {
 #' @param k Number of nearest neighbors to use for imputation.
 #' @param n_col_miss Integer vector specifying the count of missing values per column.
 #' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
-#' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
-#'   Note: Forced to FALSE when `n_imp > 1`.
 #' @param dist_pow A positive double that controls the penalty for larger distances in
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
-#' @param n_pmm Short specifying the number of donors for pmm: -1=single, 0=bootstrap, >0=PMM donors.
-#' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
 #' @keywords internal
 #' @noRd
-impute_knn_brute <- function(obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp = 1L, n_pmm = -1L, seed = 42L, cores = 1L) {
-    .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, weighted, dist_pow, n_imp, n_pmm, seed, cores)
+impute_knn_brute <- function(obj, miss, k, n_col_miss, method, dist_pow, cores = 1L) {
+    .Call(`_SlideKnn_impute_knn_brute`, obj, miss, k, n_col_miss, method, dist_pow, cores)
 }
 
 #' @title Find K-Nearest Neighbors for Columns with Missing Values
@@ -101,17 +96,14 @@ find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores =
 #' @param dist_pow A positive double that controls the penalty for larger distances in
 #' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 #' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
-#' @param n_pmm Short specifying the number of donors for pmm: -1=single, 0=bootstrap, >0=PMM donors.
-#' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 #' @param cores Number of CPU cores to use for parallel processing (default = 1).
 #' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
 #' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
 #'
 #' @keywords internal
 #' @noRd
-impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp = 1L, n_pmm = -1L, seed = 42L, cores = 1L) {
-    .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, weighted, dist_pow, n_imp, n_pmm, seed, cores)
+impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, dist_pow, cores = 1L) {
+    .Call(`_SlideKnn_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, dist_pow, cores)
 }
 
 #' @title Weighted Row Mean
@@ -129,29 +121,6 @@ impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, weighted, 
 #' @noRd
 weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
     .Call(`_SlideKnn_weighted_row_means`, obj, miss, nn_columns, nn_weights)
-}
-
-#' @title k-NN Impute using Predictive Mean Matching
-#'
-#' @description Rcpp implementation of predictive mean matching (PMM) for imputation. Exported for testing only.
-#'
-#' @param result Result matrix where column 2:2+n_imp contains imputed values (modified in place).
-#' @param obj R matrix
-#' @param miss is.na(obj).
-#' @param col_offset Basically `cumsum(colSums(is.na(obj)))`.
-#' @param target_col_idx The index of the target column to impute in obj.
-#' @param nn_columns Column idx of nearest neighbors.
-#' @param nn_weights Weights corresponding to nn_columns.
-#' @param n_imp The number of imputations to perform for each missing value.
-#' @param n_pmm The number of closest donors to consider for PMM.
-#' @param seed RNG seed.
-#'
-#' @return void (modifies the result matrix in place).
-#'
-#' @keywords internal
-#' @noRd
-impute_column_values_pmm <- function(result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed) {
-    invisible(.Call(`_SlideKnn_impute_column_values_pmm`, result, obj, miss, col_offset, target_col_idx, nn_columns, nn_weights, n_imp, n_pmm, seed))
 }
 
 colMMs <- function(mat, min = 0L) {

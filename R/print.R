@@ -1,19 +1,19 @@
-#' Print method for SlideKnnList
-#' @param x A SlideKnnList object
+#' Print method for slide_impList
+#' @param x A slide_impList object
 #' @param m Number of rows to show in preview (default: 5)
 #' @param n Number of columns to show in preview (default: 10)
 #' @param ... Additional arguments (not used)
 #' @export
-print.SlideKnnList <- function(x, m = 5, n = 10, ...) {
+print.slide_impList <- function(x, m = 5, n = 10, ...) {
   # Determine object class for display
-  obj_class <- ifelse(inherits(x, "SlideKnnList"), "SlideKnnList", "KnnImpList")
+  obj_class <- ifelse(inherits(x, "slide_impList"), "slide_impList", "KnnImpList")
   n_imp <- length(x)
   rn <- attr(x, "rownames")
   cn <- attr(x, "colnames")
   n_rows <- nrow(x[[1]])
   n_cols <- ncol(x[[1]])
-  # Matrix type - SlideKnnList is always big.matrix
-  mat_type <- if (obj_class == "SlideKnnList") {
+  # Matrix type - slide_impList is always big.matrix
+  mat_type <- if (obj_class == "slide_impList") {
     "big.matrix"
   } else if (bigmemory::is.big.matrix(x[[1]])) {
     "big.matrix"
@@ -36,7 +36,7 @@ print.SlideKnnList <- function(x, m = 5, n = 10, ...) {
   subset_attr <- attr(x, "subset")
   total_cols <- attr(x, "ncol")
   if (!is.null(subset_attr) && !is.null(total_cols) && length(subset_attr) < total_cols) {
-    sliding_text <- ifelse(obj_class == "SlideKnnList", " (sliding window)", "")
+    sliding_text <- ifelse(obj_class == "slide_impList", " (sliding window)", "")
     cat(
       sprintf(
         "Imputed columns: %d of %d total columns%s\n",
@@ -88,5 +88,5 @@ print.SlideKnnList <- function(x, m = 5, n = 10, ...) {
 #' @export
 print.KnnImpList <- function(x, m = 5, n = 10, ...) {
   # Simply call the KnnImpList print method which handles both classes
-  print.SlideKnnList(x, m, n, ...)
+  print.slide_impList(x, m, n, ...)
 }

@@ -1,6 +1,7 @@
 pca_imp_internal <- function(
-    X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
-    row.w, coeff.ridge, nrX, ncX) {
+  X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
+  row.w, coeff.ridge, nrX, ncX
+) {
   nb.iter <- 1
   old <- Inf
   objective <- 0

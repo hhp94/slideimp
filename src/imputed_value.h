@@ -13,7 +13,6 @@ arma::mat initialize_result_matrix(
     const arma::umat &miss,
     const arma::uvec &col_index_miss,
     const arma::uvec &n_col_miss,
-    const arma::uword n_imp,
     arma::uvec &col_offsets);
 
 // Helper function to impute missing values for a single column
@@ -24,8 +23,7 @@ void impute_column_values(
     const arma::uword col_offset,
     const arma::uword target_col_idx,
     const arma::umat &nn_columns_mat,
-    const arma::vec &nn_weights,
-    const arma::uword n_imp);
+    const arma::vec &nn_weights);
 
 // Helper function to resample neighbors for bootstrap imputation
 void resample_neighbor(
@@ -40,18 +38,5 @@ arma::vec weighted_row_means(
     const arma::umat &miss,
     const arma::uvec &nn_columns,
     const arma::vec &nn_weights);
-
-// Implementation of PMM.
-void impute_column_values_pmm(
-    arma::mat &result,
-    const arma::mat &obj,
-    const arma::umat &miss,
-    const arma::uword col_offset,
-    const arma::uword target_col_idx,
-    const arma::uvec &nn_columns,
-    const arma::vec &nn_weights,
-    const arma::uword n_imp,
-    const arma::uword n_pmm,
-    const arma::uword seed);
 
 #endif

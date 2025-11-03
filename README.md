@@ -1,17 +1,17 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# SlideKnn
+# slide_imp
 
 <!-- badges: start -->
 
-[![R-CMD-check](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/hhp94/slide_imp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/slide_imp/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-`{SlideKnn}` is a lightweight R package for k-nearest neighbors (k-NN)
+`{slide_imp}` is a lightweight R package for k-nearest neighbors (k-NN)
 imputation of missing values in high-dimensional numeric matrices, such
 as those from intensively sampled longitudinal data or epigenetics.
-`knn_imp()` implements a full k-NN imputation. `SlideKnn()` implements a
+`knn_imp()` implements a full k-NN imputation. `slide_imp()` implements a
 sliding window k-NN imputation for data where features are ordered
 (e.g., by time or distance). `group_knn_imp()` implements a group-wise
 imputation for data that can be broken into meaningful groups, like
@@ -22,7 +22,7 @@ The package builds on the efficient k-NN imputation algorithm
 [`{impute}`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
 package) and adds enhancements: parallelization and tree-based methods
 for speed, weighted imputation, multiple imputation strategies, and
-built-in tuning tools. `{SlideKnn}` expects matrices with samples in
+built-in tuning tools. `{slide_imp}` expects matrices with samples in
 rows and features in columns.
 
 Key features include:
@@ -54,18 +54,18 @@ Key features include:
 
 ## Installation
 
-The stable version of `{SlideKnn}` can be installed from CRAN using:
+The stable version of `{slide_imp}` can be installed from CRAN using:
 
 ``` r
-install.packages("SlideKnn")
+install.packages("slide_imp")
 ```
 
-You can install the development version of `{SlideKnn}` from
-[GitHub](https://github.com/hhp94/SlideKnn) with:
+You can install the development version of `{slide_imp}` from
+[GitHub](https://github.com/hhp94/slide_imp) with:
 
 ``` r
 install.packages("remotes")
-remotes::install_github("hhp94/SlideKnn")
+remotes::install_github("hhp94/slide_imp")
 ```
 
 ## Full k-NN imputation `knn_imp()`
@@ -74,7 +74,7 @@ Use the workhorse function of the package, `knn_imp()` to perform full
 k-NN imputation.
 
 ``` r
-library(SlideKnn)
+library(slide_imp)
 
 data(khanmiss1)
 # Transpose for samples in rows, features in columns
@@ -151,7 +151,7 @@ imputed_tree
 #> [ ... and 2 more imputations ]
 ```
 
-## Sliding window k-NN imputation with `SlideKnn()`
+## Sliding window k-NN imputation with `slide_imp()`
 
 Epigenetic datasets such as WGBS or EM-seq are very spatially
 correlated, this method allows the imputation of the full epigenome with
@@ -175,9 +175,9 @@ beta_matrix[1:10, 1:5]
 #> s9         NA        NA 0.3455449        NA        NA
 #> s10        NA 0.5498897        NA 0.3738964        NA
 
-imputed <- SlideKnn(beta_matrix, n_feat = 500, n_overlap = 10, k = 10)
+imputed <- slide_imp(beta_matrix, n_feat = 500, n_overlap = 10, k = 10)
 imputed
-#> SlideKnnList: List of 1 imputation of a 10 x 1000 big.matrix
+#> slide_impList: List of 1 imputation of a 10 x 1000 big.matrix
 #> 
 #> Preview of imputation 1:
 #>     feat1  feat2  feat3  feat4  feat5  feat6  feat7  feat8  feat9 feat10
@@ -204,7 +204,7 @@ imputed_by_col <- knn_imp(obj, cores = 4, k = 10, post_imp = FALSE)
 # using values from OTHER people/samples).
 imputed_by_row <- knn_imp(t(imputed_by_col[[1]]), cores = 4, k = 10, post_imp = FALSE)
 # Step 3: Lastly, impute by column mean for any remaining missing.
-imputed_mean <- mean_impute_col(t(imputed_by_row[[1]]))
+imputed_mean <- mean_imp_col(t(imputed_by_row[[1]]))
 sum(is.na(imputed_mean))
 #> [1] 0
 ```
@@ -269,7 +269,7 @@ grouped_results
 
 ## File-backed `big.matrix`
 
-`SlideKnn()` supports passing a `big.matrix` object or the path to its
+`slide_imp()` supports passing a `big.matrix` object or the path to its
 descriptor file. Specify `output` for the result to change the backend
 to using file-backed big.matrix as well to minimize memory at a cost of
 performance.
@@ -307,7 +307,7 @@ Impute a `bigmemory::big.matrix` and optionally save results to
 file-backed big.matrix
 
 ``` r
-imputed_obj <- SlideKnn(
+imputed_obj <- slide_imp(
   obj = big_mat,
   n_feat = 100,
   n_overlap = 10,
@@ -318,7 +318,7 @@ imputed_obj <- SlideKnn(
 
 # Access the imputed data (returns list of big.matrix objects)
 imputed_obj
-#> SlideKnnList: List of 1 imputation of a 63 x 2308 big.matrix
+#> slide_impList: List of 1 imputation of a 63 x 2308 big.matrix
 #> 
 #> Preview of imputation 1:
 #>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
@@ -353,7 +353,7 @@ useful for distributed computing or when the object isn’t in memory.
 ``` r
 desc_path <- file.path(temp_dir, "khan.desc")
 
-imputed_path <- SlideKnn(
+imputed_path <- slide_imp(
   obj = desc_path, # Using path instead of object
   n_feat = 100,
   n_overlap = 10,
@@ -363,7 +363,7 @@ imputed_path <- SlideKnn(
 )
 
 imputed_path
-#> SlideKnnList: List of 1 imputation of a 63 x 2308 big.matrix
+#> slide_impList: List of 1 imputation of a 63 x 2308 big.matrix
 #> 
 #> Preview of imputation 1:
 #>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
@@ -466,7 +466,7 @@ head(
 #> 6     1     2 rsq     standard      0.130
 ```
 
-For more details, see the function documentation (e.g., `?SlideKnn`,
+For more details, see the function documentation (e.g., `?slide_imp`,
 `?group_knn_imp`, `?knn_imp`, `?tune_imp`).
 
 # Developer notes for [`{mlpack}`](https://www.mlpack.org/)

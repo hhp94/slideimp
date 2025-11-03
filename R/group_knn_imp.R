@@ -35,8 +35,6 @@
 #'
 #' @inherit knn_imp note
 #'
-#' @seealso [SlideKnn()], [mean_impute_col()], [bigmemory::big.matrix()], [restore_dimnames()], [knn_imp()]
-#'
 #' @export
 #'
 #' @examples
@@ -69,23 +67,24 @@
 #' grouped_results <- group_knn_imp(obj, group = group_df, k = 5)
 #' grouped_results
 group_knn_imp <- function(
-    obj,
-    group,
-    k,
-    colmax = 0.9,
-    rowmax = 0.9,
-    method = c("euclidean", "manhattan"),
-    cores = 1,
-    post_imp = TRUE,
-    weighted = FALSE,
-    dist_pow = 1,
-    tree = NULL,
-    n_imp = 1,
-    n_pmm = -1,
-    seed = 42,
-    output = NULL,
-    overwrite = FALSE,
-    .progress = TRUE) {
+  obj,
+  group,
+  k,
+  colmax = 0.9,
+  rowmax = 0.9,
+  method = c("euclidean", "manhattan"),
+  cores = 1,
+  post_imp = TRUE,
+  weighted = FALSE,
+  dist_pow = 1,
+  tree = NULL,
+  n_imp = 1,
+  n_pmm = -1,
+  seed = 42,
+  output = NULL,
+  overwrite = FALSE,
+  .progress = TRUE
+) {
   # most pre-conditioning handled by knn_imp
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
   checkmate::assert_data_frame(group, min.rows = 1)

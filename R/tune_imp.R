@@ -4,7 +4,7 @@
 #' ensuring that the injection does not exceed specified missingness thresholds for rows and columns.
 #' It attempts to find a valid set of positions within a maximum number of iterations.
 #'
-#' @inheritParams SlideKnn
+#' @inheritParams slide_imp
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param num_na The number of missing values used to estimate prediction quality.
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
@@ -28,11 +28,12 @@
 #' @keywords internal
 #' @noRd
 inject_na <- function(
-    obj,
-    num_na = NULL,
-    rowmax = 0.9,
-    colmax = 0.9,
-    max_iter = 1000) {
+  obj,
+  num_na = NULL,
+  rowmax = 0.9,
+  colmax = 0.9,
+  max_iter = 1000
+) {
   # subset the matrix to the specified features and samples
   na_mat <- !is.na(obj)
   # check if existing NA pattern already exceeds thresholds
@@ -90,37 +91,37 @@ inject_na <- function(
   return(na_loc)
 }
 
-#' Tune Parameters for [SlideKnn()]/[knn_imp()]/Custom Imputation
+#' Tune Parameters for [slide_imp()]/[knn_imp()]/Custom Imputation
 #'
 #' @description
-#' This function tunes the parameters for the [SlideKnn()] or [knn_imp()] imputation methods by injecting
+#' This function tunes the parameters for the [slide_imp()] or [knn_imp()] imputation methods by injecting
 #' missing values (or list of pre-determined NA locations) into the dataset multiple times and evaluating the imputation performance for different
 #' parameter combinations. Can also tune custom imputation functions.
 #'
 #' @details
 #' This function allows tuning of hyperparameters for matrix imputation methods, including the built-in
-#' 'SlideKnn' and 'knn_imp', or a custom function provided to `.f`.
+#' 'slide_imp' and 'knn_imp', or a custom function provided to `.f`.
 #'
 #' For a custom function in `.f`, the `parameters` data.frame must have columns whose names match the
 #' argument names of `.f` (excluding `obj`). The custom function must take `obj` as its first input
 #' argument and output a numeric matrix of the same dimensions as `obj`. See examples.
 #'
-#' For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are required in `parameters`:
-#' - For 'SlideKnn': `n_feat`, `k`, and `n_overlap`
+#' For the built-in methods ('slide_imp' or 'knn_imp'), certain parameters are required in `parameters`:
+#' - For 'slide_imp': `n_feat`, `k`, and `n_overlap`
 #' - For 'knn_imp': `k`
 #'
 #' Default values are set for optional parameters if not provided (e.g., `method = "euclidean"`,
 #' `post_imp = FALSE`).
 #'
-#' @note The `n_imp` parameter is always internally set to 1 for tuning purposes for `SlideKnn` or `knn_imp`.
+#' @note The `n_imp` parameter is always internally set to 1 for tuning purposes for `slide_imp` or `knn_imp`.
 #'
-#' @inheritParams SlideKnn
+#' @inheritParams slide_imp
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #'   Tip: keep `obj` size small to manage memory overhead.
 #' @param parameters A data.frame specifying the parameter combinations to tune. Duplicated rows are
-#'   removed. The required columns depend on `.f`; see [knn_imp()] or [SlideKnn()] for details about
+#'   removed. The required columns depend on `.f`; see [knn_imp()] or [slide_imp()] for details about
 #'   the parameters. sSupport list columns.
-#' @param .f The imputation function to tune. Can be the string "knn_imp" (default), "SlideKnn", or
+#' @param .f The imputation function to tune. Can be the string "knn_imp" (default), "slide_imp", or
 #'   a custom function. See details.
 #' @param rep Either:
 #'   - A positive integer specifying the number of repetitions for randomly injecting missing values
@@ -140,7 +141,7 @@ inject_na <- function(
 #' - `rep`: The repetition number
 #' - `result`: A nested tibble with columns `truth` (original values) and `estimate` (imputed values)
 #'
-#' @seealso [knn_imp()], [SlideKnn()]
+#' @seealso [knn_imp()], [slide_imp()]
 #'
 #' @examples
 #' data(khanmiss1)
@@ -155,7 +156,7 @@ inject_na <- function(
 #' )
 #'
 #' set.seed(1234)
-#' # Tune SlideKnn function on a subset of khanmiss1
+#' # Tune slide_imp function on a subset of khanmiss1
 #' obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 #' anyNA(obj)
 #'
@@ -221,16 +222,17 @@ inject_na <- function(
 #'
 #' @export
 tune_imp <- function(
-    obj,
-    parameters,
-    .f = "knn_imp",
-    rep = 1,
-    num_na = 100,
-    max_iter = 1000,
-    .progress = FALSE,
-    rowmax = 0.9,
-    colmax = 0.9,
-    cores = 1) {
+  obj,
+  parameters,
+  .f = "knn_imp",
+  rep = 1,
+  num_na = 100,
+  max_iter = 1000,
+  .progress = FALSE,
+  rowmax = 0.9,
+  colmax = 0.9,
+  cores = 1
+) {
   fun <- NULL
   # Input validation
   checkmate::assert_matrix(
@@ -243,8 +245,8 @@ tune_imp <- function(
   )
   checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
   stopifnot(
-    "`.f` must be a function or 'SlideKnn' or 'knn_imp'." = (
-      is.function(.f) || (is.character(.f) && (.f %in% c("SlideKnn", "knn_imp")) && length(.f) == 1)
+    "`.f` must be a function or 'slide_imp' or 'knn_imp'." = (
+      is.function(.f) || (is.character(.f) && (.f %in% c("slide_imp", "knn_imp")) && length(.f) == 1)
     )
   )
   if (is.numeric(rep)) {
@@ -302,13 +304,13 @@ tune_imp <- function(
     # Add fixed parameters
     parameters$rowmax <- rowmax
     parameters$colmax <- colmax
-    if (.f == "SlideKnn") {
+    if (.f == "slide_imp") {
       # Validate required parameters
       required_params <- c("n_feat", "k", "n_overlap")
       missing_params <- setdiff(required_params, names(parameters))
       if (length(missing_params) > 0) {
         stop(sprintf(
-          "`SlideKnn` requires %s in parameters",
+          "`slide_imp` requires %s in parameters",
           paste(missing_params, collapse = ", ")
         ))
       }
@@ -323,7 +325,7 @@ tune_imp <- function(
       # Select only relevant columns for knn_imp
       parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
     }
-    # for `SlideKnn` and `knn_imp`, just use single thread because the overhead of
+    # for `slide_imp` and `knn_imp`, just use single thread because the overhead of
     # mirai is high. parallelize at knn_imp level has much lower overhead.
     parameters$cores <- cores
     cores <- 1
@@ -396,8 +398,8 @@ tune_imp <- function(
   # Create the crated function based on the type of imputation
   # Determine the target function and validation requirements
   if (is.character(.f)) {
-    if (.f == "SlideKnn") {
-      target_function <- SlideKnn
+    if (.f == "slide_imp") {
+      target_function <- slide_imp
       validate_output <- FALSE
     } else if (.f == "knn_imp") {
       target_function <- knn_imp
@@ -439,7 +441,7 @@ tune_imp <- function(
             # Extract imputed values directly from matrix
             estimate_vec <- imputed_result[na_positions]
           } else {
-            # For SlideKnn and knn_imp (returns a list, extract first element)
+            # For slide_imp and knn_imp (returns a list, extract first element)
             estimate_vec <- imputed_result[[1]][na_positions]
           }
           tibble::tibble(truth = truth_vec, estimate = estimate_vec)

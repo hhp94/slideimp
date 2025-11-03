@@ -38,13 +38,14 @@
 #' sim_data_complete <- sim_mat(n = 50, m = 10, perc_NA = 0, perc_col_NA = 0)
 #' sum(is.na(sim_data_complete$input))
 sim_mat <- function(
-    n = 100,
-    m = 100,
-    nchr = 2,
-    ngrp = 1,
-    perc_NA = 0.5,
-    perc_col_NA = 0.5,
-    beta = TRUE) {
+  n = 100,
+  m = 100,
+  nchr = 2,
+  ngrp = 1,
+  perc_NA = 0.5,
+  perc_col_NA = 0.5,
+  beta = TRUE
+) {
   checkmate::assert_int(n, lower = 2)
   checkmate::assert_int(m, lower = 2)
   checkmate::assert_int(nchr, lower = 1, upper = 25)

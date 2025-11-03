@@ -1,6 +1,6 @@
-test_that("tune_imp .f = `SlideKnn`, `knn_imp` or function works", {
+test_that("tune_imp .f = `slide_imp`, `knn_imp` or function works", {
   data(khanmiss1)
-  SlideKnn_par <- data.frame(
+  slide_imp_par <- data.frame(
     n_feat = c(100, 100),
     k = c(5, 10),
     n_overlap = c(10, 10),
@@ -8,19 +8,19 @@ test_that("tune_imp .f = `SlideKnn`, `knn_imp` or function works", {
     post_imp = FALSE
   )
   set.seed(1234)
-  # Tune `SlideKnn` function on a subset of khanmiss1
+  # Tune `slide_imp` function on a subset of khanmiss1
   obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
   expect_true(anyNA(obj))
 
-  # Check `SlideKnn`
+  # Check `slide_imp`
   expect_no_error({
-    SlideKnn_imp_res <- tune_imp(obj, SlideKnn_par, rep = 1, num_na = 200, .f = "SlideKnn")
+    slide_imp_imp_res <- tune_imp(obj, slide_imp_par, rep = 1, num_na = 200, .f = "slide_imp")
   })
 
   expect_true(
     all(
       vapply(
-        SlideKnn_imp_res$result,
+        slide_imp_imp_res$result,
         \(x) {
           class(x$estimate)
         },
@@ -90,8 +90,8 @@ test_that("tune_imp works when rep is a list of NA locations", {
     sample(1:length(obj), 10, replace = FALSE)
   )
 
-  # Test with SlideKnn
-  SlideKnn_par <- data.frame(
+  # Test with slide_imp
+  slide_imp_par <- data.frame(
     n_feat = 100,
     k = 5,
     n_overlap = 10,
@@ -100,25 +100,25 @@ test_that("tune_imp works when rep is a list of NA locations", {
   )
 
   expect_no_error({
-    SlideKnn_res <- tune_imp(
+    slide_imp_res <- tune_imp(
       obj,
-      SlideKnn_par,
+      slide_imp_par,
       rep = na_loc_list, # Using list instead of integer
-      .f = "SlideKnn"
+      .f = "slide_imp"
     )
   })
 
   # Check that we get 3 results (one for each NA location set)
-  expect_equal(nrow(SlideKnn_res), 3)
+  expect_equal(nrow(slide_imp_res), 3)
 
   # Check that each result has the correct number of estimates (10 each)
   expect_true(
-    all(vapply(SlideKnn_res$result, function(x) nrow(x) == 10, logical(1)))
+    all(vapply(slide_imp_res$result, function(x) nrow(x) == 10, logical(1)))
   )
 
   # Verify the truth values match the original matrix values at those locations
   for (i in 1:3) {
-    truth_values <- SlideKnn_res$result[[i]]$truth
+    truth_values <- slide_imp_res$result[[i]]$truth
     expected_truth <- obj[na_loc_list[[i]]]
     expect_equal(truth_values, expected_truth)
   }
@@ -185,9 +185,9 @@ test_that("tune_imp works when rep is a list of NA locations", {
   expect_no_error({
     varied_res <- tune_imp(
       obj,
-      SlideKnn_par,
+      slide_imp_par,
       rep = varied_na_locs,
-      .f = "SlideKnn"
+      .f = "slide_imp"
     )
   })
 

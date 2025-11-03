@@ -2,7 +2,7 @@
 % Please edit documentation in R/tune_imp.R
 \name{tune_imp}
 \alias{tune_imp}
-\title{Tune Parameters for \code{\link[=SlideKnn]{SlideKnn()}}/\code{\link[=knn_imp]{knn_imp()}}/Custom Imputation}
+\title{Tune Parameters for \code{\link[=slide_imp]{slide_imp()}}/\code{\link[=knn_imp]{knn_imp()}}/Custom Imputation}
 \usage{
 tune_imp(
   obj,
@@ -22,10 +22,10 @@ tune_imp(
 Tip: keep \code{obj} size small to manage memory overhead.}
 
 \item{parameters}{A data.frame specifying the parameter combinations to tune. Duplicated rows are
-removed. The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=SlideKnn]{SlideKnn()}} for details about
+removed. The required columns depend on \code{.f}; see \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=slide_imp]{slide_imp()}} for details about
 the parameters. sSupport list columns.}
 
-\item{.f}{The imputation function to tune. Can be the string "knn_imp" (default), "SlideKnn", or
+\item{.f}{The imputation function to tune. Can be the string "knn_imp" (default), "slide_imp", or
 a custom function. See details.}
 
 \item{rep}{Either:
@@ -66,21 +66,21 @@ A \code{tibble} containing:
 }
 }
 \description{
-This function tunes the parameters for the \code{\link[=SlideKnn]{SlideKnn()}} or \code{\link[=knn_imp]{knn_imp()}} imputation methods by injecting
+This function tunes the parameters for the \code{\link[=slide_imp]{slide_imp()}} or \code{\link[=knn_imp]{knn_imp()}} imputation methods by injecting
 missing values (or list of pre-determined NA locations) into the dataset multiple times and evaluating the imputation performance for different
 parameter combinations. Can also tune custom imputation functions.
 }
 \details{
 This function allows tuning of hyperparameters for matrix imputation methods, including the built-in
-'SlideKnn' and 'knn_imp', or a custom function provided to \code{.f}.
+'slide_imp' and 'knn_imp', or a custom function provided to \code{.f}.
 
 For a custom function in \code{.f}, the \code{parameters} data.frame must have columns whose names match the
 argument names of \code{.f} (excluding \code{obj}). The custom function must take \code{obj} as its first input
 argument and output a numeric matrix of the same dimensions as \code{obj}. See examples.
 
-For the built-in methods ('SlideKnn' or 'knn_imp'), certain parameters are required in \code{parameters}:
+For the built-in methods ('slide_imp' or 'knn_imp'), certain parameters are required in \code{parameters}:
 \itemize{
-\item For 'SlideKnn': \code{n_feat}, \code{k}, and \code{n_overlap}
+\item For 'slide_imp': \code{n_feat}, \code{k}, and \code{n_overlap}
 \item For 'knn_imp': \code{k}
 }
 
@@ -88,7 +88,7 @@ Default values are set for optional parameters if not provided (e.g., \code{meth
 \code{post_imp = FALSE}).
 }
 \note{
-The \code{n_imp} parameter is always internally set to 1 for tuning purposes for \code{SlideKnn} or \code{knn_imp}.
+The \code{n_imp} parameter is always internally set to 1 for tuning purposes for \code{slide_imp} or \code{knn_imp}.
 }
 \examples{
 data(khanmiss1)
@@ -103,7 +103,7 @@ parameters <- data.frame(
 )
 
 set.seed(1234)
-# Tune SlideKnn function on a subset of khanmiss1
+# Tune slide_imp function on a subset of khanmiss1
 obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 anyNA(obj)
 
@@ -169,5 +169,5 @@ tidyr::unnest(dplyr::select(results_custom, -result), cols = "metrics")
 \dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=SlideKnn]{SlideKnn()}}
+\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=slide_imp]{slide_imp()}}
 }
