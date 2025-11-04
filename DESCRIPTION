@@ -1,5 +1,5 @@
 Type: Package
-Package: SlideKnn
+Package: slideimp
 Title: K-NN and Sliding Window K-NN Imputation for Numeric Data
 Version: 0.5.2
 Authors@R: 
@@ -18,19 +18,18 @@ Description: K-nearest neighbors (K-NN) imputation algorithm for numeric
     described in Stef van Buuren (2018) <https://stefvanbuuren.name/fimd/>
     "Flexible Imputation of Missing Data".
 License: GPL (>= 2)
-URL: https://github.com/hhp94/SlideKnn
-BugReports: https://github.com/hhp94/SlideKnn/issues
+URL: https://github.com/hhp94/slideimp
+BugReports: https://github.com/hhp94/slideimp/issues
 Depends: 
     R (>= 4.1.0)
 Imports:
-    bigmemory,
     checkmate,
     fs,
     mirai,
     purrr,
     Rcpp,
-    tibble,
-    withr
+    FactoMineR,
+    tibble
 Suggests:
     dplyr,
     FactoMineR,
@@ -42,8 +41,6 @@ Suggests:
     tidyr,
     yardstick
 LinkingTo: 
-    BH,
-    bigmemory,
     mlpack,
     Rcpp,
     RcppArmadillo,

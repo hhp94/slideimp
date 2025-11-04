@@ -265,8 +265,7 @@ std::vector<NeighborInfo> distance_vector(
 //' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 //' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
-//' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
+//' @return A matrix where the first column is the 1-based row index.
 //'
 //' @keywords internal
 //' @noRd

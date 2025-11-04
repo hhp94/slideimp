@@ -1,5 +1,5 @@
 ## usethis namespace: start
 #' @importFrom Rcpp sourceCpp
-#' @useDynLib SlideKnn, .registration = TRUE
+#' @useDynLib slideimp, .registration = TRUE
 ## usethis namespace: end
 NULL

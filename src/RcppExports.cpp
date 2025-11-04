@@ -12,63 +12,9 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// bigmem_impute_colmeans
-void bigmem_impute_colmeans(SEXP pBigMat, const std::vector<size_t>& col_indices, int cores);
-RcppExport SEXP _SlideKnn_bigmem_impute_colmeans(SEXP pBigMatSEXP, SEXP col_indicesSEXP, SEXP coresSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type pBigMat(pBigMatSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type col_indices(col_indicesSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    bigmem_impute_colmeans(pBigMat, col_indices, cores);
-    return R_NilValue;
-END_RCPP
-}
-// bigmem_add_windows
-void bigmem_add_windows(SEXP pBigMat_l, const SEXP pBigMat_r, const std::vector<size_t>& start_l, const std::vector<size_t>& end_l, const std::vector<size_t>& start_r, const std::vector<size_t>& end_r);
-RcppExport SEXP _SlideKnn_bigmem_add_windows(SEXP pBigMat_lSEXP, SEXP pBigMat_rSEXP, SEXP start_lSEXP, SEXP end_lSEXP, SEXP start_rSEXP, SEXP end_rSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type pBigMat_l(pBigMat_lSEXP);
-    Rcpp::traits::input_parameter< const SEXP >::type pBigMat_r(pBigMat_rSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type start_l(start_lSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type end_l(end_lSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type start_r(start_rSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type end_r(end_rSEXP);
-    bigmem_add_windows(pBigMat_l, pBigMat_r, start_l, end_l, start_r, end_r);
-    return R_NilValue;
-END_RCPP
-}
-// bigmem_avg
-void bigmem_avg(SEXP pBigMat, const std::vector<size_t>& start, const std::vector<size_t>& end, std::vector<int>& counts_vec, int cores);
-RcppExport SEXP _SlideKnn_bigmem_avg(SEXP pBigMatSEXP, SEXP startSEXP, SEXP endSEXP, SEXP counts_vecSEXP, SEXP coresSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type pBigMat(pBigMatSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type start(startSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type end(endSEXP);
-    Rcpp::traits::input_parameter< std::vector<int>& >::type counts_vec(counts_vecSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    bigmem_avg(pBigMat, start, end, counts_vec, cores);
-    return R_NilValue;
-END_RCPP
-}
-// bigmem_copy
-void bigmem_copy(SEXP pBigMat_l, const SEXP pBigMat_r, const std::vector<size_t>& col_idx_r, int cores);
-RcppExport SEXP _SlideKnn_bigmem_copy(SEXP pBigMat_lSEXP, SEXP pBigMat_rSEXP, SEXP col_idx_rSEXP, SEXP coresSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< SEXP >::type pBigMat_l(pBigMat_lSEXP);
-    Rcpp::traits::input_parameter< const SEXP >::type pBigMat_r(pBigMat_rSEXP);
-    Rcpp::traits::input_parameter< const std::vector<size_t>& >::type col_idx_r(col_idx_rSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    bigmem_copy(pBigMat_l, pBigMat_r, col_idx_r, cores);
-    return R_NilValue;
-END_RCPP
-}
 // impute_knn_brute
 arma::mat impute_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const double dist_pow, int cores);
-RcppExport SEXP _SlideKnn_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
+RcppExport SEXP _slideimp_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -85,7 +31,7 @@ END_RCPP
 }
 // find_knn_brute
 Rcpp::List find_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const Rcpp::CharacterVector& n_col_name, const int method, int cores);
-RcppExport SEXP _SlideKnn_find_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP n_col_nameSEXP, SEXP methodSEXP, SEXP coresSEXP) {
+RcppExport SEXP _slideimp_find_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP n_col_nameSEXP, SEXP methodSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -102,7 +48,7 @@ END_RCPP
 }
 // impute_knn_mlpack
 arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const std::string tree, const double dist_pow, const int cores);
-RcppExport SEXP _SlideKnn_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
+RcppExport SEXP _slideimp_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -120,7 +66,7 @@ END_RCPP
 }
 // weighted_row_means
 arma::vec weighted_row_means(const arma::mat& obj, const arma::umat& miss, const arma::uvec& nn_columns, const arma::vec& nn_weights);
-RcppExport SEXP _SlideKnn_weighted_row_means(SEXP objSEXP, SEXP missSEXP, SEXP nn_columnsSEXP, SEXP nn_weightsSEXP) {
+RcppExport SEXP _slideimp_weighted_row_means(SEXP objSEXP, SEXP missSEXP, SEXP nn_columnsSEXP, SEXP nn_weightsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -134,7 +80,7 @@ END_RCPP
 }
 // colMMs
 arma::rowvec colMMs(const arma::mat& mat, const int min);
-RcppExport SEXP _SlideKnn_colMMs(SEXP matSEXP, SEXP minSEXP) {
+RcppExport SEXP _slideimp_colMMs(SEXP matSEXP, SEXP minSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -146,19 +92,15 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_SlideKnn_bigmem_impute_colmeans", (DL_FUNC) &_SlideKnn_bigmem_impute_colmeans, 3},
-    {"_SlideKnn_bigmem_add_windows", (DL_FUNC) &_SlideKnn_bigmem_add_windows, 6},
-    {"_SlideKnn_bigmem_avg", (DL_FUNC) &_SlideKnn_bigmem_avg, 5},
-    {"_SlideKnn_bigmem_copy", (DL_FUNC) &_SlideKnn_bigmem_copy, 4},
-    {"_SlideKnn_impute_knn_brute", (DL_FUNC) &_SlideKnn_impute_knn_brute, 7},
-    {"_SlideKnn_find_knn_brute", (DL_FUNC) &_SlideKnn_find_knn_brute, 7},
-    {"_SlideKnn_impute_knn_mlpack", (DL_FUNC) &_SlideKnn_impute_knn_mlpack, 8},
-    {"_SlideKnn_weighted_row_means", (DL_FUNC) &_SlideKnn_weighted_row_means, 4},
-    {"_SlideKnn_colMMs", (DL_FUNC) &_SlideKnn_colMMs, 2},
+    {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 7},
+    {"_slideimp_find_knn_brute", (DL_FUNC) &_slideimp_find_knn_brute, 7},
+    {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
+    {"_slideimp_weighted_row_means", (DL_FUNC) &_slideimp_weighted_row_means, 4},
+    {"_slideimp_colMMs", (DL_FUNC) &_slideimp_colMMs, 2},
     {NULL, NULL, 0}
 };
 
-RcppExport void R_init_SlideKnn(DllInfo *dll) {
+RcppExport void R_init_slideimp(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }

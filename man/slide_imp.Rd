@@ -7,90 +7,67 @@
 slide_imp(
   obj,
   n_feat,
-  subset = NULL,
   n_overlap = 10,
-  rowmax = 0.9,
-  colmax = 0.9,
-  cores = 1,
-  method = c("euclidean", "manhattan"),
-  post_imp = TRUE,
+  imp_method = c("knn", "pca"),
   k = 10,
-  dist_pow = 1,
-  .progress = FALSE
+  colmax = 0.9,
+  knn_method = c("euclidean", "manhattan"),
+  cores = 1,
+  post_imp = TRUE,
+  dist_pow = 0,
+  subset = NULL,
+  ncp = 2,
+  pca_method = c("regularized", "em"),
+  coeff.ridge = 1,
+  scale = TRUE,
+  seed = NULL,
+  nb.init = 1,
+  maxiter = 1000,
+  miniter = 5,
+  .progress = FALSE,
+  ...
 )
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.
-Features should be meaningfully ordered (e.g., by genomic position or time).
-Accepts: numeric matrix, \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}, or path to big.matrix
-description file.}
+Features should be meaningfully ordered (e.g., by genomic position or time).}
 
 \item{n_feat}{Integer. Number of features (columns) per sliding window.
 Must be between 2 and \code{ncol(obj)}.}
 
-\item{subset}{Character vector of column names or integer vector of column
-indices specifying which columns to impute. If \code{NULL} (default), all columns
-are processed. Required when \code{n_imp} > 1 and \code{n_pmm} >= 0.}
-
 \item{n_overlap}{Integer. Number of overlapping features between consecutive
 windows. Must be between 0 and \code{n_feat - 1}. Default: 10.}
-
-\item{rowmax}{Numeric. Maximum allowable proportion of missing values per row
-(0-1). Function stops with error if exceeded. Default: 0.9.}
-
-\item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
-Columns exceeding this threshold are imputed using column means instead of
-k-NN when \code{post_imp = TRUE}. Default: 0.9.}
-
-\item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
-
-\item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
-Default: \code{"euclidean"}.}
-
-\item{post_imp}{Logical. Whether to impute remaining missing values with
-column means after k-NN imputation. Default: \code{TRUE}.}
 
 \item{k}{Integer. Number of nearest neighbors for imputation. Must be between
 1 and \code{n_feat - 1}. Default: 10.}
 
+\item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
+Columns exceeding this threshold are imputed using column means when
+\code{post_imp = TRUE}. Default: 0.9.}
+
+\item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
+
+\item{post_imp}{Logical. Whether to impute remaining missing values with
+column means. Default: \code{TRUE}.}
+
 \item{dist_pow}{Numeric. Positive value controlling distance penalty in weighted
-imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
-Only used when \code{weighted = TRUE}. Default: 1.}
+imputation. Default: 0 (un-weighted).}
+
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute. If \code{NULL} (default), all columns
+are processed.}
 
 \item{.progress}{Logical. Whether to display progress messages during imputation.
 Default: \code{FALSE}.}
 
-\item{tree}{Character. k-NN search method: \code{NULL} (brute-force), \code{"kd"} (KDTree),
-or \code{"ball"} (BallTree). Tree methods use mlpack implementation but may be
-biased with high missing value percentages. Default: \code{NULL}.}
+\item{rowmax}{Numeric. Maximum allowable proportion of missing values per row
+(0-1). Function stops with error if exceeded. Default: 0.9.}
 
-\item{weighted}{Logical. Whether to use distance-weighted mean for imputation.
-If \code{FALSE}, uses simple mean of k nearest neighbors. Default: \code{FALSE}.}
-
-\item{n_imp}{Integer. Number of multiple imputations to perform. Automatically
-set to 1 if \code{n_pmm = -1}. Default: 1.}
-
-\item{n_pmm}{Integer. Multiple imputation method control:
-\itemize{
-\item \code{-1}: Deterministic single imputation (default)
-\item \verb{> 0}: Predictive Mean Matching using \code{n_pmm} closest donors
-(recommended for MI. \code{8} is a good starting point.).
-\item \code{0}: Bootstrap resampling from k-nearest neighbors
-}}
-
-\item{seed}{Integer. Random seed for multiple imputation. Default: 42.}
-
-\item{output}{Character. File path stem for saving file-backed big.matrix results
-(format: \code{"path/stem"}). If \code{NULL}, results are stored in memory. Recommended
-for large data and multiple imputations.}
-
-\item{overwrite}{Logical. Whether to overwrite existing files at \code{output} path.
-Default: \code{FALSE}. See Notes for Windows.}
+\item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
+Default: \code{"euclidean"}.}
 }
 \value{
-A list of \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} objects with length \code{n_imp}. Each
-matrix has \code{nrow(obj)} rows and \code{length(subset)} columns with missing values
-imputed.
+A matrix with \code{dim(obj)} with missing values imputed.
 }
 \description{
 Performs k-nearest neighbor imputation on large numeric matrices using a sliding
@@ -107,20 +84,6 @@ This approach assumes that features (columns) are ordered meaningfully (e.g.,
 by genomic position, time series, etc.).
 
 For the underlying k-NN implementation details, see \code{\link[=knn_imp]{knn_imp()}}.
-}
-\note{
-\strong{File locks On Windows}: file-backed big.matrix objects hold file locks.
-If you need to overwrite existing files, ensure previous results that points
-to the same files are removed with \code{\link[=rm]{rm()}} and \code{\link[=gc]{gc()}} first.
-
-\strong{Multiple Imputation}: Setting \code{n_imp} > 1 requires \code{n_pmm} >= 0 and should
-be used with the \code{subset} parameter and \code{output} for file-backed storage to
-manage memory efficiently.
-
-\strong{Big Matrix Compatibility}: When using \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}} objects,
-dimnames may not be preserved in the output due to bigmemory package defaults.
-To retain dimnames, set \code{options(bigmemory.allow.dimnames = TRUE)} and manually
-reassign dimnames to the output using the original object's dimnames.
 }
 \examples{
 # Generate sample data with missing values with 20 samples and 100 columns
@@ -141,64 +104,5 @@ imputed_basic <- slide_imp(
   n_overlap = 10
 )
 imputed_basic
-
-# Access the result like a list
-imputed_basic[[1]][1:5, 1:5]
-
-# ========================================
-# Big Matrix Usage (Memory Efficient)
-# ========================================
-
-# Convert to big.matrix for better memory management
-big_data <- bigmemory::as.big.matrix(beta_matrix, type = "double")
-
-# output is NULL, the backend is still in-memory
-imputed_big_in_memory <- slide_imp(
-  big_data,
-  k = 5,
-  n_feat = 50,
-  output = NULL
-)
-
-# output is now set to a location to save. The backend is now file-backed matrix
-# to handle large data
-imputed_big <- slide_imp(
-  big_data,
-  k = 5,
-  n_feat = 50,
-  output = withr::local_tempfile()
-)
-
-# Results may lose dimnames because bigmemory.allow.dimnames can't be set to TRUE.
-# We can restore this with `restore_dimnames()`.
-if (interactive()) {
-  on.exit(options(bigmemory.allow.dimnames = getOption("bigmemory.allow.dimnames")), add = TRUE)
-  options(bigmemory.allow.dimnames = TRUE)
-  rownames(imputed_big[[1]]) <- NULL
-  colnames(imputed_big[[1]]) <- NULL
-  # We strip the dimnames manually as an example
-  print(imputed_big)
-  # Restore dimnames
-  restore_dimnames(imputed_big)
-  print(imputed_big)
-}
-
-# ========================================
-# Multiple Imputation
-# ========================================
-
-# Predictive Mean Matching (PMM)
-imputed_pmm <- slide_imp(
-  beta_matrix,
-  k = 8,
-  n_feat = 60,
-  n_imp = 3, # 3 imputations
-  n_pmm = 5, # 5 donors for PMM. n_pmm = 0 enables neighbor bootstrapping.
-  subset = c("feat1", "feat2"),
-  output = withr::local_tempfile(),
-  .progress = TRUE
-)
-
-imputed_pmm
 
 }

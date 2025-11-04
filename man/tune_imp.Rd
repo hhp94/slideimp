@@ -51,8 +51,8 @@ Default: \code{FALSE}.}
 (0-1). Function stops with error if exceeded. Default: 0.9.}
 
 \item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
-Columns exceeding this threshold are imputed using column means instead of
-k-NN when \code{post_imp = TRUE}. Default: 0.9.}
+Columns exceeding this threshold are imputed using column means when
+\code{post_imp = TRUE}. Default: 0.9.}
 
 \item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
 }

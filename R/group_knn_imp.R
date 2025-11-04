@@ -24,16 +24,7 @@
 #' defined as the union of the features and aux columns of that group. Columns that are in aux or in the object
 #' but not in any features will be left unchanged.
 #'
-#' @returns A list of length `n_imp` containing numeric matrices or [bigmemory::big.matrix()]
-#' objects (if `output` is specified) where only imputed features are returned. Missing values
-#' are imputed using k-NN for columns with missingness below `colmax`, and mean
-#' imputation for remaining missing values if `post_imp = TRUE`. Only the features
-#' specified in the groups are imputed; other columns remain unchanged.
-#'
-#' Each list element represents an independent imputation. The only element of the
-#' list when `n_pmm == -1` is a single imputed matrix.
-#'
-#' @inherit knn_imp note
+#' @inherit knn_imp note return
 #'
 #' @export
 #'

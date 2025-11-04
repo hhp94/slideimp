@@ -12,9 +12,8 @@ knn_imp(
   cores = 1,
   post_imp = TRUE,
   subset = NULL,
-  dist_pow = 1,
-  tree = NULL,
-  ...
+  dist_pow = 0,
+  tree = NULL
 )
 }
 \arguments{
@@ -23,8 +22,8 @@ knn_imp(
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
 \item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
-Columns exceeding this threshold are imputed using column means instead of
-k-NN when \code{post_imp = TRUE}. Default: 0.9.}
+Columns exceeding this threshold are imputed using column means when
+\code{post_imp = TRUE}. Default: 0.9.}
 
 \item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
 Default: \code{"euclidean"}.}
@@ -32,26 +31,16 @@ Default: \code{"euclidean"}.}
 \item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
 
 \item{post_imp}{Logical. Whether to impute remaining missing values with
-column means after k-NN imputation. Default: \code{TRUE}.}
+column means. Default: \code{TRUE}.}
 
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
 
 \item{dist_pow}{Numeric. Positive value controlling distance penalty in weighted
-imputation. Values < 1 apply softer penalty, 1 is linear, > 1 is harsher.
-Only used when \code{weighted = TRUE}. Default: 1.}
-
-\item{tree}{Character. k-NN search method: \code{NULL} (brute-force), \code{"kd"} (KDTree),
-or \code{"ball"} (BallTree). Tree methods use mlpack implementation but may be
-biased with high missing value percentages. Default: \code{NULL}.}
-
-\item{...}{Currently not implemented.}
+imputation. Default: 0 (un-weighted).}
 }
 \value{
-A list of length \code{n_imp} containing numeric matrices or \code{\link[bigmemory:big.matrix]{bigmemory::big.matrix()}}
-objects (if \code{output} is specified) with the same dimensions as \code{obj}. Missing values
-are imputed using k-NN for columns with missingness below \code{colmax}, and mean
-imputation for remaining missing values if \code{post_imp = TRUE}.
+A matrix with \code{dim(obj)} with missing values imputed.
 }
 \description{
 Imputes missing values in numeric matrices using the k-nearest neighbors algorithm

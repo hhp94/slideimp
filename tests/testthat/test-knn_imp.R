@@ -194,3 +194,15 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   )
   expect_equal(r3, r4)
 })
+
+test_that("Behavior with extreme missing columns and rows", {
+  set.seed(1234)
+  to_test <- t(sim_mat(m = 20, n = 20, perc_NA = 0.2, perc_col_NA = 1)$input)
+  # row 1 is all NA
+  to_test[1, ] <- NA
+  expect_no_error(knn_imp(to_test, k = 3, post_imp = FALSE))
+  expect_true(!anyNA(knn_imp(to_test, k = 3, post_imp = TRUE)))
+
+  to_test[, 1] <- NA
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE))
+})

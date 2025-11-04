@@ -13,24 +13,17 @@
 //'
 //' k-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
 //'
-//' When `n_imp > 1`, bootstrapping is enabled: for each missing value, `n_imp` imputed values are generated
-//' by resampling the k nearest neighbors with replacement and using simple averages (weighted is forced to FALSE).
-//' This provides variability estimates for imputation uncertainty.
-//'
 //' @param obj Numeric matrix with missing values represented as NA (NaN).
 //' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 //' @param k Number of nearest neighbors to use for imputation.
 //' @param n_col_miss Integer vector specifying the count of missing values per column.
 //' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
 //' @param tree Which type of tree? "kd" or "ball".
-//' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
-//'   Note: Forced to FALSE when `n_imp > 1`.
 //' @param dist_pow A positive double that controls the penalty for larger distances in
 //' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 //' 1 is linear (default), and values greater than 1 apply a harsher penalty.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
-//' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
+//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index.
 //'
 //' @keywords internal
 //' @noRd

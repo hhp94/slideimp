@@ -27,12 +27,8 @@
 #' @param k Number of nearest neighbors for imputation. 10 is a good starting point.
 #' @param subset Character vector of column names or integer vector of column
 #'   indices specifying which columns to impute.
-#' @param ... Currently not implemented.
 #'
-#' @returns A list of length `n_imp` containing numeric matrices or [bigmemory::big.matrix()]
-#' objects (if `output` is specified) with the same dimensions as `obj`. Missing values
-#' are imputed using k-NN for columns with missingness below `colmax`, and mean
-#' imputation for remaining missing values if `post_imp = TRUE`.
+#' @return A matrix with `dim(obj)` with missing values imputed.
 #'
 #' @references
 #' Robert Tibshirani, Trevor Hastie, Balasubramanian Narasimhan, and Gilbert Chu (2002).
@@ -58,8 +54,7 @@ knn_imp <- function(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  tree = NULL,
-  ...
+  tree = NULL
 ) {
   # Pre-conditioning
   method <- match.arg(method)
@@ -90,9 +85,6 @@ knn_imp <- function(
   } else {
     subset
   }
-  # dimnames handling
-  rn <- rownames(obj)
-  cn <- colnames(obj)
   # Early return for empty subset or no missing data
   if (!anyNA(obj[, subset, drop = FALSE])) {
     return(obj)
@@ -115,9 +107,6 @@ knn_imp <- function(
   # Set all values outside of subset to be zero cmiss. This will make
   # `impute_knn_brute`/`impute_knn_mlpack` skip these columns
   pre_imp_cmiss[pos_complement] <- 0L
-  if (any(rowSums(pre_imp_miss) / ncol(pre_imp_cols) == 1)) {
-    stop("Row(s) missing exceeded rowmax. Remove row(s) with too high NA %")
-  }
   # Impute
   if (is.null(tree)) {
     imputed_values <- impute_knn_brute(

@@ -1,6 +1,6 @@
 pca_imp_internal <- function(
   X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
-  row.w, coeff.ridge, nrX, ncX
+  miniter, row.w, coeff.ridge, nrX, ncX
 ) {
   nb.iter <- 1
   old <- Inf
@@ -80,10 +80,10 @@ pca_imp_internal <- function(
     old <- objective
     nb.iter <- nb.iter + 1
     if (!is.nan(criterion)) {
-      if ((criterion < threshold) && (nb.iter > 5)) {
+      if ((criterion < threshold) && (nb.iter > miniter)) {
         nb.iter <- 0
       }
-      if ((objective < threshold) && (nb.iter > 5)) {
+      if ((objective < threshold) && (nb.iter > miniter)) {
         nb.iter <- 0
       }
     }
@@ -116,11 +116,11 @@ pca_imp_internal <- function(
   return(result)
 }
 
-pca_imp <- function(X, ncp = 2, scale = TRUE,
-                    method = c("Regularized", "EM"), row.w = NULL,
-                    ind.sup = NULL, quanti.sup = NULL,
-                    coeff.ridge = 1, threshold = 1e-6, seed = NULL,
-                    nb.init = 1, maxiter = 1000, ...) {
+pca_imp <- function(
+  X, ncp = 2, scale = TRUE, method = c("Regularized", "EM"), row.w = NULL,
+  ind.sup = NULL, quanti.sup = NULL, coeff.ridge = 1, threshold = 1e-6, seed = NULL,
+  nb.init = 1, maxiter = 1000, miniter = 5
+) {
   #### Main program
   if (!anyNA(X)) {
     return(X)
@@ -147,11 +147,11 @@ pca_imp <- function(X, ncp = 2, scale = TRUE,
     row.w[ind.sup] <- row.w[ind.sup] * 1e-08
   }
 
-  if (is.data.frame(X)) {
-    X <- as.matrix(X)
-  }
-
   miss <- is.na(X)
+  cmiss <- colSums(miss)
+  if (any(cmiss / nrow(obj) == 1)) {
+    stop("Col(s) with all missing detected. Remove before proceed")
+  }
   for (i in seq_len(nb.init)) {
     res.impute <- pca_imp_internal(
       X,
@@ -162,7 +162,7 @@ pca_imp <- function(X, ncp = 2, scale = TRUE,
       } else {
         NULL
       },
-      init = i, maxiter = maxiter, row.w = row.w,
+      init = i, maxiter = maxiter, miniter = miniter, row.w = row.w,
       coeff.ridge = coeff.ridge, nrX = nrX, ncX = ncX
     )
 
