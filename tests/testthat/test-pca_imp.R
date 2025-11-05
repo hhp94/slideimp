@@ -5,12 +5,13 @@ test_that("same results as imputePCA", {
   r1 <- missMDA::imputePCA(to_test, quanti.sup = c(1, 2, 3), ncp = 2, nb.init = 10, seed = 1234)
   set.seed(1234)
   r2 <- pca_imp(to_test, quanti.sup = c(1, 2, 3), ncp = 2, nb.init = 10, seed = 1234)
-  expect_equal(r1, r2)
+  expect_equal(r1$completeObs, r2)
   # print(
   #   bench::mark(
   #     missMDA::imputePCA(to_test, ncp = 2, nb.init = 10, seed = 1234),
   #     pca_imp(to_test, ncp = 2, nb.init = 10, seed = 1234),
   #     memory = FALSE,
+  #     check = F,
   #     min_iterations = 10
   #   )
   # )

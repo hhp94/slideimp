@@ -2,7 +2,7 @@
 % Please edit documentation in R/knn_imp.R
 \name{knn_imp}
 \alias{knn_imp}
-\title{K-Nearest Neighbor Imputation for Missing Values}
+\title{K-Nearest Neighbor Imputation for Numeric Matrices}
 \usage{
 knn_imp(
   obj,
@@ -21,39 +21,35 @@ knn_imp(
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
-\item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
-Columns exceeding this threshold are imputed using column means when
-\code{post_imp = TRUE}. Default: 0.9.}
+\item{colmax}{A number from 0 to 1. Threshold of missing data above which k-NN imputation is skipped.}
 
-\item{method}{Character. Distance metric for k-NN: \code{"euclidean"} or \code{"manhattan"}.
-Default: \code{"euclidean"}.}
+\item{method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
 
-\item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
+\item{cores}{Number of cores to parallelize over.}
 
-\item{post_imp}{Logical. Whether to impute remaining missing values with
-column means. Default: \code{TRUE}.}
+\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed k-NN imputation) using column means.}
 
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
 
-\item{dist_pow}{Numeric. Positive value controlling distance penalty in weighted
-imputation. Default: 0 (un-weighted).}
+\item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
+If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
+
+\item{tree}{Either \code{NULL} (default, brute-force k-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.}
 }
 \value{
-A matrix with \code{dim(obj)} with missing values imputed.
+A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-Imputes missing values in numeric matrices using the k-nearest neighbors algorithm
+Imputes missing values in numeric matrices using the k-nearest neighbor algorithm
 with a two-stage approach: k-NN imputation for columns with missingness below a
 threshold, followed by optional mean imputation for remaining missing values.
 }
 \details{
-This function performs \strong{column-wise} nearest neighbor calculations.
+This function performs \strong{column-wise} nearest neighbor imputation.
 
-When \code{weighted = TRUE}, imputed values are computed as distance-weighted averages
-where weights are inverse distances raised to the power of \code{dist_pow}. This gives
-closer neighbors greater influence in the imputation process, which can increase
-predictive performance.
+When \code{dist_pow > 0}, imputed values are computed as distance-weighted averages
+where weights are inverse distances raised to the power of \code{dist_pow}.
 
 The \code{tree} parameter enables faster neighbor search using spatial data structures
 but requires pre-filling missing values with column means, which may introduce bias

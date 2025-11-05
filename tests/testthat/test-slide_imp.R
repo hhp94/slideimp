@@ -340,7 +340,7 @@ test_that("`slide_imp` pca mode works", {
       X = to_test[, 1:100],
       ncp = 2,
       miniter = 2
-    )$completeObs
+    )
   counts[, 1:100] <- counts[, 1:100] + 1
   # 91 to 190 is the second window;
   final_imputed[, 91:190] <- final_imputed[, 91:190] +
@@ -348,7 +348,7 @@ test_that("`slide_imp` pca mode works", {
       X = to_test[, 91:190],
       ncp = 2,
       miniter = 2
-    )$completeObs
+    )
   counts[, 91:190] <- counts[, 91:190] + 1
   # 181 to 280 is the last window
   final_imputed[, 181:280] <- final_imputed[, 181:280] +
@@ -356,7 +356,7 @@ test_that("`slide_imp` pca mode works", {
       X = to_test[, 181:280],
       ncp = 2,
       miniter = 2
-    )$completeObs
+    )
   counts[, 181:280] <- counts[, 181:280] + 1
   final_imputed <- final_imputed / counts
   # slide_imp should exactly replicate this result
@@ -364,7 +364,6 @@ test_that("`slide_imp` pca mode works", {
     to_test,
     n_feat = 100,
     n_overlap = 10,
-    imp_method = "pca",
     ncp = 2,
     miniter = 2
   )

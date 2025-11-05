@@ -43,18 +43,6 @@ Must be a positive integer when \code{rep} is an integer. This parameter is igno
 Default is 100.}
 
 \item{max_iter}{Maximum number of iterations to attempt finding valid NA positions. Default is 1000.}
-
-\item{.progress}{Logical. Whether to display progress messages during imputation.
-Default: \code{FALSE}.}
-
-\item{rowmax}{Numeric. Maximum allowable proportion of missing values per row
-(0-1). Function stops with error if exceeded. Default: 0.9.}
-
-\item{colmax}{Numeric. Threshold proportion of missing values per column (0-1).
-Columns exceeding this threshold are imputed using column means when
-\code{post_imp = TRUE}. Default: 0.9.}
-
-\item{cores}{Integer. Number of CPU cores for parallel distance computation. Default: 1.}
 }
 \value{
 A \code{tibble} containing:

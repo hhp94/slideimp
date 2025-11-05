@@ -99,7 +99,11 @@ weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
     .Call(`_slideimp_weighted_row_means`, obj, miss, nn_columns, nn_weights)
 }
 
-colMMs <- function(mat, min = 0L) {
-    .Call(`_slideimp_colMMs`, mat, min)
+col_min_max <- function(mat, min = 0L) {
+    .Call(`_slideimp_col_min_max`, mat, min)
+}
+
+col_vars <- function(mat) {
+    .Call(`_slideimp_col_vars`, mat)
 }
 

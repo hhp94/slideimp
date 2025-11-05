@@ -13,7 +13,7 @@ imputation of missing values in high-dimensional numeric matrices, such
 as those from intensively sampled longitudinal data or epigenetics.
 `knn_imp()` implements a full k-NN imputation. `slide_imp()` implements a
 sliding window k-NN imputation for data where features are ordered
-(e.g., by time or distance). `group_knn_imp()` implements a group-wise
+(e.g., by time or distance). `group_imp()` implements a group-wise
 imputation for data that can be broken into meaningful groups, like
 chromosomes or results of column clustering algorithms.
 
@@ -209,7 +209,7 @@ sum(is.na(imputed_mean))
 #> [1] 0
 ```
 
-## Grouped imputation with `group_knn_imp()`
+## Grouped imputation with `group_imp()`
 
 Features can be grouped by chromosomes (in epigenetics) or by cluster
 memberships identified through column clustering algorithms, such as
@@ -248,7 +248,7 @@ group_df
 
 # Run grouped imputation. t() to put features on the columns
 obj <- t(to_test$input)
-grouped_results <- group_knn_imp(obj, group = group_df, k = 5)
+grouped_results <- group_imp(obj, group = group_df, k = 5)
 #> Running with group-wise parameters
 #> Imputing group 1/2
 #> Imputing group 2/2
@@ -467,7 +467,7 @@ head(
 ```
 
 For more details, see the function documentation (e.g., `?slide_imp`,
-`?group_knn_imp`, `?knn_imp`, `?tune_imp`).
+`?group_imp`, `?knn_imp`, `?tune_imp`).
 
 # Developer notes for [`{mlpack}`](https://www.mlpack.org/)
 

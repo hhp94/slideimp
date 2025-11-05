@@ -1,3 +1,19 @@
+fast.svd.triplet <- function (X, row.w = NULL, col.w = NULL)
+{
+  svd.usuelle <- corpcor::fast.svd(X)
+  U <- svd.usuelle$u[, 1:ncp, drop = FALSE]
+  V <- svd.usuelle$v[, 1:ncp, drop = FALSE]
+  if (ncp > 1) {
+    mult <- sign(as.vector(crossprod(rep(1, nrow(V)), as.matrix(V))))
+    mult[mult == 0] <- 1
+    U <- t(t(U) * mult)
+    V <- t(t(V) * mult)
+  }
+  vs <- svd.usuelle$d[1:min(ncol(X), nrow(X) - 1)]
+  res <- list(vs = vs, U = U, V = V)
+  return(res)
+}
+
 pca_imp_internal <- function(
   X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
   miniter, row.w, coeff.ridge, nrX, ncX
@@ -59,7 +75,7 @@ pca_imp_internal <- function(
       Xhat[, quanti.sup] <- Xhat[, quanti.sup] * 1e-08
     }
 
-    svd.res <- FactoMineR::svd.triplet(Xhat, row.w = row.w, ncp = ncp)
+    svd.res <- fast.svd.triplet(Xhat, row.w = row.w, ncp = ncp)
     sigma2 <- nrX * ncX / min(ncX, nrX - 1) *
       sum((svd.res$vs[-c(seq_len(ncp))]^2) /
         ((nrX - 1) * ncX - (nrX - 1) * ncp - ncX * ncp + ncp^2))
@@ -116,6 +132,43 @@ pca_imp_internal <- function(
   return(result)
 }
 
+#' Impute dataset with PCA
+#'
+#' (From the missMDA package on CRAN) Impute the missing values of a dataset with the Principal Components Analysis model. Can be used as a preliminary step before performing a PCA on an completed dataset.
+#'
+#' @details
+#' Impute the missing entries of a mixed data using the iterative PCA algorithm (method="EM") or the regularised iterative PCA algorithm (method="Regularized"). The (regularized) iterative PCA algorithm first consists imputing missing values with initial values such as the mean of the variable. If the argument seed is set to a specific value, a random initialization is performed: the initial values are drawn from a gaussian distribution
+#' with mean and standard deviation calculated from the observed values. nb.init different random initialization can be drawn. In such a situation, the solution giving the smallest objective function (the mean square error between the fitted matrix and the observed one) is kept. The second step of the (regularized) iterative PCA algorithm is to perform PCA on the completed dataset. Then, it imputes the missing values with the (regularized) reconstruction formulae of order ncp (the fitted matrix computed with ncp components for the (regularized) scores and loadings). These steps of estimation of the parameters via PCA and imputation of the missing values using the (regularized) fitted matrix are iterate until convergence. The iterative PCA algorithm is also known as the EM-PCA algorithm since it corresponds to an EM algorithm of the fixed effect model where the data are generated as a fixed structure (with a low rank representation) corrupted by noise. The number of components used in the algorithm can be found using cross-validation criteria implemented in the function estim_ncpPCA.\cr
+#' We advice to use the regularized version of the algorithm to avoid the overfitting problems which are very frequent when there are many missing values. In the regularized algorithm, the singular values of the PCA are shrinked.\cr
+#' The output of the algorithm can be used as an input of the PCA function of the FactoMineR package in order to perform PCA on an incomplete dataset.
+#'
+#' @param X a data.frame with continuous variables containing missing values
+#' @param ncp integer corresponding to the number of components used to to predict the missing entries
+#' @param scale boolean. By default TRUE leading to a same weight for each variable
+#' @param method "Regularized" by default or "EM"
+#' @param row.w row weights (by default, a vector of 1 for uniform row weights)
+#' @param ind.sup a vector indicating the indexes of the supplementary individuals
+#' @param quanti.sup a vector indicating the indexes of the quantitative supplementary variables
+#' @param coeff.ridge 1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)
+#' @param threshold the threshold for assessing convergence
+#' @param seed integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization
+#' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
+#' @param maxiter integer, maximum number of iteration for the algorithm
+#' @param miniter integer, minimum number of iteration for the algorithm
+#' @param ... further arguments passed to or from other methods
+#'
+#' @return A `dim(obj)` matrix with missing values imputed.
+#'
+#' @references
+#' Josse, J & Husson, F. (2013). Handling missing values in exploratory multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.
+#'
+#' Josse, J. and Husson, F. missMDA (2016). A Package for Handling Missing Values in Multivariate Data Analysis. Journal of Statistical Software, 70 (1), pp 1-31 \doi{doi:10.18637/jss.v070.i01}.
+#'
+#' @author Francois Husson \email{francois.husson@institut-agro.fr} and Julie Josse \email{julie.josse@polytechnique.edu}
+#'
+#' \href{https://www.youtube.com/watch?v=YDbx2pk9xNY&list=PLnZgp6epRBbQzxFnQrcxg09kRt-PA66T_&index=2}{Video showing how to perform PCA on an incomplete dataset}
+#'
+#' @export
 pca_imp <- function(
   X, ncp = 2, scale = TRUE, method = c("Regularized", "EM"), row.w = NULL,
   ind.sup = NULL, quanti.sup = NULL, coeff.ridge = 1, threshold = 1e-6, seed = NULL,
@@ -174,5 +227,5 @@ pca_imp <- function(
     }
   }
 
-  return(res)
+  return(res$completeObs)
 }

@@ -56,8 +56,8 @@ sim_mat <- function(
   d_length <- n * m
   d <- matrix(stats::rnorm(d_length), nrow = n, ncol = m)
   if (beta) {
-    mins <- colMMs(d, 0)[1, ]
-    maxs <- colMMs(d, 1)[1, ]
+    mins <- col_min_max(d, 0)[1, ]
+    maxs <- col_min_max(d, 1)[1, ]
     ranges <- maxs - mins
     d <- sweep(d, 2, mins, "-")
     d <- sweep(d, 2, ranges, "/")

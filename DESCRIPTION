@@ -29,12 +29,12 @@ Imports:
     purrr,
     Rcpp,
     FactoMineR,
-    tibble
+    tibble,
+    corpcor
 Suggests:
-    dplyr,
-    FactoMineR,
-    impute,
     missMDA,
+    dplyr,
+    impute,
     rlang,
     stats,
     testthat (>= 3.0.0),

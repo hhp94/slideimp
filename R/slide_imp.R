@@ -34,43 +34,10 @@ find_overlap_regions <- function(start, end) {
 #'
 #' @details
 #' The sliding window approach divides the input matrix into smaller, overlapping
-#' segments and applies k-NN imputation to each window independently. This strategy
-#' is particularly advantageous for large data where applying k-NN imputation
-#' to the entire matrix would be computationally prohibitive or exceed memory limits.
-#'
-#' Values in overlapping areas are averaged across windows to produce the final imputed result.
-#' This approach assumes that features (columns) are ordered meaningfully (e.g.,
+#' segments and applies imputation to each window independently. Values in overlapping
+#' areas are averaged across windows to produce the final imputed result.
+#' This approach assumes that features (columns) are sorted meaningfully (e.g.,
 #' by genomic position, time series, etc.).
-#'
-#' For the underlying k-NN implementation details, see [knn_imp()].
-#'
-#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#'   Features should be meaningfully ordered (e.g., by genomic position or time).
-#' @param n_feat Integer. Number of features (columns) per sliding window.
-#'   Must be between 2 and `ncol(obj)`.
-#' @param subset Character vector of column names or integer vector of column
-#'   indices specifying which columns to impute. If `NULL` (default), all columns
-#'   are processed.
-#' @param n_overlap Integer. Number of overlapping features between consecutive
-#'   windows. Must be between 0 and `n_feat - 1`. Default: 10.
-#' @param rowmax Numeric. Maximum allowable proportion of missing values per row
-#'   (0-1). Function stops with error if exceeded. Default: 0.9.
-#' @param colmax Numeric. Threshold proportion of missing values per column (0-1).
-#'   Columns exceeding this threshold are imputed using column means when
-#'   `post_imp = TRUE`. Default: 0.9.
-#' @param method Character. Distance metric for k-NN: `"euclidean"` or `"manhattan"`.
-#'   Default: `"euclidean"`.
-#' @param k Integer. Number of nearest neighbors for imputation. Must be between
-#'   1 and `n_feat - 1`. Default: 10.
-#' @param cores Integer. Number of CPU cores for parallel distance computation. Default: 1.
-#' @param post_imp Logical. Whether to impute remaining missing values with
-#'   column means. Default: `TRUE`.
-#' @param dist_pow Numeric. Positive value controlling distance penalty in weighted
-#'   imputation. Default: 0 (un-weighted).
-#' @param .progress Logical. Whether to display progress messages during imputation.
-#'   Default: `FALSE`.
-#'
-#' @return A matrix with `dim(obj)` with missing values imputed.
 #'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
@@ -97,9 +64,8 @@ slide_imp <- function(
   obj,
   n_feat,
   n_overlap = 10,
-  imp_method = c("knn", "pca"),
   # KNN-specific parameters
-  k = 10,
+  k = NULL,
   colmax = 0.9,
   knn_method = c("euclidean", "manhattan"),
   cores = 1,
@@ -107,24 +73,32 @@ slide_imp <- function(
   dist_pow = 0,
   subset = NULL,
   # PCA-specific parameters
-  ncp = 2,
+  ncp = NULL,
+  scale = TRUE,
   pca_method = c("regularized", "em"),
   coeff.ridge = 1,
-  scale = TRUE,
+  row.w = NULL,
+  ind.sup = NULL,
   seed = NULL,
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
   # Others
-  .progress = FALSE,
-  ...
+  .progress = FALSE
 ) {
+  if (is.null(k) && is.null(ncp)) {
+    stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation")
+  }
+  imp_method <- if (!is.null(k)) {
+    "knn"
+  } else {
+    "pca"
+  }
   # Pre-conditioning ----
   checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   cn <- colnames(obj)
   checkmate::assert_int(n_feat, lower = 2, upper = ncol(obj), null.ok = FALSE, .var.name = "n_feat")
   checkmate::assert_int(n_overlap, lower = 0, upper = n_feat - 1, null.ok = FALSE, .var.name = "n_overlap")
-  imp_method <- match.arg(imp_method)
   if (imp_method == "knn") {
     knn_method <- match.arg(knn_method)
     checkmate::assert_int(k, lower = 1, upper = n_feat - 1, null.ok = FALSE, .var.name = "k")
@@ -140,10 +114,12 @@ slide_imp <- function(
     )
   } else if (imp_method == "pca") {
     pca_method <- match.arg(pca_method)
+    checkmate::assert_flag(scale, .var.name = "scale")
     checkmate::assert_int(ncp, lower = 1, upper = min(n_feat, nrow(obj)), .var.name = "ncp")
     checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
-    checkmate::assert_flag(scale, .var.name = "scale")
     checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
+    checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
+    checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
     checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
     checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
     checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
@@ -206,7 +182,7 @@ slide_imp <- function(
   }
 
   for (i in seq_along(start)) {
-    if (.progress && (i %% n_steps == 0 || i == n_windows)) {
+    if (.progress && (i %% n_steps == 0 || i == n_windows || i == 1)) {
       message(sprintf(" Processing window %d of %d", i, n_windows))
     }
     window_cols <- start[i]:end[i]
@@ -219,8 +195,7 @@ slide_imp <- function(
         method = knn_method,
         post_imp = post_imp,
         dist_pow = dist_pow,
-        subset = subset_list[[i]],
-        ...
+        subset = subset_list[[i]]
       )
     } else if (imp_method == "pca") {
       imputed_window <- pca_imp(
@@ -233,8 +208,9 @@ slide_imp <- function(
         nb.init = nb.init,
         maxiter = maxiter,
         miniter = miniter,
-        ...
-      )$completeObs
+        row.w = row.w,
+        ind.sup = ind.sup
+      )
     }
 
     result[, window_cols] <- result[, window_cols] + imputed_window

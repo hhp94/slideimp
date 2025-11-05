@@ -78,15 +78,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// colMMs
-arma::rowvec colMMs(const arma::mat& mat, const int min);
-RcppExport SEXP _slideimp_colMMs(SEXP matSEXP, SEXP minSEXP) {
+// col_min_max
+arma::rowvec col_min_max(const arma::mat& mat, const int min);
+RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP, SEXP minSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
     Rcpp::traits::input_parameter< const int >::type min(minSEXP);
-    rcpp_result_gen = Rcpp::wrap(colMMs(mat, min));
+    rcpp_result_gen = Rcpp::wrap(col_min_max(mat, min));
+    return rcpp_result_gen;
+END_RCPP
+}
+// col_vars
+arma::rowvec col_vars(const arma::mat& mat);
+RcppExport SEXP _slideimp_col_vars(SEXP matSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
+    rcpp_result_gen = Rcpp::wrap(col_vars(mat));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -96,7 +107,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_find_knn_brute", (DL_FUNC) &_slideimp_find_knn_brute, 7},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
     {"_slideimp_weighted_row_means", (DL_FUNC) &_slideimp_weighted_row_means, 4},
-    {"_slideimp_colMMs", (DL_FUNC) &_slideimp_colMMs, 2},
+    {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
+    {"_slideimp_col_vars", (DL_FUNC) &_slideimp_col_vars, 1},
     {NULL, NULL, 0}
 };
 

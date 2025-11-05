@@ -55,62 +55,84 @@
 #'
 #' # Run grouped imputation. t() to put features on the columns
 #' obj <- t(to_test$input)
-#' grouped_results <- group_knn_imp(obj, group = group_df, k = 5)
+#' grouped_results <- group_imp(obj, group = group_df, k = 5)
 #' grouped_results
-group_knn_imp <- function(
+group_imp <- function(
   obj,
   group,
-  k,
+  # KNN-specific parameters
+  k = NULL,
   colmax = 0.9,
-  rowmax = 0.9,
-  method = c("euclidean", "manhattan"),
+  knn_method = c("euclidean", "manhattan"),
   cores = 1,
   post_imp = TRUE,
-  weighted = FALSE,
-  dist_pow = 1,
+  dist_pow = 0,
   tree = NULL,
-  n_imp = 1,
-  n_pmm = -1,
-  seed = 42,
-  output = NULL,
-  overwrite = FALSE,
+  # PCA-specific parameters
+  ncp = NULL,
+  scale = TRUE,
+  pca_method = c("Regularized", "EM"),
+  coeff.ridge = 1,
+  row.w = NULL,
+  ind.sup = NULL,
+  threshold = 1e-6,
+  seed = NULL,
+  nb.init = 1,
+  maxiter = 1000,
+  miniter = 5,
+  # Others
   .progress = TRUE
 ) {
-  # most pre-conditioning handled by knn_imp
-  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
-  checkmate::assert_data_frame(group, min.rows = 1)
-  checkmate::assert_names(colnames(group), must.include = c("features", "aux"))
-  checkmate::assert_list(group$features, types = "character", min.len = 1)
-  checkmate::assert_list(group$aux, types = c("character", "null"), min.len = 1)
-  # check for optional parameters column in group
-  has_parameters <- "parameters" %in% colnames(group)
+  # pre-conditioning
+  if (is.null(k) && is.null(ncp)) {
+    stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation")
+  }
+  imp_method <- if (!is.null(k)) {
+    "knn"
+  } else {
+    "pca"
+  }
+  checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
+  checkmate::assert_names(colnames(group), must.include = c("features"), .var.name = "group")
+  checkmate::assert_list(group$features, types = "character", min.len = 1, .var.name = "group$features")
+  if ("aux" %in% names(group)) {
+    checkmate::assert_list(group$aux, types = c("character", "null"), min.len = 1, .var.name = "group$aux")
+  } else {
+    group$aux <- list(NULL)
+  }
+  # handling group wise parameters
+  has_parameters <- "parameters" %in% names(group)
   if (has_parameters) {
-    checkmate::assert_list(group$parameters, types = c("list", "null"), min.len = 1)
-    # only these params will be group wise different-able
-    allowed_params <- c("k", "weighted", "method", "tree", "dist_pow")
+    checkmate::assert_list(group$parameters, types = c("list", "null"), min.len = 1, .var.name = "group$parameters")
+    # allowed parameters based on method
+    if (imp_method == "knn") {
+      allowed_params <- c(
+        "k", "method", "colmax", "cores", "post_imp", "dist_pow", "tree"
+      )
+    } else {
+      allowed_params <- c(
+        "ncp", "scale", "method", "row.w", "ind.sup", "quanti.sup", "coeff.ridge",
+        "threshold", "seed", "nb.init", "maxiter", "miniter"
+      )
+    }
     all_param_names <- unique(unlist(lapply(group$parameters, names)))
     unknown_params <- setdiff(all_param_names, allowed_params)
     if (length(unknown_params) > 0) {
-      stop("Unknown parameters in group$parameters: ", paste(unknown_params, collapse = ", "))
+      stop(
+        "Unknown parameters in group$parameters for ", imp_method, " method: ",
+        paste(unknown_params, collapse = ", ")
+      )
     }
     message("Running with group-wise parameters")
   } else {
     message("Running with the same parameters for all groups")
   }
-  checkmate::assert_int(seed, lower = 0, .var.name = "seed", null.ok = FALSE)
-  set.seed(seed)
-  # file backed logic
-  if (!is.null(output)) {
-    checkmate::assert_path_for_output(output, .var.name = "output")
-  }
-  checkmate::assert_flag(overwrite, null.ok = FALSE, .var.name = "overwrite")
   # feats and aux pre-conditioning
-  rn <- rownames(obj)
   cn <- colnames(obj)
   if (is.null(cn)) {
     stop("`obj` must have column names for grouping")
   }
-  # `all_feats` doesn't have to cover all cn. Uncovered columns are unimputed
+  # `all_feats` doesn't have to cover all cn. Uncovered columns are un-imputed
   all_feats <- purrr::list_c(group$features)
   all_aux <- purrr::list_c(group$aux)
   if (!all(unique(c(all_feats, all_aux)) %in% cn)) {
@@ -119,23 +141,6 @@ group_knn_imp <- function(
   if (any(duplicated(all_feats))) {
     stop("Same features can't be in more than 1 groups")
   }
-  file_backed <- !is.null(output)
-  # copy pasted logic from knn_imp
-  paths <- check_result_list(output = output, n_imp = n_imp, overwrite = overwrite)
-  result_list <- create_result_list(
-    data_to_copy = obj,
-    file_backed = file_backed,
-    n_imp = n_imp,
-    backfiles = paths$backfiles,
-    descfiles = paths$descfiles,
-    backingpath = paths$backingpath
-  )
-  # dimnames handling
-  old_opt <- getOption("bigmemory.allow.dimnames")
-  options(bigmemory.allow.dimnames = TRUE)
-  can_store_dimnames <- isTRUE(getOption("bigmemory.allow.dimnames")) || !file_backed
-  on.exit(options(bigmemory.allow.dimnames = old_opt), add = TRUE)
-  # main for loop over groups. Parallel at `knn_imp` level only for minimal overhead
   for (g in seq_len(nrow(group))) {
     if (.progress) {
       message("Imputing group ", g, "/", nrow(group))
@@ -145,27 +150,39 @@ group_knn_imp <- function(
     feats <- unique(group$features[[g]])
     aux <- unique(group$aux[[g]])
     columns <- unique(c(feats, aux))
-    # use the do.call method. First get all the needed params.
-    group_params <- list(
-      obj = obj[, columns, drop = FALSE],
-      k = k,
-      colmax = colmax,
-      rowmax = rowmax,
-      method = method,
-      cores = cores,
-      post_imp = post_imp,
-      subset = feats, # character vector of column names to impute
-      weighted = weighted,
-      dist_pow = dist_pow,
-      tree = tree,
-      n_imp = n_imp,
-      n_pmm = n_pmm,
-      seed = seed,
-      output = NULL, # Force in-memory to avoid nested file-backing. Won't take
-      # too much memory since groups are assumed to be smaller than obj
-      overwrite = FALSE
-    )
-    # override with group-specific parameters if provided
+
+    if (imp_method == "knn") {
+      f_imp <- "knn_imp"
+      group_params <- list(
+        obj = obj[, columns, drop = FALSE],
+        k = k,
+        colmax = colmax,
+        method = knn_method,
+        cores = cores,
+        post_imp = post_imp,
+        subset = feats, # character vector of column names to impute
+        dist_pow = dist_pow,
+        tree = tree
+      )
+    } else {
+      f_imp <- "pca_imp"
+      group_params <- list(
+        X = obj[, columns, drop = FALSE],
+        ncp = ncp,
+        scale = scale,
+        method = pca_method,
+        row.w = row.w,
+        ind.sup = ind.sup,
+        quanti.sup = NULL,
+        coeff.ridge = coeff.ridge,
+        threshold = threshold,
+        seed = seed,
+        nb.init = nb.init,
+        maxiter = maxiter,
+        miniter = miniter
+      )
+    }
+    # use group-specific parameters if provided
     if (has_parameters && !is.null(group$parameters[[g]])) {
       group_specific <- group$parameters[[g]]
       # only allow overriding specific imputation related parameters
@@ -173,29 +190,9 @@ group_knn_imp <- function(
         group_params[[param_name]] <- group_specific[[param_name]]
       }
     }
-    # call `knn_imp` with the prepared parameters
-    sub_imp <- do.call(knn_imp, group_params)
-    # Update the imputed features in the main result_list
-    for (j in seq_len(n_imp)) {
-      result_list[[j]][, feats] <- sub_imp[[j]][, feats]
-    }
+    # Call the imputation function
+    obj[, feats] <- do.call(f_imp, group_params)[, feats]
   }
-  if (file_backed) {
-    for (i in seq_len(n_imp)) {
-      bigmemory::flush(result_list[[i]])
-    }
-  }
-  # S3 OOPs
-  if (can_store_dimnames) {
-    for (i in seq_len(n_imp)) {
-      rownames(result_list[[i]]) <- rn
-      colnames(result_list[[i]]) <- cn
-    }
-  }
-  attr(result_list, "rownames") <- rn
-  attr(result_list, "colnames") <- cn
-  attr(result_list, "subset") <- match(all_feats, cn)
-  attr(result_list, "ncol") <- ncol(obj)
-  class(result_list) <- c("KnnImpList", class(result_list))
-  return(result_list)
+
+  return(obj)
 }
