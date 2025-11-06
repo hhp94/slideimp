@@ -337,7 +337,7 @@ test_that("`slide_imp` pca mode works", {
   # 1 to 100 is the first window;
   final_imputed[, 1:100] <- final_imputed[, 1:100] +
     pca_imp(
-      X = to_test[, 1:100],
+      obj = to_test[, 1:100],
       ncp = 2,
       miniter = 2
     )
@@ -345,7 +345,7 @@ test_that("`slide_imp` pca mode works", {
   # 91 to 190 is the second window;
   final_imputed[, 91:190] <- final_imputed[, 91:190] +
     pca_imp(
-      X = to_test[, 91:190],
+      obj = to_test[, 91:190],
       ncp = 2,
       miniter = 2
     )
@@ -353,7 +353,7 @@ test_that("`slide_imp` pca mode works", {
   # 181 to 280 is the last window
   final_imputed[, 181:280] <- final_imputed[, 181:280] +
     pca_imp(
-      X = to_test[, 181:280],
+      obj = to_test[, 181:280],
       ncp = 2,
       miniter = 2
     )
@@ -368,4 +368,27 @@ test_that("`slide_imp` pca mode works", {
     miniter = 2
   )
   expect_identical(simple_mean, final_imputed)
+})
+
+test_that("`slide_imp` errors on zero-variance features in PCA mode", {
+  set.seed(1234)
+  to_test <- t(
+    sim_mat(
+      n = 200,
+      m = 10,
+      perc_NA = 0.5,
+      perc_col_NA = 1
+    )$input
+  )
+  to_test[, 1] <- 1
+  expect_error(
+    slide_imp(
+      to_test,
+      n_feat = 100,
+      n_overlap = 10,
+      ncp = 2,
+      miniter = 2
+    ),
+    regexp = "Features with zero variance after na.rm not permitted for PCA Imputation"
+  )
 })

@@ -36,6 +36,8 @@ find_overlap_regions <- function(start, end) {
 #' @inheritParams pca_imp
 #' @param n_feat Number of features in a window.
 #' @param n_overlap Number of overlapping features between two windows.
+#' @param knn_method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
+#' @param pca_method "Regularized" by default or "EM".
 #' @param .progress Show progress bar (default = FALSE).
 #'
 #' @details
@@ -72,30 +74,30 @@ find_overlap_regions <- function(start, end) {
 #'
 #' @export
 slide_imp <- function(
-    obj,
-    n_feat,
-    n_overlap,
-    # KNN-specific parameters
-    k = NULL,
-    colmax = 0.9,
-    knn_method = c("euclidean", "manhattan"),
-    cores = 1,
-    post_imp = TRUE,
-    dist_pow = 0,
-    subset = NULL,
-    # PCA-specific parameters
-    ncp = NULL,
-    scale = TRUE,
-    pca_method = c("regularized", "em"),
-    coeff.ridge = 1,
-    row.w = NULL,
-    ind.sup = NULL,
-    seed = NULL,
-    nb.init = 1,
-    maxiter = 1000,
-    miniter = 5,
-    # Others
-    .progress = FALSE) {
+  obj,
+  n_feat,
+  n_overlap,
+  # KNN-specific parameters
+  k = NULL,
+  colmax = 0.9,
+  knn_method = c("euclidean", "manhattan"),
+  cores = 1,
+  post_imp = TRUE,
+  dist_pow = 0,
+  subset = NULL,
+  # PCA-specific parameters
+  ncp = NULL,
+  scale = TRUE,
+  pca_method = c("regularized", "em"),
+  coeff.ridge = 1,
+  ind.sup = NULL,
+  seed = NULL,
+  nb.init = 1,
+  maxiter = 1000,
+  miniter = 5,
+  # Others
+  .progress = FALSE
+) {
   if (sum(c(is.null(k), is.null(ncp))) != 1L) {
     stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
   }
@@ -128,11 +130,17 @@ slide_imp <- function(
     checkmate::assert_int(ncp, lower = 1, upper = min(n_feat, nrow(obj)), .var.name = "ncp")
     checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
     checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
-    checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
+    # checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
     checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
     checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
     checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
     checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
+    obj_vars <- col_vars(obj)
+    if (
+      any(abs(obj_vars) < .Machine$double.eps^0.5 | is.nan(obj_vars) | is.na(obj_vars))
+    ) {
+      stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try `col_vars(obj)`")
+    }
   }
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
 
@@ -218,7 +226,7 @@ slide_imp <- function(
         nb.init = nb.init,
         maxiter = maxiter,
         miniter = miniter,
-        row.w = row.w,
+        # row.w = row.w,
         ind.sup = ind.sup
       )
     }

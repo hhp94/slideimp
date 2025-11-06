@@ -1,36 +1,40 @@
 #' Grouped K-NN Imputation
 #'
-#' K-NN imputation by groups, such as chromosomes, flanking columns, or clusters identified by column clustering techniques.
+#' K-NN imputation by groups, such as chromosomes, flanking columns, or clusters
+#' identified by column clustering techniques.
 #'
 #' @inheritParams knn_imp
+#' @inheritParams pca_imp
+#' @inheritParams slide_imp
 #' @param group A data.frame with columns:
 #' \describe{
 #' \item{features}{A list column containing character vectors of feature column names to impute}
-#' \item{aux}{A list column containing character vectors of auxiliary column names used for imputation but not imputed themselves}
-#' \item{parameters}{(Optional) A list column containing group-specific parameters that override global settings. Allowed parameters: `k`, `weighted`, `method`, `tree`, `dist_pow`}
+#' \item{aux}{(Optional) A list column containing character vectors of auxiliary
+#' column names used for imputation but not imputed themselves}
+#' \item{parameters}{(Optional) A list column containing group-specific parameters}
 #' }
-#' @param .progress Shows progress
 #'
 #' @details
-#' This function performs K-NN imputation on groups of features independently, which will significantly
-#' reduce imputation time for large datasets. Typical strategies for grouping may include:
+#' This function performs K-NN or PCA imputation on groups of features independently,
+#' which significantly reduce imputation time for large datasets. Typical strategies
+#' for grouping may include:
 #' \itemize{
 #' \item Breaking down search space by chromosomes
 #' \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
 #' \item Using clusters identified by column clustering techniques
 #' }
 #'
-#' Only features in each group (each row of the data.frame) will be imputed, using the search space
-#' defined as the union of the features and aux columns of that group. Columns that are in aux or in the object
-#' but not in any features will be left unchanged.
+#' Only features in each group (each row of the data.frame) will be imputed, using
+#' the search space defined as the union of the features and optional aux columns
+#' of that group. Columns that are in aux or in the object but not in any features
+#' will be left unchanged.
 #'
 #' @inherit knn_imp note return
 #'
 #' @export
 #'
 #' @examples
-#' # Generate example data with missing values. This simulates a 20x50 matrix with missing values
-#' # and groups by chromosome. Here we are simulating 2 chromosomes.
+#' # Generate example data with missing values
 #' set.seed(1234)
 #' to_test <- sim_mat(
 #'   m = 20,
@@ -49,7 +53,10 @@
 #' group_df <- tibble::tibble(
 #'   features = list(group_1[1:3], group_2[1:4]),
 #'   aux = list(group_1, group_2),
-#'   parameters = list(list(k = 3, weighted = TRUE), list(k = 4, method = "manhattan"))
+#'   parameters = list(
+#'     list(k = 3, dist_pow = 1),
+#'     list(k = 4, method = "manhattan")
+#'   )
 #' )
 #' group_df
 #'
@@ -58,30 +65,30 @@
 #' grouped_results <- group_imp(obj, group = group_df, k = 5)
 #' grouped_results
 group_imp <- function(
-    obj,
-    group,
-    # KNN-specific parameters
-    k = NULL,
-    colmax = 0.9,
-    knn_method = c("euclidean", "manhattan"),
-    cores = 1,
-    post_imp = TRUE,
-    dist_pow = 0,
-    tree = NULL,
-    # PCA-specific parameters
-    ncp = NULL,
-    scale = TRUE,
-    pca_method = c("Regularized", "EM"),
-    coeff.ridge = 1,
-    row.w = NULL,
-    ind.sup = NULL,
-    threshold = 1e-6,
-    seed = NULL,
-    nb.init = 1,
-    maxiter = 1000,
-    miniter = 5,
-    # Others
-    .progress = TRUE) {
+  obj,
+  group,
+  # KNN-specific parameters
+  k = NULL,
+  colmax = 0.9,
+  knn_method = c("euclidean", "manhattan"),
+  cores = 1,
+  post_imp = TRUE,
+  dist_pow = 0,
+  tree = NULL,
+  # PCA-specific parameters
+  ncp = NULL,
+  scale = TRUE,
+  pca_method = c("Regularized", "EM"),
+  coeff.ridge = 1,
+  ind.sup = NULL,
+  threshold = 1e-6,
+  seed = NULL,
+  nb.init = 1,
+  maxiter = 1000,
+  miniter = 5,
+  # Others
+  .progress = TRUE
+) {
   # pre-conditioning
   if (is.null(k) && is.null(ncp)) {
     stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation")
@@ -170,7 +177,7 @@ group_imp <- function(
         ncp = ncp,
         scale = scale,
         method = pca_method,
-        row.w = row.w,
+        # row.w = row.w,
         ind.sup = ind.sup,
         quanti.sup = NULL,
         coeff.ridge = coeff.ridge,

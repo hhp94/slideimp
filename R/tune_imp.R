@@ -5,8 +5,10 @@
 #' It attempts to find a valid set of positions within a maximum number of iterations.
 #'
 #' @inheritParams slide_imp
-#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param num_na The number of missing values used to estimate prediction quality.
+#' @param rowmax Number between 0 to 1. NA injection cannot create rows with more missing % than this number.
+#' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
+#' @param check_sd Check if after NA injections zero variance columns are created or not.
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
 #'
 #' @return A vector of integer indices indicating the positions in the matrix
@@ -26,13 +28,14 @@
 #' mat[na_positions] <- NA
 #' }
 #' @keywords internal
-#' @noRd
 inject_na <- function(
-    obj,
-    num_na = NULL,
-    rowmax = 0.9,
-    colmax = 0.9,
-    max_iter = 1000) {
+  obj,
+  num_na = NULL,
+  rowmax = 0.9,
+  colmax = 0.9,
+  check_sd = FALSE,
+  max_iter = 1000
+) {
   # subset the matrix to the specified features and samples
   na_mat <- !is.na(obj)
   # check if existing NA pattern already exceeds thresholds
@@ -41,12 +44,11 @@ inject_na <- function(
   # calculate current missingness
   current_col_miss <- nrow(na_mat) - colSums(na_mat)
   current_row_miss <- ncol(na_mat) - rowSums(na_mat)
-  # Check if any columns already exceed the threshold
+  # check if any columns already exceed the threshold
   bad_cols <- which(current_col_miss > max_col_miss)
   if (length(bad_cols) > 0) {
     stop("Some columns have missing > colmax before na injections")
   }
-
   # check if any rows already exceed the threshold
   bad_rows <- which(current_row_miss > max_row_miss)
   if (length(bad_rows) > 0) {
@@ -64,13 +66,24 @@ inject_na <- function(
       )
     )
   }
+
+  if (check_sd) {
+    # initial check for zero variance
+    cvars <- col_vars(obj)
+    if (any(abs(cvars) < .Machine$double.eps^0.5 | is.nan(cvars) | is.na(cvars))) {
+      stop("Zero variance columns detected before na injections")
+    }
+  }
+
   # initialize variables for the while loop
   c_miss <- TRUE
   r_miss <- TRUE
+  sd_ok <- !check_sd # TRUE if not checking, FALSE if we need to check
+
   na_loc <- NULL
   iter <- 0
   # inject NAs while ensuring missingness thresholds and iter are not exceeded
-  while (c_miss || r_miss) {
+  while (c_miss || r_miss || !sd_ok) {
     iter <- iter + 1
     if (iter > max_iter) {
       stop(
@@ -80,12 +93,21 @@ inject_na <- function(
     na_mat_test <- na_mat
     na_loc <- sample(not_na, size = num_na)
     na_mat_test[na_loc] <- FALSE
+
     # calculate the counts of missing values in columns and rows
     col_miss_count <- nrow(na_mat_test) - colSums(na_mat_test)
     row_miss_count <- ncol(na_mat_test) - rowSums(na_mat_test)
     # check if any column or row exceeds the missingness thresholds
     c_miss <- any(col_miss_count > max_col_miss)
     r_miss <- any(row_miss_count > max_row_miss)
+
+    if (check_sd) {
+      # this is the real obj, not is.na(obj)
+      obj_test <- obj
+      obj_test[na_loc] <- NA
+      cvars <- col_vars(obj_test)
+      sd_ok <- !any(abs(cvars) < .Machine$double.eps^0.5 | is.nan(cvars) | is.na(cvars))
+    }
   }
   return(na_loc)
 }
@@ -103,16 +125,12 @@ inject_na <- function(
 #' For custom `.f`, `parameters` columns must match `.f`'s arguments (excluding `obj`). The
 #' function must take `obj` as an argument and return a numeric matrix of the same dimensions.
 #'
-#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
+#' @inheritParams inject_na
 #' @param parameters Data frame of parameter combinations to tune where each column is
 #' a parameter accepted by `.f`. Duplicates are removed. Supports list columns.
+#' @param rep Number of repetitions for random `NA` injection, or list of integer
+#' positions per repetition (if `rep` is list then ignores `num_na`).
 #' @param .f Imputation function: "knn_imp" (default), "slide_imp", "pca_imp", or custom function.
-#' @param rep Positive integer for random NA injections per combination (default 1), or
-#' list of integer vectors specifying linear NA positions of a matrix (all unique, same length).
-#' @param num_na Number of NAs to inject if `rep` is integer (default 100). Ignored if `rep` is list.
-#' @param max_iter Max iterations to find valid NA positions (default 1000).
-#' @param colmax Max proportion of NAs per column (0-1, default 1).
-#' @param rowmax Max proportion of NAs per row (0-1, default 1).
 #' @param .progress Show progress bar (default FALSE).
 #' @param cores Number of cores for parallelization (default 1).
 #'
@@ -124,9 +142,7 @@ inject_na <- function(
 #' parameters <- data.frame(
 #'   n_feat = c(100, 100, 100),
 #'   k = c(5, 10, 10),
-#'   n_overlap = c(10, 10, 10),
-#'   knn_method = "euclidean",
-#'   post_imp = FALSE
+#'   n_overlap = c(10, 10, 10)
 #' )
 #'
 #' set.seed(1234)
@@ -138,12 +154,18 @@ inject_na <- function(
 #' # Specific NA positions
 #' obj_complete <- obj
 #' obj_complete[is.na(obj_complete)] <- 0
+#' # 3 reps (list of length 3), where each rep has different, but pre-specified locations.
 #' na_positions <- list(
 #'   sample(1:length(obj_complete), 20, replace = FALSE),
 #'   sample(1:length(obj_complete), 20, replace = FALSE),
 #'   sample(1:length(obj_complete), 20, replace = FALSE)
 #' )
-#' results_fixed <- tune_imp(obj_complete, data.frame(k = 10), .f = "knn_imp", rep = na_positions)
+#' results_fixed <- tune_imp(
+#'   obj_complete,
+#'   data.frame(k = 10),
+#'   .f = "knn_imp",
+#'   rep = na_positions
+#' )
 #'
 #' # Custom imputation
 #' custom_imp <- function(obj, mean = 0, sd = 1) {
@@ -152,29 +174,42 @@ inject_na <- function(
 #'   obj
 #' }
 #' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
-#' results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1, num_na = 20)
+#' results_custom <- tune_imp(
+#'   obj,
+#'   parameters_custom,
+#'   .f = custom_imp,
+#'   rep = 1,
+#'   num_na = 20
+#' )
 #'
 #' # Analyze the results with yardstick
 #' @examplesIf requireNamespace("dplyr", quietly = TRUE) && requireNamespace("yardstick", quietly = TRUE) && requireNamespace("tidyr", quietly = TRUE)
 #' met_set <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::rsq)
-#' results$metrics <- lapply(results$result, \(x) met_set(x, truth = truth, estimate = estimate))
+#' results$metrics <- lapply(
+#'   results$result,
+#'   \(x) met_set(x, truth = truth, estimate = estimate)
+#' )
 #' tidyr::unnest(dplyr::select(results, -result), metrics)
 #'
-#' results_custom$metrics <- lapply(results_custom$result, \(x) met_set(x, truth = truth, estimate = estimate))
+#' results_custom$metrics <- lapply(
+#'   results_custom$result,
+#'   \(x) met_set(x, truth = truth, estimate = estimate)
+#' )
 #' tidyr::unnest(dplyr::select(results_custom, -result), metrics)
-#'
 #' @export
 tune_imp <- function(
-    obj,
-    parameters,
-    .f = "knn_imp",
-    rep = 1,
-    num_na = 100,
-    rowmax = 0.9,
-    colmax = 0.9,
-    max_iter = 1000,
-    .progress = FALSE,
-    cores = 1) {
+  obj,
+  parameters,
+  .f = "knn_imp",
+  rep = 1,
+  num_na = 100,
+  rowmax = 0.9,
+  colmax = 0.9,
+  check_sd = FALSE,
+  max_iter = 1000,
+  .progress = FALSE,
+  cores = 1
+) {
   fun <- NULL
   # pre-conditioning
   checkmate::assert_matrix(
@@ -222,6 +257,7 @@ tune_imp <- function(
   }
   checkmate::assert_count(max_iter, positive = TRUE, .var.name = "max_iter")
   checkmate::assert_flag(.progress, .var.name = ".progress")
+  checkmate::assert_flag(check_sd, .var.name = "check_sd")
   checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
   checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
@@ -238,11 +274,14 @@ tune_imp <- function(
   if (is.character(.f)) {
     if (.f == "slide_imp") {
       parameters$.progress <- FALSE
-      if (cores > 1 && "k" %in% names(parameters)) {
-        # for `slide_imp` knn mode. Don't parallel through mirai.
-        parameters$cores <- cores
-        cores <- 1
-      }
+    }
+    if ((.f == "slide_imp" && "k" %in% names(parameters)) || .f == "knn_imp") {
+      # for `slide_imp` knn mode. Don't parallel through mirai.
+      parameters$cores <- cores
+      cores <- 1
+    }
+    if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
+      check_sd <- TRUE
     }
   }
   .rowid <- seq_len(nrow(parameters))
@@ -263,6 +302,9 @@ tune_imp <- function(
     rep = seq_len(n_reps)
   ))
 
+  if (.progress) {
+    message("Step 1/2: Injecting NA")
+  }
   # Generate or use NA injection locations
   if (rep_is_list) {
     # Use the provided list of NA locations
@@ -276,6 +318,7 @@ tune_imp <- function(
         num_na = num_na,
         rowmax = rowmax,
         colmax = colmax,
+        check_sd = check_sd,
         max_iter = max_iter
       ),
       simplify = FALSE
@@ -361,6 +404,9 @@ tune_imp <- function(
     indices = indices,
     parameters_list = parameters_list
   )
+  if (.progress) {
+    message("Step 2/2: Tuning")
+  }
   # Execute the mapping with the crated function
   result_list <- purrr::map(seq_len(nrow(indices)), crated_fn, .progress = .progress)
   # Combine parameters with results

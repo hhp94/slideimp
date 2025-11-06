@@ -23,20 +23,19 @@ BugReports: https://github.com/hhp94/slideimp/issues
 Depends: 
     R (>= 4.1.0)
 Imports:
+    bootSVD,
     checkmate,
-    fs,
     mirai,
     purrr,
     Rcpp,
-    FactoMineR,
-    tibble,
-    bootSVD
+    stats,
+    tibble
 Suggests:
-    missMDA,
+    carrier,
     dplyr,
     impute,
+    missMDA,
     rlang,
-    stats,
     testthat (>= 3.0.0),
     tidyr,
     yardstick

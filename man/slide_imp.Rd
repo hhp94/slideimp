@@ -19,7 +19,6 @@ slide_imp(
   scale = TRUE,
   pca_method = c("regularized", "em"),
   coeff.ridge = 1,
-  row.w = NULL,
   ind.sup = NULL,
   seed = NULL,
   nb.init = 1,
@@ -39,6 +38,8 @@ slide_imp(
 
 \item{colmax}{A number from 0 to 1. Threshold of missing data above which k-NN imputation is skipped.}
 
+\item{knn_method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
+
 \item{cores}{Number of cores to parallelize over.}
 
 \item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed k-NN imputation) using column means.}
@@ -53,9 +54,9 @@ indices specifying which columns to impute.}
 
 \item{scale}{boolean. By default TRUE leading to a same weight for each variable}
 
-\item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
+\item{pca_method}{"Regularized" by default or "EM".}
 
-\item{row.w}{row weights (by default, a vector of 1 for uniform row weights)}
+\item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
 \item{ind.sup}{a vector indicating the indexes of the supplementary individuals}
 
@@ -87,17 +88,22 @@ by genomic position, time series, etc.).
 set.seed(1234)
 beta_matrix <- t(sim_mat(100, 20)$input)
 
-# ========================================
-# Basic Sliding k-NN Imputation
-# ========================================
-
-# Simple imputation with default parameters
-imputed_basic <- slide_imp(
+# Sliding Window K-NN imputation by specifying `k = 5`
+imputed_knn <- slide_imp(
   beta_matrix,
   k = 5,
   n_feat = 50,
   n_overlap = 10
 )
-imputed_basic
+imputed_knn
+
+# Sliding Window PCA imputation by specifying `ncp = 2`
+imputed_knn <- slide_imp(
+  beta_matrix,
+  ncp = 2,
+  n_feat = 50,
+  n_overlap = 10
+)
+imputed_knn
 
 }

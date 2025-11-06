@@ -103,7 +103,7 @@ col_min_max <- function(mat, min = 0L) {
     .Call(`_slideimp_col_min_max`, mat, min)
 }
 
-col_vars <- function(mat) {
-    .Call(`_slideimp_col_vars`, mat)
+col_vars_internal <- function(mat, cores = 1L) {
+    .Call(`_slideimp_col_vars_internal`, mat, cores)
 }
 

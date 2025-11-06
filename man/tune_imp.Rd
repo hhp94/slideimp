@@ -12,6 +12,7 @@ tune_imp(
   num_na = 100,
   rowmax = 0.9,
   colmax = 0.9,
+  check_sd = FALSE,
   max_iter = 1000,
   .progress = FALSE,
   cores = 1
@@ -25,16 +26,18 @@ a parameter accepted by \code{.f}. Duplicates are removed. Supports list columns
 
 \item{.f}{Imputation function: "knn_imp" (default), "slide_imp", "pca_imp", or custom function.}
 
-\item{rep}{Positive integer for random NA injections per combination (default 1), or
-list of integer vectors specifying linear NA positions of a matrix (all unique, same length).}
+\item{rep}{Number of repetitions for random \code{NA} injection, or list of integer
+positions per repetition (if \code{rep} is list then ignores \code{num_na}).}
 
-\item{num_na}{Number of NAs to inject if \code{rep} is integer (default 100). Ignored if \code{rep} is list.}
+\item{num_na}{The number of missing values used to estimate prediction quality.}
 
-\item{rowmax}{Max proportion of NAs per row (0-1, default 1).}
+\item{rowmax}{Number between 0 to 1. NA injection cannot create rows with more missing \% than this number.}
 
-\item{colmax}{Max proportion of NAs per column (0-1, default 1).}
+\item{colmax}{Number between 0 to 1. NA injection cannot create cols with more missing \% than this number.}
 
-\item{max_iter}{Max iterations to find valid NA positions (default 1000).}
+\item{check_sd}{Check if after NA injections zero variance columns are created or not.}
+
+\item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
 
 \item{.progress}{Show progress bar (default FALSE).}
 
@@ -60,9 +63,7 @@ data(khanmiss1)
 parameters <- data.frame(
   n_feat = c(100, 100, 100),
   k = c(5, 10, 10),
-  n_overlap = c(10, 10, 10),
-  knn_method = "euclidean",
-  post_imp = FALSE
+  n_overlap = c(10, 10, 10)
 )
 
 set.seed(1234)
@@ -74,12 +75,18 @@ results <- tune_imp(obj, parameters, .f = "slide_imp", rep = 1, num_na = 20)
 # Specific NA positions
 obj_complete <- obj
 obj_complete[is.na(obj_complete)] <- 0
+# 3 reps (list of length 3), where each rep has different, but pre-specified locations.
 na_positions <- list(
   sample(1:length(obj_complete), 20, replace = FALSE),
   sample(1:length(obj_complete), 20, replace = FALSE),
   sample(1:length(obj_complete), 20, replace = FALSE)
 )
-results_fixed <- tune_imp(obj_complete, data.frame(k = 10), .f = "knn_imp", rep = na_positions)
+results_fixed <- tune_imp(
+  obj_complete,
+  data.frame(k = 10),
+  .f = "knn_imp",
+  rep = na_positions
+)
 
 # Custom imputation
 custom_imp <- function(obj, mean = 0, sd = 1) {
@@ -88,15 +95,27 @@ custom_imp <- function(obj, mean = 0, sd = 1) {
   obj
 }
 parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
-results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1, num_na = 20)
+results_custom <- tune_imp(
+  obj,
+  parameters_custom,
+  .f = custom_imp,
+  rep = 1,
+  num_na = 20
+)
 
 # Analyze the results with yardstick
 \dontshow{if (requireNamespace("dplyr", quietly = TRUE) && requireNamespace("yardstick", quietly = TRUE) && requireNamespace("tidyr", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 met_set <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::rsq)
-results$metrics <- lapply(results$result, \(x) met_set(x, truth = truth, estimate = estimate))
+results$metrics <- lapply(
+  results$result,
+  \(x) met_set(x, truth = truth, estimate = estimate)
+)
 tidyr::unnest(dplyr::select(results, -result), metrics)
 
-results_custom$metrics <- lapply(results_custom$result, \(x) met_set(x, truth = truth, estimate = estimate))
+results_custom$metrics <- lapply(
+  results_custom$result,
+  \(x) met_set(x, truth = truth, estimate = estimate)
+)
 tidyr::unnest(dplyr::select(results_custom, -result), metrics)
 \dontshow{\}) # examplesIf}
 }

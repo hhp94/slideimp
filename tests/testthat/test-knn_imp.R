@@ -39,14 +39,12 @@ test_that("`knn_imp` works", {
   expect_no_error(knn_imp(
     t(khanmiss1),
     k = 3,
-    rowmax = 1,
     method = "euclidean"
   ))
 
   expect_no_error(knn_imp(
     t(khanmiss1),
     k = 3,
-    rowmax = 1,
     method = "manhattan",
     tree = "kd"
   ))
@@ -63,7 +61,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
   # Check if the 'impute' package is installed
 
   # Perform imputation using knn_imp with method "impute.knn" on transposed data
-  r1 <- knn_imp(t(khanmiss1), k = 3, rowmax = 1, method = "euclidean")
+  r1 <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
 
   # Perform imputation using the original impute::impute.knn function
   # Transpose the result to match the orientation
@@ -71,7 +69,6 @@ test_that("Exactly replicate `impute::impute.knn`", {
     impute::impute.knn(
       khanmiss1,
       k = 3,
-      rowmax = 1,
       maxp = nrow(khanmiss1)
     )$data
   )

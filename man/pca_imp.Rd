@@ -9,7 +9,6 @@ pca_imp(
   ncp = 2,
   scale = TRUE,
   method = c("Regularized", "EM"),
-  row.w = NULL,
   ind.sup = NULL,
   quanti.sup = NULL,
   coeff.ridge = 1,
@@ -29,8 +28,6 @@ pca_imp(
 
 \item{method}{"Regularized" by default or "EM"}
 
-\item{row.w}{row weights (by default, a vector of 1 for uniform row weights)}
-
 \item{ind.sup}{a vector indicating the indexes of the supplementary individuals}
 
 \item{quanti.sup}{a vector indicating the indexes of the quantitative supplementary variables}
@@ -46,8 +43,6 @@ pca_imp(
 \item{maxiter}{integer, maximum number of iteration for the algorithm}
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
-
-\item{...}{further arguments passed to or from other methods}
 }
 \value{
 A \code{dim(obj)} matrix with missing values imputed.
@@ -60,6 +55,13 @@ Impute the missing entries of a mixed data using the iterative PCA algorithm (me
 with mean and standard deviation calculated from the observed values. nb.init different random initialization can be drawn. In such a situation, the solution giving the smallest objective function (the mean square error between the fitted matrix and the observed one) is kept. The second step of the (regularized) iterative PCA algorithm is to perform PCA on the completed dataset. Then, it imputes the missing values with the (regularized) reconstruction formulae of order ncp (the fitted matrix computed with ncp components for the (regularized) scores and loadings). These steps of estimation of the parameters via PCA and imputation of the missing values using the (regularized) fitted matrix are iterate until convergence. The iterative PCA algorithm is also known as the EM-PCA algorithm since it corresponds to an EM algorithm of the fixed effect model where the data are generated as a fixed structure (with a low rank representation) corrupted by noise. The number of components used in the algorithm can be found using cross-validation criteria implemented in the function estim_ncpPCA.\cr
 We advice to use the regularized version of the algorithm to avoid the overfitting problems which are very frequent when there are many missing values. In the regularized algorithm, the singular values of the PCA are shrinked.\cr
 The output of the algorithm can be used as an input of the PCA function of the FactoMineR package in order to perform PCA on an incomplete dataset.
+}
+\examples{
+data("khanmiss1")
+
+# Transpose to put genes on columns
+pca_imp(t(khanmiss1), ncp = 2)
+
 }
 \references{
 Josse, J & Husson, F. (2013). Handling missing values in exploratory multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.

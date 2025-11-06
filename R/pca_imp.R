@@ -1,6 +1,6 @@
 #' @importFrom bootSVD fastSVD
 fast.svd.triplet <- function(X, ncp) {
-  svd.usuelle <- fastSVD(X)
+  svd.usuelle <- suppressWarnings(fastSVD(X))
   U <- svd.usuelle$u[, 1:ncp, drop = FALSE]
   V <- svd.usuelle$v[, 1:ncp, drop = FALSE]
   if (ncp > 1) {
@@ -23,9 +23,11 @@ fast.svd.triplet <- function(X, ncp) {
   return(res)
 }
 
+#' @importFrom stats rnorm
 pca_imp_internal <- function(
-    X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
-    miniter, row.w, coeff.ridge, nrX, ncX) {
+  X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
+  miniter, row.w, coeff.ridge, nrX, ncX
+) {
   nb.iter <- 1
   old <- Inf
   objective <- 0
@@ -154,7 +156,6 @@ pca_imp_internal <- function(
 #' @param ncp integer corresponding to the number of components used to to predict the missing entries
 #' @param scale boolean. By default TRUE leading to a same weight for each variable
 #' @param method "Regularized" by default or "EM"
-#' @param row.w row weights (by default, a vector of 1 for uniform row weights)
 #' @param ind.sup a vector indicating the indexes of the supplementary individuals
 #' @param quanti.sup a vector indicating the indexes of the quantitative supplementary variables
 #' @param coeff.ridge 1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)
@@ -163,7 +164,6 @@ pca_imp_internal <- function(
 #' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
 #' @param maxiter integer, maximum number of iteration for the algorithm
 #' @param miniter integer, minimum number of iteration for the algorithm
-#' @param ... further arguments passed to or from other methods
 #'
 #' @return A `dim(obj)` matrix with missing values imputed.
 #'
@@ -176,11 +176,18 @@ pca_imp_internal <- function(
 #'
 #' \href{https://www.youtube.com/watch?v=YDbx2pk9xNY&list=PLnZgp6epRBbQzxFnQrcxg09kRt-PA66T_&index=2}{Video showing how to perform PCA on an incomplete dataset}
 #'
+#' @examples
+#' data("khanmiss1")
+#'
+#' # Transpose to put genes on columns
+#' pca_imp(t(khanmiss1), ncp = 2)
+#'
 #' @export
 pca_imp <- function(
-    obj, ncp = 2, scale = TRUE, method = c("Regularized", "EM"), row.w = NULL,
-    ind.sup = NULL, quanti.sup = NULL, coeff.ridge = 1, threshold = 1e-6, seed = NULL,
-    nb.init = 1, maxiter = 1000, miniter = 5) {
+  obj, ncp = 2, scale = TRUE, method = c("Regularized", "EM"),
+  ind.sup = NULL, quanti.sup = NULL, coeff.ridge = 1, threshold = 1e-6, seed = NULL,
+  nb.init = 1, maxiter = 1000, miniter = 5
+) {
   #### Main program
   row.w <- NULL
   if (!anyNA(obj)) {

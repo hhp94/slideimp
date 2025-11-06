@@ -18,7 +18,6 @@ group_imp(
   scale = TRUE,
   pca_method = c("Regularized", "EM"),
   coeff.ridge = 1,
-  row.w = NULL,
   ind.sup = NULL,
   threshold = 1e-06,
   seed = NULL,
@@ -34,13 +33,16 @@ group_imp(
 \item{group}{A data.frame with columns:
 \describe{
 \item{features}{A list column containing character vectors of feature column names to impute}
-\item{aux}{A list column containing character vectors of auxiliary column names used for imputation but not imputed themselves}
-\item{parameters}{(Optional) A list column containing group-specific parameters that override global settings. Allowed parameters: \code{k}, \code{weighted}, \code{method}, \code{tree}, \code{dist_pow}}
+\item{aux}{(Optional) A list column containing character vectors of auxiliary
+column names used for imputation but not imputed themselves}
+\item{parameters}{(Optional) A list column containing group-specific parameters}
 }}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
 \item{colmax}{A number from 0 to 1. Threshold of missing data above which k-NN imputation is skipped.}
+
+\item{knn_method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
 
 \item{cores}{Number of cores to parallelize over.}
 
@@ -51,30 +53,52 @@ If \code{dist_pow = 0} (default), then the imputed value is just the mean of nea
 
 \item{tree}{Either \code{NULL} (default, brute-force k-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.}
 
-\item{.progress}{Shows progress}
+\item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
+
+\item{scale}{boolean. By default TRUE leading to a same weight for each variable}
+
+\item{pca_method}{"Regularized" by default or "EM".}
+
+\item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
+
+\item{ind.sup}{a vector indicating the indexes of the supplementary individuals}
+
+\item{threshold}{the threshold for assessing convergence}
+
+\item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
+
+\item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
+
+\item{maxiter}{integer, maximum number of iteration for the algorithm}
+
+\item{miniter}{integer, minimum number of iteration for the algorithm}
+
+\item{.progress}{Show progress bar (default = FALSE).}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-K-NN imputation by groups, such as chromosomes, flanking columns, or clusters identified by column clustering techniques.
+K-NN imputation by groups, such as chromosomes, flanking columns, or clusters
+identified by column clustering techniques.
 }
 \details{
-This function performs K-NN imputation on groups of features independently, which will significantly
-reduce imputation time for large datasets. Typical strategies for grouping may include:
+This function performs K-NN or PCA imputation on groups of features independently,
+which significantly reduce imputation time for large datasets. Typical strategies
+for grouping may include:
 \itemize{
 \item Breaking down search space by chromosomes
 \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
 \item Using clusters identified by column clustering techniques
 }
 
-Only features in each group (each row of the data.frame) will be imputed, using the search space
-defined as the union of the features and aux columns of that group. Columns that are in aux or in the object
-but not in any features will be left unchanged.
+Only features in each group (each row of the data.frame) will be imputed, using
+the search space defined as the union of the features and optional aux columns
+of that group. Columns that are in aux or in the object but not in any features
+will be left unchanged.
 }
 \examples{
-# Generate example data with missing values. This simulates a 20x50 matrix with missing values
-# and groups by chromosome. Here we are simulating 2 chromosomes.
+# Generate example data with missing values
 set.seed(1234)
 to_test <- sim_mat(
   m = 20,
@@ -93,7 +117,10 @@ group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
 group_df <- tibble::tibble(
   features = list(group_1[1:3], group_2[1:4]),
   aux = list(group_1, group_2),
-  parameters = list(list(k = 3, weighted = TRUE), list(k = 4, method = "manhattan"))
+  parameters = list(
+    list(k = 3, dist_pow = 1),
+    list(k = 4, method = "manhattan")
+  )
 )
 group_df
 

@@ -90,14 +90,15 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// col_vars
-arma::rowvec col_vars(const arma::mat& mat);
-RcppExport SEXP _slideimp_col_vars(SEXP matSEXP) {
+// col_vars_internal
+arma::rowvec col_vars_internal(const arma::mat& mat, const arma::uword cores);
+RcppExport SEXP _slideimp_col_vars_internal(SEXP matSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    rcpp_result_gen = Rcpp::wrap(col_vars(mat));
+    Rcpp::traits::input_parameter< const arma::uword >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(col_vars_internal(mat, cores));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -108,7 +109,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
     {"_slideimp_weighted_row_means", (DL_FUNC) &_slideimp_weighted_row_means, 4},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
-    {"_slideimp_col_vars", (DL_FUNC) &_slideimp_col_vars, 1},
+    {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
     {NULL, NULL, 0}
 };
 

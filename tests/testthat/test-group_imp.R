@@ -124,6 +124,34 @@ test_that("grouped imputation works without aux columns, knn", {
   expect_identical(grouped_results, expected_results)
 })
 
+test_that("group-specific parameters work correctly, pca", {
+  set.seed(1234)
+  to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
+  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
+  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  # Different ncp and coeff.ridge values for each group
+  group_df <- tibble::tibble(
+    features = list(group_1[1:3], group_2[1:4]),
+    aux = list(group_1, group_2),
+    parameters = list(
+      list(ncp = 2, coeff.ridge = 1),
+      list(ncp = 3, coeff.ridge = 2)
+    )
+  )
+  obj <- t(to_test$input)
+  grouped_results <- group_imp(obj, group = group_df, k = NULL, ncp = 5)
+
+  # Manual verification with different parameters
+  sub1_full <- pca_imp(obj[, group_1], ncp = 2, coeff.ridge = 1)
+  sub1 <- obj[, group_1]
+  sub1[, group_1[1:3]] <- sub1_full[, group_1[1:3]]
+  sub2_full <- pca_imp(obj[, group_2], ncp = 3, coeff.ridge = 2)
+  sub2 <- obj[, group_2]
+  sub2[, group_2[1:4]] <- sub2_full[, group_2[1:4]]
+  expected_results <- cbind(sub1, sub2)[, colnames(obj)]
+  expect_identical(grouped_results, expected_results)
+})
+
 test_that("grouped imputation works without aux columns, pca", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
