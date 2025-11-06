@@ -1,6 +1,6 @@
-fast.svd.triplet <- function (X, row.w = NULL, col.w = NULL)
-{
-  svd.usuelle <- corpcor::fast.svd(X)
+#' @importFrom bootSVD fastSVD
+fast.svd.triplet <- function(X, ncp) {
+  svd.usuelle <- fastSVD(X)
   U <- svd.usuelle$u[, 1:ncp, drop = FALSE]
   V <- svd.usuelle$v[, 1:ncp, drop = FALSE]
   if (ncp > 1) {
@@ -10,14 +10,22 @@ fast.svd.triplet <- function (X, row.w = NULL, col.w = NULL)
     V <- t(t(V) * mult)
   }
   vs <- svd.usuelle$d[1:min(ncol(X), nrow(X) - 1)]
+  # num <- which(vs[1:ncp] < 1e-15)
+  #   if (length(num) == 1) {
+  #       U[, num] <- U[, num, drop = FALSE] * vs[num]
+  #       V[, num] <- V[, num, drop = FALSE] * vs[num]
+  #   }
+  #   if (length(num) > 1) {
+  #       U[, num] <- t(t(U[, num]) * vs[num])
+  #       V[, num] <- t(t(V[, num]) * vs[num])
+  #   }
   res <- list(vs = vs, U = U, V = V)
   return(res)
 }
 
 pca_imp_internal <- function(
-  X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
-  miniter, row.w, coeff.ridge, nrX, ncX
-) {
+    X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
+    miniter, row.w, coeff.ridge, nrX, ncX) {
   nb.iter <- 1
   old <- Inf
   objective <- 0
@@ -75,7 +83,7 @@ pca_imp_internal <- function(
       Xhat[, quanti.sup] <- Xhat[, quanti.sup] * 1e-08
     }
 
-    svd.res <- fast.svd.triplet(Xhat, row.w = row.w, ncp = ncp)
+    svd.res <- fast.svd.triplet(Xhat, ncp = ncp)
     sigma2 <- nrX * ncX / min(ncX, nrX - 1) *
       sum((svd.res$vs[-c(seq_len(ncp))]^2) /
         ((nrX - 1) * ncX - (nrX - 1) * ncp - ncX * ncp + ncp^2))
@@ -142,7 +150,7 @@ pca_imp_internal <- function(
 #' We advice to use the regularized version of the algorithm to avoid the overfitting problems which are very frequent when there are many missing values. In the regularized algorithm, the singular values of the PCA are shrinked.\cr
 #' The output of the algorithm can be used as an input of the PCA function of the FactoMineR package in order to perform PCA on an incomplete dataset.
 #'
-#' @param X a data.frame with continuous variables containing missing values
+#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param ncp integer corresponding to the number of components used to to predict the missing entries
 #' @param scale boolean. By default TRUE leading to a same weight for each variable
 #' @param method "Regularized" by default or "EM"
@@ -170,44 +178,43 @@ pca_imp_internal <- function(
 #'
 #' @export
 pca_imp <- function(
-  X, ncp = 2, scale = TRUE, method = c("Regularized", "EM"), row.w = NULL,
-  ind.sup = NULL, quanti.sup = NULL, coeff.ridge = 1, threshold = 1e-6, seed = NULL,
-  nb.init = 1, maxiter = 1000, miniter = 5
-) {
+    obj, ncp = 2, scale = TRUE, method = c("Regularized", "EM"), row.w = NULL,
+    ind.sup = NULL, quanti.sup = NULL, coeff.ridge = 1, threshold = 1e-6, seed = NULL,
+    nb.init = 1, maxiter = 1000, miniter = 5) {
   #### Main program
-  if (!anyNA(X)) {
-    return(X)
+  row.w <- NULL
+  if (!anyNA(obj)) {
+    return(obj)
   }
-
   method <- match.arg(method, c("Regularized", "regularized", "EM", "em"),
     several.ok = T
   )[1]
-  obj <- Inf
+  init_obj <- Inf
   method <- tolower(method)
 
-  nrX <- nrow(X) - length(ind.sup)
-  ncX <- ncol(X) - length(quanti.sup)
+  nrX <- nrow(obj) - length(ind.sup)
+  ncX <- ncol(obj) - length(quanti.sup)
 
-  if (ncp > min(nrow(X) - 2, ncol(X) - 1)) {
+  if (ncp > min(nrow(obj) - 2, ncol(obj) - 1)) {
     stop("ncp is too large")
   }
 
   if (is.null(row.w)) {
-    row.w <- rep(1, nrow(X)) / nrow(X)
+    row.w <- rep(1, nrow(obj)) / nrow(obj)
   }
 
   if (!is.null(ind.sup)) {
     row.w[ind.sup] <- row.w[ind.sup] * 1e-08
   }
 
-  miss <- is.na(X)
+  miss <- is.na(obj)
   cmiss <- colSums(miss)
   if (any(cmiss / nrow(obj) == 1)) {
     stop("Col(s) with all missing detected. Remove before proceed")
   }
   for (i in seq_len(nb.init)) {
     res.impute <- pca_imp_internal(
-      X,
+      X = obj,
       miss = miss, ncp = ncp, scale = scale, method = method,
       ind.sup = ind.sup, quanti.sup = quanti.sup, threshold = threshold,
       seed = if (!is.null(seed)) {
@@ -219,11 +226,11 @@ pca_imp <- function(
       coeff.ridge = coeff.ridge, nrX = nrX, ncX = ncX
     )
 
-    cur_obj <- mean((res.impute$fittedX[!miss] - X[!miss])^2)
+    cur_obj <- mean((res.impute$fittedX[!miss] - obj[!miss])^2)
 
-    if (cur_obj < obj) {
+    if (cur_obj < init_obj) {
       res <- res.impute
-      obj <- cur_obj
+      init_obj <- cur_obj
     }
   }
 

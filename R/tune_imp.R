@@ -28,12 +28,11 @@
 #' @keywords internal
 #' @noRd
 inject_na <- function(
-  obj,
-  num_na = NULL,
-  rowmax = 0.9,
-  colmax = 0.9,
-  max_iter = 1000
-) {
+    obj,
+    num_na = NULL,
+    rowmax = 0.9,
+    colmax = 0.9,
+    max_iter = 1000) {
   # subset the matrix to the specified features and samples
   na_mat <- !is.na(obj)
   # check if existing NA pattern already exceeds thresholds
@@ -91,57 +90,33 @@ inject_na <- function(
   return(na_loc)
 }
 
-#' Tune Parameters for [slide_imp()]/[knn_imp()]/Custom Imputation
+#' Tune Parameters for Imputation Methods
 #'
 #' @description
-#' This function tunes the parameters for the [slide_imp()] or [knn_imp()] imputation methods by injecting
-#' missing values (or list of pre-determined NA locations) into the dataset multiple times and evaluating the imputation performance for different
-#' parameter combinations. Can also tune custom imputation functions.
+#' Tunes hyperparameters for imputation methods like [slide_imp()], [knn_imp()], [pca_imp()],
+#' or custom functions by injecting missing values into the dataset and evaluating
+#' performance across parameter combinations.
 #'
 #' @details
-#' This function allows tuning of hyperparameters for matrix imputation methods, including the built-in
-#' 'slide_imp' and 'knn_imp', or a custom function provided to `.f`.
+#' Supports tuning built-in methods ('slide_imp', 'knn_imp', 'pca_imp') or custom functions via `.f`.
 #'
-#' For a custom function in `.f`, the `parameters` data.frame must have columns whose names match the
-#' argument names of `.f` (excluding `obj`). The custom function must take `obj` as its first input
-#' argument and output a numeric matrix of the same dimensions as `obj`. See examples.
+#' For custom `.f`, `parameters` columns must match `.f`'s arguments (excluding `obj`). The
+#' function must take `obj` as an argument and return a numeric matrix of the same dimensions.
 #'
-#' For the built-in methods ('slide_imp' or 'knn_imp'), certain parameters are required in `parameters`:
-#' - For 'slide_imp': `n_feat`, `k`, and `n_overlap`
-#' - For 'knn_imp': `k`
-#'
-#' Default values are set for optional parameters if not provided (e.g., `method = "euclidean"`,
-#' `post_imp = FALSE`).
-#'
-#' @note The `n_imp` parameter is always internally set to 1 for tuning purposes for `slide_imp` or `knn_imp`.
-#'
-#' @inheritParams slide_imp
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#'   Tip: keep `obj` size small to manage memory overhead.
-#' @param parameters A data.frame specifying the parameter combinations to tune. Duplicated rows are
-#'   removed. The required columns depend on `.f`; see [knn_imp()] or [slide_imp()] for details about
-#'   the parameters. sSupport list columns.
-#' @param .f The imputation function to tune. Can be the string "knn_imp" (default), "slide_imp", or
-#'   a custom function. See details.
-#' @param rep Either:
-#'   - A positive integer specifying the number of repetitions for randomly injecting missing values
-#'     to evaluate each parameter combination (default is 1).
-#'   - A list of integer vectors, where each vector contains the positions (1-indexed) in the matrix
-#'     where NAs should be injected. All vectors must have the same length, and all elements must be
-#'     unique (no duplicate NA location sets). The length of the list determines the number of
-#'     repetitions.
-#' @param num_na The number of missing values to inject randomly when `rep` is an integer.
-#'   Must be a positive integer when `rep` is an integer. This parameter is ignored when `rep` is a list.
-#'   Default is 100.
-#' @param max_iter Maximum number of iterations to attempt finding valid NA positions. Default is 1000.
+#' @param parameters Data frame of parameter combinations to tune where each column is
+#' a parameter accepted by `.f`. Duplicates are removed. Supports list columns.
+#' @param .f Imputation function: "knn_imp" (default), "slide_imp", "pca_imp", or custom function.
+#' @param rep Positive integer for random NA injections per combination (default 1), or
+#' list of integer vectors specifying linear NA positions of a matrix (all unique, same length).
+#' @param num_na Number of NAs to inject if `rep` is integer (default 100). Ignored if `rep` is list.
+#' @param max_iter Max iterations to find valid NA positions (default 1000).
+#' @param colmax Max proportion of NAs per column (0-1, default 1).
+#' @param rowmax Max proportion of NAs per row (0-1, default 1).
+#' @param .progress Show progress bar (default FALSE).
+#' @param cores Number of cores for parallelization (default 1).
 #'
-#' @return A `tibble` containing:
-#' - All parameter columns from the input `parameters` data frame
-#' - `param_set`: Integer identifier for each unique parameter combination
-#' - `rep`: The repetition number
-#' - `result`: A nested tibble with columns `truth` (original values) and `estimate` (imputed values)
-#'
-#' @seealso [knn_imp()], [slide_imp()]
+#' @return Tibble with parameter columns, `param_set` (ID), `rep` (repetition), and `result` (nested tibble of `truth` and `estimate`).
 #'
 #' @examples
 #' data(khanmiss1)
@@ -150,91 +125,58 @@ inject_na <- function(
 #'   n_feat = c(100, 100, 100),
 #'   k = c(5, 10, 10),
 #'   n_overlap = c(10, 10, 10),
-#'   method = "euclidean",
-#'   # Set post_imp to FALSE to estimate just the k-NN imputation quality
+#'   knn_method = "euclidean",
 #'   post_imp = FALSE
 #' )
 #'
 #' set.seed(1234)
-#' # Tune slide_imp function on a subset of khanmiss1
 #' obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
-#' anyNA(obj)
 #'
-#' # Method 1: Random NA injection with integer rep
-#' results <- tune_imp(obj, parameters, .f = "knn_imp", rep = 1, num_na = 20)
+#' # Random NA injection
+#' results <- tune_imp(obj, parameters, .f = "slide_imp", rep = 1, num_na = 20)
 #'
-#' # Method 2: Specific NA locations with list rep
-#' # Create a complete matrix for demonstration
+#' # Specific NA positions
 #' obj_complete <- obj
 #' obj_complete[is.na(obj_complete)] <- 0
-#'
-#' # Define specific positions to test
 #' na_positions <- list(
 #'   sample(1:length(obj_complete), 20, replace = FALSE),
 #'   sample(1:length(obj_complete), 20, replace = FALSE),
 #'   sample(1:length(obj_complete), 20, replace = FALSE)
 #' )
+#' results_fixed <- tune_imp(obj_complete, data.frame(k = 10), .f = "knn_imp", rep = na_positions)
 #'
-#' # Tune with predefined NA locations (useful for reproducible benchmarking)
-#' results_fixed <- tune_imp(
-#'   obj_complete,
-#'   parameters,
-#'   .f = "knn_imp",
-#'   rep = na_positions # No num_na needed
-#' )
-#'
-#' # Example with a custom imputation function where missing values are filled with random values
+#' # Custom imputation
 #' custom_imp <- function(obj, mean = 0, sd = 1) {
 #'   na_pos <- is.na(obj)
 #'   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
-#'   return(obj)
+#'   obj
 #' }
-#'
-#' parameters_custom <- data.frame(
-#'   mean = c(0, 0, 1),
-#'   sd = c(1, 2, 1)
-#' )
-#'
-#' # Reuse the same obj
-#' set.seed(1234)
+#' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 #' results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 1, num_na = 20)
-#' @examplesIf rlang::is_installed("dplyr") && rlang::is_installed("yardstick") && rlang::is_installed("dplyr") && rlang::is_installed("tidyr")
-#' # Install {yardstick} to calculate any metrics using the result
+#'
+#' # Analyze the results with yardstick
+#' @examplesIf requireNamespace("dplyr", quietly = TRUE) && requireNamespace("yardstick", quietly = TRUE) && requireNamespace("tidyr", quietly = TRUE)
 #' met_set <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::rsq)
-#' results$metrics <- lapply(
-#'   results$result,
-#'   function(x) {
-#'     met_set(x, truth = truth, estimate = estimate)
-#'   }
-#' )
+#' results$metrics <- lapply(results$result, \(x) met_set(x, truth = truth, estimate = estimate))
+#' tidyr::unnest(dplyr::select(results, -result), metrics)
 #'
-#' # Unnest the metrics
-#' tidyr::unnest(dplyr::select(results, -result), cols = "metrics")
-#'
-#' # Similarly, compute metrics for the random values custom function
-#' results_custom$metrics <- lapply(
-#'   results_custom$result,
-#'   function(x) {
-#'     met_set(x, truth = truth, estimate = estimate)
-#'   }
-#' )
-#' tidyr::unnest(dplyr::select(results_custom, -result), cols = "metrics")
+#' results_custom$metrics <- lapply(results_custom$result, \(x) met_set(x, truth = truth, estimate = estimate))
+#' tidyr::unnest(dplyr::select(results_custom, -result), metrics)
 #'
 #' @export
 tune_imp <- function(
-  obj,
-  parameters,
-  .f = "knn_imp",
-  rep = 1,
-  num_na = 100,
-  max_iter = 1000,
-  .progress = FALSE,
-  rowmax = 0.9,
-  colmax = 0.9,
-  cores = 1
-) {
+    obj,
+    parameters,
+    .f = "knn_imp",
+    rep = 1,
+    num_na = 100,
+    rowmax = 0.9,
+    colmax = 0.9,
+    max_iter = 1000,
+    .progress = FALSE,
+    cores = 1) {
   fun <- NULL
-  # Input validation
+  # pre-conditioning
   checkmate::assert_matrix(
     obj,
     mode = "numeric",
@@ -245,8 +187,8 @@ tune_imp <- function(
   )
   checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
   stopifnot(
-    "`.f` must be a function or 'slide_imp' or 'knn_imp'." = (
-      is.function(.f) || (is.character(.f) && (.f %in% c("slide_imp", "knn_imp")) && length(.f) == 1)
+    "`.f` must be a function or 'slide_imp' or 'knn_imp' or 'pca_imp'." = (
+      is.function(.f) || (is.character(.f) && (.f %in% c("slide_imp", "knn_imp", "pca_imp")) && length(.f) == 1)
     )
   )
   if (is.numeric(rep)) {
@@ -292,59 +234,20 @@ tune_imp <- function(
     .var.name = "parameters",
     null.ok = FALSE
   )
-  # parameters ----
-  valid_cols <- c(
-    "k", "colmax", "rowmax", "method", "post_imp", "weighted", "dist_pow", "tree"
-  )
+  parameters <- unique(parameters)
   if (is.character(.f)) {
-    parameters <- unique(parameters)
-    # Force Single Imputation
-    parameters$n_imp <- NULL
-    parameters$n_pmm <- NULL
-    # Add fixed parameters
-    parameters$rowmax <- rowmax
-    parameters$colmax <- colmax
     if (.f == "slide_imp") {
-      # Validate required parameters
-      required_params <- c("n_feat", "k", "n_overlap")
-      missing_params <- setdiff(required_params, names(parameters))
-      if (length(missing_params) > 0) {
-        stop(sprintf(
-          "`slide_imp` requires %s in parameters",
-          paste(missing_params, collapse = ", ")
-        ))
-      }
       parameters$.progress <- FALSE
-      valid_cols <- c("n_feat", "n_overlap", valid_cols)
-      parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
-    } else if (.f == "knn_imp") {
-      # Validate required parameters
-      if (!"k" %in% names(parameters)) {
-        stop("`knn_imp` requires `k` in parameters")
+      if (cores > 1 && "k" %in% names(parameters)) {
+        # for `slide_imp` knn mode. Don't parallel through mirai.
+        parameters$cores <- cores
+        cores <- 1
       }
-      # Select only relevant columns for knn_imp
-      parameters <- parameters[, intersect(names(parameters), valid_cols), drop = FALSE]
-    }
-    # for `slide_imp` and `knn_imp`, just use single thread because the overhead of
-    # mirai is high. parallelize at knn_imp level has much lower overhead.
-    parameters$cores <- cores
-    cores <- 1
-  } else {
-    if ("n_imp" %in% names(parameters)) {
-      warning("Removing 'n_imp' and 'n_pmm', from parameters for custom function")
-      parameters$n_imp <- NULL
-      parameters$n_pmm <- NULL
     }
   }
-  # Remove duplicates after processing
-  parameters <- unique(parameters)
-
-  # Create parameter sets and repetition indices
   .rowid <- seq_len(nrow(parameters))
-  # List cols handling by getting the first value of the list after asplit
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
     row_list <- as.list(row)
-    # Extract first element from list columns
     row_list <- lapply(row_list, function(x) {
       if (is.list(x) && length(x) == 1) {
         x[[1]]
@@ -384,7 +287,7 @@ tune_imp <- function(
       mirai::require_daemons(),
       error = function(e) {
         stop(sprintf(
-          "%d cores requested, but no mirai daemon is setup. Call mirai::daemons(%d) to set up the parallelization",
+          "%d cores requested, but no mirai daemon is setup. Call `mirai::daemons(%d)` to set up the parallelization",
           cores, cores
         ))
       }
@@ -403,6 +306,9 @@ tune_imp <- function(
       validate_output <- FALSE
     } else if (.f == "knn_imp") {
       target_function <- knn_imp
+      validate_output <- FALSE
+    } else if (.f == "pca_imp") {
+      target_function <- pca_imp
       validate_output <- FALSE
     }
   } else {
@@ -438,12 +344,8 @@ tune_imp <- function(
               .var.name = "imputed_result"
             )
             checkmate::assert_true(sum(is.infinite(imputed_result)) == 0, .var.name = "imputed_result")
-            # Extract imputed values directly from matrix
-            estimate_vec <- imputed_result[na_positions]
-          } else {
-            # For slide_imp and knn_imp (returns a list, extract first element)
-            estimate_vec <- imputed_result[[1]][na_positions]
           }
+          estimate_vec <- imputed_result[na_positions]
           tibble::tibble(truth = truth_vec, estimate = estimate_vec)
         },
         error = function(e) {
@@ -461,13 +363,6 @@ tune_imp <- function(
   )
   # Execute the mapping with the crated function
   result_list <- purrr::map(seq_len(nrow(indices)), crated_fn, .progress = .progress)
-  # Check for failed iterations (empty results or all NA estimates)
-  # failed_iterations <- vapply(result_list, function(res) {
-  #   nrow(res) == 0 || all(is.na(res$estimate))
-  # }, logical(1))
-  # if(any(failed_iterations)) {
-  #   warning("Some iterations failed. Check results carefully")
-  # }
   # Combine parameters with results
   result_df <- tibble::as_tibble(cbind(
     parameters[indices$param_set, , drop = FALSE],

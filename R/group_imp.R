@@ -58,31 +58,30 @@
 #' grouped_results <- group_imp(obj, group = group_df, k = 5)
 #' grouped_results
 group_imp <- function(
-  obj,
-  group,
-  # KNN-specific parameters
-  k = NULL,
-  colmax = 0.9,
-  knn_method = c("euclidean", "manhattan"),
-  cores = 1,
-  post_imp = TRUE,
-  dist_pow = 0,
-  tree = NULL,
-  # PCA-specific parameters
-  ncp = NULL,
-  scale = TRUE,
-  pca_method = c("Regularized", "EM"),
-  coeff.ridge = 1,
-  row.w = NULL,
-  ind.sup = NULL,
-  threshold = 1e-6,
-  seed = NULL,
-  nb.init = 1,
-  maxiter = 1000,
-  miniter = 5,
-  # Others
-  .progress = TRUE
-) {
+    obj,
+    group,
+    # KNN-specific parameters
+    k = NULL,
+    colmax = 0.9,
+    knn_method = c("euclidean", "manhattan"),
+    cores = 1,
+    post_imp = TRUE,
+    dist_pow = 0,
+    tree = NULL,
+    # PCA-specific parameters
+    ncp = NULL,
+    scale = TRUE,
+    pca_method = c("Regularized", "EM"),
+    coeff.ridge = 1,
+    row.w = NULL,
+    ind.sup = NULL,
+    threshold = 1e-6,
+    seed = NULL,
+    nb.init = 1,
+    maxiter = 1000,
+    miniter = 5,
+    # Others
+    .progress = TRUE) {
   # pre-conditioning
   if (is.null(k) && is.null(ncp)) {
     stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation")
@@ -167,7 +166,7 @@ group_imp <- function(
     } else {
       f_imp <- "pca_imp"
       group_params <- list(
-        X = obj[, columns, drop = FALSE],
+        obj = obj[, columns, drop = FALSE],
         ncp = ncp,
         scale = scale,
         method = pca_method,

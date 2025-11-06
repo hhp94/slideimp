@@ -1,10 +1,10 @@
-test_that("tune_imp .f = `slide_imp`, `knn_imp` or function works", {
+test_that("tune_imp .f = `slide_imp`, `knn_imp`, `pca_imp` or function works", {
   data(khanmiss1)
   slide_imp_par <- data.frame(
     n_feat = c(100, 100),
     k = c(5, 10),
     n_overlap = c(10, 10),
-    method = "euclidean",
+    knn_method = "euclidean",
     post_imp = FALSE
   )
   set.seed(1234)
@@ -51,6 +51,25 @@ test_that("tune_imp .f = `slide_imp`, `knn_imp` or function works", {
     )
   )
 
+  # Check `pca_imp`
+  pca_imp_par <- data.frame(ncp = 2, miniter = 2)
+  expect_no_error({
+    pca_imp_res <- tune_imp(obj, pca_imp_par, rep = 1, num_na = 100, .f = "pca_imp")
+  })
+
+  expect_true(
+    all(
+      vapply(
+        pca_imp_res$result,
+        \(x) {
+          class(x$estimate)
+        },
+        character(1)
+      ) == "numeric"
+    )
+  )
+
+
   # Check custom function
   f1 <- function() {}
   custom_fun <- function(obj, value) {
@@ -95,7 +114,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     n_feat = 100,
     k = 5,
     n_overlap = 10,
-    method = "euclidean",
+    knn_method = "euclidean",
     post_imp = FALSE
   )
 

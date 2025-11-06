@@ -50,16 +50,15 @@
 #'
 #' @export
 knn_imp <- function(
-  obj,
-  k,
-  colmax = 0.9,
-  method = c("euclidean", "manhattan"),
-  cores = 1,
-  post_imp = TRUE,
-  subset = NULL,
-  dist_pow = 0,
-  tree = NULL
-) {
+    obj,
+    k,
+    colmax = 0.9,
+    method = c("euclidean", "manhattan"),
+    cores = 1,
+    post_imp = TRUE,
+    subset = NULL,
+    dist_pow = 0,
+    tree = NULL) {
   # Pre-conditioning
   method <- match.arg(method)
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")

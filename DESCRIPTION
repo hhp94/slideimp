@@ -30,7 +30,7 @@ Imports:
     Rcpp,
     FactoMineR,
     tibble,
-    corpcor
+    bootSVD
 Suggests:
     missMDA,
     dplyr,

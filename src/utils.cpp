@@ -19,9 +19,8 @@ arma::rowvec col_vars(const arma::mat& mat) {
   arma::rowvec result(mat.n_cols);
   for (arma::uword i = 0; i < mat.n_cols; ++i) {
     arma::vec col = mat.col(i);
-    // Remove NaN values
     arma::vec valid = col.elem(arma::find_finite(col));
-    if (valid.n_elem < 2) {
+    if (valid.n_elem < 1) {
       result(i) = arma::datum::nan;
     } else {
       result(i) = arma::var(valid);

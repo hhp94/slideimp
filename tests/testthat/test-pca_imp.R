@@ -19,7 +19,7 @@ test_that("same results as imputePCA", {
 
 test_that("Behavior with extreme missing columns and rows", {
   set.seed(1234)
-  to_test <- t(sim_mat(m = 20, n = 20, perc_NA = 0.2, perc_col_NA = 1)$input)
+  to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
   to_test[1, ] <- NA
   expect_no_error(pca_imp(to_test, ncp = 2, seed = 1234))
   to_test[, 1] <- NA

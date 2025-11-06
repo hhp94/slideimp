@@ -5,7 +5,7 @@
 \title{Impute dataset with PCA}
 \usage{
 pca_imp(
-  X,
+  obj,
   ncp = 2,
   scale = TRUE,
   method = c("Regularized", "EM"),
@@ -21,7 +21,7 @@ pca_imp(
 )
 }
 \arguments{
-\item{X}{a data.frame with continuous variables containing missing values}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 

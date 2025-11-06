@@ -32,6 +32,12 @@ find_overlap_regions <- function(start, end) {
 #' Performs k-nearest neighbor imputation on large numeric matrices using a sliding
 #' window approach column-wise. This method assumes that columns are meaningfully sorted.
 #'
+#' @inheritParams knn_imp
+#' @inheritParams pca_imp
+#' @param n_feat Number of features in a window.
+#' @param n_overlap Number of overlapping features between two windows.
+#' @param .progress Show progress bar (default = FALSE).
+#'
 #' @details
 #' The sliding window approach divides the input matrix into smaller, overlapping
 #' segments and applies imputation to each window independently. Values in overlapping
@@ -46,48 +52,52 @@ find_overlap_regions <- function(start, end) {
 #' set.seed(1234)
 #' beta_matrix <- t(sim_mat(100, 20)$input)
 #'
-#' # ========================================
-#' # Basic Sliding k-NN Imputation
-#' # ========================================
-#'
-#' # Simple imputation with default parameters
-#' imputed_basic <- slide_imp(
+#' # Sliding Window K-NN imputation by specifying `k = 5`
+#' imputed_knn <- slide_imp(
 #'   beta_matrix,
 #'   k = 5,
 #'   n_feat = 50,
 #'   n_overlap = 10
 #' )
-#' imputed_basic
+#' imputed_knn
+#'
+#' # Sliding Window PCA imputation by specifying `ncp = 2`
+#' imputed_knn <- slide_imp(
+#'   beta_matrix,
+#'   ncp = 2,
+#'   n_feat = 50,
+#'   n_overlap = 10
+#' )
+#' imputed_knn
 #'
 #' @export
 slide_imp <- function(
-  obj,
-  n_feat,
-  n_overlap = 10,
-  # KNN-specific parameters
-  k = NULL,
-  colmax = 0.9,
-  knn_method = c("euclidean", "manhattan"),
-  cores = 1,
-  post_imp = TRUE,
-  dist_pow = 0,
-  subset = NULL,
-  # PCA-specific parameters
-  ncp = NULL,
-  scale = TRUE,
-  pca_method = c("regularized", "em"),
-  coeff.ridge = 1,
-  row.w = NULL,
-  ind.sup = NULL,
-  seed = NULL,
-  nb.init = 1,
-  maxiter = 1000,
-  miniter = 5,
-  # Others
-  .progress = FALSE
-) {
-  if (is.null(k) && is.null(ncp)) {
-    stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation")
+    obj,
+    n_feat,
+    n_overlap,
+    # KNN-specific parameters
+    k = NULL,
+    colmax = 0.9,
+    knn_method = c("euclidean", "manhattan"),
+    cores = 1,
+    post_imp = TRUE,
+    dist_pow = 0,
+    subset = NULL,
+    # PCA-specific parameters
+    ncp = NULL,
+    scale = TRUE,
+    pca_method = c("regularized", "em"),
+    coeff.ridge = 1,
+    row.w = NULL,
+    ind.sup = NULL,
+    seed = NULL,
+    nb.init = 1,
+    maxiter = 1000,
+    miniter = 5,
+    # Others
+    .progress = FALSE) {
+  if (sum(c(is.null(k), is.null(ncp))) != 1L) {
+    stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
   }
   imp_method <- if (!is.null(k)) {
     "knn"
@@ -199,7 +209,7 @@ slide_imp <- function(
       )
     } else if (imp_method == "pca") {
       imputed_window <- pca_imp(
-        X = obj[, window_cols, drop = FALSE],
+        obj = obj[, window_cols, drop = FALSE],
         ncp = ncp,
         scale = scale,
         method = pca_method,

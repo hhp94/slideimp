@@ -7,7 +7,7 @@
 slide_imp(
   obj,
   n_feat,
-  n_overlap = 10,
+  n_overlap,
   k = NULL,
   colmax = 0.9,
   knn_method = c("euclidean", "manhattan"),
@@ -27,6 +27,47 @@ slide_imp(
   miniter = 5,
   .progress = FALSE
 )
+}
+\arguments{
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+
+\item{n_feat}{Number of features in a window.}
+
+\item{n_overlap}{Number of overlapping features between two windows.}
+
+\item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
+
+\item{colmax}{A number from 0 to 1. Threshold of missing data above which k-NN imputation is skipped.}
+
+\item{cores}{Number of cores to parallelize over.}
+
+\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed k-NN imputation) using column means.}
+
+\item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
+If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
+
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute.}
+
+\item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
+
+\item{scale}{boolean. By default TRUE leading to a same weight for each variable}
+
+\item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
+
+\item{row.w}{row weights (by default, a vector of 1 for uniform row weights)}
+
+\item{ind.sup}{a vector indicating the indexes of the supplementary individuals}
+
+\item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
+
+\item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
+
+\item{maxiter}{integer, maximum number of iteration for the algorithm}
+
+\item{miniter}{integer, minimum number of iteration for the algorithm}
+
+\item{.progress}{Show progress bar (default = FALSE).}
 }
 \description{
 Performs k-nearest neighbor imputation on large numeric matrices using a sliding
