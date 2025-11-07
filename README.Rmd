@@ -16,20 +16,18 @@ knitr::opts_chunk$set(
 # slideimp
 
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/hhp94/slide_imp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/slide_imp/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/hhp94/slideimp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/slideimp/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-`{slideimp}` is a lightweight R package for k-NN and PCA imputation of missing values in high-dimensional numeric matrices, such as those from intensively sampled longitudinal data or epigenetics. `knn_imp()` implements a full k-NN imputation. `pca_imp()` is a slightly optimized version of the [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) function. `slide_imp()` implements a sliding window k-NN or PCA imputation for data where features are ordered (e.g., by time or distance). `group_imp()` implements a group-wise imputation for data that can be broken into meaningful groups, like chromosomes or results of column clustering algorithms.
+`{slideimp}` is a lightweight R package for fast k-NN and PCA imputation of missing values in high-dimensional numeric matrices (e.g., intensive longitudinal or epigenetic data).
 
-Key features include:
+**Core functions**  
 
-- **Sliding Window Imputation**: Break large data into overlapping windows for computationally feasible imputation while maintaining local structures (e.g., intensively sampled longitudinal data or epigenetics data).
-- **Group Imputation**: Break large data into groups such as chromosomes or clusters identified by column clustering algorithms.
-- **Full Matrix k-NN Imputation**: Standard k-NN for smaller data, with multi-core parallelization over columns with missing values.
-- **Tree-Based k-NN**: Integration with [`{mlpack}`](https://www.mlpack.org/) for KD-Tree or Ball-Tree methods for imputation in high dimensions. Best when missing per feature is < 20% and dimension is very large.
-- **Subset k-NN Imputation**: Only impute a subset of columns to save time. Important for applications such as epigenetics clocks calculations.
-- **Full Matrix PCA Imputation**: From the [`{missMDA}`](http://factominer.free.fr/missMDA/index.html) package, optimized version of `imputePCA` (`pca_imp`) for numeric matrix.
-- **Parameter Tuning**: Inject artificial NAs to evaluate and tune hyperparameters, with support for custom imputation functions.
+* `knn_imp()`: full-matrix k-NN with multi-core parallelization, `{mlpack}` tree acceleration (KD/Ball-Tree, best when <20% missing per feature), and optional subset imputation (ideal for epigenetic clock calculations).
+* `pca_imp()`: optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrices.
+* `slide_imp()`: sliding-window k-NN or PCA imputation of extremely high dimensional numeric matrices with ordered features (by time or genomic position).
+* `group_imp()`: group-wise (e.g. by chromosomes, or column clusters) k-NN or PCA imputation with optional auxiliary features for small groups.
+* `tune_imp()`: hyperparameter tuning with cross-validation; works with built-in or custom imputation functions.
 
 ## Installation
 
@@ -59,10 +57,9 @@ imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 1)
 imputed_full
 ```
 
-`knn_imp()` yields the same results as `impute::impute.knn()` without post imputation. `knn_imp()` is faster in larger data and is as fast in smaller data given `cores = 1`. `knn_imp()` scales well with multiple `cores`.
+`knn_imp()` yields the same results as [`impute::impute.knn()`](https://bioconductor.org/packages/release/bioc/html/impute.html) without post imputation. `knn_imp()` is faster in larger data and is as fast in smaller data given `cores = 1`. `knn_imp()` scales well with multiple `cores`.
 ```{r}
 library(bench)
-library(ggplot2)
 
 set.seed(1234)
 
@@ -91,7 +88,7 @@ imputed_tree <- knn_imp(
 imputed_tree
 ```
 
-Similarly, `pca_imp()` is a slightly optimized version of `missMDA::imputePCA()` for numeric matrix.
+Similarly, `pca_imp()` is an optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrix.
 ```{r}
 bench::mark(
   pca_imp(t(khanmiss1)[, 1:500], ncp = 2)[, ],
@@ -105,7 +102,7 @@ bench::mark(
 ## Sliding window k-NN and PCA imputation with `slide_imp()`
 Epigenetic datasets such as WGBS or EM-seq are very spatially correlated, `slide_imp()` allows the imputation of the full epigenome with good accuracy and speed by limiting the neighbor search space to sliding windows.
 
-Use k-NN by specifying `k`, PCA by specifying `ncp`. Only arguments applicable to each methods are applied.
+Use k-NN by specifying `k`, PCA by specifying `ncp`. Only arguments applicable to each method are applied.
 ```{r}
 # Simulating WGBS data with 1000 CpGs and 10 samples
 set.seed(1234)
@@ -124,7 +121,7 @@ pca_imputed
 ## Grouped imputation with `group_imp()`
 Features can be grouped by chromosomes (in epigenetics) or by cluster memberships identified through column clustering algorithms, such as k-means. This significantly decreases imputation time and potentially increases imputation accuracy.
 
-`group_imp()` requires the `group` data.frame (preferably a `tibble` for the handling of list columns), which is defined by two list-columns: `features` and `aux` (optional) where each row is a group. The `features` column includes all features to be imputed, while the `aux` columns contains features used to assist with imputation but excluded from the final results. For example, when imputing chrM, which may have only a few CpGs, random CpGs from other chromosomes can be included in the `aux` column to improve the quality of imputation.
+`group_imp()` requires the `group` data.frame (preferably a `tibble` for the handling of list columns), which is defined by two list-columns: `features` and `aux` (optional) where each row is a group. The `features` column includes all features to be imputed, while the `aux` columns contain features used to assist with imputation but excluded from the final results. For example, when imputing chrM, which may have only a few CpGs, random CpGs from other chromosomes can be included in the `aux` column to improve the quality of imputation.
 
 Similar to `slide_imp()`, use k-NN by specifying `k`, PCA by specifying `ncp`.
 
@@ -161,9 +158,8 @@ pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
 pca_grouped
 ```
 
-## Parameters Tuning with `tune_imp()`
-Use `tune_imp()` to tune hyperparameters by injecting artificial NAs and evaluating imputation accuracy. This function supports built-in methods or custom functions. Available built-in methods
-are "slide_imp", "knn_imp", and "pca_imp".
+## Parameter Tuning with `tune_imp()`
+Use `tune_imp()` to tune hyperparameters by cross-validation. This function repeatedly injects `NA` and evaluates imputation accuracy. This function supports built-in methods or custom functions. Available built-in methods are `slide_imp`, `knn_imp`, and `pca_imp`.
 
 ```{r}
 # This tibble defines the hyperparameters to tune for. `knn_imp` requires `k`, but other parameters like `dist_pow` and `method` can also be tuned.
@@ -195,7 +191,7 @@ head(
 )
 ```
 
-To tune a custom imputation function, a function has to take an numeric matrix `obj` as the first argument, return a matrix with the same dimension as `obj`, and parameters as arguments.
+To tune a custom imputation function, a function has to take a numeric matrix `obj` as the first argument, return a matrix with the same dimension as `obj`, and parameters as arguments.
 ```{r}
 # This custom function imputes NAs with rnorm values. First argument has to be `obj`, which is a numeric matrix. The returned object has to be the same dimension and data type as `obj`.
 custom_imp <- function(obj, mean = 0, sd = 1) {
