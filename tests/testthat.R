@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(SlideKnn)
+library(slideimp)
 
-test_check("SlideKnn")
+test_check("slideimp")

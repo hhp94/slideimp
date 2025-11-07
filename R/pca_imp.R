@@ -1,6 +1,33 @@
+#' @importFrom bootSVD fastSVD
+fast.svd.triplet <- function(X, ncp) {
+  svd.usuelle <- suppressWarnings(fastSVD(X))
+  U <- svd.usuelle$u[, 1:ncp, drop = FALSE]
+  V <- svd.usuelle$v[, 1:ncp, drop = FALSE]
+  if (ncp > 1) {
+    mult <- sign(as.vector(crossprod(rep(1, nrow(V)), as.matrix(V))))
+    mult[mult == 0] <- 1
+    U <- t(t(U) * mult)
+    V <- t(t(V) * mult)
+  }
+  vs <- svd.usuelle$d[1:min(ncol(X), nrow(X) - 1)]
+  # num <- which(vs[1:ncp] < 1e-15)
+  #   if (length(num) == 1) {
+  #       U[, num] <- U[, num, drop = FALSE] * vs[num]
+  #       V[, num] <- V[, num, drop = FALSE] * vs[num]
+  #   }
+  #   if (length(num) > 1) {
+  #       U[, num] <- t(t(U[, num]) * vs[num])
+  #       V[, num] <- t(t(V[, num]) * vs[num])
+  #   }
+  res <- list(vs = vs, U = U, V = V)
+  return(res)
+}
+
+#' @importFrom stats rnorm
 pca_imp_internal <- function(
-    X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
-    row.w, coeff.ridge, nrX, ncX) {
+  X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
+  miniter, row.w, coeff.ridge, nrX, ncX
+) {
   nb.iter <- 1
   old <- Inf
   objective <- 0
@@ -58,7 +85,7 @@ pca_imp_internal <- function(
       Xhat[, quanti.sup] <- Xhat[, quanti.sup] * 1e-08
     }
 
-    svd.res <- FactoMineR::svd.triplet(Xhat, row.w = row.w, ncp = ncp)
+    svd.res <- fast.svd.triplet(Xhat, ncp = ncp)
     sigma2 <- nrX * ncX / min(ncX, nrX - 1) *
       sum((svd.res$vs[-c(seq_len(ncp))]^2) /
         ((nrX - 1) * ncX - (nrX - 1) * ncp - ncX * ncp + ncp^2))
@@ -79,10 +106,10 @@ pca_imp_internal <- function(
     old <- objective
     nb.iter <- nb.iter + 1
     if (!is.nan(criterion)) {
-      if ((criterion < threshold) && (nb.iter > 5)) {
+      if ((criterion < threshold) && (nb.iter > miniter)) {
         nb.iter <- 0
       }
-      if ((objective < threshold) && (nb.iter > 5)) {
+      if ((objective < threshold) && (nb.iter > miniter)) {
         nb.iter <- 0
       }
     }
@@ -115,45 +142,87 @@ pca_imp_internal <- function(
   return(result)
 }
 
-pca_imp <- function(X, ncp = 2, scale = TRUE,
-                    method = c("Regularized", "EM"), row.w = NULL,
-                    ind.sup = NULL, quanti.sup = NULL,
-                    coeff.ridge = 1, threshold = 1e-6, seed = NULL,
-                    nb.init = 1, maxiter = 1000, ...) {
+#' Impute dataset with PCA
+#'
+#' (From the missMDA package on CRAN) Impute the missing values of a dataset with the Principal Components Analysis model. Can be used as a preliminary step before performing a PCA on an completed dataset.
+#'
+#' @details
+#' Impute the missing entries of a mixed data using the iterative PCA algorithm (method="EM") or the regularised iterative PCA algorithm (method="Regularized"). The (regularized) iterative PCA algorithm first consists imputing missing values with initial values such as the mean of the variable. If the argument seed is set to a specific value, a random initialization is performed: the initial values are drawn from a gaussian distribution
+#' with mean and standard deviation calculated from the observed values. nb.init different random initialization can be drawn. In such a situation, the solution giving the smallest objective function (the mean square error between the fitted matrix and the observed one) is kept. The second step of the (regularized) iterative PCA algorithm is to perform PCA on the completed dataset. Then, it imputes the missing values with the (regularized) reconstruction formulae of order ncp (the fitted matrix computed with ncp components for the (regularized) scores and loadings). These steps of estimation of the parameters via PCA and imputation of the missing values using the (regularized) fitted matrix are iterate until convergence. The iterative PCA algorithm is also known as the EM-PCA algorithm since it corresponds to an EM algorithm of the fixed effect model where the data are generated as a fixed structure (with a low rank representation) corrupted by noise. The number of components used in the algorithm can be found using cross-validation criteria implemented in the function estim_ncpPCA.\cr
+#' We advice to use the regularized version of the algorithm to avoid the overfitting problems which are very frequent when there are many missing values. In the regularized algorithm, the singular values of the PCA are shrinked.\cr
+#' The output of the algorithm can be used as an input of the PCA function of the FactoMineR package in order to perform PCA on an incomplete dataset.
+#'
+#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
+#' @param ncp integer corresponding to the number of components used to to predict the missing entries
+#' @param scale boolean. By default TRUE leading to a same weight for each variable
+#' @param method "Regularized" by default or "EM"
+#' @param coeff.ridge 1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)
+#' @param threshold the threshold for assessing convergence
+#' @param seed integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization
+#' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
+#' @param maxiter integer, maximum number of iteration for the algorithm
+#' @param miniter integer, minimum number of iteration for the algorithm
+#'
+#' @return A `dim(obj)` matrix with missing values imputed.
+#'
+#' @references
+#' Josse, J & Husson, F. (2013). Handling missing values in exploratory multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.
+#'
+#' Josse, J. and Husson, F. missMDA (2016). A Package for Handling Missing Values in Multivariate Data Analysis. Journal of Statistical Software, 70 (1), pp 1-31 \doi{doi:10.18637/jss.v070.i01}.
+#'
+#' @author Francois Husson \email{francois.husson@institut-agro.fr} and Julie Josse \email{julie.josse@polytechnique.edu}
+#'
+#' \href{https://www.youtube.com/watch?v=YDbx2pk9xNY&list=PLnZgp6epRBbQzxFnQrcxg09kRt-PA66T_&index=2}{Video showing how to perform PCA on an incomplete dataset}
+#'
+#' @examples
+#' data("khanmiss1")
+#'
+#' # Transpose to put genes on columns
+#' pca_imp(t(khanmiss1), ncp = 2)
+#'
+#' @export
+pca_imp <- function(
+  obj, ncp = 2, scale = TRUE, method = c("Regularized", "EM"),
+  coeff.ridge = 1, threshold = 1e-6, seed = NULL,
+  nb.init = 1, maxiter = 1000, miniter = 5
+) {
   #### Main program
-  if (!anyNA(X)) {
-    return(X)
-  }
+  row.w <- NULL
+  ind.sup <- NULL
+  quanti.sup <- NULL
 
+  if (!anyNA(obj)) {
+    return(obj)
+  }
   method <- match.arg(method, c("Regularized", "regularized", "EM", "em"),
     several.ok = T
   )[1]
-  obj <- Inf
+  init_obj <- Inf
   method <- tolower(method)
 
-  nrX <- nrow(X) - length(ind.sup)
-  ncX <- ncol(X) - length(quanti.sup)
+  nrX <- nrow(obj) - length(ind.sup)
+  ncX <- ncol(obj) - length(quanti.sup)
 
-  if (ncp > min(nrow(X) - 2, ncol(X) - 1)) {
+  if (ncp > min(nrow(obj) - 2, ncol(obj) - 1)) {
     stop("ncp is too large")
   }
 
   if (is.null(row.w)) {
-    row.w <- rep(1, nrow(X)) / nrow(X)
+    row.w <- rep(1, nrow(obj)) / nrow(obj)
   }
 
   if (!is.null(ind.sup)) {
     row.w[ind.sup] <- row.w[ind.sup] * 1e-08
   }
 
-  if (is.data.frame(X)) {
-    X <- as.matrix(X)
+  miss <- is.na(obj)
+  cmiss <- colSums(miss)
+  if (any(cmiss / nrow(obj) == 1)) {
+    stop("Col(s) with all missing detected. Remove before proceed")
   }
-
-  miss <- is.na(X)
   for (i in seq_len(nb.init)) {
     res.impute <- pca_imp_internal(
-      X,
+      X = obj,
       miss = miss, ncp = ncp, scale = scale, method = method,
       ind.sup = ind.sup, quanti.sup = quanti.sup, threshold = threshold,
       seed = if (!is.null(seed)) {
@@ -161,17 +230,19 @@ pca_imp <- function(X, ncp = 2, scale = TRUE,
       } else {
         NULL
       },
-      init = i, maxiter = maxiter, row.w = row.w,
+      init = i, maxiter = maxiter, miniter = miniter, row.w = row.w,
       coeff.ridge = coeff.ridge, nrX = nrX, ncX = ncX
     )
 
-    cur_obj <- mean((res.impute$fittedX[!miss] - X[!miss])^2)
+    cur_obj <- mean((res.impute$fittedX[!miss] - obj[!miss])^2)
 
-    if (cur_obj < obj) {
+    if (cur_obj < init_obj) {
       res <- res.impute
-      obj <- cur_obj
+      init_obj <- cur_obj
     }
   }
 
-  return(res)
+  class(res$completeObs) <- c("ImputedMatrix", class(res$completeObs))
+  attr(res$completeObs, "imp_method") <- "pca"
+  return(res$completeObs)
 }

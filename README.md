@@ -1,96 +1,88 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# SlideKnn
+# slideimp
 
 <!-- badges: start -->
 
-[![R-CMD-check](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/SlideKnn/actions/workflows/R-CMD-check.yaml)
+[![R-CMD-check](https://github.com/hhp94/slide_imp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/slide_imp/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-`{SlideKnn}` is a lightweight R package for k-nearest neighbors (k-NN)
-imputation of missing values in high-dimensional numeric matrices, such
-as those from intensively sampled longitudinal data or epigenetics.
-`knn_imp()` implements a full k-NN imputation. `SlideKnn()` implements a
-sliding window k-NN imputation for data where features are ordered
-(e.g., by time or distance). `group_knn_imp()` implements a group-wise
-imputation for data that can be broken into meaningful groups, like
-chromosomes or results of column clustering algorithms.
-
-The package builds on the efficient k-NN imputation algorithm
-(Bioconductor’s
-[`{impute}`](https://www.bioconductor.org/packages/release/bioc/html/impute.html)
-package) and adds enhancements: parallelization and tree-based methods
-for speed, weighted imputation, multiple imputation strategies, and
-built-in tuning tools. `{SlideKnn}` expects matrices with samples in
-rows and features in columns.
+`{slideimp}` is a lightweight R package for k-NN and PCA imputation of
+missing values in high-dimensional numeric matrices, such as those from
+intensively sampled longitudinal data or epigenetics. `knn_imp()`
+implements a full k-NN imputation. `pca_imp()` is a slightly optimized
+version of the
+[`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
+function. `slide_imp()` implements a sliding window k-NN or PCA
+imputation for data where features are ordered (e.g., by time or
+distance). `group_imp()` implements a group-wise imputation for data
+that can be broken into meaningful groups, like chromosomes or results
+of column clustering algorithms.
 
 Key features include:
 
-- **Sliding Window k-NN Imputation**: Break large data into overlapping
+- **Sliding Window Imputation**: Break large data into overlapping
   windows for computationally feasible imputation while maintaining
   local structures (e.g., intensively sampled longitudinal data or
   epigenetics data).
-- **Group k-NN Imputation**: Break large data into groups such as
-  chromosomes or clusters identified by column clustering algorithms.
+- **Group Imputation**: Break large data into groups such as chromosomes
+  or clusters identified by column clustering algorithms.
 - **Full Matrix k-NN Imputation**: Standard k-NN for smaller data, with
   multi-core parallelization over columns with missing values.
 - **Tree-Based k-NN**: Integration with
-  [`{mlpack}`](https://www.mlpack.org/) for KD-Tree or Ball-Tree
-  methods, accelerating imputation in high dimensions.
-- **Subset Imputation**: Only impute a subset of columns to save time.
-  Important for applications such as epigenetics clocks calculations.
-- **Weighted Imputation**: Use inverse-distance weighting for more
-  accurate averages, with tunable penalties.
-- **Multiple Imputation**: Support for Predictive Mean Matching (PMM) or
-  bootstrap resampling from nearest neighbors.
-- **Fallback Imputation**: Optional post-k-NN mean imputation by column
-  to handle remaining NAs.
+  [`{mlpack}`](https://www.mlpack.org/) for KD-Tree or Ball-Tree methods
+  for imputation in high dimensions. Best when missing per feature is \<
+  20% and dimension is very large.
+- **Subset k-NN Imputation**: Only impute a subset of columns to save
+  time. Important for applications such as epigenetics clocks
+  calculations.
+- **Full Matrix PCA Imputation**: From the
+  [`{missMDA}`](http://factominer.free.fr/missMDA/index.html) package,
+  optimized version of `imputePCA` (`pca_imp`) for numeric matrix.
 - **Parameter Tuning**: Inject artificial NAs to evaluate and tune
   hyperparameters, with support for custom imputation functions.
-- **Big Matrix Support**: Compatible with
-  [`{bigmemory}`](https://doi.org/10.32614/CRAN.package.bigmemory) for
-  file-backed matrices to handle massive data.
 
 ## Installation
 
-The stable version of `{SlideKnn}` can be installed from CRAN using:
+The stable version of `{slideimp}` can be installed from CRAN using:
 
 ``` r
-install.packages("SlideKnn")
+install.packages("slideimp")
 ```
 
-You can install the development version of `{SlideKnn}` from
-[GitHub](https://github.com/hhp94/SlideKnn) with:
+You can install the development version of `{slideimp}` from
+[GitHub](https://github.com/hhp94/slideimp) with:
 
 ``` r
 install.packages("remotes")
-remotes::install_github("hhp94/SlideKnn")
+remotes::install_github("hhp94/slideimp")
 ```
 
-## Full k-NN imputation `knn_imp()`
+## Full k-NN imputation `knn_imp()` and PCA imputation with `pca_imp()`
 
 Use the workhorse function of the package, `knn_imp()` to perform full
 k-NN imputation.
 
 ``` r
-library(SlideKnn)
+library(slideimp)
 
 data(khanmiss1)
+
 # Transpose for samples in rows, features in columns
 imputed_full <- knn_imp(t(khanmiss1), k = 3, method = "euclidean", cores = 1)
 imputed_full
-#> KnnImpList: List of 1 imputation of a 63 x 2308 matrix
+#> ImputedMatrix (KNN)
+#> Dimensions: 63 x 2308
 #> 
-#> Preview of imputation 1:
-#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
-#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
-#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
-#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
-#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
-#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
+#>           g1   g2   g3   g4   g5
+#> sample1 1873 1251  314 1324  776
+#> sample2   57 1350 1758 1428  476
+#> sample3   53 1140  162 1468  679
+#> sample4 2059 1385 1857 1250  772
+#> sample5 1537 1261 1939 1666 1307
 #> 
-#> [ ... 58 more rows, 2298 more columns ]
+#> # Showing [1:5, 1:5] of full matrix
 ```
 
 `knn_imp()` yields the same results as `impute::impute.knn()` without
@@ -99,16 +91,18 @@ smaller data given `cores = 1`. `knn_imp()` scales well with multiple
 `cores`.
 
 ``` r
-set.seed(1234)
-obj_t <- t(khanmiss1)
+library(bench)
+library(ggplot2)
 
-bench::mark(
+set.seed(1234)
+
+mark(
   # Single Core
-  knn_imp(obj_t, k = 3, rowmax = 1, method = "euclidean")[[1]],
+  knn_imp(t(khanmiss1), k = 3, method = "euclidean")[, ],
   # Multiple Cores
-  knn_imp(obj_t, k = 3, rowmax = 1, cores = 4, method = "euclidean")[[1]],
+  knn_imp(t(khanmiss1), k = 3, cores = 4, method = "euclidean")[, ],
   # impute::impute.knn
-  t(impute::impute.knn(khanmiss1, k = 3, rowmax = 1, maxp = nrow(khanmiss1))$data),
+  t(impute::impute.knn(khanmiss1, k = 3, maxp = nrow(khanmiss1))$data),
   # Ensure results are the same between function calls
   check = TRUE
 ) |>
@@ -117,46 +111,63 @@ bench::mark(
 #> # A tibble: 3 × 6
 #>   expression        min   median `itr/sec` mem_alloc `gc/sec`
 #>   <chr>        <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
-#> 1 knn_1         14.39ms   15.2ms      65.9    7.28MB     14.7
-#> 2 knn_4          5.21ms    5.5ms     180.     7.28MB     43.7
-#> 3 impute.knn_1  14.75ms   15.2ms      65.5   12.42MB     39.3
+#> 1 knn_1         13.82ms   14.5ms      68.2     9.5MB     25.6
+#> 2 knn_4          4.59ms   4.92ms     200.      9.5MB    113. 
+#> 3 impute.knn_1  14.66ms  14.84ms      67.0    12.4MB     42.3
 ```
 
-Using tree-based k-NN with weighted imputation and multiple imputation
-(PMM):
+Using tree-based k-NN with weighted imputation:
 
 ``` r
 imputed_tree <- knn_imp(
   t(khanmiss1),
   k = 5,
   tree = "kd", # KD-Tree via mlpack
-  weighted = TRUE, # Inverse-distance weighting, further neighbors are less influential
-  dist_pow = 2, # Harsher penalty for distant neighbors
-  n_imp = 3, # 3 imputations
-  n_pmm = 10 # PMM with 10 donors. Set n_pmm = 0 to use neighbor bootstrapping instead of PMM
+  dist_pow = 2
 )
 imputed_tree
-#> KnnImpList: List of 3 imputations of a 63 x 2308 matrix
+#> ImputedMatrix (KNN)
+#> Dimensions: 63 x 2308
 #> 
-#> Preview of imputation 1:
-#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
-#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
-#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
-#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
-#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
-#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
+#>           g1   g2   g3   g4   g5
+#> sample1 1873 1251  314 1324  776
+#> sample2   57 1350 1758 1428  476
+#> sample3   53 1140  162 1468  679
+#> sample4 2059 1385 1857 1250  772
+#> sample5 1537 1261 1939 1666 1307
 #> 
-#> [ ... 58 more rows, 2298 more columns ]
-#> 
-#> [ ... and 2 more imputations ]
+#> # Showing [1:5, 1:5] of full matrix
 ```
 
-## Sliding window k-NN imputation with `SlideKnn()`
+Similarly, `pca_imp()` is a slightly optimized version of
+`missMDA::imputePCA()` for numeric matrix.
+
+``` r
+bench::mark(
+  pca_imp(t(khanmiss1)[, 1:500], ncp = 2)[, ],
+  missMDA::imputePCA(t(khanmiss1)[, 1:500], ncp = 2)$completeObs,
+  check = TRUE
+) |>
+  dplyr::mutate(expression = c("pca_imp", "imputePCA")) |>
+  dplyr::select(-dplyr::where(is.list))
+#> Warning: Some expressions had a GC in every iteration; so filtering is
+#> disabled.
+#> # A tibble: 2 × 6
+#>   expression      min   median `itr/sec` mem_alloc `gc/sec`
+#>   <chr>      <bch:tm> <bch:tm>     <dbl> <bch:byt>    <dbl>
+#> 1 pca_imp      13.5ms   14.6ms      45.5    36.6MB     33.6
+#> 2 imputePCA    34.6ms   36.3ms      27.1   146.6MB     38.7
+```
+
+## Sliding window k-NN and PCA imputation with `slide_imp()`
 
 Epigenetic datasets such as WGBS or EM-seq are very spatially
-correlated, this method allows the imputation of the full epigenome with
-good accuracy and speed by limiting the neighbor search space to sliding
-windows.
+correlated, `slide_imp()` allows the imputation of the full epigenome
+with good accuracy and speed by limiting the neighbor search space to
+sliding windows.
+
+Use k-NN by specifying `k`, PCA by specifying `ncp`. Only arguments
+applicable to each methods are applied.
 
 ``` r
 # Simulating WGBS data with 1000 CpGs and 10 samples
@@ -175,52 +186,55 @@ beta_matrix[1:10, 1:5]
 #> s9         NA        NA 0.3455449        NA        NA
 #> s10        NA 0.5498897        NA 0.3738964        NA
 
-imputed <- SlideKnn(beta_matrix, n_feat = 500, n_overlap = 10, k = 10)
-imputed
-#> SlideKnnList: List of 1 imputation of a 10 x 1000 big.matrix
+# Sliding Window k-NN imputation by specifying `k`
+knn_imputed <- slide_imp(beta_matrix, n_feat = 500, n_overlap = 10, k = 10)
+knn_imputed
+#> ImputedMatrix (KNN)
+#> Dimensions: 10 x 1000
 #> 
-#> Preview of imputation 1:
-#>     feat1  feat2  feat3  feat4  feat5  feat6  feat7  feat8  feat9 feat10
-#> s1 0.3321 0.5573 0.6797 0.1593 0.5803 0.5920 0.4280 0.4323 0.4296 0.3802
-#> s2 0.3047 0.5442 0.2516 0.5973 0.6081 0.1933 0.6456 0.4606 0.3892 0.4934
-#> s3 0.3467 0.5617 0.4790 0.7008 0.2352 0.3350 0.2214 0.5486 0.4330 0.2052
-#> s4 0.3858 0.5772 0.5437 0.7922 0.7523 0.4356 0.3132 0.5742 0.5731 0.5602
-#> s5 0.3395 0.3664 0.5779 0.4325 0.6398 0.5558 0.5449 0.2616 0.5279 0.4761
+#>        feat1     feat2     feat3     feat4     feat5
+#> s1 0.3320706 0.5572683 0.6796919 0.1593403 0.5802804
+#> s2 0.3046741 0.5442470 0.2515999 0.5973359 0.6080809
+#> s3 0.3467045 0.5617059 0.4789529 0.7007942 0.2352033
+#> s4 0.3858128 0.5771749 0.5437410 0.7921855 0.7523102
+#> s5 0.3395358 0.3664415 0.5779475 0.4324594 0.6398042
 #> 
-#> [ ... 5 more rows, 990 more columns ]
+#> # Showing [1:5, 1:5] of full matrix
+
+# Sliding Window PCA imputation by specifying `ncp`
+pca_imputed <- slide_imp(beta_matrix, n_feat = 500, n_overlap = 10, ncp = 2)
+pca_imputed
+#> ImputedMatrix (PCA)
+#> Dimensions: 10 x 1000
+#> 
+#>        feat1     feat2     feat3     feat4     feat5
+#> s1 0.3320706 0.5572683 0.6796919 0.1593403 0.5802804
+#> s2 0.3046741 0.5442470 0.2515999 0.5973359 0.6080809
+#> s3 0.3467045 0.4949746 0.3892889 0.7007942 0.2352033
+#> s4 0.3781874 0.5771749 0.5437410 0.7921855 0.7523102
+#> s5 0.3395358 0.3664415 0.3919350 0.5182620 0.6398042
+#> 
+#> # Showing [1:5, 1:5] of full matrix
 ```
 
-Optional simple mean imputation as a fallback or baseline that enables
-multi-step imputation strategies
-
-``` r
-# Inject extra NA into simulated data to make k-NN fail for first imputation
-set.seed(1234)
-obj <- t(sim_mat(n = 1000, m = 100, perc_NA = 0.8, perc_col_NA = 1)$input)
-# Step 1: Column-wise imputation (impute the features using neighbor features
-# of the same person/sample). Disable fall back imputation with `post_imp = FALSE`
-imputed_by_col <- knn_imp(obj, cores = 4, k = 10, post_imp = FALSE)
-# Step 2: Then if values are still missing, impute by rows. (impute the same features
-# using values from OTHER people/samples).
-imputed_by_row <- knn_imp(t(imputed_by_col[[1]]), cores = 4, k = 10, post_imp = FALSE)
-# Step 3: Lastly, impute by column mean for any remaining missing.
-imputed_mean <- mean_impute_col(t(imputed_by_row[[1]]))
-sum(is.na(imputed_mean))
-#> [1] 0
-```
-
-## Grouped imputation with `group_knn_imp()`
+## Grouped imputation with `group_imp()`
 
 Features can be grouped by chromosomes (in epigenetics) or by cluster
 memberships identified through column clustering algorithms, such as
-k-means. This reduces the nearest neighbor search space for each group,
-significantly decreasing imputation time. The `group` data.frame is
-defined by two list-columns: `features` and `aux` where each row is a
-group. The `features` column includes all features to be imputed, while
-the `aux` columns contains features used to assist with imputation but
-excluded from the final results. For example, when imputing chrM, which
-may have only a few CpGs, random CpGs from other chromosomes can be
-included in the `aux` column to improve the quality of imputation.
+k-means. This significantly decreases imputation time and potentially
+increases imputation accuracy.
+
+`group_imp()` requires the `group` data.frame (preferably a `tibble` for
+the handling of list columns), which is defined by two list-columns:
+`features` and `aux` (optional) where each row is a group. The
+`features` column includes all features to be imputed, while the `aux`
+columns contains features used to assist with imputation but excluded
+from the final results. For example, when imputing chrM, which may have
+only a few CpGs, random CpGs from other chromosomes can be included in
+the `aux` column to improve the quality of imputation.
+
+Similar to `slide_imp()`, use k-NN by specifying `k`, PCA by specifying
+`ncp`.
 
 ``` r
 # Simulate data from 2 chromosomes
@@ -231,15 +245,15 @@ to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1, nchr = 2)
 group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
 group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
 
-# Impute only first 3 values of group 1, the rest are aux. Group 2 does 4 features.
+# Impute only first 3 columns of group 1, the rest are aux. Group 2 does 4 features.
 # Also optionally vary the parameters by group
-group_df <- tibble::tibble(
+knn_df <- tibble::tibble(
   features = list(group_1[1:3], group_2[1:4]),
   aux = list(group_1, group_2),
-  parameters = list(list(k = 3, weighted = TRUE), list(k = 4, method = "manhattan"))
+  parameters = list(list(k = 3, dist_pow = 0), list(k = 4, method = "manhattan"))
 )
 
-group_df
+knn_df
 #> # A tibble: 2 × 3
 #>   features  aux        parameters      
 #>   <list>    <list>     <list>          
@@ -248,155 +262,66 @@ group_df
 
 # Run grouped imputation. t() to put features on the columns
 obj <- t(to_test$input)
-grouped_results <- group_knn_imp(obj, group = group_df, k = 5)
+knn_grouped <- group_imp(obj, group = knn_df, k = 5)
 #> Running with group-wise parameters
 #> Imputing group 1/2
 #> Imputing group 2/2
-grouped_results
-#> KnnImpList: List of 1 imputation of a 20 x 50 matrix
-#> Imputed columns: 7 of 50 total columns
+knn_grouped
+#> ImputedMatrix (KNN)
+#> Dimensions: 20 x 50
 #> 
-#> Preview of imputation 1:
-#>     feat1  feat2  feat3  feat4  feat5  feat6  feat7  feat8  feat9 feat10
-#> s1 0.2391 0.4129 0.7204 0.0000 0.5828 0.5989 0.3719 0.3778 0.5896 0.3057
-#> s2 0.0000 0.2810 0.1601 0.1816 0.3774 0.5440 0.7931 0.2371 0.4718 0.1488
-#> s3 0.5897 0.3678 0.5028 0.3609 0.2801 0.5280 0.2626 0.5283 0.5749     NA
-#> s4 0.4201 0.5235 0.4435 0.3356 0.5047 0.7150 0.4443 0.3055 0.3366 0.4179
-#> s5 0.4598 0.6388 0.5557 0.6394 0.5762 0.6491 0.8250     NA 0.6304 0.3444
+#>        feat1     feat2     feat3     feat4     feat5
+#> s1 0.2391314 0.4411043 0.7203854 0.0000000 0.5827582
+#> s2 0.0000000 0.2810446 0.1600776 0.1816453 0.3774313
+#> s3 0.5897476 0.3677927 0.5027545 0.3608640 0.2801131
+#> s4 0.4201222 0.5643869 0.4419687 0.3356484 0.5047049
+#> s5 0.4597799 0.6387734 0.5556735 0.6394179 0.5761809
 #> 
-#> [ ... 15 more rows, 40 more columns ]
-```
+#> # Showing [1:5, 1:5] of full matrix
 
-## File-backed `big.matrix`
-
-`SlideKnn()` supports passing a `big.matrix` object or the path to its
-descriptor file. Specify `output` for the result to change the backend
-to using file-backed big.matrix as well to minimize memory at a cost of
-performance.
-
-**NOTE**: See `?restore_dimnames` if output’s dimnames are stripped.
-
-``` r
-library(bigmemory)
-
-# IMPORTANT: Enable dimnames support for big.matrix objects
-options(bigmemory.allow.dimnames = TRUE)
-
-# Load example data
-data(khanmiss1)
-mat <- t(khanmiss1) # samples as rows, features as columns
-temp_dir <- withr::local_tempdir()
-```
-
-### Create file-backed big.matrix
-
-``` r
-# Convert t(khanmiss1) to big.matrix with backing files for large data
-big_mat <- bigmemory::as.big.matrix(
-  mat,
-  type = "double",
-  backingfile = "khan.bin",
-  descriptorfile = "khan.desc",
-  backingpath = temp_dir
-)
-```
-
-### Method 1: Impute using big.matrix object
-
-Impute a `bigmemory::big.matrix` and optionally save results to
-file-backed big.matrix
-
-``` r
-imputed_obj <- SlideKnn(
-  obj = big_mat,
-  n_feat = 100,
-  n_overlap = 10,
-  k = 10,
-  overwrite = TRUE, # Overwrite any existing results
-  output = file.path(temp_dir, "imputed.bin")
+# Each group will be imputed with `pca_imp` and ncp = 2
+pca_df <- tibble::tibble(
+  features = list(group_1[1:3], group_2[1:4])
 )
 
-# Access the imputed data (returns list of big.matrix objects)
-imputed_obj
-#> SlideKnnList: List of 1 imputation of a 63 x 2308 big.matrix
+pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
+#> Running with the same parameters for all groups
+#> Imputing group 1/2
+#> Imputing group 2/2
+pca_grouped
+#> ImputedMatrix (PCA)
+#> Dimensions: 20 x 50
 #> 
-#> Preview of imputation 1:
-#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
-#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
-#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
-#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
-#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
-#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
+#>        feat1     feat2     feat3     feat4     feat5
+#> s1 0.2391314 0.5727852 0.7203854 0.0000000 0.5827582
+#> s2 0.0000000 0.2810446 0.1600776 0.1816453 0.3774313
+#> s3 0.5897476 0.3677927 0.5027545 0.3608640 0.2801131
+#> s4 0.4201222 0.5628569 0.4786760 0.3356484 0.5047049
+#> s5 0.4382530 0.6387734 0.5556735 0.6394179 0.5761809
 #> 
-#> [ ... 58 more rows, 2298 more columns ]
-```
-
-### ⚠️ Regarding objects pointing to the same bigmemory matrices
-
-On Windows, file-backed objects hold file locks. You MUST remove any
-variables that point to the same files before overwriting them. This
-only removes the R variables, not the files on disk.
-
-In general, always remove references to big.matrix objects before
-attempting to overwrite or modify their backing files.
-
-``` r
-rm(imputed_obj)
-invisible(gc(verbose = FALSE)) # Force garbage collection to release file handles
-```
-
-### Method 2: Impute using descriptor file path
-
-Alternatively, pass descriptor file path instead of object. This is
-useful for distributed computing or when the object isn’t in memory.
-
-``` r
-desc_path <- file.path(temp_dir, "khan.desc")
-
-imputed_path <- SlideKnn(
-  obj = desc_path, # Using path instead of object
-  n_feat = 100,
-  n_overlap = 10,
-  k = 10,
-  overwrite = TRUE,
-  output = file.path(temp_dir, "imputed.bin")
-)
-
-imputed_path
-#> SlideKnnList: List of 1 imputation of a 63 x 2308 big.matrix
-#> 
-#> Preview of imputation 1:
-#>           g1   g2   g3   g4   g5   g6   g7   g8   g9  g10
-#> sample1 1873 1251  314 1324  776 1901 2048 1513 1558 1796
-#> sample2   57 1350 1758 1428  476 1521 2104   85 1784 1598
-#> sample3   53 1140  162 1468  679   14 2048 1519 1631 1798
-#> sample4 2059 1385 1857 1250  772 2052 2141 1969  243 2079
-#> sample5 1537 1261 1939 1666 1307 1705 2137 1910 1499 1673
-#> 
-#> [ ... 58 more rows, 2298 more columns ]
+#> # Showing [1:5, 1:5] of full matrix
 ```
 
 ## Parameters Tuning with `tune_imp()`
 
 Use `tune_imp()` to tune hyperparameters by injecting artificial NAs and
 evaluating imputation accuracy. This function supports built-in methods
-or custom functions.
+or custom functions. Available built-in methods are “slide_imp”,
+“knn_imp”, and “pca_imp”.
 
 ``` r
 # This tibble defines the hyperparameters to tune for. `knn_imp` requires `k`, but other parameters like `dist_pow` and `method` can also be tuned.
 parameters <- dplyr::tibble(
   k = c(5, 10),
   method = "euclidean",
-  weighted = TRUE,
-  dist_pow = c(2, 5),
-  post_imp = TRUE
+  dist_pow = c(2, 5)
 )
 parameters
-#> # A tibble: 2 × 5
-#>       k method    weighted dist_pow post_imp
-#>   <dbl> <chr>     <lgl>       <dbl> <lgl>   
-#> 1     5 euclidean TRUE            2 TRUE    
-#> 2    10 euclidean TRUE            5 TRUE
+#> # A tibble: 2 × 3
+#>       k method    dist_pow
+#>   <dbl> <chr>        <dbl>
+#> 1     5 euclidean        2
+#> 2    10 euclidean        5
 
 obj_t <- t(khanmiss1)
 
@@ -406,22 +331,26 @@ results <- tune_imp(obj_t, parameters, rep = 3, .f = "knn_imp", num_na = 100)
 # Compute metrics with {yardstick}
 library(yardstick)
 met_set <- metric_set(mae, rmse, rsq)
-results$metrics <- lapply(results$result, function(x) met_set(x, truth = truth, estimate = estimate))
+results$metrics <- lapply(
+  results$result, 
+  function(x) met_set(x, truth = truth, estimate = estimate)
+)
+
 head(
   dplyr::select(
     tidyr::unnest(dplyr::select(results, -result), cols = "metrics"),
     all_of(names(parameters)), contains(".")
   )
 )
-#> # A tibble: 6 × 8
-#>       k method    weighted dist_pow post_imp .metric .estimator .estimate
-#>   <dbl> <chr>     <lgl>       <dbl> <lgl>    <chr>   <chr>          <dbl>
-#> 1     5 euclidean TRUE            2 TRUE     mae     standard     344.   
-#> 2     5 euclidean TRUE            2 TRUE     rmse    standard     492.   
-#> 3     5 euclidean TRUE            2 TRUE     rsq     standard       0.390
-#> 4    10 euclidean TRUE            5 TRUE     mae     standard     354.   
-#> 5    10 euclidean TRUE            5 TRUE     rmse    standard     495.   
-#> 6    10 euclidean TRUE            5 TRUE     rsq     standard       0.380
+#> # A tibble: 6 × 6
+#>       k method    dist_pow .metric .estimator .estimate
+#>   <dbl> <chr>        <dbl> <chr>   <chr>          <dbl>
+#> 1     5 euclidean        2 mae     standard     434.   
+#> 2     5 euclidean        2 rmse    standard     553.   
+#> 3     5 euclidean        2 rsq     standard       0.251
+#> 4    10 euclidean        5 mae     standard     420.   
+#> 5    10 euclidean        5 rmse    standard     527.   
+#> 6    10 euclidean        5 rsq     standard       0.315
 ```
 
 To tune a custom imputation function, a function has to take an numeric
@@ -445,7 +374,7 @@ parameters_custom <- dplyr::tibble(
 # Similarly, use `{yardstick}` to get the prediction metrics
 results_custom <- tune_imp(obj, parameters_custom, .f = custom_imp, rep = 2, num_na = 20)
 results_custom$metrics <- lapply(
-  results_custom$result, 
+  results_custom$result,
   function(x) met_set(x, truth = truth, estimate = estimate)
 )
 
@@ -458,37 +387,13 @@ head(
 #> # A tibble: 6 × 5
 #>    mean    sd .metric .estimator .estimate
 #>   <dbl> <dbl> <chr>   <chr>          <dbl>
-#> 1     0     1 mae     standard      0.869 
-#> 2     0     1 rmse    standard      0.981 
-#> 3     0     1 rsq     standard      0.0480
-#> 4     1     2 mae     standard      1.71  
-#> 5     1     2 rmse    standard      2.10  
-#> 6     1     2 rsq     standard      0.130
+#> 1     0     1 mae     standard      0.999 
+#> 2     0     1 rmse    standard      1.15  
+#> 3     0     1 rsq     standard      0.0183
+#> 4     1     2 mae     standard      1.99  
+#> 5     1     2 rmse    standard      2.49  
+#> 6     1     2 rsq     standard      0.0969
 ```
 
-For more details, see the function documentation (e.g., `?SlideKnn`,
-`?group_knn_imp`, `?knn_imp`, `?tune_imp`).
-
-# Developer notes for [`{mlpack}`](https://www.mlpack.org/)
-
-`{mlpack}` is an awesome library and works seamlessly with integration
-in R. For other developers who are looking to integrate `{mlpack}` into
-their own work, make sure to structure the .cpp file as follows. Most
-importantly is the inclusion of `<mlpack.h>` first before including any
-other `mlpack` headers. This appropriately directs the output of
-`std::cout` and `std::cerr` to R and won’t trip `R CMD check` (i.e.,
-`'_ZSt4cerr', possibly from 'std::cerr' (C++)` or
-`'_ZSt4cout', possibly from 'std::out' (C++)`). Full implementation is
-found under `src/impute_knn_mlpack.cpp`. I would like to thank the
-developers and the community for the maintenance and development of
-`mlpack`. I would like to especially thank Dirk Eddelbuettel for his
-development of the R + C++ environment and guidance throughout the
-development of this package.
-
-``` cpp
-// [[Rcpp::depends(mlpack, RcppArmadillo)]]
-#include <mlpack.h>
-#include "imputed_value.h"
-#include <mlpack/methods/neighbor_search/neighbor_search.hpp>
-#include <RcppArmadillo.h>
-```
+For more details, see the function documentation (e.g., `?slide_imp`,
+`?group_imp`, `?pca_imp`, `?knn_imp`, `?tune_imp`).

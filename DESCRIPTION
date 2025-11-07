@@ -1,11 +1,11 @@
 Type: Package
-Package: SlideKnn
-Title: K-NN and Sliding Window K-NN Imputation for Numeric Data
+Package: slideimp
+Title: k-NN and Sliding Window k-NN Imputation for Numeric Data
 Version: 0.5.2
 Authors@R: 
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355"))
-Description: K-nearest neighbors (K-NN) imputation algorithm for numeric
+Description: K-nearest neighbors (k-NN) imputation algorithm for numeric
     data with options for multiple imputation with predictive mean
     matching (PMM). For large numeric datasets, such as intensive
     longitudinal data or epigenomic data where features are ordered in
@@ -18,32 +18,28 @@ Description: K-nearest neighbors (K-NN) imputation algorithm for numeric
     described in Stef van Buuren (2018) <https://stefvanbuuren.name/fimd/>
     "Flexible Imputation of Missing Data".
 License: GPL (>= 2)
-URL: https://github.com/hhp94/SlideKnn
-BugReports: https://github.com/hhp94/SlideKnn/issues
+URL: https://github.com/hhp94/slideimp
+BugReports: https://github.com/hhp94/slideimp/issues
 Depends: 
     R (>= 4.1.0)
 Imports:
-    bigmemory,
+    bootSVD,
     checkmate,
-    fs,
     mirai,
     purrr,
     Rcpp,
-    tibble,
-    withr
+    stats,
+    tibble
 Suggests:
+    carrier,
     dplyr,
-    FactoMineR,
     impute,
     missMDA,
     rlang,
-    stats,
     testthat (>= 3.0.0),
     tidyr,
     yardstick
 LinkingTo: 
-    BH,
-    bigmemory,
     mlpack,
     Rcpp,
     RcppArmadillo,

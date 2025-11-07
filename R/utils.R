@@ -38,13 +38,14 @@
 #' sim_data_complete <- sim_mat(n = 50, m = 10, perc_NA = 0, perc_col_NA = 0)
 #' sum(is.na(sim_data_complete$input))
 sim_mat <- function(
-    n = 100,
-    m = 100,
-    nchr = 2,
-    ngrp = 1,
-    perc_NA = 0.5,
-    perc_col_NA = 0.5,
-    beta = TRUE) {
+  n = 100,
+  m = 100,
+  nchr = 2,
+  ngrp = 1,
+  perc_NA = 0.5,
+  perc_col_NA = 0.5,
+  beta = TRUE
+) {
   checkmate::assert_int(n, lower = 2)
   checkmate::assert_int(m, lower = 2)
   checkmate::assert_int(nchr, lower = 1, upper = 25)
@@ -55,8 +56,8 @@ sim_mat <- function(
   d_length <- n * m
   d <- matrix(stats::rnorm(d_length), nrow = n, ncol = m)
   if (beta) {
-    mins <- colMMs(d, 0)[1, ]
-    maxs <- colMMs(d, 1)[1, ]
+    mins <- col_min_max(d, 0)[1, ]
+    maxs <- col_min_max(d, 1)[1, ]
     ranges <- maxs - mins
     d <- sweep(d, 2, mins, "-")
     d <- sweep(d, 2, ranges, "/")

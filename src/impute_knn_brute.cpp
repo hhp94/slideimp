@@ -261,17 +261,11 @@ std::vector<NeighborInfo> distance_vector(
 //' @param k Number of nearest neighbors to use for imputation.
 //' @param n_col_miss Integer vector specifying the count of missing values per column.
 //' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
-//' @param weighted Boolean controls for the imputed value to be a simple mean or weighted mean by inverse distance.
-//'   Note: Forced to FALSE when `n_imp > 1`.
 //' @param dist_pow A positive double that controls the penalty for larger distances in
 //' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
 //' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-//' @param n_imp Integer specifying the number of replicates for imputation (default = 1). If > 1, enables multiple imputation.
-//' @param n_pmm Short specifying the number of donors for pmm: -1=single, 0=bootstrap, >0=PMM donors.
-//' @param seed Integer seed for random number generation during bootstrapping (default = 42). Only used when `n_imp > 1`.
 //' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index,
-//' and the subsequent `n_imp` columns contain the imputed values (one column per bootstrap replicate if `n_imp > 1`).
+//' @return A matrix where the first column is the 1-based row index.
 //'
 //' @keywords internal
 //' @noRd
@@ -282,11 +276,7 @@ arma::mat impute_knn_brute(
     const arma::uword k,          // Number of nearest neighbors to use
     const arma::uvec &n_col_miss, // Vector containing the count of missing values per column
     const int method,             // Distance metric: 0=Euclidean, 1=Manhattan method.
-    bool weighted,                // TRUE for a weighted average, FALSE for a simple average
     const double dist_pow,        // Power for distance penalty in weighted average
-    const arma::uword n_imp = 1,  // Number of imputation iterations (for result matrix sizing)
-    const arma::sword n_pmm = -1, // PMM control: -1=single, 0=bootstrap, >0=PMM donors
-    const arma::uword seed = 42,  // seed
     int cores = 1)                // Number of cores for parallel processing
 {
   // Select the distance calculation function based on the method
@@ -307,7 +297,7 @@ arma::mat impute_knn_brute(
 
   // Initialize result matrix and get column offsets using helper function
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(miss, col_index_miss, n_col_miss, n_imp, col_offsets);
+  arma::mat result = initialize_result_matrix(miss, col_index_miss, n_col_miss, col_offsets);
   if (result.n_rows == 0)
   {
     return result; // No missing values
@@ -333,11 +323,6 @@ arma::mat impute_knn_brute(
       cache(row, col) = calc_dist(obj, miss, col_index_miss(row), col_index_miss(col));
     }
   }
-  // Bootstrap with weights might lower uncertainty, so we force weighted = false
-  if (n_pmm == 0)
-  {
-    weighted = false;
-  }
   // Main imputation loop
 #ifdef _OPENMP
 #pragma omp parallel for
@@ -362,57 +347,18 @@ arma::mat impute_knn_brute(
     }
     // Calculate weights once (same for all methods)
     arma::vec weights(n_neighbors);
-    if (weighted)
-    {
-      weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-    }
-    else
-    {
-      weights.fill(1.0);
-    }
+    weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
     arma::uword target_col_idx = col_index_miss(i);
     // Choose imputation method based on n_pmm
-    if (n_pmm == -1)
-    {
-      // Single deterministic imputation
-      arma::umat nn_columns_mat(n_neighbors, 1);
-      nn_columns_mat.col(0) = nn_columns;
 
-      impute_column_values(
-          result, obj, miss,
-          col_offsets(i), target_col_idx,
-          nn_columns_mat, weights,
-          n_imp);
-    }
-    else if (n_pmm == 0)
-    {
-      // Bootstrap: resample neighbors
-      arma::umat nn_columns_mat(n_neighbors, n_imp);
-      for (arma::uword b = 0; b < n_imp; ++b)
-      {
-        nn_columns_mat.col(b) = nn_columns;
-      }
-      resample_neighbor(nn_columns_mat, seed, target_col_idx);
+    // Single deterministic imputation
+    arma::umat nn_columns_mat(n_neighbors, 1);
+    nn_columns_mat.col(0) = nn_columns;
 
-      impute_column_values(
-          result, obj, miss,
-          col_offsets(i), target_col_idx,
-          nn_columns_mat, weights,
-          n_imp);
-    }
-    else if (n_pmm > 0)
-    {
-      // PMM: Predictive Mean Matching
-      impute_column_values_pmm(
-          result, obj, miss,
-          col_offsets(i), target_col_idx,
-          nn_columns, weights,
-          n_imp, static_cast<arma::uword>(n_pmm), seed);
-    }
-    else
-    {
-      throw std::invalid_argument("Invalid n_pmm value: must be -1 (single), 0 (bootstrap), or >0 (PMM)");
-    }
+    impute_column_values(
+        result, obj, miss,
+        col_offsets(i), target_col_idx,
+        nn_columns_mat, weights);
   }
   return result;
 }
