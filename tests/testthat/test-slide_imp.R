@@ -56,7 +56,7 @@ test_that("`slide_imp` knn mode works", {
     colmax = 0.9,
     post_imp = TRUE
   )
-  expect_identical(simple_mean, final_imputed)
+  expect_identical(simple_mean[, ], final_imputed)
 
   # slide_imp weighted should be different than simple mean
   weighted_1 <- slide_imp(
@@ -212,7 +212,7 @@ test_that("`slide_imp` edge case no overlap", {
       k = 3,
       colmax = 0.9,
       post_imp = TRUE
-    ),
+    )[, ],
     final_imputed
   )
 })
@@ -367,7 +367,7 @@ test_that("`slide_imp` pca mode works", {
     ncp = 2,
     miniter = 2
   )
-  expect_identical(simple_mean, final_imputed)
+  expect_identical(simple_mean[, ], final_imputed)
 })
 
 test_that("`slide_imp` errors on zero-variance features in PCA mode", {

@@ -26,10 +26,10 @@ find_overlap_regions <- function(start, end) {
   )
 }
 
-#' Sliding Window k-NN Imputation
+#' Sliding Window k-NN or PCA Imputation
 #'
 #' @description
-#' Performs k-nearest neighbor imputation on large numeric matrices using a sliding
+#' Performs k-NN or PCA imputation large numeric matrices using a sliding
 #' window approach column-wise. This method assumes that columns are meaningfully sorted.
 #'
 #' @inheritParams knn_imp
@@ -47,6 +47,8 @@ find_overlap_regions <- function(start, end) {
 #' This approach assumes that features (columns) are sorted meaningfully (e.g.,
 #' by genomic position, time series, etc.).
 #'
+#' Specify `k` and related arguments to use k-NN, `ncp` and related arguments for PCA.
+#'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
 #' # where the column order is sorted (e.g., by genomic position or time)
@@ -54,7 +56,7 @@ find_overlap_regions <- function(start, end) {
 #' set.seed(1234)
 #' beta_matrix <- t(sim_mat(100, 20)$input)
 #'
-#' # Sliding Window K-NN imputation by specifying `k = 5`
+#' # Sliding Window k-NN imputation by specifying `k`
 #' imputed_knn <- slide_imp(
 #'   beta_matrix,
 #'   k = 5,
@@ -63,14 +65,14 @@ find_overlap_regions <- function(start, end) {
 #' )
 #' imputed_knn
 #'
-#' # Sliding Window PCA imputation by specifying `ncp = 2`
-#' imputed_knn <- slide_imp(
+#' # Sliding Window PCA imputation by specifying `ncp`
+#' pca_knn <- slide_imp(
 #'   beta_matrix,
 #'   ncp = 2,
 #'   n_feat = 50,
 #'   n_overlap = 10
 #' )
-#' imputed_knn
+#' pca_knn
 #'
 #' @export
 slide_imp <- function(
@@ -90,7 +92,6 @@ slide_imp <- function(
   scale = TRUE,
   pca_method = c("regularized", "em"),
   coeff.ridge = 1,
-  ind.sup = NULL,
   seed = NULL,
   nb.init = 1,
   maxiter = 1000,
@@ -99,7 +100,7 @@ slide_imp <- function(
   .progress = FALSE
 ) {
   if (sum(c(is.null(k), is.null(ncp))) != 1L) {
-    stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
+    stop("Specify either 'k' for k-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
   }
   imp_method <- if (!is.null(k)) {
     "knn"
@@ -131,7 +132,7 @@ slide_imp <- function(
     checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
     checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
     # checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
-    checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
+    # checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
     checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
     checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
     checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
@@ -225,9 +226,9 @@ slide_imp <- function(
         seed = seed,
         nb.init = nb.init,
         maxiter = maxiter,
-        miniter = miniter,
+        miniter = miniter
         # row.w = row.w,
-        ind.sup = ind.sup
+        # ind.sup = ind.sup
       )
     }
 
@@ -253,5 +254,8 @@ slide_imp <- function(
       result[cbind(i_vec, j_vec)] <- sub_means[jj_vec]
     }
   }
+
+  class(result) <- c("ImputedMatrix", class(result))
+  attr(result, "imp_method") <- imp_method
   return(result)
 }

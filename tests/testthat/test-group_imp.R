@@ -23,7 +23,7 @@ test_that("grouped result is correct with aux columns, knn", {
 
   expected_results <- cbind(sub1, sub2)[, colnames(obj)]
   # Compare results
-  expect_identical(grouped_results, expected_results)
+  expect_identical(grouped_results[, ], expected_results)
 })
 
 test_that("grouped result is correct with aux columns, pca", {
@@ -78,7 +78,7 @@ test_that("group-specific parameters work correctly", {
   sub2 <- knn_imp(obj[, group_2], k = 7, subset = group_2[1:4], dist_pow = 1)
   expected_results <- cbind(sub1, sub2)[, colnames(obj)]
 
-  expect_identical(grouped_results, expected_results)
+  expect_identical(grouped_results[, ], expected_results)
 })
 
 test_that("duplicate features across groups throws error", {
@@ -121,7 +121,7 @@ test_that("grouped imputation works without aux columns, knn", {
   expected_results[, group_1[1:20]] <- sub1
   expected_results[, group_2[1:10]] <- sub2
 
-  expect_identical(grouped_results, expected_results)
+  expect_identical(grouped_results[, ], expected_results)
 })
 
 test_that("group-specific parameters work correctly, pca", {
@@ -149,7 +149,7 @@ test_that("group-specific parameters work correctly, pca", {
   sub2 <- obj[, group_2]
   sub2[, group_2[1:4]] <- sub2_full[, group_2[1:4]]
   expected_results <- cbind(sub1, sub2)[, colnames(obj)]
-  expect_identical(grouped_results, expected_results)
+  expect_identical(grouped_results[, ], expected_results)
 })
 
 test_that("grouped imputation works without aux columns, pca", {
@@ -174,5 +174,5 @@ test_that("grouped imputation works without aux columns, pca", {
   expected_results[, group_1[1:20]] <- sub1
   expected_results[, group_2[1:10]] <- sub2
 
-  expect_identical(grouped_results, expected_results)
+  expect_identical(grouped_results[, ], expected_results)
 })

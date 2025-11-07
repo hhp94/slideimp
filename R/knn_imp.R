@@ -160,5 +160,7 @@ knn_imp <- function(
     }
   }
 
+  class(obj) <- c("ImputedMatrix", class(obj))
+  attr(obj, "imp_method") <- "knn"
   return(obj)
 }

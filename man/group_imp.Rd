@@ -2,7 +2,7 @@
 % Please edit documentation in R/group_imp.R
 \name{group_imp}
 \alias{group_imp}
-\title{Grouped K-NN Imputation}
+\title{Grouped k-NN or PCA Imputation}
 \usage{
 group_imp(
   obj,
@@ -18,7 +18,6 @@ group_imp(
   scale = TRUE,
   pca_method = c("Regularized", "EM"),
   coeff.ridge = 1,
-  ind.sup = NULL,
   threshold = 1e-06,
   seed = NULL,
   nb.init = 1,
@@ -61,8 +60,6 @@ If \code{dist_pow = 0} (default), then the imputed value is just the mean of nea
 
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
-\item{ind.sup}{a vector indicating the indexes of the supplementary individuals}
-
 \item{threshold}{the threshold for assessing convergence}
 
 \item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
@@ -73,19 +70,22 @@ If \code{dist_pow = 0} (default), then the imputed value is just the mean of nea
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
 
-\item{.progress}{Show progress bar (default = FALSE).}
+\item{.progress}{Show imputation progress (default = FALSE)}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-K-NN imputation by groups, such as chromosomes, flanking columns, or clusters
+k-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
 identified by column clustering techniques.
 }
 \details{
-This function performs K-NN or PCA imputation on groups of features independently,
-which significantly reduce imputation time for large datasets. Typical strategies
-for grouping may include:
+This function performs k-NN or PCA imputation on groups of features independently,
+which significantly reduce imputation time for large datasets.
+
+Specify \code{k} and related arguments to use k-NN, \code{ncp} and related arguments for PCA.
+
+Typical strategies for grouping may include:
 \itemize{
 \item Breaking down search space by chromosomes
 \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
@@ -114,7 +114,7 @@ group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
 
 # Impute only first 3 values of group 1, the rest are aux. Group 2 does 4 features.
 # Also optionally vary the parameters by group
-group_df <- tibble::tibble(
+knn_df <- tibble::tibble(
   features = list(group_1[1:3], group_2[1:4]),
   aux = list(group_1, group_2),
   parameters = list(
@@ -122,10 +122,17 @@ group_df <- tibble::tibble(
     list(k = 4, method = "manhattan")
   )
 )
-group_df
+knn_df
 
-# Run grouped imputation. t() to put features on the columns
+# Run grouped imputation. t() to put features on the columns. Specify `k` for k-NN
 obj <- t(to_test$input)
-grouped_results <- group_imp(obj, group = group_df, k = 5)
-grouped_results
+knn_grouped <- group_imp(obj, group = knn_df, k = 5)
+knn_grouped
+
+# Specify `ncp` for PCA
+pca_df <- tibble::tibble(
+  features = list(group_1[1:3], group_2[1:4])
+)
+pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
+pca_grouped
 }

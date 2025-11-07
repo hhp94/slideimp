@@ -74,7 +74,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
   )
 
   # Verify that the results from knn_imp match exactly with impute::impute.knn
-  expect_equal(r1, r2)
+  expect_equal(r1[, ], r2[, ])
 
   # Test to see if the post_imp strategy would replicate the results completely
   # Set seed for reproducibility in simulation
@@ -111,7 +111,7 @@ test_that("Exactly replicate `impute::impute.knn`", {
   )
 
   # Verify that the manually post-imputed knn_imp matches impute::impute.knn
-  expect_equal(r1.1, r2.1)
+  expect_equal(r1.1[, ], r2.1[, ])
 
   # Test subset. strategy is to use subset, then impute.knn on the same data
   # and pull out the same subset then compare the two matrices

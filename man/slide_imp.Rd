@@ -2,7 +2,7 @@
 % Please edit documentation in R/slide_imp.R
 \name{slide_imp}
 \alias{slide_imp}
-\title{Sliding Window k-NN Imputation}
+\title{Sliding Window k-NN or PCA Imputation}
 \usage{
 slide_imp(
   obj,
@@ -19,7 +19,6 @@ slide_imp(
   scale = TRUE,
   pca_method = c("regularized", "em"),
   coeff.ridge = 1,
-  ind.sup = NULL,
   seed = NULL,
   nb.init = 1,
   maxiter = 1000,
@@ -58,8 +57,6 @@ indices specifying which columns to impute.}
 
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
-\item{ind.sup}{a vector indicating the indexes of the supplementary individuals}
-
 \item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
 
 \item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
@@ -71,7 +68,7 @@ indices specifying which columns to impute.}
 \item{.progress}{Show progress bar (default = FALSE).}
 }
 \description{
-Performs k-nearest neighbor imputation on large numeric matrices using a sliding
+Performs k-NN or PCA imputation large numeric matrices using a sliding
 window approach column-wise. This method assumes that columns are meaningfully sorted.
 }
 \details{
@@ -80,6 +77,8 @@ segments and applies imputation to each window independently. Values in overlapp
 areas are averaged across windows to produce the final imputed result.
 This approach assumes that features (columns) are sorted meaningfully (e.g.,
 by genomic position, time series, etc.).
+
+Specify \code{k} and related arguments to use k-NN, \code{ncp} and related arguments for PCA.
 }
 \examples{
 # Generate sample data with missing values with 20 samples and 100 columns
@@ -88,7 +87,7 @@ by genomic position, time series, etc.).
 set.seed(1234)
 beta_matrix <- t(sim_mat(100, 20)$input)
 
-# Sliding Window K-NN imputation by specifying `k = 5`
+# Sliding Window k-NN imputation by specifying `k`
 imputed_knn <- slide_imp(
   beta_matrix,
   k = 5,
@@ -97,13 +96,13 @@ imputed_knn <- slide_imp(
 )
 imputed_knn
 
-# Sliding Window PCA imputation by specifying `ncp = 2`
-imputed_knn <- slide_imp(
+# Sliding Window PCA imputation by specifying `ncp`
+pca_knn <- slide_imp(
   beta_matrix,
   ncp = 2,
   n_feat = 50,
   n_overlap = 10
 )
-imputed_knn
+pca_knn
 
 }

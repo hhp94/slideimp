@@ -1,6 +1,6 @@
-#' Grouped K-NN Imputation
+#' Grouped k-NN or PCA Imputation
 #'
-#' K-NN imputation by groups, such as chromosomes, flanking columns, or clusters
+#' k-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
 #' identified by column clustering techniques.
 #'
 #' @inheritParams knn_imp
@@ -13,11 +13,15 @@
 #' column names used for imputation but not imputed themselves}
 #' \item{parameters}{(Optional) A list column containing group-specific parameters}
 #' }
+#' @param .progress Show imputation progress (default = FALSE)
 #'
 #' @details
-#' This function performs K-NN or PCA imputation on groups of features independently,
-#' which significantly reduce imputation time for large datasets. Typical strategies
-#' for grouping may include:
+#' This function performs k-NN or PCA imputation on groups of features independently,
+#' which significantly reduce imputation time for large datasets.
+#'
+#' Specify `k` and related arguments to use k-NN, `ncp` and related arguments for PCA.
+#'
+#' Typical strategies for grouping may include:
 #' \itemize{
 #' \item Breaking down search space by chromosomes
 #' \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
@@ -50,7 +54,7 @@
 #'
 #' # Impute only first 3 values of group 1, the rest are aux. Group 2 does 4 features.
 #' # Also optionally vary the parameters by group
-#' group_df <- tibble::tibble(
+#' knn_df <- tibble::tibble(
 #'   features = list(group_1[1:3], group_2[1:4]),
 #'   aux = list(group_1, group_2),
 #'   parameters = list(
@@ -58,12 +62,19 @@
 #'     list(k = 4, method = "manhattan")
 #'   )
 #' )
-#' group_df
+#' knn_df
 #'
-#' # Run grouped imputation. t() to put features on the columns
+#' # Run grouped imputation. t() to put features on the columns. Specify `k` for k-NN
 #' obj <- t(to_test$input)
-#' grouped_results <- group_imp(obj, group = group_df, k = 5)
-#' grouped_results
+#' knn_grouped <- group_imp(obj, group = knn_df, k = 5)
+#' knn_grouped
+#'
+#' # Specify `ncp` for PCA
+#' pca_df <- tibble::tibble(
+#'   features = list(group_1[1:3], group_2[1:4])
+#' )
+#' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
+#' pca_grouped
 group_imp <- function(
   obj,
   group,
@@ -80,7 +91,6 @@ group_imp <- function(
   scale = TRUE,
   pca_method = c("Regularized", "EM"),
   coeff.ridge = 1,
-  ind.sup = NULL,
   threshold = 1e-6,
   seed = NULL,
   nb.init = 1,
@@ -91,7 +101,7 @@ group_imp <- function(
 ) {
   # pre-conditioning
   if (is.null(k) && is.null(ncp)) {
-    stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation")
+    stop("Specify either 'k' for k-NN imputation or 'ncp' for PCA imputation")
   }
   imp_method <- if (!is.null(k)) {
     "knn"
@@ -178,8 +188,8 @@ group_imp <- function(
         scale = scale,
         method = pca_method,
         # row.w = row.w,
-        ind.sup = ind.sup,
-        quanti.sup = NULL,
+        # ind.sup = ind.sup,
+        # quanti.sup = NULL,
         coeff.ridge = coeff.ridge,
         threshold = threshold,
         seed = seed,
@@ -200,5 +210,7 @@ group_imp <- function(
     obj[, feats] <- do.call(f_imp, group_params)[, feats]
   }
 
+  class(obj) <- c("ImputedMatrix", class(obj))
+  attr(obj, "imp_method") <- imp_method
   return(obj)
 }
