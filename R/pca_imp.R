@@ -191,12 +191,33 @@ pca_imp <- function(
   ind.sup <- NULL
   quanti.sup <- NULL
 
-  if (!anyNA(obj)) {
-    return(obj)
-  }
+  checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
+  cn <- colnames(obj)
+
   method <- match.arg(method, c("Regularized", "regularized", "EM", "em"),
     several.ok = T
   )[1]
+
+  checkmate::assert_flag(scale, .var.name = "scale")
+  checkmate::assert_int(ncp, lower = 1, upper = nrow(obj), .var.name = "ncp")
+  checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
+  checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
+  # checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
+  # checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
+  checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
+  checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
+  checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
+  obj_vars <- col_vars(obj)
+  if (
+    any(abs(obj_vars) < .Machine$double.eps^0.5 | is.nan(obj_vars) | is.na(obj_vars))
+  ) {
+    stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try `col_vars(obj)`")
+  }
+  if (!anyNA(obj)) {
+    return(obj)
+  }
+
+
   init_obj <- Inf
   method <- tolower(method)
 
