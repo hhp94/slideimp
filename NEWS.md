@@ -1,3 +1,3 @@
-# slideimp 0.5.2
+# slideimp 0.5.3
 
 * Initial CRAN submission.
