@@ -6,7 +6,7 @@
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
 #' @inheritParams slide_imp
-#' @param group A data.frame with columns:
+#' @param group A data.frame/[tibble::tibble()] with columns:
 #' \describe{
 #' \item{features}{A list column containing character vectors of feature column names to impute}
 #' \item{aux}{(Optional) A list column containing character vectors of auxiliary
@@ -19,7 +19,7 @@
 #' This function performs K-NN or PCA imputation on groups of features independently,
 #' which significantly reduce imputation time for large datasets.
 #'
-#' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA.
+#' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA imputation.
 #' If `k` and `ncp` are both `NULL`, then the group-wise parameters column i.e., `group$parameters`
 #' must be specified and must contains either `k` or `ncp` for all groups of group-wise parameters.
 #'

@@ -22,11 +22,9 @@ respective columns.
 }
 \details{
 This function calculates the mean for each column excluding missing values and
-replaces all missing values in that column with the computed mean. If a column
-consists entirely of missing values, those values will remain as \code{NA} since
-the mean cannot be calculated.
+replaces all missing values in that column with the computed mean.
 
-The \code{subset} parameter allows for selective imputation of only specific columns.
+The \code{subset} parameter allows for imputation of only specific columns.
 }
 \examples{
 # Create example matrix with missing values

@@ -6,11 +6,9 @@
 #'
 #' @details
 #' This function calculates the mean for each column excluding missing values and
-#' replaces all missing values in that column with the computed mean. If a column
-#' consists entirely of missing values, those values will remain as `NA` since
-#' the mean cannot be calculated.
+#' replaces all missing values in that column with the computed mean.
 #'
-#' The `subset` parameter allows for selective imputation of only specific columns.
+#' The `subset` parameter allows for imputation of only specific columns.
 #'
 #' @inheritParams knn_imp
 #'

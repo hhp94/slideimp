@@ -49,6 +49,8 @@ find_overlap_regions <- function(start, end) {
 #'
 #' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA.
 #'
+#' @inherit knn_imp return
+#'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
 #' # where the column order is sorted (e.g., by genomic position or time)

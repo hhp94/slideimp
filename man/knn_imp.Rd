@@ -35,7 +35,7 @@ indices specifying which columns to impute.}
 \item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
 If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
 
-\item{tree}{Either \code{NULL} (default, brute-force K-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.}
+\item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
@@ -54,12 +54,12 @@ where weights are inverse distances raised to the power of \code{dist_pow}.
 The \code{tree} parameter enables faster neighbor search using spatial data structures
 but requires pre-filling missing values with column means, which may introduce bias
 in high-missingness data. Tree construction overhead may reduce performance for
-low-dimensional data or small k values.
+low-dimensional data.
 }
 \section{Performance Optimization}{
 
 \itemize{
-\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and missingness is low (<20\% missing)
+\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and missingness is low (<5\% missing)
 \item \strong{Subset imputation}: Use \code{subset} parameter for efficiency when only specific columns need imputation
 }
 }

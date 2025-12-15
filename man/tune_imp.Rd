@@ -119,13 +119,6 @@ results_custom <- tune_imp(
   num_na = 20
 )
 
-# Analyze with `{yardstick}` (uncomment to use)
-# library(yardstick)
-# met_set <- metric_set(mae, rmse, rsq)
-# results_custom$metrics <- lapply(
-#   results_custom$result,
-#   \(x) met_set(x, truth = truth, estimate = estimate)
-# )
-# tidyr::unnest(dplyr::select(results_custom, -result), metrics)
+compute_metrics(results_custom)
 
 }

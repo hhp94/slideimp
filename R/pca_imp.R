@@ -163,7 +163,7 @@ pca_imp_internal <- function(
 #' @param maxiter integer, maximum number of iteration for the algorithm
 #' @param miniter integer, minimum number of iteration for the algorithm
 #'
-#' @return A `dim(obj)` matrix with missing values imputed.
+#' @inherit knn_imp return
 #'
 #' @references
 #' Josse, J & Husson, F. (2013). Handling missing values in exploratory multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.

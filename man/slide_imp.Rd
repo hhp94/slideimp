@@ -67,6 +67,9 @@ indices specifying which columns to impute.}
 
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 }
+\value{
+A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
+}
 \description{
 Performs K-NN or PCA imputation large numeric matrices using a sliding
 window approach column-wise. This method assumes that columns are meaningfully sorted.

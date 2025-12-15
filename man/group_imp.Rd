@@ -29,7 +29,7 @@ group_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{group}{A data.frame with columns:
+\item{group}{A data.frame/\code{\link[tibble:tibble]{tibble::tibble()}} with columns:
 \describe{
 \item{features}{A list column containing character vectors of feature column names to impute}
 \item{aux}{(Optional) A list column containing character vectors of auxiliary
@@ -48,7 +48,7 @@ column names used for imputation but not imputed themselves}
 \item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
 If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
 
-\item{tree}{Either \code{NULL} (default, brute-force K-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.}
+\item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
 
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 
@@ -83,7 +83,7 @@ identified by column clustering techniques.
 This function performs K-NN or PCA imputation on groups of features independently,
 which significantly reduce imputation time for large datasets.
 
-Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA.
+Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA imputation.
 If \code{k} and \code{ncp} are both \code{NULL}, then the group-wise parameters column i.e., \code{group$parameters}
 must be specified and must contains either \code{k} or \code{ncp} for all groups of group-wise parameters.
 

@@ -26,7 +26,7 @@ obj <- t(khanmiss1)
 set.seed(1234)
 ```
 
-Instead of randomly placing `NA` values, we fix the locations of `NA` values in advance for cross-validation. We will select 30 random genes with 5 random missing values each and repeat 10 times to compare the imputation accuracy between `knn_imp` and `pca_imp`. The `na_location` object is a list of 10 elements (one per repetition), where each element contains the 2D coordinates (row and column) of values that will be set to missing and then re-imputed by the K-NN/PCA imputation functions to calculate imputation metrics.
+Instead of randomly placing `NA` values, we fix the locations of `NA` values in advance for cross-validation. We will select 30 random genes with 5 random missing values each and repeat 10 times to compare the imputation accuracy between `knn_imp()` and `pca_imp()`. The `na_location` object is a list of 10 elements (one per repetition), where each element contains the 2D coordinates (row and column) of values that will be set to missing and then re-imputed by the K-NN/PCA imputation functions to calculate imputation metrics.
 ```{r}
 n_genes <- 30
 n_samples <- 5
@@ -73,7 +73,7 @@ c("knn" = rmse_knn, "pca" = rmse_pca)
 ```
 
 ## Subset and grouped K-NN and PCA imputation
-Some DNA methylation analyses only focuses on epigenetic clocks, which only require a subset of CpGs to be imputed. The `knn_imp` function takes advantage of this to significantly reduce runtime. To impute only specific CpGs for K-NN imputation and make use of grouped imputation, we can use the `aux` column in the `group` data frame passed to the `group_imp` function (equivalently the `subset` argument in the full K-NN `knn_imp()` function.
+Some DNA methylation analyses only focuses on epigenetic clocks, which only require a subset of CpGs to be imputed. The `knn_imp()` function takes advantage of this to significantly reduce runtime. To impute only specific CpGs for K-NN imputation and make use of grouped imputation, we can use the `aux` column in the `group` data frame passed to the `group_imp()` function (equivalently the `subset` argument in the full K-NN `knn_imp()` function.
 
 Here, we simulate data where only a subset of CpGs are needed for imputation. PCA imputation does not benefit from subset imputation, but does benefit from grouped imputation.
 
@@ -178,16 +178,19 @@ beta_matrix[1:5, 1:5]
 
 This example dataset is small, but in actual analyses with millions of CpGs, we can tune the K-NN or PCA imputation on just the first tens of thousands of CpGs. Here, we perform K-NN imputation by specifying `k`, a window size (`n_feat`) of 100, and a 10-CpG overlap (`n_overlap`) between windows.
 ```{r}
+# For example, we are tuning `k` value here.
 slide_knn_params <- tibble::tibble(k = c(10, 20), n_feat = 100, n_overlap = 10)
+# Increase rep from 2 in actual analyses
 tune_slide_knn <- tune_imp(
   obj = beta_matrix,
   parameters = slide_knn_params,
-  cores = 4
+  cores = 4,
+  rep = 2
 )
 compute_metrics(tune_slide_knn)
 ```
 
-Finally, we can use `slide_imp` to impute the `beta_matrix`.
+Finally, we can use `slide_imp()` to impute the `beta_matrix`.
 ```{r}
 imputed_beta <- slide_imp(obj = beta_matrix, n_feat = 100, n_overlap = 10, k = 10, cores = 4)
 imputed_beta

@@ -14,10 +14,10 @@
 #' The `tree` parameter enables faster neighbor search using spatial data structures
 #' but requires pre-filling missing values with column means, which may introduce bias
 #' in high-missingness data. Tree construction overhead may reduce performance for
-#' low-dimensional data or small k values.
+#' low-dimensional data.
 #'
 #' @section Performance Optimization:
-#' - **Tree methods**: Only use when imputation runtime becomes prohibitive and missingness is low (<20% missing)
+#' - **Tree methods**: Only use when imputation runtime becomes prohibitive and missingness is low (<5% missing)
 #' - **Subset imputation**: Use `subset` parameter for efficiency when only specific columns need imputation
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
@@ -30,7 +30,7 @@
 #' indices specifying which columns to impute.
 #' @param dist_pow A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
 #' If `dist_pow = 0` (default), then the imputed value is just the mean of nearest neighbors regardless of distance.
-#' @param tree Either `NULL` (default, brute-force K-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.
+#' @param tree Either `NULL` (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the `{mlpack}` ball-tree or kd-tree algorithms.
 #'
 #' @return A numeric matrix of the same dimensions as `obj` with missing values imputed.
 #'

@@ -20,7 +20,7 @@ A tibble with the original parameters and unnested metrics
 }
 \description{
 Calculates prediction accuracy metrics for each result in a \code{\link[=tune_imp]{tune_imp()}} output.
-Use the \code{yardstick} package for other and faster metrics.
+Use the \code{{yardstick}} package for other and faster metrics.
 }
 \examples{
 data(khanmiss1)

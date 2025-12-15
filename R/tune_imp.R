@@ -221,14 +221,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'   num_na = 20
 #' )
 #'
-#' # Analyze with `{yardstick}` (uncomment to use)
-#' # library(yardstick)
-#' # met_set <- metric_set(mae, rmse, rsq)
-#' # results_custom$metrics <- lapply(
-#' #   results_custom$result,
-#' #   \(x) met_set(x, truth = truth, estimate = estimate)
-#' # )
-#' # tidyr::unnest(dplyr::select(results_custom, -result), metrics)
+#' compute_metrics(results_custom)
 #'
 #' @export
 tune_imp <- function(
@@ -585,7 +578,7 @@ calc_all_metrics <- function(x, metric_fns) {
 #' Compute Prediction Accuracy Metrics
 #'
 #' Calculates prediction accuracy metrics for each result in a [tune_imp()] output.
-#' Use the `yardstick` package for other and faster metrics.
+#' Use the `{yardstick}` package for other and faster metrics.
 #'
 #' @param results A tibble from [tune_imp()] containing a `result` column
 #' with tibbles that have `truth` and `estimate` columns.

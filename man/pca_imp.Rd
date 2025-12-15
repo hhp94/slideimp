@@ -39,7 +39,7 @@ pca_imp(
 \item{miniter}{integer, minimum number of iteration for the algorithm}
 }
 \value{
-A \code{dim(obj)} matrix with missing values imputed.
+A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
 (From the missMDA package on CRAN) Impute the missing values of a dataset with the Principal Components Analysis model. Can be used as a preliminary step before performing a PCA on an completed dataset.
