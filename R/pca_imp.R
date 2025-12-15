@@ -199,7 +199,7 @@ pca_imp <- function(
   )[1]
 
   checkmate::assert_flag(scale, .var.name = "scale")
-  checkmate::assert_int(ncp, lower = 1, upper = nrow(obj), .var.name = "ncp")
+  checkmate::assert_int(ncp, lower = 1, upper = min(ncol(obj), nrow(obj)), .var.name = "ncp")
   checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
   checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
   # checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
@@ -216,7 +216,6 @@ pca_imp <- function(
   if (!anyNA(obj)) {
     return(obj)
   }
-
 
   init_obj <- Inf
   method <- tolower(method)

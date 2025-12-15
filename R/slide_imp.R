@@ -26,10 +26,10 @@ find_overlap_regions <- function(start, end) {
   )
 }
 
-#' Sliding Window k-NN or PCA Imputation
+#' Sliding Window K-NN or PCA Imputation
 #'
 #' @description
-#' Performs k-NN or PCA imputation large numeric matrices using a sliding
+#' Performs K-NN or PCA imputation large numeric matrices using a sliding
 #' window approach column-wise. This method assumes that columns are meaningfully sorted.
 #'
 #' @inheritParams knn_imp
@@ -38,16 +38,16 @@ find_overlap_regions <- function(start, end) {
 #' @param n_overlap Number of overlapping features between two windows.
 #' @param knn_method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
 #' @param pca_method "Regularized" by default or "EM".
-#' @param .progress Show progress bar (default = FALSE).
+#' @param .progress Show progress bar (default = `TRUE`).
 #'
 #' @details
 #' The sliding window approach divides the input matrix into smaller, overlapping
 #' segments and applies imputation to each window independently. Values in overlapping
 #' areas are averaged across windows to produce the final imputed result.
 #' This approach assumes that features (columns) are sorted meaningfully (e.g.,
-#' by genomic position, time series, etc.).
+#' by genomic position, time, etc.).
 #'
-#' Specify `k` and related arguments to use k-NN, `ncp` and related arguments for PCA.
+#' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA.
 #'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
@@ -56,7 +56,7 @@ find_overlap_regions <- function(start, end) {
 #' set.seed(1234)
 #' beta_matrix <- t(sim_mat(100, 20)$input)
 #'
-#' # Sliding Window k-NN imputation by specifying `k`
+#' # Sliding Window K-NN imputation by specifying `k`
 #' imputed_knn <- slide_imp(
 #'   beta_matrix,
 #'   k = 5,
@@ -97,10 +97,10 @@ slide_imp <- function(
   maxiter = 1000,
   miniter = 5,
   # Others
-  .progress = FALSE
+  .progress = TRUE
 ) {
   if (sum(c(is.null(k), is.null(ncp))) != 1L) {
-    stop("Specify either 'k' for k-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
+    stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
   }
   imp_method <- if (!is.null(k)) {
     "knn"
@@ -142,6 +142,7 @@ slide_imp <- function(
     ) {
       stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try `col_vars(obj)`")
     }
+    rm(obj_vars)
   }
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
 

@@ -9,7 +9,7 @@
 #' @param rowmax Number between 0 to 1. NA injection cannot create rows with more missing % than this number.
 #' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
 #' @param check_sd Check if after NA injections zero variance columns are created or not.
-#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default: 1000).
+#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default to 1000).
 #'
 #' @return A vector of integer indices indicating the positions in the matrix
 #' where NAs should be injected.
@@ -112,62 +112,101 @@ inject_na <- function(
   return(na_loc)
 }
 
+#' Convert 2D Positions to Linear Indices
+#'
+#' This function converts 2D positions (row and column indices, i.e., first and second columns)
+#' in a matrix to their corresponding linear (1D) positions.
+#'
+#' @param pos_2d A numeric matrix with exactly 2 columns (first for rows, second for columns)
+#' and at least 1 row. Each entry must be a positive integer within the matrix bounds.
+#' @param nrow The number of rows in the matrix.
+#' @param ncol The number of columns in the matrix.
+#' @return A numeric vector of linear positions corresponding to the input 2D positions.
+#'
+#' @keywords internal
+#' @noRd
+grid_to_linear <- function(pos_2d, nrow, ncol) {
+  checkmate::assert_matrix(pos_2d, ncols = 2, min.rows = 1, mode = "integerish", .var.name = "pos_2d")
+  checkmate::assert_int(nrow, lower = 1, "nrow")
+  checkmate::assert_int(ncol, lower = 1, "ncol")
+
+  row <- pos_2d[, 1]
+  col <- pos_2d[, 2]
+
+  checkmate::assert_true(all(row >= 1 & row <= nrow), .var.name = "row indices")
+  checkmate::assert_true(all(col >= 1 & col <= ncol), .var.name = "column indices")
+
+  linear_pos <- (col - 1) * nrow + row
+  return(linear_pos)
+}
+
 #' Tune Parameters for Imputation Methods
 #'
 #' @description
-#' Tunes hyperparameters for imputation methods like [slide_imp()], [knn_imp()], [pca_imp()],
-#' or custom functions by injecting missing values into the dataset and evaluating
-#' performance across parameter combinations.
+#' Tunes hyperparameters for imputation methods such as [slide_imp()], [knn_imp()], [pca_imp()],
+#' or user-supplied custom functions by repeated cross-validation.
 #'
 #' @details
-#' Supports tuning built-in methods ('slide_imp', 'knn_imp', 'pca_imp') or custom functions via `.f`.
+#' The function supports tuning for built-in imputation methods ("slide_imp", "knn_imp", "pca_imp")
+#' or custom functions provided via `.f`.
 #'
-#' For custom `.f`, `parameters` columns must match `.f`'s arguments (excluding `obj`). The
-#' function must take `obj` as an argument and return a numeric matrix of the same dimensions.
+#' When using a custom `.f`, the columns in `parameters` must correspond to the arguments of `.f`
+#' (excluding the `obj` argument). The custom function must accept `obj` (a numeric matrix) as its
+#' first argument and return a numeric matrix of identical dimensions.
+#'
+#' Tuning results can be evaluated using metrics from the `{yardstick}` package or via the
+#' [compute_metrics()] helper function.
 #'
 #' @inheritParams inject_na
-#' @param parameters Data frame of parameter combinations to tune where each column is
-#' a parameter accepted by `.f`. Duplicates are removed. Supports list columns.
-#' @param rep Number of repetitions for random `NA` injection, or list of integer
-#' positions per repetition (if `rep` is list then ignores `num_na`).
-#' @param .f Imputation function: "knn_imp" (default), "slide_imp", "pca_imp", or custom function.
-#' @param .progress Show progress bar (default FALSE).
-#' @param cores Number of cores for parallelization (default 1).
+#' @inheritParams slide_imp
+#' @param parameters A data.frame specifying parameter combinations to tune, where each column
+#'   represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
+#'   for complex parameters. Duplicate rows are automatically removed. When `.f = NULL`, the
+#'   imputation method is inferred from the column names:
+#'   - `k` → K-NN imputation ([knn_imp()])
+#'   - `ncp` → PCA imputation ([pca_imp()])
+#'   - `k` or `ncp` with `n_feat` and `n_overlap` → sliding window imputation ([slide_imp()])
+#' @param rep Either an integer specifying the number of repetitions for random NA injection, or
+#'   a list defining fixed NA positions for each repetition (in which case `num_na` is ignored).
+#'   The list elements can be one of the following formats:
+#'   - A two-column integer matrix. The first column is the row index, the second column is the column index.
+#'   Each row is an missing value.
+#'   - A numeric vector specifying linear locations of NAs.
+#' @param .f Custom function to tune. Must accept `obj` as the first argument, accept the arguments in `parameters`,
+#' and return a matrix with the same dimension as `obj` (default = `NULL`).
 #'
-#' @return Tibble with parameter columns, `param_set` (ID), `rep` (repetition), and `result` (nested tibble of `truth` and `estimate`).
+#' @return A [tibble::tibble()] with columns from `parameters`, plus `param_set` (unique parameter set ID),
+#'   `rep` (repetition index), and `result` (a nested tibble containing `truth` and `estimate`
+#'   columns for true and imputed values, respectively).
 #'
 #' @examples
 #' data(khanmiss1)
-#'
-#' parameters <- data.frame(
-#'   n_feat = c(100, 100, 100),
-#'   k = c(5, 10, 10),
-#'   n_overlap = c(10, 10, 10)
-#' )
-#'
-#' set.seed(1234)
 #' obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 #'
-#' # Random NA injection
-#' results <- tune_imp(obj, parameters, .f = "slide_imp", rep = 1, num_na = 20)
+#' # Tune full K-NN imputation
+#' parameters <- data.frame(k = c(5, 10))
 #'
-#' # Specific NA positions
-#' obj_complete <- obj
-#' obj_complete[is.na(obj_complete)] <- 0
-#' # 3 reps (list of length 3), where each rep has different, but pre-specified locations.
+#' # With random NA injection
+#' results <- tune_imp(obj, parameters, rep = 1, num_na = 20)
+#'
+#' # Compute metrics on results
+#' compute_metrics(results)
+#'
+#' # Tune with fixed NA positions (2 repetitions)
+#' # Positions must not be NA in the original `obj`
 #' na_positions <- list(
-#'   sample(1:length(obj_complete), 20, replace = FALSE),
-#'   sample(1:length(obj_complete), 20, replace = FALSE),
-#'   sample(1:length(obj_complete), 20, replace = FALSE)
+#'   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2), # Rows 1-3 in column 1
+#'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2) # Rows 2-4 in column 2
 #' )
 #' results_fixed <- tune_imp(
-#'   obj_complete,
+#'   obj,
 #'   data.frame(k = 10),
-#'   .f = "knn_imp",
 #'   rep = na_positions
 #' )
 #'
-#' # Custom imputation
+#' compute_metrics(results_fixed)
+#'
+#' # Custom imputation function example
 #' custom_imp <- function(obj, mean = 0, sd = 1) {
 #'   na_pos <- is.na(obj)
 #'   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
@@ -182,32 +221,27 @@ inject_na <- function(
 #'   num_na = 20
 #' )
 #'
-#' # Analyze the results with yardstick
-#' @examplesIf requireNamespace("dplyr", quietly = TRUE) && requireNamespace("yardstick", quietly = TRUE) && requireNamespace("tidyr", quietly = TRUE)
-#' met_set <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::rsq)
-#' results$metrics <- lapply(
-#'   results$result,
-#'   \(x) met_set(x, truth = truth, estimate = estimate)
-#' )
-#' tidyr::unnest(dplyr::select(results, -result), metrics)
+#' # Analyze with `{yardstick}` (uncomment to use)
+#' # library(yardstick)
+#' # met_set <- metric_set(mae, rmse, rsq)
+#' # results_custom$metrics <- lapply(
+#' #   results_custom$result,
+#' #   \(x) met_set(x, truth = truth, estimate = estimate)
+#' # )
+#' # tidyr::unnest(dplyr::select(results_custom, -result), metrics)
 #'
-#' results_custom$metrics <- lapply(
-#'   results_custom$result,
-#'   \(x) met_set(x, truth = truth, estimate = estimate)
-#' )
-#' tidyr::unnest(dplyr::select(results_custom, -result), metrics)
 #' @export
 tune_imp <- function(
   obj,
   parameters,
-  .f = "knn_imp",
+  .f = NULL,
   rep = 1,
   num_na = 100,
   rowmax = 0.9,
   colmax = 0.9,
   check_sd = FALSE,
   max_iter = 1000,
-  .progress = FALSE,
+  .progress = TRUE,
   cores = 1
 ) {
   fun <- NULL
@@ -220,12 +254,82 @@ tune_imp <- function(
     null.ok = FALSE,
     .var.name = "obj"
   )
+  nr <- nrow(obj)
+  nc <- ncol(obj)
+
   checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
+  checkmate::assert_data_frame(
+    parameters,
+    any.missing = FALSE,
+    all.missing = FALSE,
+    min.rows = 1,
+    col.names = "unique",
+    .var.name = "parameters",
+    null.ok = FALSE
+  )
+  parameters <- unique(parameters)
+
+  # .f logics
+  if (is.null(.f)) {
+    has_k <- "k" %in% names(parameters)
+    has_ncp <- "ncp" %in% names(parameters)
+    has_slide_params <- any(c("n_feat", "n_overlap") %in% names(parameters))
+    if (has_slide_params) {
+      if(!all(c("n_feat", "n_overlap") %in% names(parameters))) {
+        stop("`parameters` must have both `n_feat` and `n_overlap` for `slide_imp` tuning.")
+      }
+      if (has_k && has_ncp) {
+        stop(
+          "For sliding window imputation (slide_imp), cannot have both `k` and `ncp` in `parameters`.\n",
+          "Provide only one:\n",
+          "- `k` for slide_imp with K-NN\n",
+          "- `ncp` for slide_imp with PCA"
+        )
+      } else if (!has_k && !has_ncp) {
+        stop(
+          "For sliding window imputation (slide_imp), must provide either `k` or `ncp` in `parameters` along with `n_feat` and `n_overlap`.\n",
+          "Provide:\n",
+          "- `k` for slide_imp with K-NN\n",
+          "- `ncp` for slide_imp with PCA"
+        )
+      } else {
+        .f <- "slide_imp"
+      }
+    } else if (has_k && has_ncp) {
+      stop(
+        "Both `k` and `ncp` found in `parameters`.\n",
+        "Specify either:\n",
+        "- `k` for K-NN imputation (knn_imp)\n",
+        "- `ncp` for PCA imputation (pca_imp)\n",
+        "- `n_feat` and `n_overlap` plus either `k` or `ncp` for sliding window imputation (slide_imp)"
+      )
+    } else if (has_k) {
+      .f <- "knn_imp"
+    } else if (has_ncp) {
+      .f <- "pca_imp"
+    } else {
+      stop(
+        "Cannot infer imputation method from `parameters` columns.\n",
+        "Either specify `.f` directly, or include one of:\n",
+        "- `k` for K-NN imputation (knn_imp)\n",
+        "- `ncp` for PCA imputation (pca_imp)\n",
+        "- `n_feat` and `n_overlap` plus either `k` or `ncp` for sliding window imputation (slide_imp)"
+      )
+    }
+  }
+  # validate .f
   stopifnot(
     "`.f` must be a function or 'slide_imp' or 'knn_imp' or 'pca_imp'." = (
       is.function(.f) || (is.character(.f) && (.f %in% c("slide_imp", "knn_imp", "pca_imp")) && length(.f) == 1)
     )
   )
+
+  if (is.function(.f)) {
+    message("Tuning custom function")
+  } else {
+    message(sprintf("Tuning %s", .f))
+  }
+
   if (is.numeric(rep)) {
     checkmate::assert_count(rep, positive = TRUE, .var.name = "rep")
     checkmate::assert_count(num_na, positive = TRUE, null.ok = FALSE, .var.name = "num_na")
@@ -233,7 +337,17 @@ tune_imp <- function(
     rep_is_list <- FALSE
     n_reps <- rep
   } else if (is.list(rep)) {
-    checkmate::assert_list(rep, types = "integerish", unique = TRUE, min.len = 1, .var.name = "rep")
+    checkmate::assert_list(rep, min.len = 1, types = c("matrix", "integerish"), .var.name = "rep")
+    # convert any 2D positions to linear positions
+    rep <- lapply(seq_along(rep), \(i) {
+      elem <- rep[[i]]
+      if (is.matrix(elem) && ncol(elem) == 2) {
+        grid_to_linear(elem, nrow = nr, ncol = nc)
+      } else {
+        elem
+      }
+    })
+    # validate as linear positions
     elem_lengths <- vapply(rep, length, numeric(1))
     if (length(unique(elem_lengths)) != 1) {
       stop("All elements in `rep` list must have the same length")
@@ -261,16 +375,7 @@ tune_imp <- function(
   checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
   checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
-  checkmate::assert_data_frame(
-    parameters,
-    any.missing = FALSE,
-    all.missing = FALSE,
-    min.rows = 1,
-    col.names = "unique",
-    .var.name = "parameters",
-    null.ok = FALSE
-  )
-  parameters <- unique(parameters)
+
   if (is.character(.f)) {
     if (.f == "slide_imp") {
       parameters$.progress <- FALSE
@@ -381,8 +486,8 @@ tune_imp <- function(
             checkmate::assert_matrix(
               imputed_result,
               mode = "numeric",
-              nrows = nrow(obj),
-              ncols = ncol(obj),
+              nrows = nr,
+              ncols = nc,
               null.ok = FALSE,
               .var.name = "imputed_result"
             )
@@ -402,6 +507,8 @@ tune_imp <- function(
     obj = obj,
     na_loc = na_loc,
     indices = indices,
+    nr = nr,
+    nc = nc,
     parameters_list = parameters_list
   )
   if (.progress) {
@@ -415,5 +522,132 @@ tune_imp <- function(
     indices,
     tibble::tibble(result = result_list)
   ))
+
+  class(result_df) <- c("TuneImp", class(result_df))
   return(result_df)
+}
+
+# compute_metrics ----
+calc_mae <- function(truth, estimate) {
+  mean(abs(truth - estimate), na.rm = TRUE)
+}
+
+calc_rmse <- function(truth, estimate) {
+  sqrt(mean((truth - estimate)^2, na.rm = TRUE))
+}
+
+calc_rsq <- function(truth, estimate) {
+  valid <- !is.na(truth) & !is.na(estimate)
+  if (sum(valid) < 2) {
+    return(NA_real_)
+  }
+  stats::cor(truth[valid], estimate[valid])^2
+}
+
+calc_rsq_trad <- function(truth, estimate) {
+  valid <- !is.na(truth) & !is.na(estimate)
+  if (sum(valid) < 2) {
+    return(NA_real_)
+  }
+  truth_valid <- truth[valid]
+  estimate_valid <- estimate[valid]
+  ss_res <- sum((truth_valid - estimate_valid)^2)
+  mean_truth <- mean(truth_valid)
+  ss_tot <- sum((truth_valid - mean_truth)^2)
+  if (abs(ss_tot) < .Machine$double.eps^0.5) {
+    return(NA_real_)
+  }
+  1 - (ss_res / ss_tot)
+}
+
+calc_mape <- function(truth, estimate) {
+  mean(abs((truth - estimate) / truth), na.rm = TRUE) * 100
+}
+
+calc_bias <- function(truth, estimate) {
+  mean(estimate - truth, na.rm = TRUE)
+}
+
+calc_all_metrics <- function(x, metric_fns) {
+  estimates <- vapply(
+    metric_fns,
+    function(fn) fn(x$truth, x$estimate),
+    numeric(1)
+  )
+
+  tibble::tibble(
+    .metric = names(metric_fns),
+    .estimator = "standard",
+    .estimate = estimates
+  )
+}
+
+#' Compute Prediction Accuracy Metrics
+#'
+#' Calculates prediction accuracy metrics for each result in a [tune_imp()] output.
+#' Use the `yardstick` package for other and faster metrics.
+#'
+#' @param results A tibble from [tune_imp()] containing a `result` column
+#' with tibbles that have `truth` and `estimate` columns.
+#' @param metrics A character vector of metric names to compute. Available options
+#' are: `"mae"`, `"rmse"`, `"rsq"`, `"mape"`, `"bias"`, `"calc_rsq_trad"`. Defaults
+#' to `c("mae", "rmse", "rsq")`.
+#'
+#' @return A tibble with the original parameters and unnested metrics
+#' (`.metric`, `.estimator`, `.estimate`).
+#'
+#' @examples
+#' data(khanmiss1)
+#' set.seed(1234)
+#' results <- tune_imp(
+#'   obj = t(khanmiss1),
+#'   parameters = data.frame(k = 10),
+#'   .f = "knn_imp",
+#'   rep = 1,
+#'   num_na = 20
+#' )
+#'
+#' compute_metrics(results)
+#'
+#' @export
+compute_metrics <- function(results, metrics = c("mae", "rmse", "rsq")) {
+  UseMethod("compute_metrics")
+}
+
+#' @export
+compute_metrics.TuneImp <- function(results, metrics = c("mae", "rmse", "rsq")) {
+  checkmate::assert_character(metrics, unique = TRUE)
+
+  .metrics_list <- list(
+    mae = calc_mae,
+    rmse = calc_rmse,
+    rsq = calc_rsq,
+    mape = calc_mape,
+    bias = calc_bias,
+    rsq_trad = calc_rsq_trad
+  )
+
+  invalid_metrics <- setdiff(metrics, names(.metrics_list))
+  if (length(invalid_metrics) > 0) {
+    stop(
+      "Unknown metrics: ", paste(invalid_metrics, collapse = ", "), "\n",
+      "Available metrics: ", paste(names(.metrics_list), collapse = ", ")
+    )
+  }
+
+  metric_fns <- .metrics_list[metrics]
+  results$metrics <- lapply(
+    results$result,
+    \(x) calc_all_metrics(x, metric_fns = metric_fns)
+  )
+  keep_cols <- setdiff(names(results), c("result", "metrics"))
+
+  out <- do.call(rbind, lapply(seq_len(nrow(results)), function(i) {
+    row_data <- results[i, keep_cols, drop = FALSE]
+    row_data <- row_data[rep(1, nrow(results$metrics[[i]])), , drop = FALSE]
+    row_data <- cbind(row_data, results$metrics[[i]])
+    row_data
+  }))
+
+  return(tibble::as_tibble(out))
 }

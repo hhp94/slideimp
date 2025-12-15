@@ -1,4 +1,14 @@
-test_that("tune_imp .f = `slide_imp`, `knn_imp`, `pca_imp` or function works", {
+test_that("grid_to_linear correctly converts 2D positions to linear indices", {
+  n <- 10
+  m <- 10
+
+  pos_2d <- matrix(c(1, 1, 1, 2, 2, 1, 10, 10), ncol = 2, byrow = TRUE)
+  pos_1d <- grid_to_linear(pos_2d, n, m)
+  sim_dat <- matrix(rnorm(n * m), ncol = n, nrow = m)
+  expect_identical(sim_dat[pos_2d], sim_dat[pos_1d])
+})
+
+test_that("tune_imp works", {
   data(khanmiss1)
   slide_imp_par <- data.frame(
     n_feat = c(100, 100),
@@ -14,7 +24,7 @@ test_that("tune_imp .f = `slide_imp`, `knn_imp`, `pca_imp` or function works", {
 
   # Check `slide_imp`
   expect_no_error({
-    slide_imp_imp_res <- tune_imp(obj, slide_imp_par, rep = 1, num_na = 200, .f = "slide_imp")
+    slide_imp_imp_res <- tune_imp(obj, slide_imp_par, rep = 1, num_na = 200)
   })
 
   expect_true(
@@ -36,7 +46,7 @@ test_that("tune_imp .f = `slide_imp`, `knn_imp`, `pca_imp` or function works", {
     post_imp = TRUE
   )
   expect_no_error({
-    knn_imp_res <- tune_imp(obj, knn_imp_par, rep = 1, num_na = 100, .f = "knn_imp")
+    knn_imp_res <- tune_imp(obj, knn_imp_par, rep = 1, num_na = 100)
   })
 
   expect_true(
@@ -54,7 +64,7 @@ test_that("tune_imp .f = `slide_imp`, `knn_imp`, `pca_imp` or function works", {
   # Check `pca_imp`
   pca_imp_par <- data.frame(ncp = 2, miniter = 2)
   expect_no_error({
-    pca_imp_res <- tune_imp(obj, pca_imp_par, rep = 1, num_na = 100, .f = "pca_imp")
+    pca_imp_res <- tune_imp(obj, pca_imp_par, rep = 1, num_na = 100)
   })
 
   expect_true(
@@ -123,7 +133,6 @@ test_that("tune_imp works when rep is a list of NA locations", {
       obj,
       slide_imp_par,
       rep = na_loc_list, # Using list instead of integer
-      .f = "slide_imp"
     )
   })
 
@@ -153,8 +162,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     knn_imp_res <- tune_imp(
       obj,
       knn_imp_par,
-      rep = na_loc_list,
-      .f = "knn_imp"
+      rep = na_loc_list
     )
   })
 
@@ -205,8 +213,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     varied_res <- tune_imp(
       obj,
       slide_imp_par,
-      rep = varied_na_locs,
-      .f = "slide_imp"
+      rep = varied_na_locs
     )
   })
 
@@ -227,7 +234,6 @@ test_that("tune_imp correctly uses provided NA locations from list", {
     c(50, 60, 70) # Middle positions
   )
 
-  # Simple imputation function that replaces NA with a fixed value
   simple_imp <- function(obj, fill_value) {
     obj[is.na(obj)] <- fill_value
     return(obj)
@@ -255,5 +261,44 @@ test_that("tune_imp correctly uses provided NA locations from list", {
 
     # Check we have the right number of values
     expect_equal(length(res$truth), length(na_locations[[i]]))
+  }
+})
+
+test_that("tune_imp handles mixed linear and 2D positions in list", {
+  set.seed(789)
+  obj <- matrix(1:100, nrow = 10, ncol = 10)
+
+  # mix of linear and 2D positions
+  na_locations_mixed <- list(
+    c(1, 11, 21), # linear
+    matrix(c(10, 10, 10, 1, 2, 3), ncol = 2), # 2D, row 10, column 1, 2, 3
+    c(45, 55, 65) # linear
+  )
+
+  simple_imp <- function(obj, fill_value) {
+    obj[is.na(obj)] <- fill_value
+    return(obj)
+  }
+
+  params <- data.frame(fill_value = 67)
+
+  result <- tune_imp(
+    obj,
+    params,
+    rep = na_locations_mixed,
+    .f = simple_imp
+  )
+
+  expected_linear <- list(
+    c(1, 11, 21),
+    c(10, 20, 30),
+    c(45, 55, 65)
+  )
+
+  for (i in 1:3) {
+    res <- result$result[[i]]
+    expected_truth <- obj[expected_linear[[i]]]
+    expect_equal(res$truth, expected_truth)
+    expect_true(all(res$estimate == 67))
   }
 })

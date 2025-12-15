@@ -1,6 +1,6 @@
-#' Grouped k-NN or PCA Imputation
+#' Grouped K-NN or PCA Imputation
 #'
-#' k-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
+#' K-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
 #' identified by column clustering techniques.
 #'
 #' @inheritParams knn_imp
@@ -16,10 +16,12 @@
 #' @param .progress Show imputation progress (default = FALSE)
 #'
 #' @details
-#' This function performs k-NN or PCA imputation on groups of features independently,
+#' This function performs K-NN or PCA imputation on groups of features independently,
 #' which significantly reduce imputation time for large datasets.
 #'
-#' Specify `k` and related arguments to use k-NN, `ncp` and related arguments for PCA.
+#' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA.
+#' If `k` and `ncp` are both `NULL`, then the group-wise parameters column i.e., `group$parameters`
+#' must be specified and must contains either `k` or `ncp` for all groups of group-wise parameters.
 #'
 #' Typical strategies for grouping may include:
 #' \itemize{
@@ -64,12 +66,14 @@
 #' )
 #' knn_df
 #'
-#' # Run grouped imputation. t() to put features on the columns. Specify `k` for k-NN
+#' # Run grouped imputation. t() to put features on the columns. `k` for K-NN has
+#' # been specified in `knn_df`.
 #' obj <- t(to_test$input)
-#' knn_grouped <- group_imp(obj, group = knn_df, k = 5)
+#' knn_grouped <- group_imp(obj, group = knn_df)
 #' knn_grouped
 #'
-#' # Specify `ncp` for PCA
+#' # Specify `ncp` for PCA in the `group_imp` function since no group-wise parameters are
+#' # specified.
 #' pca_df <- tibble::tibble(
 #'   features = list(group_1[1:3], group_2[1:4])
 #' )
@@ -80,56 +84,97 @@ group_imp <- function(
   group,
   # KNN-specific parameters
   k = NULL,
-  colmax = 0.9,
-  knn_method = c("euclidean", "manhattan"),
-  cores = 1,
-  post_imp = TRUE,
-  dist_pow = 0,
+  colmax = NULL,
+  knn_method = NULL,
+  post_imp = NULL,
+  dist_pow = NULL,
   tree = NULL,
   # PCA-specific parameters
   ncp = NULL,
-  scale = TRUE,
-  pca_method = c("Regularized", "EM"),
-  coeff.ridge = 1,
-  threshold = 1e-6,
+  scale = NULL,
+  pca_method = NULL,
+  coeff.ridge = NULL,
+  threshold = NULL,
   seed = NULL,
-  nb.init = 1,
-  maxiter = 1000,
-  miniter = 5,
+  nb.init = NULL,
+  maxiter = NULL,
+  miniter = NULL,
   # Others
+  cores = 1,
   .progress = TRUE
 ) {
-  # pre-conditioning
-  if (is.null(k) && is.null(ncp)) {
-    stop("Specify either 'k' for k-NN imputation or 'ncp' for PCA imputation")
-  }
-  imp_method <- if (!is.null(k)) {
-    "knn"
-  } else {
-    "pca"
-  }
+  # pre-conditioning  ----
+  checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
   checkmate::assert_names(colnames(group), must.include = c("features"), .var.name = "group")
+  if (!tibble::is_tibble(group)) {
+    group <- tibble::as_tibble(group)
+  }
   checkmate::assert_list(group$features, types = "character", min.len = 1, .var.name = "group$features")
+  for (i in seq_along(group$features)) {
+    if (anyDuplicated(group$features[[i]]) > 0) {
+      warning(paste("Group", i, "contains repeated features. Removing duplicates ..."))
+      group$features[[i]] <- unique(group$features[[i]])
+    }
+  }
+  features_length <- vapply(group$features, length, numeric(1))
+  empty_features <- features_length == 0
+  if (any(empty_features)) {
+    stop(sprintf("Group(s) %s have no features.", paste(which(empty_features), collapse = ", ")))
+  }
   if ("aux" %in% names(group)) {
     checkmate::assert_list(group$aux, types = c("character", "null"), min.len = 1, .var.name = "group$aux")
+    for (i in seq_along(group$aux)) {
+      if (anyDuplicated(group$aux[[i]]) > 0) {
+        group$aux[[i]] <- unique(group$aux[[i]])
+      }
+    }
   } else {
     group$aux <- list(NULL)
   }
-  # handling group wise parameters
+  aux_length <- vapply(group$aux, length, numeric(1))
+  ## k, ncp, and group$parameters logic ----
+  global_k <- !is.null(k)
+  global_ncp <- !is.null(ncp)
+  if (global_k && global_ncp) {
+    stop("Cannot specify both 'k' and 'ncp' as global parameters")
+  }
   has_parameters <- "parameters" %in% names(group)
-  if (has_parameters) {
+  use_global <- global_k || global_ncp
+  if (use_global) {
+    imp_method <- if (global_k) "knn" else "pca"
+    if (use_global && has_parameters) {
+      stop("Cannot specify both global 'k'/'ncp' and group$parameters. Please use one or the other")
+    }
+    message(paste("Performing group-wise", toupper(imp_method), "imputation with the same parameters for all groups.", sep = " "))
+  } else {
+    if (!has_parameters) {
+      stop("Must specify either global 'k' for K-NN imputation, 'ncp' for PCA imputation, or provide group$parameters")
+    }
     checkmate::assert_list(group$parameters, types = c("list", "null"), min.len = 1, .var.name = "group$parameters")
-    # allowed parameters based on method
+    has_k <- vapply(group$parameters, \(p) "k" %in% names(p), logical(1))
+    has_ncp <- vapply(group$parameters, \(p) "ncp" %in% names(p), logical(1))
+    both <- has_k & has_ncp
+    neither <- !has_k & !has_ncp
+    if (any(both)) {
+      stop(sprintf("Group(s) %s have both 'k' and 'ncp' in parameters", paste(which(both), collapse = ", ")))
+    }
+    if (any(neither)) {
+      stop(sprintf("Group(s) %s have neither 'k' nor 'ncp' in parameters", paste(which(neither), collapse = ", ")))
+    }
+    if (any(has_k) && any(has_ncp)) {
+      stop("Inconsistent imputation methods across groups; all group-wise parameters must specify either just k for KNN imputation or ncp for PCA imputation")
+    }
+    imp_method <- if (all(has_k)) "knn" else "pca"
     if (imp_method == "knn") {
-      allowed_params <- c(
-        "k", "method", "colmax", "cores", "post_imp", "dist_pow", "tree"
-      )
+      allowed_params <- c("k", "method", "colmax", "cores", "post_imp", "dist_pow", "tree")
+      required_param <- "k"
     } else {
       allowed_params <- c(
         "ncp", "scale", "method", "row.w", "ind.sup", "quanti.sup", "coeff.ridge",
         "threshold", "seed", "nb.init", "maxiter", "miniter"
       )
+      required_param <- "ncp"
     }
     all_param_names <- unique(unlist(lapply(group$parameters, names)))
     unknown_params <- setdiff(all_param_names, allowed_params)
@@ -139,57 +184,74 @@ group_imp <- function(
         paste(unknown_params, collapse = ", ")
       )
     }
-    message("Running with group-wise parameters")
-  } else {
-    message("Running with the same parameters for all groups")
+    message(paste("Performing group-wise", toupper(imp_method), "imputation with group-wise parameters.", sep = " "))
   }
-  # feats and aux pre-conditioning
+  group_size <- features_length + aux_length
+  if (has_parameters) {
+    param_values <- vapply(group$parameters, function(p) p[[required_param]], numeric(1))
+  } else {
+    param_values <- rep(if (imp_method == "knn") k else ncp, length(group_size))
+  }
+  if (imp_method == "knn") {
+    invalid_groups <- which(param_values >= group_size | param_values < 1)
+  } else {
+    invalid_groups <- which(param_values > pmin(group_size, nrow(obj)) | param_values < 1)
+  }
+  if (length(invalid_groups) > 0) {
+    stop(sprintf(
+      "%s is either too large or < 1 for group(s): %s",
+      if (imp_method == "knn") "k" else "ncp",
+      paste(invalid_groups, collapse = ", ")
+    ))
+  }
   cn <- colnames(obj)
   if (is.null(cn)) {
     stop("`obj` must have column names for grouping")
   }
   # `all_feats` doesn't have to cover all cn. Uncovered columns are un-imputed
-  all_feats <- purrr::list_c(group$features)
-  all_aux <- purrr::list_c(group$aux)
+  all_feats <- do.call(c, group$features)
+  all_aux <- do.call(c, group$aux)
   if (!all(unique(c(all_feats, all_aux)) %in% cn)) {
     stop("Some features or aux columns not found in `obj` column names")
   }
-  if (any(duplicated(all_feats))) {
+  if (anyDuplicated(all_feats) > 0) {
     stop("Same features can't be in more than 1 groups")
   }
-  for (g in seq_len(nrow(group))) {
-    if (.progress) {
-      message("Imputing group ", g, "/", nrow(group))
-    }
-    # behavior: all unique columns in feat will be imputed using unique columns in
-    # feats and aux. Probably have to docs this
-    feats <- unique(group$features[[g]])
-    aux <- unique(group$aux[[g]])
-    columns <- unique(c(feats, aux))
+  # imputation ----
+  iter <- seq_len(nrow(group))
+  indices <- lapply(iter, function(g) {
+    # Have to convert to index to be able to use bigmemory
+    columns <- unique(c(group$features[[g]], group$aux[[g]]))
+    non_features <- setdiff(columns, group$features[[g]])
+    features_idx <- match(group$features[[g]], cn)
+    non_features_idx <- match(non_features, cn)
+    return(
+      list(
+        features_idx_local = seq_along(features_idx),
+        col_idx = c(features_idx, non_features_idx),
+        features_names = cn[features_idx]
+      )
+    )
+  })
 
+  params <- lapply(iter, function(g) {
     if (imp_method == "knn") {
-      f_imp <- "knn_imp"
       group_params <- list(
-        obj = obj[, columns, drop = FALSE],
         k = k,
         colmax = colmax,
         method = knn_method,
         cores = cores,
         post_imp = post_imp,
-        subset = feats, # character vector of column names to impute
+        subset = group$features[[g]], # only columns in features need to be imputed
         dist_pow = dist_pow,
         tree = tree
       )
     } else {
-      f_imp <- "pca_imp"
+      # pca has to impute features + aux, but only features will be in the results
       group_params <- list(
-        obj = obj[, columns, drop = FALSE],
         ncp = ncp,
         scale = scale,
         method = pca_method,
-        # row.w = row.w,
-        # ind.sup = ind.sup,
-        # quanti.sup = NULL,
         coeff.ridge = coeff.ridge,
         threshold = threshold,
         seed = seed,
@@ -198,16 +260,75 @@ group_imp <- function(
         miniter = miniter
       )
     }
+
     # use group-specific parameters if provided
     if (has_parameters && !is.null(group$parameters[[g]])) {
       group_specific <- group$parameters[[g]]
-      # only allow overriding specific imputation related parameters
-      for (param_name in names(group_specific)) {
+      for (param_name in setdiff(names(group_specific), "cores")) {
         group_params[[param_name]] <- group_specific[[param_name]]
       }
     }
-    # Call the imputation function
-    obj[, feats] <- do.call(f_imp, group_params)[, feats]
+    group_params <- group_params[!vapply(group_params, is.null, logical(1))]
+    return(group_params)
+  })
+
+  if (imp_method == "knn") {
+    results <- purrr::map(
+      iter,
+      function(i) {
+        do.call(
+          knn_imp,
+          c(list(obj = obj[, indices[[i]]$col_idx]), params[[i]])
+        )[, indices[[i]]$features_idx_local]
+      },
+      .progress = .progress
+    )
+  } else {
+    if (cores == 1) {
+      results <- purrr::map(
+        iter,
+        function(i) {
+          do.call(pca_imp, c(list(obj = obj[, indices[[i]]$col_idx]), params[[i]]))[, indices[[i]]$features_idx_local]
+        },
+        .progress = .progress
+      )
+    } else {
+      tryCatch(
+        mirai::require_daemons(),
+        error = function(e) {
+          stop(
+            sprintf(
+              "%d cores requested, but no mirai daemon is setup. Call `mirai::daemons(%d)` to set up the parallelization",
+              cores,
+              cores
+            )
+          )
+        }
+      )
+      # have to use bigmemory big matrix. This will create one copy in RAM.
+      big_obj <- bigmemory::as.big.matrix(obj)
+      big_obj_desc <- bigmemory::describe(big_obj)
+      crated_fn <- purrr::in_parallel(
+        function(i) {
+          attached_matrix <- bigmemory::attach.big.matrix(big_obj_desc)
+          imputed <- do.call(
+            pca_imp,
+            c(list(obj = attached_matrix[, indices[[i]]$col_idx]), params[[i]])
+          )[, indices[[i]]$features_idx_local]
+          colnames(imputed) <- indices[[i]]$features_names
+          return(imputed)
+        },
+        big_obj_desc = big_obj_desc,
+        pca_imp = pca_imp,
+        indices = indices,
+        params = params
+      )
+      results <- purrr::map(iter, crated_fn, .progress = .progress)
+    }
+  }
+
+  for (res in results) {
+    obj[, colnames(res)] <- res
   }
 
   class(obj) <- c("ImputedMatrix", class(obj))

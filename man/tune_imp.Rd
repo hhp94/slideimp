@@ -7,27 +7,41 @@
 tune_imp(
   obj,
   parameters,
-  .f = "knn_imp",
+  .f = NULL,
   rep = 1,
   num_na = 100,
   rowmax = 0.9,
   colmax = 0.9,
   check_sd = FALSE,
   max_iter = 1000,
-  .progress = FALSE,
+  .progress = TRUE,
   cores = 1
 )
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{parameters}{Data frame of parameter combinations to tune where each column is
-a parameter accepted by \code{.f}. Duplicates are removed. Supports list columns.}
+\item{parameters}{A data.frame specifying parameter combinations to tune, where each column
+represents a parameter accepted by \code{.f} (excluding \code{obj}). List columns are supported
+for complex parameters. Duplicate rows are automatically removed. When \code{.f = NULL}, the
+imputation method is inferred from the column names:
+\itemize{
+\item \code{k} → K-NN imputation (\code{\link[=knn_imp]{knn_imp()}})
+\item \code{ncp} → PCA imputation (\code{\link[=pca_imp]{pca_imp()}})
+\item \code{k} or \code{ncp} with \code{n_feat} and \code{n_overlap} → sliding window imputation (\code{\link[=slide_imp]{slide_imp()}})
+}}
 
-\item{.f}{Imputation function: "knn_imp" (default), "slide_imp", "pca_imp", or custom function.}
+\item{.f}{Custom function to tune. Must accept \code{obj} as the first argument, accept the arguments in \code{parameters},
+and return a matrix with the same dimension as \code{obj} (default = \code{NULL}).}
 
-\item{rep}{Number of repetitions for random \code{NA} injection, or list of integer
-positions per repetition (if \code{rep} is list then ignores \code{num_na}).}
+\item{rep}{Either an integer specifying the number of repetitions for random NA injection, or
+a list defining fixed NA positions for each repetition (in which case \code{num_na} is ignored).
+The list elements can be one of the following formats:
+\itemize{
+\item A two-column integer matrix. The first column is the row index, the second column is the column index.
+Each row is an missing value.
+\item A numeric vector specifying linear locations of NAs.
+}}
 
 \item{num_na}{The number of missing values used to estimate prediction quality.}
 
@@ -37,58 +51,60 @@ positions per repetition (if \code{rep} is list then ignores \code{num_na}).}
 
 \item{check_sd}{Check if after NA injections zero variance columns are created or not.}
 
-\item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
+\item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default to 1000).}
 
-\item{.progress}{Show progress bar (default FALSE).}
+\item{.progress}{Show progress bar (default = \code{TRUE}).}
 
-\item{cores}{Number of cores for parallelization (default 1).}
+\item{cores}{Number of cores to parallelize over.}
 }
 \value{
-Tibble with parameter columns, \code{param_set} (ID), \code{rep} (repetition), and \code{result} (nested tibble of \code{truth} and \code{estimate}).
+A \code{\link[tibble:tibble]{tibble::tibble()}} with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),
+\code{rep} (repetition index), and \code{result} (a nested tibble containing \code{truth} and \code{estimate}
+columns for true and imputed values, respectively).
 }
 \description{
-Tunes hyperparameters for imputation methods like \code{\link[=slide_imp]{slide_imp()}}, \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=pca_imp]{pca_imp()}},
-or custom functions by injecting missing values into the dataset and evaluating
-performance across parameter combinations.
+Tunes hyperparameters for imputation methods such as \code{\link[=slide_imp]{slide_imp()}}, \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=pca_imp]{pca_imp()}},
+or user-supplied custom functions by repeated cross-validation.
 }
 \details{
-Supports tuning built-in methods ('slide_imp', 'knn_imp', 'pca_imp') or custom functions via \code{.f}.
+The function supports tuning for built-in imputation methods ("slide_imp", "knn_imp", "pca_imp")
+or custom functions provided via \code{.f}.
 
-For custom \code{.f}, \code{parameters} columns must match \code{.f}'s arguments (excluding \code{obj}). The
-function must take \code{obj} as an argument and return a numeric matrix of the same dimensions.
+When using a custom \code{.f}, the columns in \code{parameters} must correspond to the arguments of \code{.f}
+(excluding the \code{obj} argument). The custom function must accept \code{obj} (a numeric matrix) as its
+first argument and return a numeric matrix of identical dimensions.
+
+Tuning results can be evaluated using metrics from the \code{{yardstick}} package or via the
+\code{\link[=compute_metrics]{compute_metrics()}} helper function.
 }
 \examples{
 data(khanmiss1)
-
-parameters <- data.frame(
-  n_feat = c(100, 100, 100),
-  k = c(5, 10, 10),
-  n_overlap = c(10, 10, 10)
-)
-
-set.seed(1234)
 obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 
-# Random NA injection
-results <- tune_imp(obj, parameters, .f = "slide_imp", rep = 1, num_na = 20)
+# Tune full K-NN imputation
+parameters <- data.frame(k = c(5, 10))
 
-# Specific NA positions
-obj_complete <- obj
-obj_complete[is.na(obj_complete)] <- 0
-# 3 reps (list of length 3), where each rep has different, but pre-specified locations.
+# With random NA injection
+results <- tune_imp(obj, parameters, rep = 1, num_na = 20)
+
+# Compute metrics on results
+compute_metrics(results)
+
+# Tune with fixed NA positions (2 repetitions)
+# Positions must not be NA in the original `obj`
 na_positions <- list(
-  sample(1:length(obj_complete), 20, replace = FALSE),
-  sample(1:length(obj_complete), 20, replace = FALSE),
-  sample(1:length(obj_complete), 20, replace = FALSE)
+  matrix(c(1, 2, 3, 1, 1, 1), ncol = 2), # Rows 1-3 in column 1
+  matrix(c(2, 3, 4, 2, 2, 2), ncol = 2) # Rows 2-4 in column 2
 )
 results_fixed <- tune_imp(
-  obj_complete,
+  obj,
   data.frame(k = 10),
-  .f = "knn_imp",
   rep = na_positions
 )
 
-# Custom imputation
+compute_metrics(results_fixed)
+
+# Custom imputation function example
 custom_imp <- function(obj, mean = 0, sd = 1) {
   na_pos <- is.na(obj)
   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
@@ -103,19 +119,13 @@ results_custom <- tune_imp(
   num_na = 20
 )
 
-# Analyze the results with yardstick
-\dontshow{if (requireNamespace("dplyr", quietly = TRUE) && requireNamespace("yardstick", quietly = TRUE) && requireNamespace("tidyr", quietly = TRUE)) withAutoprint(\{ # examplesIf}
-met_set <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::rsq)
-results$metrics <- lapply(
-  results$result,
-  \(x) met_set(x, truth = truth, estimate = estimate)
-)
-tidyr::unnest(dplyr::select(results, -result), metrics)
+# Analyze with `{yardstick}` (uncomment to use)
+# library(yardstick)
+# met_set <- metric_set(mae, rmse, rsq)
+# results_custom$metrics <- lapply(
+#   results_custom$result,
+#   \(x) met_set(x, truth = truth, estimate = estimate)
+# )
+# tidyr::unnest(dplyr::select(results_custom, -result), metrics)
 
-results_custom$metrics <- lapply(
-  results_custom$result,
-  \(x) met_set(x, truth = truth, estimate = estimate)
-)
-tidyr::unnest(dplyr::select(results_custom, -result), metrics)
-\dontshow{\}) # examplesIf}
 }

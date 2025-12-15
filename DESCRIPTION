@@ -1,28 +1,32 @@
 Type: Package
 Package: slideimp
-Title: k-NN and Sliding Window k-NN Imputation for Numeric Data
+Title: Fast K-NN and PCA Imputation for High-Dimensional Numeric Matrices
 Version: 0.5.2
-Authors@R: 
+Authors@R:
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355"))
-Description: K-nearest neighbors (k-NN) imputation algorithm for numeric
-    data with options for multiple imputation with predictive mean
-    matching (PMM). For large numeric datasets, such as intensive
-    longitudinal data or epigenomic data where features are ordered in
-    columns and have local structures, a sliding window approach for
-    efficient k-NN imputation that can leverage the 'bigmemory' backend to
-    conserve RAM is provided. The k-NN algorithm is described in: Hastie,
-    T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein,
-    D.  (1999) <https://hastie.su.domains/Papers/missing.pdf> "Imputing
-    Missing Data for Gene Expression Arrays". The PMM algorithm is
-    described in Stef van Buuren (2018) <https://stefvanbuuren.name/fimd/>
-    "Flexible Imputation of Missing Data".
+Description: Fast K-nearest neighbors (K-NN) and Principal Component
+    Analysis (PCA) imputation algorithms for missing values in
+    high-dimensional numeric matrices, such as intensive longitudinal or
+    epigenetic data. For extremely high-dimensional data with ordered
+    features, a sliding window approach for efficient K-NN or PCA
+    imputation is provided. Additional features include group-wise
+    imputation (e.g., by chromosome), hyperparameter tuning with
+    cross-validation, multi-core parallelization, and optional subset
+    imputation. The K-NN algorithm is described in: Hastie, T.,
+    Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D.
+    (1999) <https://hastie.su.domains/Papers/missing.pdf> "Imputing
+    Missing Data for Gene Expression Arrays". The PCA imputation is an
+    optimized version of 'missMDA::imputePCA()' described in: Josse, J. and
+    Husson, F.  (2016) <doi:10.18637/jss.v070.i01> "missMDA: A Package for
+    Handling Missing Values in Multivariate Data Analysis".
 License: GPL (>= 2)
 URL: https://github.com/hhp94/slideimp
 BugReports: https://github.com/hhp94/slideimp/issues
 Depends: 
     R (>= 4.1.0)
 Imports:
+    bigmemory,
     bootSVD,
     checkmate,
     mirai,
@@ -32,18 +36,19 @@ Imports:
     tibble
 Suggests:
     carrier,
-    dplyr,
     impute,
+    knitr,
     missMDA,
     rlang,
-    testthat (>= 3.0.0),
-    tidyr,
-    yardstick
+    rmarkdown,
+    testthat (>= 3.0.0)
 LinkingTo: 
     mlpack,
     Rcpp,
     RcppArmadillo,
     RcppEnsmallen
+VignetteBuilder: 
+    knitr
 Config/testthat/edition: 3
 Encoding: UTF-8
 LazyData: true

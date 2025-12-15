@@ -2,27 +2,27 @@
 % Please edit documentation in R/group_imp.R
 \name{group_imp}
 \alias{group_imp}
-\title{Grouped k-NN or PCA Imputation}
+\title{Grouped K-NN or PCA Imputation}
 \usage{
 group_imp(
   obj,
   group,
   k = NULL,
-  colmax = 0.9,
-  knn_method = c("euclidean", "manhattan"),
-  cores = 1,
-  post_imp = TRUE,
-  dist_pow = 0,
+  colmax = NULL,
+  knn_method = NULL,
+  post_imp = NULL,
+  dist_pow = NULL,
   tree = NULL,
   ncp = NULL,
-  scale = TRUE,
-  pca_method = c("Regularized", "EM"),
-  coeff.ridge = 1,
-  threshold = 1e-06,
+  scale = NULL,
+  pca_method = NULL,
+  coeff.ridge = NULL,
+  threshold = NULL,
   seed = NULL,
-  nb.init = 1,
-  maxiter = 1000,
-  miniter = 5,
+  nb.init = NULL,
+  maxiter = NULL,
+  miniter = NULL,
+  cores = 1,
   .progress = TRUE
 )
 }
@@ -39,18 +39,16 @@ column names used for imputation but not imputed themselves}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
-\item{colmax}{A number from 0 to 1. Threshold of missing data above which k-NN imputation is skipped.}
+\item{colmax}{A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.}
 
 \item{knn_method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
 
-\item{cores}{Number of cores to parallelize over.}
-
-\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed k-NN imputation) using column means.}
+\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed K-NN imputation) using column means.}
 
 \item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
 If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
 
-\item{tree}{Either \code{NULL} (default, brute-force k-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.}
+\item{tree}{Either \code{NULL} (default, brute-force K-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.}
 
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 
@@ -70,20 +68,24 @@ If \code{dist_pow = 0} (default), then the imputed value is just the mean of nea
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
 
+\item{cores}{Number of cores to parallelize over.}
+
 \item{.progress}{Show imputation progress (default = FALSE)}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-k-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
+K-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
 identified by column clustering techniques.
 }
 \details{
-This function performs k-NN or PCA imputation on groups of features independently,
+This function performs K-NN or PCA imputation on groups of features independently,
 which significantly reduce imputation time for large datasets.
 
-Specify \code{k} and related arguments to use k-NN, \code{ncp} and related arguments for PCA.
+Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA.
+If \code{k} and \code{ncp} are both \code{NULL}, then the group-wise parameters column i.e., \code{group$parameters}
+must be specified and must contains either \code{k} or \code{ncp} for all groups of group-wise parameters.
 
 Typical strategies for grouping may include:
 \itemize{
@@ -124,12 +126,14 @@ knn_df <- tibble::tibble(
 )
 knn_df
 
-# Run grouped imputation. t() to put features on the columns. Specify `k` for k-NN
+# Run grouped imputation. t() to put features on the columns. `k` for K-NN has
+# been specified in `knn_df`.
 obj <- t(to_test$input)
-knn_grouped <- group_imp(obj, group = knn_df, k = 5)
+knn_grouped <- group_imp(obj, group = knn_df)
 knn_grouped
 
-# Specify `ncp` for PCA
+# Specify `ncp` for PCA in the `group_imp` function since no group-wise parameters are
+# specified.
 pca_df <- tibble::tibble(
   features = list(group_1[1:3], group_2[1:4])
 )

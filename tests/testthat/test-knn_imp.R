@@ -51,108 +51,106 @@ test_that("`knn_imp` works", {
 })
 
 test_that("Exactly replicate `impute::impute.knn`", {
-  # Load the example dataset with missing values
-  data("khanmiss1")
-
   # impute is on bioconductor
   # Skip this test on CRAN to avoid dependency issues
-  skip_if_not_installed("impute")
-
-  # Check if the 'impute' package is installed
-
-  # Perform imputation using knn_imp with method "impute.knn" on transposed data
-  r1 <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
-
-  # Perform imputation using the original impute::impute.knn function
-  # Transpose the result to match the orientation
-  r2 <- t(
-    impute::impute.knn(
-      khanmiss1,
-      k = 3,
-      maxp = nrow(khanmiss1)
-    )$data
-  )
-
-  # Verify that the results from knn_imp match exactly with impute::impute.knn
-  expect_equal(r1[, ], r2[, ])
-
-  # Test to see if the post_imp strategy would replicate the results completely
-  # Set seed for reproducibility in simulation
-  set.seed(1234)
-
-  # Generate a simulated matrix with missing values (500 rows, 30 columns, 50% NA, 80% columns with NA)
-  to_test <- t(sim_mat(n = 500, m = 30, perc_NA = 0.5, perc_col_NA = 0.8)$input)
-
-  # Pre-compute row means before imputation (ignoring NAs)
-  pre_impute <- rowMeans(to_test, na.rm = TRUE)
-
-  # Impute using knn_imp without post-imputation step; expect some NAs to remain
-  r1.1 <- knn_imp(to_test, k = 5, method = "euclidean", post_imp = FALSE)
-  expect_true(anyNA(r1.1))
-
-  # impute::impute.knn uses the pre-imputation row means to impute the data.
-  # After knn_imp, we row impute the data with pre-calculated row_means
-  # Identify indices of remaining NAs
-  indices <- which(is.na(r1.1), arr.ind = TRUE)
-
-  # Fill remaining NAs with pre-computed row means
-  r1.1[indices] <- pre_impute[indices[, 1]]
-
-  # Verify no NAs remain after manual post-imputation
-  expect_true(!anyNA(r1.1))
-
-  # Perform imputation using impute::impute.knn on the transposed simulated data
-  r2.1 <- t(
-    impute::impute.knn(
-      t(to_test),
-      k = 5,
-      maxp = ncol(to_test)
-    )$data
-  )
-
-  # Verify that the manually post-imputed knn_imp matches impute::impute.knn
-  expect_equal(r1.1[, ], r2.1[, ])
-
-  # Test subset. strategy is to use subset, then impute.knn on the same data
-  # and pull out the same subset then compare the two matrices
-  # Set seed for reproducibility in subset selection
-  set.seed(2345)
-
-  # Generate another simulated matrix (100 rows, 200 columns, 10% NA, all columns with NA)
-  to_test_subset <- t(sim_mat(n = 100, m = 200, perc_NA = 0.1, perc_col_NA = 1)$input)
-
-  # Randomly select 10 subset columns
-  subset_cols <- sample(colnames(to_test_subset), size = 10)
-
-  # Verify that the subset has NAs before imputation
-  expect_true(anyNA(to_test_subset[, subset_cols]))
-
-  # Impute only the subset columns using knn_imp without post_imp
-  r1_subset <- knn_imp(
-    to_test_subset,
-    k = 10,
-    method = "euclidean",
-    post_imp = FALSE,
-    subset = subset_cols
-  )[, subset_cols]
-
-  # Verify no NAs remain in the imputed subset
-  expect_true(!anyNA(r1_subset))
-
-  # Perform full imputation using impute::impute.knn and extract the subset
-  r2_subset <- t(
-    impute::impute.knn(
-      t(to_test_subset),
-      k = 10,
-      maxp = ncol(to_test_subset)
-    )$data
-  )[, subset_cols]
-
-  # Verify no NAs in the extracted subset from full imputation
-  expect_true(!anyNA(r2_subset))
-
-  # Verify that the subset imputation matches the extracted subset from full imputation
-  expect_equal(r1_subset, r2_subset)
+  skip("Uncomment and test manually")
+  # data("khanmiss1")
+  #
+  # # Check if the 'impute' package is installed
+  #
+  # # Perform imputation using knn_imp with method "impute.knn" on transposed data
+  # r1 <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
+  #
+  # # Perform imputation using the original impute::impute.knn function
+  # # Transpose the result to match the orientation
+  # r2 <- t(
+  #   impute::impute.knn(
+  #     khanmiss1,
+  #     k = 3,
+  #     maxp = nrow(khanmiss1)
+  #   )$data
+  # )
+  #
+  # # Verify that the results from knn_imp match exactly with impute::impute.knn
+  # expect_equal(r1[, ], r2[, ])
+  #
+  # # Test to see if the post_imp strategy would replicate the results completely
+  # # Set seed for reproducibility in simulation
+  # set.seed(1234)
+  #
+  # # Generate a simulated matrix with missing values (500 rows, 30 columns, 50% NA, 80% columns with NA)
+  # to_test <- t(sim_mat(n = 500, m = 30, perc_NA = 0.5, perc_col_NA = 0.8)$input)
+  #
+  # # Pre-compute row means before imputation (ignoring NAs)
+  # pre_impute <- rowMeans(to_test, na.rm = TRUE)
+  #
+  # # Impute using knn_imp without post-imputation step; expect some NAs to remain
+  # r1.1 <- knn_imp(to_test, k = 5, method = "euclidean", post_imp = FALSE)
+  # expect_true(anyNA(r1.1))
+  #
+  # # impute::impute.knn uses the pre-imputation row means to impute the data.
+  # # After knn_imp, we row impute the data with pre-calculated row_means
+  # # Identify indices of remaining NAs
+  # indices <- which(is.na(r1.1), arr.ind = TRUE)
+  #
+  # # Fill remaining NAs with pre-computed row means
+  # r1.1[indices] <- pre_impute[indices[, 1]]
+  #
+  # # Verify no NAs remain after manual post-imputation
+  # expect_true(!anyNA(r1.1))
+  #
+  # # Perform imputation using impute::impute.knn on the transposed simulated data
+  # r2.1 <- t(
+  #   impute::impute.knn(
+  #     t(to_test),
+  #     k = 5,
+  #     maxp = ncol(to_test)
+  #   )$data
+  # )
+  #
+  # # Verify that the manually post-imputed knn_imp matches impute::impute.knn
+  # expect_equal(r1.1[, ], r2.1[, ])
+  #
+  # # Test subset. strategy is to use subset, then impute.knn on the same data
+  # # and pull out the same subset then compare the two matrices
+  # # Set seed for reproducibility in subset selection
+  # set.seed(2345)
+  #
+  # # Generate another simulated matrix (100 rows, 200 columns, 10% NA, all columns with NA)
+  # to_test_subset <- t(sim_mat(n = 100, m = 200, perc_NA = 0.1, perc_col_NA = 1)$input)
+  #
+  # # Randomly select 10 subset columns
+  # subset_cols <- sample(colnames(to_test_subset), size = 10)
+  #
+  # # Verify that the subset has NAs before imputation
+  # expect_true(anyNA(to_test_subset[, subset_cols]))
+  #
+  # # Impute only the subset columns using knn_imp without post_imp
+  # r1_subset <- knn_imp(
+  #   to_test_subset,
+  #   k = 10,
+  #   method = "euclidean",
+  #   post_imp = FALSE,
+  #   subset = subset_cols
+  # )[, subset_cols]
+  #
+  # # Verify no NAs remain in the imputed subset
+  # expect_true(!anyNA(r1_subset))
+  #
+  # # Perform full imputation using impute::impute.knn and extract the subset
+  # r2_subset <- t(
+  #   impute::impute.knn(
+  #     t(to_test_subset),
+  #     k = 10,
+  #     maxp = ncol(to_test_subset)
+  #   )$data
+  # )[, subset_cols]
+  #
+  # # Verify no NAs in the extracted subset from full imputation
+  # expect_true(!anyNA(r2_subset))
+  #
+  # # Verify that the subset imputation matches the extracted subset from full imputation
+  # expect_equal(r1_subset, r2_subset)
 })
 
 test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {

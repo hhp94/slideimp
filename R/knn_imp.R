@@ -2,7 +2,7 @@
 #'
 #' @description
 #' Imputes missing values in numeric matrices using the k-nearest neighbor algorithm
-#' with a two-stage approach: k-NN imputation for columns with missingness below a
+#' with a two-stage approach: K-NN imputation for columns with missingness below a
 #' threshold, followed by optional mean imputation for remaining missing values.
 #'
 #' @details
@@ -22,15 +22,15 @@
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param k Number of nearest neighbors for imputation. 10 is a good starting point.
-#' @param colmax A number from 0 to 1. Threshold of missing data above which k-NN imputation is skipped.
+#' @param colmax A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.
 #' @param method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
 #' @param cores Number of cores to parallelize over.
-#' @param post_imp Logical flag indicating whether to impute remaining missing values (those that failed k-NN imputation) using column means.
+#' @param post_imp Logical flag indicating whether to impute remaining missing values (those that failed K-NN imputation) using column means.
 #' @param subset Character vector of column names or integer vector of column
 #' indices specifying which columns to impute.
 #' @param dist_pow A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
 #' If `dist_pow = 0` (default), then the imputed value is just the mean of nearest neighbors regardless of distance.
-#' @param tree Either `NULL` (default, brute-force k-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.
+#' @param tree Either `NULL` (default, brute-force K-NN), "kd", or "ball". Method to find nearest neighbors using the mlpack ball-tree or kd-tree.
 #'
 #' @return A numeric matrix of the same dimensions as `obj` with missing values imputed.
 #'
@@ -43,7 +43,7 @@
 #' data(khanmiss1)
 #' sum(is.na(khanmiss1))
 #'
-#' # Basic k-NN imputation (khanmiss1 has genes in rows, so transpose)
+#' # Basic K-NN imputation (khanmiss1 has genes in rows, so transpose)
 #' t_khanmiss1 <- t(khanmiss1)
 #' result <- knn_imp(t_khanmiss1, k = 5)
 #' result

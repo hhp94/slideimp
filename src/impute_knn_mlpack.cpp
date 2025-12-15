@@ -9,9 +9,9 @@
 #include <omp.h>
 #endif
 
-//' Impute missing values in a matrix using treed k-nearest neighbors (k-NN)
+//' Impute missing values in a matrix using treed k-nearest neighbors (K-NN)
 //'
-//' k-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
+//' K-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
 //'
 //' @param obj Numeric matrix with missing values represented as NA (NaN).
 //' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
@@ -54,7 +54,7 @@ arma::mat impute_knn_mlpack(
   // Matrices to store output
   arma::umat resultingNeighbors;
   arma::mat resultingDistances;
-  // Perform k-NN search based on tree and method
+  // Perform K-NN search based on tree and method
   if (tree == "kd" && method == 0)
   {
     using KNNType = mlpack::NeighborSearch<mlpack::NearestNeighborSort, mlpack::EuclideanDistance, arma::mat, mlpack::KDTree>;

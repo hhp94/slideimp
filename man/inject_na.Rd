@@ -24,7 +24,7 @@ inject_na(
 
 \item{check_sd}{Check if after NA injections zero variance columns are created or not.}
 
-\item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default: 1000).}
+\item{max_iter}{Maximum number of iterations to attempt finding valid NA positions (default to 1000).}
 }
 \value{
 A vector of integer indices indicating the positions in the matrix

@@ -2,7 +2,7 @@
 % Please edit documentation in R/slide_imp.R
 \name{slide_imp}
 \alias{slide_imp}
-\title{Sliding Window k-NN or PCA Imputation}
+\title{Sliding Window K-NN or PCA Imputation}
 \usage{
 slide_imp(
   obj,
@@ -23,7 +23,7 @@ slide_imp(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
-  .progress = FALSE
+  .progress = TRUE
 )
 }
 \arguments{
@@ -35,13 +35,13 @@ slide_imp(
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
-\item{colmax}{A number from 0 to 1. Threshold of missing data above which k-NN imputation is skipped.}
+\item{colmax}{A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.}
 
 \item{knn_method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
 
 \item{cores}{Number of cores to parallelize over.}
 
-\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed k-NN imputation) using column means.}
+\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed K-NN imputation) using column means.}
 
 \item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
 If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
@@ -65,10 +65,10 @@ indices specifying which columns to impute.}
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
 
-\item{.progress}{Show progress bar (default = FALSE).}
+\item{.progress}{Show progress bar (default = \code{TRUE}).}
 }
 \description{
-Performs k-NN or PCA imputation large numeric matrices using a sliding
+Performs K-NN or PCA imputation large numeric matrices using a sliding
 window approach column-wise. This method assumes that columns are meaningfully sorted.
 }
 \details{
@@ -76,9 +76,9 @@ The sliding window approach divides the input matrix into smaller, overlapping
 segments and applies imputation to each window independently. Values in overlapping
 areas are averaged across windows to produce the final imputed result.
 This approach assumes that features (columns) are sorted meaningfully (e.g.,
-by genomic position, time series, etc.).
+by genomic position, time, etc.).
 
-Specify \code{k} and related arguments to use k-NN, \code{ncp} and related arguments for PCA.
+Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA.
 }
 \examples{
 # Generate sample data with missing values with 20 samples and 100 columns
@@ -87,7 +87,7 @@ Specify \code{k} and related arguments to use k-NN, \code{ncp} and related argum
 set.seed(1234)
 beta_matrix <- t(sim_mat(100, 20)$input)
 
-# Sliding Window k-NN imputation by specifying `k`
+# Sliding Window K-NN imputation by specifying `k`
 imputed_knn <- slide_imp(
   beta_matrix,
   k = 5,

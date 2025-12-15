@@ -246,7 +246,7 @@ std::vector<NeighborInfo> distance_vector(
   return top_k_neighbors;
 }
 
-//' Impute missing values in a matrix using k-nearest neighbors (k-NN) with brute-force
+//' Impute missing values in a matrix using k-nearest neighbors (K-NN) with brute-force
 //'
 //' This function imputes missing values in a matrix using a k-nearest neighbors
 //' approach based on the specified distance metric. It processes only columns
