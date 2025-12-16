@@ -4,7 +4,7 @@ fast.svd.triplet <- function(X, ncp) {
   U <- svd.usuelle$u[, 1:ncp, drop = FALSE]
   V <- svd.usuelle$v[, 1:ncp, drop = FALSE]
   if (ncp > 1) {
-    mult <- sign(as.vector(crossprod(rep(1, nrow(V)), as.matrix(V))))
+    mult <- sign(colSums(V))
     mult[mult == 0] <- 1
     U <- t(t(U) * mult)
     V <- t(t(V) * mult)
@@ -199,7 +199,7 @@ pca_imp <- function(
   )[1]
 
   checkmate::assert_flag(scale, .var.name = "scale")
-  checkmate::assert_int(ncp, lower = 1, upper = min(ncol(obj), nrow(obj)), .var.name = "ncp")
+  checkmate::assert_int(ncp, lower = 1, upper = min(ncol(obj), nrow(obj) - 1), .var.name = "ncp")
   checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
   checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
   # checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")

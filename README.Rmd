@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
 [![R-CMD-check](https://github.com/hhp94/slideimp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/hhp94/slideimp/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-`{slideimp}` is a lightweight R package for fast K-NN and PCA imputation of missing values in high-dimensional numeric matrices (e.g., epigenetic data or intensively longitudinal data).
+`{slideimp}` is a lightweight R package for fast K-NN and PCA imputation of missing values in high-dimensional numeric matrices (e.g., epigenetic data or intensive longitudinal data).
 
 **Core functions**
 

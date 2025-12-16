@@ -10,7 +10,7 @@
 
 `{slideimp}` is a lightweight R package for fast K-NN and PCA imputation
 of missing values in high-dimensional numeric matrices (e.g., epigenetic
-data or intensively longitudinal data).
+data or intensive longitudinal data).
 
 **Core functions**
 

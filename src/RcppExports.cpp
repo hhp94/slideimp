@@ -12,6 +12,19 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
+// fastSVD_triplet_cpp
+Rcpp::List fastSVD_triplet_cpp(const arma::mat& A, arma::uword ncp, double tol);
+RcppExport SEXP _slideimp_fastSVD_triplet_cpp(SEXP ASEXP, SEXP ncpSEXP, SEXP tolSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type A(ASEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type ncp(ncpSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    rcpp_result_gen = Rcpp::wrap(fastSVD_triplet_cpp(A, ncp, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
 // impute_knn_brute
 arma::mat impute_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const double dist_pow, int cores);
 RcppExport SEXP _slideimp_impute_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
@@ -104,6 +117,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
+    {"_slideimp_fastSVD_triplet_cpp", (DL_FUNC) &_slideimp_fastSVD_triplet_cpp, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 7},
     {"_slideimp_find_knn_brute", (DL_FUNC) &_slideimp_find_knn_brute, 7},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},

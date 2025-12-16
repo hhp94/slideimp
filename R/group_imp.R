@@ -195,7 +195,7 @@ group_imp <- function(
   if (imp_method == "knn") {
     invalid_groups <- which(param_values >= group_size | param_values < 1)
   } else {
-    invalid_groups <- which(param_values > pmin(group_size, nrow(obj)) | param_values < 1)
+    invalid_groups <- which(param_values > pmin(group_size, nrow(obj) - 1) | param_values < 1)
   }
   if (length(invalid_groups) > 0) {
     stop(sprintf(
