@@ -10,6 +10,7 @@ pca_imp(
   scale = TRUE,
   method = c("Regularized", "EM"),
   coeff.ridge = 1,
+  row.w = NULL,
   threshold = 1e-06,
   seed = NULL,
   nb.init = 1,

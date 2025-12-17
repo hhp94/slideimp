@@ -84,9 +84,13 @@ We tune the results using 2 repeats (`rep = 2`) for illustration
 
 ``` r
 knn_params <- tibble::tibble(k = c(5, 20))
+# Parallelization is controlled by `cores` only for knn or slideimp knn
 tune_knn <- tune_imp(obj, parameters = knn_params, cores = 2, rep = 2)
 #> Tuning knn_imp
 #> Step 1/2: Injecting NA
+#> Warning in tune_imp(obj, parameters = knn_params, cores = 2, rep = 2): cores =
+#> 2 > 1 but running sequential. To enable parallel, ...
+#> Running in sequential...
 #> Step 2/2: Tuning
 compute_metrics(tune_knn)
 #> # A tibble: 12 × 7
@@ -111,12 +115,12 @@ For PCA and custom functions, setup parallelization with
 
 ``` r
 mirai::daemons(2) # 2 Cores
+# Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`  
+# and the `cores` argument is ignored.
 
 # PCA imputation. Specified by the `ncp` column in the `pca_params` tibble.
 pca_params <- tibble::tibble(ncp = c(1, 5))
-# The number of cores here only need to be > 1 for parallelization. The actual
-# number of cores to parallelize over is controlled by `mirai::daemons()`.
-tune_pca <- tune_imp(obj, parameters = pca_params, cores = 2, rep = 2)
+tune_pca <- tune_imp(obj, parameters = pca_params, rep = 2)
 
 # The parameters have `mean` and `sd` columns.
 custom_params <- tibble::tibble(mean = 1, sd = 0)
@@ -126,7 +130,7 @@ custom_function <- function(obj, mean, sd) {
   obj[missing] <- rnorm(sum(missing), mean = mean, sd = sd)
   return(obj)
 }
-tune_custom <- tune_imp(obj, parameters = custom_params, .f = custom_function, cores = 2, rep = 2)
+tune_custom <- tune_imp(obj, parameters = custom_params, .f = custom_function, rep = 2)
 
 mirai::daemons(0) # Close daemons
 ```
@@ -146,10 +150,11 @@ group_df <- tibble::tibble(
 )
 
 # We choose K-NN imputation, k = 5, from the `tune_imp` results.
-knn_group_results <- group_imp(obj, group = group_df, k = 5)
+knn_group_results <- group_imp(obj, group = group_df, k = 5, cores = 2)
 
+# Similar to `tune_imp`, parallelization is controlled by `mirai::daemons()`
 mirai::daemons(2)
-knn_group_results <- group_imp(obj, group = group_df, ncp = 3, cores = 2)
+knn_group_results <- group_imp(obj, group = group_df, ncp = 3)
 mirai::daemons(0)
 ```
 
@@ -174,11 +179,11 @@ dim(chr1_beta)
 #> [1]   10 2000
 chr1_beta[1:5, 1:5]
 #>        feat1     feat2     feat3     feat4     feat5
-#> s1        NA 0.5207813        NA        NA 0.5614669
-#> s2        NA 0.3708712 0.4521467 0.3680747 0.6094274
-#> s3        NA 0.3900858        NA        NA 0.3807988
-#> s4 0.5407613 0.5204988        NA 0.7050222 0.3691134
-#> s5 0.3733871        NA 0.3972191 0.3864667 0.5326897
+#> s1        NA 0.7297743        NA        NA 0.3968039
+#> s2 0.7346970        NA 0.5669140 0.3236858 0.3932419
+#> s3        NA        NA        NA 0.3108793        NA
+#> s4 0.5401526 0.5779956 0.4271064        NA 0.3309645
+#> s5 0.6457875        NA 0.7308792 0.4803642 0.5929590
 
 # From the tune results, choose window size of 50, overlap of size 5 between windows,
 # K-NN imputation using k = 10. Specify `ncp` for sliding window PCA imputation.
@@ -187,11 +192,11 @@ slide_imp(obj = chr1_beta, n_feat = 50, n_overlap = 5, k = 10, cores = 2, .progr
 #> Dimensions: 10 x 2000
 #> 
 #>        feat1     feat2     feat3     feat4     feat5
-#> s1 0.5391722 0.5207813 0.5351055 0.5716223 0.5614669
-#> s2 0.5124904 0.3708712 0.4521467 0.3680747 0.6094274
-#> s3 0.4347679 0.3900858 0.4207730 0.4928564 0.3807988
-#> s4 0.5407613 0.5204988 0.4919336 0.7050222 0.3691134
-#> s5 0.3733871 0.4298032 0.3972191 0.3864667 0.5326897
+#> s1 0.5067435 0.7297743 0.5884198 0.5063839 0.3968039
+#> s2 0.7346970 0.4551576 0.5669140 0.3236858 0.3932419
+#> s3 0.5625864 0.4790436 0.5316400 0.3108793 0.5234974
+#> s4 0.5401526 0.5779956 0.4271064 0.5551127 0.3309645
+#> s5 0.6457875 0.4006866 0.7308792 0.4803642 0.5929590
 #> 
 #> # Showing [1:5, 1:5] of full matrix
 ```

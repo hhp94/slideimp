@@ -25,40 +25,32 @@ fast.svd.triplet <- function(X, ncp) {
 
 #' @importFrom stats rnorm
 pca_imp_internal <- function(
-  X, miss, ncp, scale, method, ind.sup, quanti.sup, threshold, seed, init, maxiter,
-  miniter, row.w, coeff.ridge, nrX, ncX
+  X, miss, ncp, scale, method, threshold, init, maxiter, miniter, row.w, coeff.ridge
 ) {
+  nrX <- nrow(X)
+  ncX <- ncol(X)
   nb.iter <- 1
   old <- Inf
   objective <- 0
-  if (!is.null(seed)) {
-    set.seed(seed)
-  }
   ncp <- min(ncp, ncol(X), nrow(X) - 1)
   missing <- which(miss)
   # X has missing value, so we temporary replace the missing value with zero to
   # allow for vectorized calculation instead of apply + moy.p/ec
-  X[missing] <- 0
   denom <- as.vector(row.w %*% !miss)
   weighted_sum <- as.vector(row.w %*% X)
   sum_sq <- as.vector(row.w %*% (X * X))
   mean.p <- weighted_sum / denom
   et <- sqrt(sum_sq / denom - mean.p^2)
-  # Then we refill back the missing value with NA to calculate Xhat. This operation
-  # is cheap
-  X[missing] <- NA
   Xhat <- t(t(X) - mean.p)
   if (scale) {
     Xhat <- t(t(Xhat) / et)
   }
-  if (!is.null(quanti.sup)) {
-    Xhat[, quanti.sup] <- Xhat[, quanti.sup] * 1e-08
-  }
   # Init with 0 for the first iteration, which is just mean init. But from here on,
   # Xhat have no more missing values because it is now either filled with zero or
   # rnorm value.
-  Xhat[missing] <- 0
-  if (init > 1) {
+  if(init == 0) {
+    Xhat[missing] <- 0
+  } else {
     Xhat[missing] <- rnorm(length(missing)) # random initialization
   }
   fittedX <- Xhat
@@ -68,9 +60,6 @@ pca_imp_internal <- function(
   }
   while (nb.iter > 0) {
     Xhat[missing] <- fittedX[missing]
-    if (!is.null(quanti.sup)) {
-      Xhat[, quanti.sup] <- Xhat[, quanti.sup] * 1e+08
-    }
     if (scale) {
       Xhat <- t(t(Xhat) * et)
     }
@@ -81,10 +70,6 @@ pca_imp_internal <- function(
     if (scale) {
       Xhat <- t(t(Xhat) / et)
     }
-    if (!is.null(quanti.sup)) {
-      Xhat[, quanti.sup] <- Xhat[, quanti.sup] * 1e-08
-    }
-
     svd.res <- fast.svd.triplet(Xhat, ncp = ncp)
     sigma2 <- nrX * ncX / min(ncX, nrX - 1) *
       sum((svd.res$vs[-c(seq_len(ncp))]^2) /
@@ -118,20 +103,12 @@ pca_imp_internal <- function(
       warning(paste("Stopped after ", maxiter, " iterations"))
     }
   }
-
-  if (!is.null(quanti.sup)) {
-    Xhat[, quanti.sup] <- Xhat[, quanti.sup] * 1e+08
-  }
-
   if (scale) {
     Xhat <- t(t(Xhat) * et)
   }
   Xhat <- t(t(Xhat) + mean.p)
   completeObs <- X
   completeObs[missing] <- Xhat[missing]
-  if (!is.null(quanti.sup)) {
-    fittedX[, quanti.sup] <- fittedX[, quanti.sup] * 1e+08
-  }
   if (scale) {
     fittedX <- t(t(fittedX) * et)
   }
@@ -183,13 +160,10 @@ pca_imp_internal <- function(
 #' @export
 pca_imp <- function(
   obj, ncp = 2, scale = TRUE, method = c("Regularized", "EM"),
-  coeff.ridge = 1, threshold = 1e-6, seed = NULL,
+  coeff.ridge = 1, row.w = NULL, threshold = 1e-6, seed = NULL,
   nb.init = 1, maxiter = 1000, miniter = 5
 ) {
   #### Main program
-  row.w <- NULL
-  ind.sup <- NULL
-  quanti.sup <- NULL
 
   checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   cn <- colnames(obj)
@@ -200,16 +174,16 @@ pca_imp <- function(
 
   checkmate::assert_flag(scale, .var.name = "scale")
   checkmate::assert_int(ncp, lower = 1, upper = min(ncol(obj), nrow(obj) - 1), .var.name = "ncp")
-  checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
+  checkmate::assert_number(coeff.ridge, lower = 0, .var.name = "coeff.ridge")
   checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
-  # checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
-  # checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
+  checkmate::assert_numeric(row.w, finite = TRUE, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
+  checkmate::assert_number(threshold, lower = 0, .var.name = "threshold")
   checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
   obj_vars <- col_vars(obj)
   if (
-    any(abs(obj_vars) < .Machine$double.eps^0.5 | is.nan(obj_vars) | is.na(obj_vars))
+    any(abs(obj_vars) < .Machine$double.eps^0.5 | is.na(obj_vars))
   ) {
     stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try `col_vars(obj)`")
   }
@@ -220,40 +194,37 @@ pca_imp <- function(
   init_obj <- Inf
   method <- tolower(method)
 
-  nrX <- nrow(obj) - length(ind.sup)
-  ncX <- ncol(obj) - length(quanti.sup)
-
-  if (ncp > min(nrow(obj) - 2, ncol(obj) - 1)) {
-    stop("ncp is too large")
-  }
+  nrX <- nrow(obj)
+  ncX <- ncol(obj)
 
   if (is.null(row.w)) {
-    row.w <- rep(1, nrow(obj)) / nrow(obj)
+    row.w <- rep(1, nrX)
   }
-
-  if (!is.null(ind.sup)) {
-    row.w[ind.sup] <- row.w[ind.sup] * 1e-08
-  }
+  row.w <- row.w / sum(row.w)
 
   miss <- is.na(obj)
   cmiss <- colSums(miss)
-  if (any(cmiss / nrow(obj) == 1)) {
+  if (any(cmiss / nrX == 1)) {
     stop("Col(s) with all missing detected. Remove before proceed")
   }
+  obj[miss] <- 0
   for (i in seq_len(nb.init)) {
+    if (!is.null(seed)) {
+      set.seed(seed * (i - 1))
+    }
     res.impute <- pca_imp_internal(
       X = obj,
-      miss = miss, ncp = ncp, scale = scale, method = method,
-      ind.sup = ind.sup, quanti.sup = quanti.sup, threshold = threshold,
-      seed = if (!is.null(seed)) {
-        (seed * (i - 1))
-      } else {
-        NULL
-      },
-      init = i, maxiter = maxiter, miniter = miniter, row.w = row.w,
-      coeff.ridge = coeff.ridge, nrX = nrX, ncX = ncX
+      miss = miss,
+      ncp = ncp,
+      scale = scale,
+      method = method,
+      row.w = row.w,
+      threshold = threshold,
+      init = i,
+      maxiter = maxiter,
+      miniter = miniter,
+      coeff.ridge = coeff.ridge
     )
-
     cur_obj <- mean((res.impute$fittedX[!miss] - obj[!miss])^2)
 
     if (cur_obj < init_obj) {

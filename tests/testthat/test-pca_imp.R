@@ -17,6 +17,19 @@ test_that("same results as imputePCA", {
   # )
 })
 
+test_that("fastSVD_triplet is the same as svd.triplet", {
+  skip_if_not_installed("FactoMineR")
+  set.seed(1234)
+  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0)$input)
+  row_weight <- runif(nrow(to_test))
+  row_weight <- row_weight / sum(row_weight)
+  r1 <- FactoMineR::svd.triplet(to_test, row.w = row_weight, ncp = 3)
+  r2 <- fastSVD_triplet(to_test, row_w = row_weight, ncp = 3)
+  expect_equal(r1$U, r2$U)
+  expect_equal(r1$V, r2$V)
+  expect_equal(r1$vs, r2$vs[, 1])
+})
+
 test_that("Behavior with extreme missing columns and rows", {
   set.seed(1234)
   to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)

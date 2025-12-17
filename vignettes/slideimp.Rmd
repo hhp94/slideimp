@@ -31,24 +31,29 @@ Instead of randomly placing `NA` values, we fix the locations of `NA` values in 
 n_genes <- 30
 n_samples <- 5
 n_reps <- 10
-na_location <- replicate(n = n_reps, {
-  chosen_genes <- sample.int(ncol(obj), size = n_genes)
-  values <- lapply(
-    chosen_genes, \(x) {
-      chosen_samples <- sample.int(nrow(obj), size = n_samples)
-      matrix(c(chosen_samples, rep(x, n_samples)), ncol = 2, dimnames = list(NULL, c("row", "col")))
-    }
-  )
-  do.call(rbind, values)
-}, simplify = FALSE)
+na_location <- replicate(
+  n = n_reps,
+  {
+    chosen_genes <- sample.int(ncol(obj), size = n_genes)
+    values <- lapply(
+      chosen_genes, \(x) {
+        chosen_samples <- sample.int(nrow(obj), size = n_samples)
+        matrix(c(chosen_samples, rep(x, n_samples)), ncol = 2, dimnames = list(NULL, c("row", "col")))
+      }
+    )
+    do.call(rbind, values)
+  },
+  simplify = FALSE
+)
 na_location[[1]][1:10, ]
 ```
 
-We proceed to measure the accuracy of the imputation using "good" default parameters for K-NN (`k = 10`) and PCA (`ncp = 5`). For PCA imputation, we leverage the `{mirai}` package for parallelization.
+We proceed to measure the accuracy of the imputation using "good" default parameters for K-NN (`k = 10`) and PCA (`ncp = 5`). For PCA imputation, we leverage the `{mirai}` package for parallelization while the `cores` arguments control parallelization for K-NN.
 ```{r, eval = FALSE}
 tune_knn <- tune_imp(obj, parameters = data.frame(k = 10), rep = na_location, cores = 4)
+
 mirai::daemons(4)
-tune_pca <- tune_imp(obj, parameters = data.frame(ncp = 5), rep = na_location, cores = 4)
+tune_pca <- tune_imp(obj, parameters = data.frame(ncp = 5), rep = na_location)
 mirai::daemons(0)
 ```
 
@@ -68,8 +73,8 @@ rmse_knn <- mean(compute_metrics(tune_knn, metrics = "rmse")$.estimate)
 rmse_pca <- mean(compute_metrics(tune_pca, metrics = "rmse")$.estimate)
 c("knn" = rmse_knn, "pca" = rmse_pca)
 
-# knn      pca 
-# 489.4291 479.9512 
+# knn      pca
+# 489.4291 479.9512
 ```
 
 ## Subset and grouped K-NN and PCA imputation
@@ -96,18 +101,20 @@ We define the `features` list-column as a list of character vectors containing f
 group_df <- tibble::tibble(
   # features: CpGs to be imputed (intersection of chromosome CpGs and subset_cpgs)
   features = lapply(
-    c("chr1", "chr2"),  # Iterate over each chromosome
+    c("chr1", "chr2"), # Iterate over each chromosome
     \(x) {
       # Get CpGs that are both: (1) on this chromosome AND (2) in our `subset_cpgs`
       intersect(subset(sim_obj$group_feature, group == x)$feature_id, subset_cpgs)
-    }),
+    }
+  ),
   # aux: CpGs used to help imputation but not imputed themselves
   aux = lapply(
-    c("chr1", "chr2"),  # Iterate over each chromosome
+    c("chr1", "chr2"), # Iterate over each chromosome
     \(x) {
       # Get CpGs that are: (1) on this chromosome BUT (2) NOT in our `subset_cpgs`
       setdiff(subset(sim_obj$group_feature, group == x)$feature_id, subset_cpgs)
-    })
+    }
+  )
 )
 ```
 
@@ -149,7 +156,7 @@ methyl <- tibble::tibble(
 )
 
 set.seed(1234)
-for(i in seq_along(sample_names)) {
+for (i in seq_along(sample_names)) {
   methyl[[paste0("numCs", i)]] <- sample.int(100, size = positions, replace = TRUE)
   methyl[[paste0("numTs", i)]] <- sample.int(100, size = positions, replace = TRUE)
   methyl[[paste0("coverage", i)]] <- methyl[[paste0("numCs", i)]] + methyl[[paste0("numTs", i)]]
@@ -164,7 +171,7 @@ First, we convert the data into a beta matrix with features in the columns. **Im
 methyl <- methyl[order(methyl$start), ] # <---- Important, sort!
 numCs_matrix <- as.matrix(methyl[, paste0("numCs", seq_along(sample_names))])
 cov_matrix <- as.matrix(methyl[, paste0("coverage", seq_along(sample_names))])
-beta_matrix <- numCs_matrix/cov_matrix
+beta_matrix <- numCs_matrix / cov_matrix
 
 colnames(beta_matrix) <- sample_names
 row.names(beta_matrix) <- methyl$start

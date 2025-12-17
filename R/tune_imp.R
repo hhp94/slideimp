@@ -174,6 +174,8 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'   - A numeric vector specifying linear locations of NAs.
 #' @param .f Custom function to tune. Must accept `obj` as the first argument, accept the arguments in `parameters`,
 #' and return a matrix with the same dimension as `obj` (default = `NULL`).
+#' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN only.
+#' To setup parallelization for PCA and sliding window PCA, use [mirai::daemons()].
 #'
 #' @return A [tibble::tibble()] with columns from `parameters`, plus `param_set` (unique parameter set ID),
 #'   `rep` (repetition index), and `result` (a nested tibble containing `truth` and `estimate`
@@ -268,7 +270,7 @@ tune_imp <- function(
     has_ncp <- "ncp" %in% names(parameters)
     has_slide_params <- any(c("n_feat", "n_overlap") %in% names(parameters))
     if (has_slide_params) {
-      if(!all(c("n_feat", "n_overlap") %in% names(parameters))) {
+      if (!all(c("n_feat", "n_overlap") %in% names(parameters))) {
         stop("`parameters` must have both `n_feat` and `n_overlap` for `slide_imp` tuning.")
       }
       if (has_k && has_ncp) {
@@ -369,19 +371,6 @@ tune_imp <- function(
   checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
 
-  if (is.character(.f)) {
-    if (.f == "slide_imp") {
-      parameters$.progress <- FALSE
-    }
-    if ((.f == "slide_imp" && "k" %in% names(parameters)) || .f == "knn_imp") {
-      # for `slide_imp` knn mode. Don't parallel through mirai.
-      parameters$cores <- cores
-      cores <- 1
-    }
-    if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
-      check_sd <- TRUE
-    }
-  }
   .rowid <- seq_len(nrow(parameters))
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
     row_list <- as.list(row)
@@ -423,22 +412,39 @@ tune_imp <- function(
     )
   }
   # Setup parallelization
-  if (cores > 1) {
-    tryCatch(
-      mirai::require_daemons(),
-      error = function(e) {
-        stop(sprintf(
-          "%d cores requested, but no mirai daemon is setup. Call `mirai::daemons(%d)` to set up the parallelization",
-          cores, cores
-        ))
-      }
-    )
+  parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+
+  if (is.character(.f)) {
+    if (.f == "slide_imp") {
+      parameters$.progress <- FALSE
+    }
+    if ((.f == "slide_imp" && "k" %in% names(parameters)) || .f == "knn_imp") {
+      # for `slide_imp` knn mode. Don't parallel through mirai.
+      parameters$cores <- cores
+      parallelize <- FALSE
+    }
+    if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
+      check_sd <- TRUE
+    }
+  }
+  if (parallelize) {
     fn <- purrr::in_parallel
   } else {
     fn <- function(x, ...) {
       x
     }
   }
+  if (.progress) {
+    if (parallelize) {
+      message("Running in parallel...")
+    } else {
+      if (cores > 1) {
+        warning(sprintf("cores = %d > 1 but running sequential. To enable parallel, ...", cores))
+      }
+      message("Running in sequential...")
+    }
+  }
+
   # Create the crated function based on the type of imputation
   # Determine the target function and validation requirements
   if (is.character(.f)) {

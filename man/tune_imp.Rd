@@ -55,7 +55,8 @@ Each row is an missing value.
 
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 
-\item{cores}{Number of cores to parallelize over.}
+\item{cores}{Controls the number of cores to parallelize over for K-NN and sliding window K-NN only.
+To setup parallelization for PCA and sliding window PCA, use \code{\link[mirai:daemons]{mirai::daemons()}}.}
 }
 \value{
 A \code{\link[tibble:tibble]{tibble::tibble()}} with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),

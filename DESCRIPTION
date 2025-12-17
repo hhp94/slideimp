@@ -36,6 +36,7 @@ Imports:
     tibble
 Suggests:
     carrier,
+    FactoMineR,
     knitr,
     missMDA,
     rlang,

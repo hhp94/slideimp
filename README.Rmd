@@ -67,6 +67,7 @@ We tune the results using 2 repeats (`rep = 2`) for illustration (increase in ac
 
 ```{r}
 knn_params <- tibble::tibble(k = c(5, 20))
+# Parallelization is controlled by `cores` only for knn or slideimp knn
 tune_knn <- tune_imp(obj, parameters = knn_params, cores = 2, rep = 2)
 compute_metrics(tune_knn)
 ```
@@ -74,12 +75,12 @@ compute_metrics(tune_knn)
 For PCA and custom functions, setup parallelization with `mirai::daemons()`.
 ```{r, eval = F}
 mirai::daemons(2) # 2 Cores
+# Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`  
+# and the `cores` argument is ignored.
 
 # PCA imputation. Specified by the `ncp` column in the `pca_params` tibble.
 pca_params <- tibble::tibble(ncp = c(1, 5))
-# The number of cores here only need to be > 1 for parallelization. The actual
-# number of cores to parallelize over is controlled by `mirai::daemons()`.
-tune_pca <- tune_imp(obj, parameters = pca_params, cores = 2, rep = 2)
+tune_pca <- tune_imp(obj, parameters = pca_params, rep = 2)
 
 # The parameters have `mean` and `sd` columns.
 custom_params <- tibble::tibble(mean = 1, sd = 0)
@@ -89,7 +90,7 @@ custom_function <- function(obj, mean, sd) {
   obj[missing] <- rnorm(sum(missing), mean = mean, sd = sd)
   return(obj)
 }
-tune_custom <- tune_imp(obj, parameters = custom_params, .f = custom_function, cores = 2, rep = 2)
+tune_custom <- tune_imp(obj, parameters = custom_params, .f = custom_function, rep = 2)
 
 mirai::daemons(0) # Close daemons
 ```
@@ -102,10 +103,11 @@ group_df <- tibble::tibble(
 )
 
 # We choose K-NN imputation, k = 5, from the `tune_imp` results.
-knn_group_results <- group_imp(obj, group = group_df, k = 5)
+knn_group_results <- group_imp(obj, group = group_df, k = 5, cores = 2)
 
+# Similar to `tune_imp`, parallelization is controlled by `mirai::daemons()`
 mirai::daemons(2)
-knn_group_results <- group_imp(obj, group = group_df, ncp = 3, cores = 2)
+knn_group_results <- group_imp(obj, group = group_df, ncp = 3)
 mirai::daemons(0)
 ```
 

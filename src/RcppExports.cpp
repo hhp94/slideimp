@@ -12,9 +12,9 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// fastSVD_triplet_cpp
-Rcpp::List fastSVD_triplet_cpp(const arma::mat& A, const arma::vec& row_w, arma::uword ncp, double tol);
-RcppExport SEXP _slideimp_fastSVD_triplet_cpp(SEXP ASEXP, SEXP row_wSEXP, SEXP ncpSEXP, SEXP tolSEXP) {
+// fastSVD_triplet
+Rcpp::List fastSVD_triplet(const arma::mat& A, const arma::vec& row_w, arma::uword ncp, double tol);
+RcppExport SEXP _slideimp_fastSVD_triplet(SEXP ASEXP, SEXP row_wSEXP, SEXP ncpSEXP, SEXP tolSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -22,7 +22,28 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::vec& >::type row_w(row_wSEXP);
     Rcpp::traits::input_parameter< arma::uword >::type ncp(ncpSEXP);
     Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
-    rcpp_result_gen = Rcpp::wrap(fastSVD_triplet_cpp(A, row_w, ncp, tol));
+    rcpp_result_gen = Rcpp::wrap(fastSVD_triplet(A, row_w, ncp, tol));
+    return rcpp_result_gen;
+END_RCPP
+}
+// pca_imp_internal_cpp
+Rcpp::List pca_imp_internal_cpp(const arma::mat& X, const arma::umat& miss, const arma::uword ncp, bool scale, int method, double threshold, arma::uword init, arma::uword maxiter, arma::uword miniter, const arma::vec& row_w, double coeff_ridge);
+RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP XSEXP, SEXP missSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP methodSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
+    Rcpp::traits::input_parameter< const arma::umat& >::type miss(missSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type ncp(ncpSEXP);
+    Rcpp::traits::input_parameter< bool >::type scale(scaleSEXP);
+    Rcpp::traits::input_parameter< int >::type method(methodSEXP);
+    Rcpp::traits::input_parameter< double >::type threshold(thresholdSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type init(initSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type maxiter(maxiterSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type miniter(miniterSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type row_w(row_wSEXP);
+    Rcpp::traits::input_parameter< double >::type coeff_ridge(coeff_ridgeSEXP);
+    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(X, miss, ncp, scale, method, threshold, init, maxiter, miniter, row_w, coeff_ridge));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -118,7 +139,8 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_slideimp_fastSVD_triplet_cpp", (DL_FUNC) &_slideimp_fastSVD_triplet_cpp, 4},
+    {"_slideimp_fastSVD_triplet", (DL_FUNC) &_slideimp_fastSVD_triplet, 4},
+    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 11},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 7},
     {"_slideimp_find_knn_brute", (DL_FUNC) &_slideimp_find_knn_brute, 7},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},

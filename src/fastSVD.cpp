@@ -55,14 +55,13 @@ Rcpp::List qrSVD_cpp(const arma::mat &A, arma::uword lim_attempts = 50)
 }
 
 // [[Rcpp::export]]
-Rcpp::List fastSVD_triplet_cpp(const arma::mat &A, const arma::vec &row_w, arma::uword ncp, double tol = 1e-15)
+Rcpp::List fastSVD_triplet(const arma::mat &A, const arma::vec &row_w, arma::uword ncp, double tol = 1e-15)
 {
   // mormalize row weights and scale X by multiply each row by corresponding sqrt(row.w) weight
-  arma::vec row_w_norm = row_w / arma::sum(row_w);
-  arma::vec sqrt_row_w = arma::sqrt(row_w_norm);
-
+  // move this step upstream since this function is called too many times.
+  // arma::vec row_w_norm = row_w / arma::sum(row_w);
+  arma::vec sqrt_row_w = arma::sqrt(row_w);
   arma::mat X = A.each_col() % sqrt_row_w;
-
   arma::uword rows = X.n_rows;
   arma::uword cols = X.n_cols;
   bool tall = (rows >= cols);
@@ -127,4 +126,72 @@ Rcpp::List fastSVD_triplet_cpp(const arma::mat &A, const arma::vec &row_w, arma:
       Rcpp::Named("vs") = vs,
       Rcpp::Named("U") = U,
       Rcpp::Named("V") = V);
+}
+
+// if(init == 0) {
+//   Xhat[missing] <- 0
+// } else {
+//   Xhat[missing] <- rnorm(length(missing)) # random initialization
+// }
+// fittedX <- Xhat
+// total_w <- sum(row.w)
+// if (ncp == 0) {
+//   nb.iter <- 0
+// }
+
+// [[Rcpp::export]]
+Rcpp::List pca_imp_internal_cpp(
+    const arma::mat &X,
+    const arma::umat &miss,
+    const arma::uword ncp,
+    bool scale,
+    int method,
+    double threshold,
+    arma::uword init,
+    arma::uword maxiter,
+    arma::uword miniter,
+    const arma::vec &row_w,
+    double coeff_ridge)
+{
+  // Setup
+  arma::uword nrX = X.n_rows;
+  arma::uword ncX = X.n_cols;
+  arma::uword nb_iter = 1;
+  double old = arma::datum::inf;
+  double objective = 0.0;
+
+  arma::uvec missing = arma::find(miss);
+
+  // denom = row.w %*% !miss
+  arma::mat not_miss = arma::conv_to<arma::mat>::from(1 - miss);
+  arma::rowvec denom = row_w.t() * not_miss;
+
+  // weighted_sum = row.w %*% X
+  arma::rowvec weighted_sum = row_w.t() * X;
+
+  // sum_sq = row.w %*% (X * X)
+  arma::rowvec sum_sq = row_w.t() * (X % X);
+
+  // calculate weighted col mean and sd
+  arma::rowvec mean_p = weighted_sum / denom;
+  arma::rowvec et = arma::sqrt(sum_sq / denom - mean_p % mean_p);
+
+  // initing for the while loop. Init with 0 for the first iteration, which is
+  // just mean init. But from here on, Xhat have no more missing values because
+  // it is now either filled with zero or rnorm value.
+  arma::mat Xhat = X;
+  if (init == 0)
+  {
+    Xhat.elem(missing).zeros();
+  }
+  else
+  {
+    Rcpp::NumericVector rand_vals = Rcpp::rnorm(missing.n_elem);
+    Xhat.elem(missing) = Rcpp::as<arma::vec>(rand_vals);
+  }
+  arma::mat fittedX = X;
+
+  return Rcpp::List::create(
+      Rcpp::Named("mean_p") = mean_p,
+      Rcpp::Named("et") = et);
 }
