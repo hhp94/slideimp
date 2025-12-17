@@ -55,32 +55,32 @@ Rcpp::List qrSVD_cpp(const arma::mat &A, arma::uword lim_attempts = 50)
 }
 
 // [[Rcpp::export]]
-Rcpp::List fastSVD_triplet_cpp(const arma::mat &A, arma::uword ncp, double tol = 1e-15)
+Rcpp::List fastSVD_triplet_cpp(const arma::mat &A, const arma::vec &row_w, arma::uword ncp, double tol = 1e-15)
 {
-  arma::uword rows = A.n_rows;
-  arma::uword cols = A.n_cols;
-  bool tall = (rows >= cols);
+  // mormalize row weights and scale X by multiply each row by corresponding sqrt(row.w) weight
+  arma::vec row_w_norm = row_w / arma::sum(row_w);
+  arma::vec sqrt_row_w = arma::sqrt(row_w_norm);
 
+  arma::mat X = A.each_col() % sqrt_row_w;
+
+  arma::uword rows = X.n_rows;
+  arma::uword cols = X.n_cols;
+  bool tall = (rows >= cols);
   arma::mat AA_NxN;
   if (!tall)
   {
-    AA_NxN = A * A.t();
+    AA_NxN = X * X.t();
   }
   else
   {
-    AA_NxN = A.t() * A;
+    AA_NxN = X.t() * X;
   }
-
   Rcpp::List svdAA = qrSVD_cpp(AA_NxN);
   arma::mat Vn_full = Rcpp::as<arma::mat>(svdAA["u"]);
   arma::vec d_squared = Rcpp::as<arma::vec>(svdAA["d"]);
   arma::vec d_full = arma::sqrt(arma::clamp(d_squared, 0.0, arma::datum::inf));
-
-  // vs = d[1:min(ncol(X), nrow(X) - 1)] in R (1-indexed)
   arma::uword vs_len = std::min(cols, rows - 1);
   arma::vec vs = d_full.subvec(0, vs_len - 1);
-
-  // subset Vn and Vp to first ncp columns
   arma::mat Vn = Vn_full.cols(0, ncp - 1);
   arma::vec d = d_full.subvec(0, ncp - 1);
   arma::vec d_inv = arma::zeros<arma::vec>(ncp);
@@ -91,19 +91,15 @@ Rcpp::List fastSVD_triplet_cpp(const arma::mat &A, arma::uword ncp, double tol =
       d_inv(i) = 1.0 / d(i);
     }
   }
-
-  // compute Vp with subsetted matrices for faster matmul
   arma::mat Vp;
   if (!tall)
   {
-    Vp = A.t() * (Vn * arma::diagmat(d_inv));
+    Vp = X.t() * (Vn * arma::diagmat(d_inv));
   }
   else
   {
-    Vp = A * (Vn * arma::diagmat(d_inv));
+    Vp = X * (Vn * arma::diagmat(d_inv));
   }
-
-  // assign U and V based on matrix shape
   arma::mat U, V;
   if (!tall)
   {
@@ -115,7 +111,6 @@ Rcpp::List fastSVD_triplet_cpp(const arma::mat &A, arma::uword ncp, double tol =
     U = Vp;
     V = Vn;
   }
-
   // sign flip based on colSums(V)
   arma::rowvec col_sums = arma::sum(V, 0);
   for (arma::uword i = 0; i < ncp; i++)
@@ -126,6 +121,7 @@ Rcpp::List fastSVD_triplet_cpp(const arma::mat &A, arma::uword ncp, double tol =
       V.col(i) *= -1.0;
     }
   }
+  U.each_col() /= sqrt_row_w;
 
   return Rcpp::List::create(
       Rcpp::Named("vs") = vs,
