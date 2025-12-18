@@ -439,9 +439,14 @@ tune_imp <- function(
       message("Running in parallel...")
     } else {
       if (cores > 1) {
-        warning(sprintf("cores = %d > 1 but running sequential. To enable parallel, ...", cores))
+        warning(
+          sprintf(
+            "cores = %d but running **sequential**. Call `mirai::daemons(%d)` to set up the parallelization",
+            cores,
+            cores
+          )
+        )
       }
-      message("Running in sequential...")
     }
   }
 

@@ -273,6 +273,13 @@ group_imp <- function(
   })
 
   if (imp_method == "knn") {
+    if (.progress) {
+      if (cores > 1) {
+        message("Running in parallel...")
+      } else {
+        message("Running in sequential...")
+      }
+    }
     results <- purrr::map(
       iter,
       function(i) {
@@ -284,28 +291,12 @@ group_imp <- function(
       .progress = .progress
     )
   } else {
-    if (cores == 1) {
-      results <- purrr::map(
-        iter,
-        function(i) {
-          do.call(pca_imp, c(list(obj = obj[, indices[[i]]$col_idx]), params[[i]]))[, indices[[i]]$features_idx_local]
-        },
-        .progress = .progress
-      )
-    } else {
-      tryCatch(
-        mirai::require_daemons(),
-        error = function(e) {
-          stop(
-            sprintf(
-              "%d cores requested, but no mirai daemon is setup. Call `mirai::daemons(%d)` to set up the parallelization",
-              cores,
-              cores
-            )
-          )
-        }
-      )
-      # have to use bigmemory big matrix. This will create one copy in RAM.
+    parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+    if (parallelize) {
+      if (.progress) {
+        message("Running in parallel...")
+      }
+      # have to use bigmemory big matrix. This will create only one copy in RAM.
       big_obj <- bigmemory::as.big.matrix(obj)
       big_obj_desc <- bigmemory::describe(big_obj)
       crated_fn <- purrr::in_parallel(
@@ -324,6 +315,23 @@ group_imp <- function(
         params = params
       )
       results <- purrr::map(iter, crated_fn, .progress = .progress)
+    } else {
+      if (cores > 1) {
+        warning(
+          sprintf(
+            "cores = %d but running in **sequential**. Call `mirai::daemons(%d)` to set up the parallelization",
+            cores,
+            cores
+          )
+        )
+      }
+      results <- purrr::map(
+        iter,
+        function(i) {
+          do.call(pca_imp, c(list(obj = obj[, indices[[i]]$col_idx]), params[[i]]))[, indices[[i]]$features_idx_local]
+        },
+        .progress = .progress
+      )
     }
   }
 

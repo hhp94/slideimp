@@ -339,7 +339,8 @@ test_that("`slide_imp` pca mode works", {
     pca_imp(
       obj = to_test[, 1:100],
       ncp = 2,
-      miniter = 2
+      miniter = 2,
+      seed = 1234
     )
   counts[, 1:100] <- counts[, 1:100] + 1
   # 91 to 190 is the second window;
@@ -347,7 +348,8 @@ test_that("`slide_imp` pca mode works", {
     pca_imp(
       obj = to_test[, 91:190],
       ncp = 2,
-      miniter = 2
+      miniter = 2,
+      seed = 1234
     )
   counts[, 91:190] <- counts[, 91:190] + 1
   # 181 to 280 is the last window
@@ -355,17 +357,20 @@ test_that("`slide_imp` pca mode works", {
     pca_imp(
       obj = to_test[, 181:280],
       ncp = 2,
-      miniter = 2
+      miniter = 2,
+      seed = 1234
     )
   counts[, 181:280] <- counts[, 181:280] + 1
   final_imputed <- final_imputed / counts
+  set.seed(1234)
   # slide_imp should exactly replicate this result
   simple_mean <- slide_imp(
     to_test,
     n_feat = 100,
     n_overlap = 10,
     ncp = 2,
-    miniter = 2
+    miniter = 2,
+    seed = 1234
   )
   expect_identical(simple_mean[, ], final_imputed)
 })

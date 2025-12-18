@@ -8,7 +8,7 @@ pca_imp(
   obj,
   ncp = 2,
   scale = TRUE,
-  method = c("Regularized", "EM"),
+  method = c("regularized", "EM"),
   coeff.ridge = 1,
   row.w = NULL,
   threshold = 1e-06,
@@ -25,9 +25,11 @@ pca_imp(
 
 \item{scale}{boolean. By default TRUE leading to a same weight for each variable}
 
-\item{method}{"Regularized" by default or "EM"}
+\item{method}{"regularized" by default or "EM"}
 
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
+
+\item{row.w}{row weights (by default, a vector of 1 for uniform row weights)}
 
 \item{threshold}{the threshold for assessing convergence}
 

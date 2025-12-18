@@ -27,7 +27,6 @@ Depends:
     R (>= 4.1.0)
 Imports:
     bigmemory,
-    bootSVD,
     checkmate,
     mirai,
     purrr,

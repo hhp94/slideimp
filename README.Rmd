@@ -75,7 +75,7 @@ compute_metrics(tune_knn)
 For PCA and custom functions, setup parallelization with `mirai::daemons()`.
 ```{r, eval = F}
 mirai::daemons(2) # 2 Cores
-# Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`  
+# Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`
 # and the `cores` argument is ignored.
 
 # PCA imputation. Specified by the `ncp` column in the `pca_params` tibble.

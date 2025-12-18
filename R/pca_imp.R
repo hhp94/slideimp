@@ -1,124 +1,3 @@
-#' @importFrom bootSVD fastSVD
-fast.svd.triplet <- function(X, ncp) {
-  svd.usuelle <- suppressWarnings(fastSVD(X))
-  U <- svd.usuelle$u[, 1:ncp, drop = FALSE]
-  V <- svd.usuelle$v[, 1:ncp, drop = FALSE]
-  if (ncp > 1) {
-    mult <- sign(colSums(V))
-    mult[mult == 0] <- 1
-    U <- t(t(U) * mult)
-    V <- t(t(V) * mult)
-  }
-  vs <- svd.usuelle$d[1:min(ncol(X), nrow(X) - 1)]
-  # num <- which(vs[1:ncp] < 1e-15)
-  #   if (length(num) == 1) {
-  #       U[, num] <- U[, num, drop = FALSE] * vs[num]
-  #       V[, num] <- V[, num, drop = FALSE] * vs[num]
-  #   }
-  #   if (length(num) > 1) {
-  #       U[, num] <- t(t(U[, num]) * vs[num])
-  #       V[, num] <- t(t(V[, num]) * vs[num])
-  #   }
-  res <- list(vs = vs, U = U, V = V)
-  return(res)
-}
-
-#' @importFrom stats rnorm
-pca_imp_internal <- function(
-  X, miss, ncp, scale, method, threshold, init, maxiter, miniter, row.w, coeff.ridge
-) {
-  nrX <- nrow(X)
-  ncX <- ncol(X)
-  nb.iter <- 1
-  old <- Inf
-  objective <- 0
-  ncp <- min(ncp, ncol(X), nrow(X) - 1)
-  missing <- which(miss)
-  # X has missing value, so we temporary replace the missing value with zero to
-  # allow for vectorized calculation instead of apply + moy.p/ec
-  denom <- as.vector(row.w %*% !miss)
-  weighted_sum <- as.vector(row.w %*% X)
-  sum_sq <- as.vector(row.w %*% (X * X))
-  mean.p <- weighted_sum / denom
-  et <- sqrt(sum_sq / denom - mean.p^2)
-  Xhat <- t(t(X) - mean.p)
-  if (scale) {
-    Xhat <- t(t(Xhat) / et)
-  }
-  # Init with 0 for the first iteration, which is just mean init. But from here on,
-  # Xhat have no more missing values because it is now either filled with zero or
-  # rnorm value.
-  if(init == 0) {
-    Xhat[missing] <- 0
-  } else {
-    Xhat[missing] <- rnorm(length(missing)) # random initialization
-  }
-  fittedX <- Xhat
-  total_w <- sum(row.w)
-  if (ncp == 0) {
-    nb.iter <- 0
-  }
-  while (nb.iter > 0) {
-    Xhat[missing] <- fittedX[missing]
-    if (scale) {
-      Xhat <- t(t(Xhat) * et)
-    }
-    Xhat <- t(t(Xhat) + mean.p)
-    mean.p <- as.vector(row.w %*% Xhat / total_w)
-    Xhat <- t(t(Xhat) - mean.p)
-    et <- sqrt(as.vector(row.w %*% (Xhat * Xhat) / total_w))
-    if (scale) {
-      Xhat <- t(t(Xhat) / et)
-    }
-    svd.res <- fast.svd.triplet(Xhat, ncp = ncp)
-    sigma2 <- nrX * ncX / min(ncX, nrX - 1) *
-      sum((svd.res$vs[-c(seq_len(ncp))]^2) /
-        ((nrX - 1) * ncX - (nrX - 1) * ncp - ncX * ncp + ncp^2))
-    sigma2 <- min(sigma2 * coeff.ridge, svd.res$vs[ncp + 1]^2)
-    if (method == "em") {
-      sigma2 <- 0
-    }
-    lambda.shrinked <- (svd.res$vs[seq_len(ncp)]^2 - sigma2) / svd.res$vs[seq_len(ncp)]
-    fittedX <- tcrossprod(
-      t(t(svd.res$U[, seq_len(ncp), drop = FALSE] * row.w) * lambda.shrinked),
-      svd.res$V[, seq_len(ncp), drop = FALSE]
-    )
-    fittedX <- fittedX / row.w
-    diff <- Xhat - fittedX
-    diff[missing] <- 0
-    objective <- sum(diff^2 * row.w)
-    criterion <- abs(1 - objective / old)
-    old <- objective
-    nb.iter <- nb.iter + 1
-    if (!is.nan(criterion)) {
-      if ((criterion < threshold) && (nb.iter > miniter)) {
-        nb.iter <- 0
-      }
-      if ((objective < threshold) && (nb.iter > miniter)) {
-        nb.iter <- 0
-      }
-    }
-    if (nb.iter > maxiter) {
-      nb.iter <- 0
-      warning(paste("Stopped after ", maxiter, " iterations"))
-    }
-  }
-  if (scale) {
-    Xhat <- t(t(Xhat) * et)
-  }
-  Xhat <- t(t(Xhat) + mean.p)
-  completeObs <- X
-  completeObs[missing] <- Xhat[missing]
-  if (scale) {
-    fittedX <- t(t(fittedX) * et)
-  }
-  fittedX <- t(t(fittedX) + mean.p)
-  result <- list()
-  result$completeObs <- completeObs
-  result$fittedX <- fittedX
-  return(result)
-}
-
 #' Impute dataset with PCA
 #'
 #' (From the missMDA package on CRAN) Impute the missing values of a dataset with the Principal Components Analysis model. Can be used as a preliminary step before performing a PCA on an completed dataset.
@@ -132,8 +11,9 @@ pca_imp_internal <- function(
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param ncp integer corresponding to the number of components used to to predict the missing entries
 #' @param scale boolean. By default TRUE leading to a same weight for each variable
-#' @param method "Regularized" by default or "EM"
+#' @param method "regularized" by default or "EM"
 #' @param coeff.ridge 1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)
+#' @param row.w row weights (by default, a vector of 1 for uniform row weights)
 #' @param threshold the threshold for assessing convergence
 #' @param seed integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization
 #' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
@@ -159,19 +39,14 @@ pca_imp_internal <- function(
 #'
 #' @export
 pca_imp <- function(
-  obj, ncp = 2, scale = TRUE, method = c("Regularized", "EM"),
+  obj, ncp = 2, scale = TRUE, method = c("regularized", "EM"),
   coeff.ridge = 1, row.w = NULL, threshold = 1e-6, seed = NULL,
   nb.init = 1, maxiter = 1000, miniter = 5
 ) {
   #### Main program
-
   checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   cn <- colnames(obj)
-
-  method <- match.arg(method, c("Regularized", "regularized", "EM", "em"),
-    several.ok = T
-  )[1]
-
+  method <- match.arg(method)
   checkmate::assert_flag(scale, .var.name = "scale")
   checkmate::assert_int(ncp, lower = 1, upper = min(ncol(obj), nrow(obj) - 1), .var.name = "ncp")
   checkmate::assert_number(coeff.ridge, lower = 0, .var.name = "coeff.ridge")
@@ -207,33 +82,35 @@ pca_imp <- function(
   if (any(cmiss / nrX == 1)) {
     stop("Col(s) with all missing detected. Remove before proceed")
   }
+  # pre-fill obj with 0, important. See comments in pca_imp_internal_cpp
   obj[miss] <- 0
   for (i in seq_len(nb.init)) {
     if (!is.null(seed)) {
       set.seed(seed * (i - 1))
     }
-    res.impute <- pca_imp_internal(
+    res.impute <- pca_imp_internal_cpp(
       X = obj,
       miss = miss,
       ncp = ncp,
       scale = scale,
-      method = method,
-      row.w = row.w,
+      regularized = (method == "regularized"),
       threshold = threshold,
       init = i,
       maxiter = maxiter,
       miniter = miniter,
-      coeff.ridge = coeff.ridge
+      row_w = row.w,
+      coeff_ridge = coeff.ridge
     )
-    cur_obj <- mean((res.impute$fittedX[!miss] - obj[!miss])^2)
-
+    cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {
-      res <- res.impute
+      best_imputed <- res.impute$imputed_vals
       init_obj <- cur_obj
     }
   }
+  # apply best imputation
+  obj[miss] <- best_imputed
 
-  class(res$completeObs) <- c("ImputedMatrix", class(res$completeObs))
-  attr(res$completeObs, "imp_method") <- "pca"
-  return(res$completeObs)
+  class(obj) <- c("ImputedMatrix", class(obj))
+  attr(obj, "imp_method") <- "pca"
+  return(obj)
 }
