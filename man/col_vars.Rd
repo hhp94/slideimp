@@ -12,11 +12,13 @@ col_vars(mat, cores = 1)
 \item{cores}{Number of cores to use for parallel computation. Defaults to 1.}
 }
 \value{
-A named numeric vector of column variances. Variances for columns with
-insufficient variation (e.g., all identical values) are set to \code{NA}.
+A named numeric vector of column variances
 }
 \description{
 Computes the sample variance for each column of a numeric matrix
+}
+\details{
+Variances for columns with 1 value after dropping \code{NA} are set to \code{NA}.
 }
 \examples{
 col_vars(t(khanmiss1))

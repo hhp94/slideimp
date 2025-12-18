@@ -29,15 +29,16 @@ find_overlap_regions <- function(start, end) {
 #' Sliding Window K-NN or PCA Imputation
 #'
 #' @description
-#' Performs K-NN or PCA imputation large numeric matrices using a sliding
-#' window approach column-wise. This method assumes that columns are meaningfully sorted.
+#' Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise.
+#'
+#' This method assumes that columns are meaningfully sorted.
 #'
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
 #' @param n_feat Number of features in a window.
 #' @param n_overlap Number of overlapping features between two windows.
 #' @param knn_method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
-#' @param pca_method "Regularized" by default or "EM".
+#' @param pca_method "regularized" by default or "EM".
 #' @param .progress Show progress bar (default = `TRUE`).
 #'
 #' @details

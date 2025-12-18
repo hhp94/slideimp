@@ -10,17 +10,18 @@ compute_metrics(results, metrics = c("mae", "rmse", "rsq"))
 \item{results}{A tibble from \code{\link[=tune_imp]{tune_imp()}} containing a \code{result} column
 with tibbles that have \code{truth} and \code{estimate} columns.}
 
-\item{metrics}{A character vector of metric names to compute. Available options
-are: \code{"mae"}, \code{"rmse"}, \code{"rsq"}, \code{"mape"}, \code{"bias"}, \code{"calc_rsq_trad"}. Defaults
-to \code{c("mae", "rmse", "rsq")}.}
+\item{metrics}{A character vector of metric names to compute. Defaults
+to \code{c("mae", "rmse", "rsq")}. Also available: \code{"mape"}, \code{"bias"}, \code{"calc_rsq_trad"}.}
 }
 \value{
 A tibble with the original parameters and unnested metrics
 (\code{.metric}, \code{.estimator}, \code{.estimate}).
 }
 \description{
-Calculates prediction accuracy metrics for each result in a \code{\link[=tune_imp]{tune_imp()}} output.
-Use the \code{{yardstick}} package for other and faster metrics.
+Computes prediction accuracy metrics for results from \code{\link[=tune_imp]{tune_imp()}}.
+}
+\details{
+For alternative or faster metrics, see the \code{{yardstick}} package.
 }
 \examples{
 data(khanmiss1)

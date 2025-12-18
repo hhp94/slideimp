@@ -27,13 +27,14 @@ knn_imp(
 
 \item{cores}{Number of cores to parallelize over.}
 
-\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed K-NN imputation) using column means.}
+\item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
+using column means (default = \code{TRUE}).}
 
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
 
-\item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
-If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
+\item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
+\code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
 \item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
 }
@@ -41,9 +42,7 @@ If \code{dist_pow = 0} (default), then the imputed value is just the mean of nea
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-Imputes missing values in numeric matrices using the k-nearest neighbor algorithm
-with a two-stage approach: K-NN imputation for columns with missingness below a
-threshold, followed by optional mean imputation for remaining missing values.
+Imputes missing values in numeric matrices using full k-nearest neighbor imputation.
 }
 \details{
 This function performs \strong{column-wise} nearest neighbor imputation.
@@ -59,8 +58,10 @@ low-dimensional data.
 \section{Performance Optimization}{
 
 \itemize{
-\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and missingness is low (<5\% missing)
-\item \strong{Subset imputation}: Use \code{subset} parameter for efficiency when only specific columns need imputation
+\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and
+missingness is low (<5\% missing)
+\item \strong{Subset imputation}: Use \code{subset} parameter for efficiency when only
+specific columns need imputation (e.g., epigenetic clocks CpGs)
 }
 }
 

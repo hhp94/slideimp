@@ -66,7 +66,7 @@ Josse, J & Husson, F. (2013). Handling missing values in exploratory multivariat
 Josse, J. and Husson, F. missMDA (2016). A Package for Handling Missing Values in Multivariate Data Analysis. Journal of Statistical Software, 70 (1), pp 1-31 \doi{doi:10.18637/jss.v070.i01}.
 }
 \author{
-Francois Husson \email{francois.husson@institut-agro.fr} and Julie Josse \email{julie.josse@polytechnique.edu}
+Francois Husson \email{francois.husson@institut-agro.fr}
 
-\href{https://www.youtube.com/watch?v=YDbx2pk9xNY&list=PLnZgp6epRBbQzxFnQrcxg09kRt-PA66T_&index=2}{Video showing how to perform PCA on an incomplete dataset}
+Julie Josse \email{julie.josse@polytechnique.edu}
 }

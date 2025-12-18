@@ -1,9 +1,7 @@
 #' K-Nearest Neighbor Imputation for Numeric Matrices
 #'
 #' @description
-#' Imputes missing values in numeric matrices using the k-nearest neighbor algorithm
-#' with a two-stage approach: K-NN imputation for columns with missingness below a
-#' threshold, followed by optional mean imputation for remaining missing values.
+#' Imputes missing values in numeric matrices using full k-nearest neighbor imputation.
 #'
 #' @details
 #' This function performs **column-wise** nearest neighbor imputation.
@@ -17,19 +15,22 @@
 #' low-dimensional data.
 #'
 #' @section Performance Optimization:
-#' - **Tree methods**: Only use when imputation runtime becomes prohibitive and missingness is low (<5% missing)
-#' - **Subset imputation**: Use `subset` parameter for efficiency when only specific columns need imputation
+#' - **Tree methods**: Only use when imputation runtime becomes prohibitive and
+#'  missingness is low (<5% missing)
+#' - **Subset imputation**: Use `subset` parameter for efficiency when only
+#'  specific columns need imputation (e.g., epigenetic clocks CpGs)
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param k Number of nearest neighbors for imputation. 10 is a good starting point.
 #' @param colmax A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.
 #' @param method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
 #' @param cores Number of cores to parallelize over.
-#' @param post_imp Logical flag indicating whether to impute remaining missing values (those that failed K-NN imputation) using column means.
+#' @param post_imp Whether to impute remaining missing values (those that failed K-NN imputation)
+#' using column means (default = `TRUE`).
 #' @param subset Character vector of column names or integer vector of column
 #' indices specifying which columns to impute.
-#' @param dist_pow A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
-#' If `dist_pow = 0` (default), then the imputed value is just the mean of nearest neighbors regardless of distance.
+#' @param dist_pow The amount of penalization for further away nearest neighbors in the weighted average.
+#' `dist_pow = 0` (default) is the simple average of the nearest neighbors.
 #' @param tree Either `NULL` (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the `{mlpack}` ball-tree or kd-tree algorithms.
 #'
 #' @return A numeric matrix of the same dimensions as `obj` with missing values imputed.

@@ -26,9 +26,9 @@ represents a parameter accepted by \code{.f} (excluding \code{obj}). List column
 for complex parameters. Duplicate rows are automatically removed. When \code{.f = NULL}, the
 imputation method is inferred from the column names:
 \itemize{
-\item \code{k} → K-NN imputation (\code{\link[=knn_imp]{knn_imp()}})
-\item \code{ncp} → PCA imputation (\code{\link[=pca_imp]{pca_imp()}})
-\item \code{k} or \code{ncp} with \code{n_feat} and \code{n_overlap} → sliding window imputation (\code{\link[=slide_imp]{slide_imp()}})
+\item \code{k}: K-NN imputation
+\item \code{ncp}: PCA imputation
+\item \code{k} or \code{ncp} with \code{n_feat} and \code{n_overlap}: sliding window imputation
 }}
 
 \item{.f}{Custom function to tune. Must accept \code{obj} as the first argument, accept the arguments in \code{parameters},
@@ -55,11 +55,11 @@ Each row is an missing value.
 
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 
-\item{cores}{Controls the number of cores to parallelize over for K-NN and sliding window K-NN only.
-To setup parallelization for PCA and sliding window PCA, use \code{\link[mirai:daemons]{mirai::daemons()}}.}
+\item{cores}{Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation only.
+To setup parallelization for PCA and sliding window PCA imputation, use \code{mirai::daemons()}.}
 }
 \value{
-A \code{\link[tibble:tibble]{tibble::tibble()}} with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),
+A \code{tibble::tibble()} with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),
 \code{rep} (repetition index), and \code{result} (a nested tibble containing \code{truth} and \code{estimate}
 columns for true and imputed values, respectively).
 }
@@ -75,8 +75,7 @@ When using a custom \code{.f}, the columns in \code{parameters} must correspond 
 (excluding the \code{obj} argument). The custom function must accept \code{obj} (a numeric matrix) as its
 first argument and return a numeric matrix of identical dimensions.
 
-Tuning results can be evaluated using metrics from the \code{{yardstick}} package or via the
-\code{\link[=compute_metrics]{compute_metrics()}} helper function.
+Tuning results can be evaluated using the \code{{yardstick}} package or \code{\link[=compute_metrics]{compute_metrics()}}.
 }
 \examples{
 data(khanmiss1)
@@ -105,21 +104,23 @@ results_fixed <- tune_imp(
 
 compute_metrics(results_fixed)
 
-# Custom imputation function example
+# Custom imputation function example, with 2 cores parallelization with `mirai::daemons()`
 custom_imp <- function(obj, mean = 0, sd = 1) {
   na_pos <- is.na(obj)
   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
   obj
 }
+
+mirai::daemons(2) # Setup 2 cores for parallelization
 parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 results_custom <- tune_imp(
   obj,
   parameters_custom,
   .f = custom_imp,
-  rep = 1,
+  rep = 2,
   num_na = 20
 )
-
+mirai::daemons(0)
 compute_metrics(results_custom)
 
 }

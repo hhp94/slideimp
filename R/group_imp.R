@@ -6,13 +6,15 @@
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
 #' @inheritParams slide_imp
-#' @param group A data.frame/[tibble::tibble()] with columns:
+#' @param group A data.frame/`tibble::tibble()` with columns:
 #' \describe{
 #' \item{features}{A list column containing character vectors of feature column names to impute}
 #' \item{aux}{(Optional) A list column containing character vectors of auxiliary
 #' column names used for imputation but not imputed themselves}
 #' \item{parameters}{(Optional) A list column containing group-specific parameters}
 #' }
+#' @param cores Controls the number of cores to parallelize over for K-NN imputation only.
+#' To setup parallelization for PCA imputation, use `mirai::daemons()`.
 #' @param .progress Show imputation progress (default = FALSE)
 #'
 #' @details
@@ -73,11 +75,15 @@
 #' knn_grouped
 #'
 #' # Specify `ncp` for PCA in the `group_imp` function since no group-wise parameters are
-#' # specified.
+#' # specified. Also run in parallel with `mirai::daemons(2)`
+#'
+#' mirai::daemons(2) # Setup 2 cores for parallelization
 #' pca_df <- tibble::tibble(
 #'   features = list(group_1[1:3], group_2[1:4])
 #' )
 #' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
+#' mirai::daemons(0)
+#'
 #' pca_grouped
 group_imp <- function(
   obj,

@@ -41,10 +41,11 @@ slide_imp(
 
 \item{cores}{Number of cores to parallelize over.}
 
-\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed K-NN imputation) using column means.}
+\item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
+using column means (default = \code{TRUE}).}
 
-\item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
-If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
+\item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
+\code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
@@ -53,7 +54,7 @@ indices specifying which columns to impute.}
 
 \item{scale}{boolean. By default TRUE leading to a same weight for each variable}
 
-\item{pca_method}{"Regularized" by default or "EM".}
+\item{pca_method}{"regularized" by default or "EM".}
 
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
@@ -71,8 +72,9 @@ indices specifying which columns to impute.}
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-Performs K-NN or PCA imputation large numeric matrices using a sliding
-window approach column-wise. This method assumes that columns are meaningfully sorted.
+Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise.
+
+This method assumes that columns are meaningfully sorted.
 }
 \details{
 The sliding window approach divides the input matrix into smaller, overlapping

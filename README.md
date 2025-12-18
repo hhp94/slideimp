@@ -88,9 +88,7 @@ knn_params <- tibble::tibble(k = c(5, 20))
 tune_knn <- tune_imp(obj, parameters = knn_params, cores = 2, rep = 2)
 #> Tuning knn_imp
 #> Step 1/2: Injecting NA
-#> Warning in tune_imp(obj, parameters = knn_params, cores = 2, rep = 2): cores =
-#> 2 > 1 but running sequential. To enable parallel, ...
-#> Running in sequential...
+#> Running in parallel...
 #> Step 2/2: Tuning
 compute_metrics(tune_knn)
 #> # A tibble: 12 × 7
@@ -115,7 +113,7 @@ For PCA and custom functions, setup parallelization with
 
 ``` r
 mirai::daemons(2) # 2 Cores
-# Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`  
+# Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`
 # and the `cores` argument is ignored.
 
 # PCA imputation. Specified by the `ncp` column in the `pca_params` tibble.
@@ -137,12 +135,23 @@ mirai::daemons(0) # Close daemons
 
 Then, preferably perform imputation by group with `group_imp()` if the
 variables can be meaningfully grouped (e.g., by chromosomes).
-`group_imp()` requires the `group` tibble, which contains 3
-list-columns: 1) `features`, 2) (optional) `aux`, and 3) (optional)
-`parameters`. Each element of the list-column `features` is a character
-vector of variables to be imputed. Here, we have 2 chromosomes, so the
-`group` tibble has two groups (i.e., two rows). PCA imputation can be
-parallelized with `{mirai}` similar to `tune_imp`.
+
+- `group_imp()` allows imputation to be performed separately within
+  defined groups, which is particularly useful when variables share
+  biological or structural meaning (such as belonging to the same
+  chromosome).
+- `group_imp()` requires a `group` tibble with three list-columns:
+  - `features`: **required** – a list-column where each element is a
+    character vector of variable names to be imputed together.
+  - `aux`: **optional** – auxiliary variables to include in each group.
+  - `parameters`: **optional** – group-specific imputation parameters.
+- In this example, we have data from 2 chromosomes so the `group` tibble
+  should have **two rows** (one per chromosome), with the corresponding
+  variables listed in the `features` column for each row.
+
+PCA-based imputation with `group_imp()` can be parallelized using the
+`{mirai}` package, similar to how parallelization is done with
+`tune_imp()`.
 
 ``` r
 group_df <- tibble::tibble(

@@ -212,6 +212,6 @@ test_that("group-specific parameters work correctly in parallel, pca", {
   expected_values <- expected_results[, imputed_cols][is.na(obj_orig)]
   # seeding in parallel is hard to reproduce correctly
   expect_true(
-     cor(grouped_values, expected_values) > 0.999
+    cor(grouped_values, expected_values) > 0.999
   )
 })

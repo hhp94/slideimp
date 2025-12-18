@@ -29,7 +29,7 @@ group_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{group}{A data.frame/\code{\link[tibble:tibble]{tibble::tibble()}} with columns:
+\item{group}{A data.frame/\code{tibble::tibble()} with columns:
 \describe{
 \item{features}{A list column containing character vectors of feature column names to impute}
 \item{aux}{(Optional) A list column containing character vectors of auxiliary
@@ -43,10 +43,11 @@ column names used for imputation but not imputed themselves}
 
 \item{knn_method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
 
-\item{post_imp}{Logical flag indicating whether to impute remaining missing values (those that failed K-NN imputation) using column means.}
+\item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
+using column means (default = \code{TRUE}).}
 
-\item{dist_pow}{A numeric value controlling the degree of penalization of far-away nearest neighbors in the calculation of imputed values.
-If \code{dist_pow = 0} (default), then the imputed value is just the mean of nearest neighbors regardless of distance.}
+\item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
+\code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
 \item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
 
@@ -54,7 +55,7 @@ If \code{dist_pow = 0} (default), then the imputed value is just the mean of nea
 
 \item{scale}{boolean. By default TRUE leading to a same weight for each variable}
 
-\item{pca_method}{"Regularized" by default or "EM".}
+\item{pca_method}{"regularized" by default or "EM".}
 
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
@@ -68,7 +69,8 @@ If \code{dist_pow = 0} (default), then the imputed value is just the mean of nea
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
 
-\item{cores}{Number of cores to parallelize over.}
+\item{cores}{Controls the number of cores to parallelize over for K-NN imputation only.
+To setup parallelization for PCA imputation, use \code{mirai::daemons()}.}
 
 \item{.progress}{Show imputation progress (default = FALSE)}
 }
@@ -133,10 +135,14 @@ knn_grouped <- group_imp(obj, group = knn_df)
 knn_grouped
 
 # Specify `ncp` for PCA in the `group_imp` function since no group-wise parameters are
-# specified.
+# specified. Also run in parallel with `mirai::daemons(2)`
+
+mirai::daemons(2) # Setup 2 cores for parallelization
 pca_df <- tibble::tibble(
   features = list(group_1[1:3], group_2[1:4])
 )
 pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
+mirai::daemons(0)
+
 pca_grouped
 }

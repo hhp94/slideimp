@@ -40,8 +40,7 @@ install.packages("slideimp")
 You can install the development version of `{slideimp}` from [GitHub](https://github.com/hhp94/slideimp) with:
 
 ```r
-install.packages("remotes")
-remotes::install_github("hhp94/slideimp")
+pak::pkg_install("hhp94/slideimp")
 ```
 
 ## Workflow
@@ -95,7 +94,16 @@ tune_custom <- tune_imp(obj, parameters = custom_params, .f = custom_function, r
 mirai::daemons(0) # Close daemons
 ```
 
-Then, preferably perform imputation by group with `group_imp()` if the variables can be meaningfully grouped (e.g., by chromosomes). `group_imp()` requires the `group` tibble, which contains 3 list-columns: 1) `features`, 2) (optional) `aux`, and 3) (optional) `parameters`. Each element of the list-column `features` is a character vector of variables to be imputed. Here, we have 2 chromosomes, so the `group` tibble has two groups (i.e., two rows). PCA imputation can be parallelized with `{mirai}` similar to `tune_imp`.
+Then, preferably perform imputation by group with `group_imp()` if the variables can be meaningfully grouped (e.g., by chromosomes).
+
+- `group_imp()` allows imputation to be performed separately within defined groups, which is particularly useful when variables share biological or structural meaning (such as belonging to the same chromosome).
+- `group_imp()` requires a `group` tibble with three list-columns:
+  - `features`: **required** – a list-column where each element is a character vector of variable names to be imputed together.
+  - `aux`: **optional** – auxiliary variables to include in each group.
+  - `parameters`: **optional** – group-specific imputation parameters.
+- In this example, we have data from 2 chromosomes so the `group` tibble should have **two rows** (one per chromosome), with the corresponding variables listed in the `features` column for each row.
+
+PCA-based imputation with `group_imp()` can be parallelized using the `{mirai}` package, similar to how parallelization is done with `tune_imp()`.
 
 ```{r, eval = F}
 group_df <- tibble::tibble(

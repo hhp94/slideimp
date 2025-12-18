@@ -5,8 +5,10 @@
 #' @param mat A numeric matrix.
 #' @param cores Number of cores to use for parallel computation. Defaults to 1.
 #'
-#' @return A named numeric vector of column variances. Variances for columns with
-#'   insufficient variation (e.g., all identical values) are set to \code{NA}.
+#' @details
+#' Variances for columns with 1 value after dropping `NA` are set to `NA`.
+#'
+#' @return A named numeric vector of column variances
 #'
 #' @export
 #'

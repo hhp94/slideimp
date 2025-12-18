@@ -154,8 +154,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' (excluding the `obj` argument). The custom function must accept `obj` (a numeric matrix) as its
 #' first argument and return a numeric matrix of identical dimensions.
 #'
-#' Tuning results can be evaluated using metrics from the `{yardstick}` package or via the
-#' [compute_metrics()] helper function.
+#' Tuning results can be evaluated using the `{yardstick}` package or [compute_metrics()].
 #'
 #' @inheritParams inject_na
 #' @inheritParams slide_imp
@@ -163,9 +162,9 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'   represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
 #'   for complex parameters. Duplicate rows are automatically removed. When `.f = NULL`, the
 #'   imputation method is inferred from the column names:
-#'   - `k` → K-NN imputation ([knn_imp()])
-#'   - `ncp` → PCA imputation ([pca_imp()])
-#'   - `k` or `ncp` with `n_feat` and `n_overlap` → sliding window imputation ([slide_imp()])
+#'   - `k`: K-NN imputation
+#'   - `ncp`: PCA imputation
+#'   - `k` or `ncp` with `n_feat` and `n_overlap`: sliding window imputation
 #' @param rep Either an integer specifying the number of repetitions for random NA injection, or
 #'   a list defining fixed NA positions for each repetition (in which case `num_na` is ignored).
 #'   The list elements can be one of the following formats:
@@ -174,10 +173,10 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'   - A numeric vector specifying linear locations of NAs.
 #' @param .f Custom function to tune. Must accept `obj` as the first argument, accept the arguments in `parameters`,
 #' and return a matrix with the same dimension as `obj` (default = `NULL`).
-#' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN only.
-#' To setup parallelization for PCA and sliding window PCA, use [mirai::daemons()].
+#' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation only.
+#' To setup parallelization for PCA and sliding window PCA imputation, use `mirai::daemons()`.
 #'
-#' @return A [tibble::tibble()] with columns from `parameters`, plus `param_set` (unique parameter set ID),
+#' @return A `tibble::tibble()` with columns from `parameters`, plus `param_set` (unique parameter set ID),
 #'   `rep` (repetition index), and `result` (a nested tibble containing `truth` and `estimate`
 #'   columns for true and imputed values, respectively).
 #'
@@ -208,21 +207,23 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'
 #' compute_metrics(results_fixed)
 #'
-#' # Custom imputation function example
+#' # Custom imputation function example, with 2 cores parallelization with `mirai::daemons()`
 #' custom_imp <- function(obj, mean = 0, sd = 1) {
 #'   na_pos <- is.na(obj)
 #'   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
 #'   obj
 #' }
+#'
+#' mirai::daemons(2) # Setup 2 cores for parallelization
 #' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 #' results_custom <- tune_imp(
 #'   obj,
 #'   parameters_custom,
 #'   .f = custom_imp,
-#'   rep = 1,
+#'   rep = 2,
 #'   num_na = 20
 #' )
-#'
+#' mirai::daemons(0)
 #' compute_metrics(results_custom)
 #'
 #' @export
@@ -411,22 +412,40 @@ tune_imp <- function(
       simplify = FALSE
     )
   }
-  # Setup parallelization
-  parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+  # parallelization warnings
+  is_knn_mode <- {
+    (is.character(.f) && .f == "knn_imp") ||
+      (is.character(.f) && .f == "slide_imp" && "k" %in% names(parameters))
+  }
 
   if (is.character(.f)) {
     if (.f == "slide_imp") {
       parameters$.progress <- FALSE
     }
-    if ((.f == "slide_imp" && "k" %in% names(parameters)) || .f == "knn_imp") {
-      # for `slide_imp` knn mode. Don't parallel through mirai.
-      parameters$cores <- cores
-      parallelize <- FALSE
-    }
     if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
       check_sd <- TRUE
     }
   }
+
+  if (is_knn_mode) {
+    # KNN handles its own parallelization via cores parameter
+    parameters$cores <- cores
+    parallelize <- FALSE
+  } else {
+    # For PCA-based methods, use mirai parallelization
+    parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+
+    if (!parallelize && cores > 1) {
+      warning(
+        sprintf(
+          "cores = %d but running **sequential**. Call `mirai::daemons(%d)` to set up the parallelization",
+          cores,
+          cores
+        )
+      )
+    }
+  }
+
   if (parallelize) {
     fn <- purrr::in_parallel
   } else {
@@ -434,20 +453,11 @@ tune_imp <- function(
       x
     }
   }
-  if (.progress) {
-    if (parallelize) {
-      message("Running in parallel...")
-    } else {
-      if (cores > 1) {
-        warning(
-          sprintf(
-            "cores = %d but running **sequential**. Call `mirai::daemons(%d)` to set up the parallelization",
-            cores,
-            cores
-          )
-        )
-      }
-    }
+
+  if (.progress && parallelize || .progress && is_knn_mode && cores > 1) {
+    message("Running in parallel...")
+  } else {
+    message("Running in sequential...")
   }
 
   # Create the crated function based on the type of imputation
@@ -588,14 +598,14 @@ calc_all_metrics <- function(x, metric_fns) {
 
 #' Compute Prediction Accuracy Metrics
 #'
-#' Calculates prediction accuracy metrics for each result in a [tune_imp()] output.
-#' Use the `{yardstick}` package for other and faster metrics.
+#' Computes prediction accuracy metrics for results from [tune_imp()].
+#'
+#' For alternative or faster metrics, see the `{yardstick}` package.
 #'
 #' @param results A tibble from [tune_imp()] containing a `result` column
 #' with tibbles that have `truth` and `estimate` columns.
-#' @param metrics A character vector of metric names to compute. Available options
-#' are: `"mae"`, `"rmse"`, `"rsq"`, `"mape"`, `"bias"`, `"calc_rsq_trad"`. Defaults
-#' to `c("mae", "rmse", "rsq")`.
+#' @param metrics A character vector of metric names to compute. Defaults
+#' to `c("mae", "rmse", "rsq")`. Also available: `"mape"`, `"bias"`, `"calc_rsq_trad"`.
 #'
 #' @return A tibble with the original parameters and unnested metrics
 #' (`.metric`, `.estimator`, `.estimate`).
