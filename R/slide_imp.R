@@ -7,7 +7,6 @@ find_overlap_regions <- function(start, end) {
   valid_ends <- end + 1 <= max_pos + 1
   delta[end[valid_ends] + 1] <- delta[end[valid_ends] + 1] - 1
   counts_vec <- cumsum(delta)[seq_len(max_pos)]
-  storage.mode(counts_vec) <- "integer"
   # extract regions where counts > 1
   overlaps <- counts_vec > 1
   rle_over <- rle(overlaps)
@@ -54,7 +53,7 @@ find_overlap_regions <- function(start, end) {
 #'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
-#' # where the column order is sorted (e.g., by genomic position or time)
+#' # where the column order is sorted (i.e., by genomic position)
 #'
 #' set.seed(1234)
 #' beta_matrix <- t(sim_mat(100, 20)$input)
@@ -64,7 +63,8 @@ find_overlap_regions <- function(start, end) {
 #'   beta_matrix,
 #'   k = 5,
 #'   n_feat = 50,
-#'   n_overlap = 10
+#'   n_overlap = 10,
+#'   scale = FALSE # This argument belongs to PCA imputation and will be ignored
 #' )
 #' imputed_knn
 #'
@@ -96,6 +96,7 @@ slide_imp <- function(
   pca_method = c("regularized", "em"),
   coeff.ridge = 1,
   seed = NULL,
+  row.w = NULL,
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
@@ -134,7 +135,7 @@ slide_imp <- function(
     checkmate::assert_int(ncp, lower = 1, upper = min(n_feat, nrow(obj)), .var.name = "ncp")
     checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
     checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
-    # checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
+    checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
     # checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
     checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
     checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
@@ -197,7 +198,7 @@ slide_imp <- function(
   overlap <- find_overlap_regions(start, end)
 
   # Sliding Imputation ----
-  result <- matrix(0, nrow = nrow(obj), ncol = ncol(obj), dimnames = list(row.names(obj), colnames(obj)))
+  result <- matrix(0, nrow = nrow(obj), ncol = ncol(obj), dimnames = list(rownames(obj), colnames(obj)))
   if (.progress) {
     message("Step 1/2: Imputing")
     n_windows <- length(start)
@@ -230,9 +231,8 @@ slide_imp <- function(
         seed = seed,
         nb.init = nb.init,
         maxiter = maxiter,
-        miniter = miniter
-        # row.w = row.w,
-        # ind.sup = ind.sup
+        miniter = miniter,
+        row.w = row.w
       )
     }
 

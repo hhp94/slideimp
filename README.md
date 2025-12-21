@@ -9,8 +9,7 @@
 <!-- badges: end -->
 
 `{slideimp}` is a lightweight R package for fast K-NN and PCA imputation
-of missing values in high-dimensional numeric matrices (e.g., epigenetic
-data or intensive longitudinal data).
+of missing values in high-dimensional numeric matrices.
 
 **Core functions**
 
@@ -23,11 +22,15 @@ data or intensive longitudinal data).
   [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
   for high-dimensional numeric matrices.
 - `slide_imp()`: Sliding window K-NN or PCA imputation for extremely
-  high-dimensional numeric matrices with ordered features (by time or
+  high-dimensional numeric matrices with ordered features (i.e., by
   genomic position).
 - `group_imp()`: Parallelizable group-wise (e.g., by chromosomes or
   column clusters) K-NN or PCA imputation with optional auxiliary
   features and group-wise parameters.
+  - `group_features()`: `group_imp()`’s helper function to create groups
+    based on a mapping data.frame (i.e., Illumina manifests). See
+    [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) on
+    GitHub for tools to process common Illumina manifests.
 - `tune_imp()`: Parallelizable hyperparameter tuning with repeated
   cross-validation; works with built-in or custom imputation functions.
 
@@ -43,9 +46,13 @@ You can install the development version of `{slideimp}` from
 [GitHub](https://github.com/hhp94/slideimp) with:
 
 ``` r
-install.packages("remotes")
-remotes::install_github("hhp94/slideimp")
+pak::pkg_install("hhp94/slideimp")
 ```
+
+## Citation
+
+If you find `slideimp` helpful in your work, please cite our paper at
+<https://doi.org/10.64898/2025.12.15.694394>. Thank you!
 
 ## Workflow
 
@@ -122,7 +129,7 @@ tune_pca <- tune_imp(obj, parameters = pca_params, rep = 2)
 
 # The parameters have `mean` and `sd` columns.
 custom_params <- tibble::tibble(mean = 1, sd = 0)
-# This function impute data with rnorm value of different `mean` and `sd`.
+# This function impute data with rnorm values of different `mean` and `sd`.
 custom_function <- function(obj, mean, sd) {
   missing <- is.na(obj)
   obj[missing] <- rnorm(sum(missing), mean = mean, sd = sd)
@@ -137,10 +144,10 @@ Then, preferably perform imputation by group with `group_imp()` if the
 variables can be meaningfully grouped (e.g., by chromosomes).
 
 - `group_imp()` allows imputation to be performed separately within
-  defined groups, which is particularly useful when variables share
-  biological or structural meaning (such as belonging to the same
-  chromosome).
-- `group_imp()` requires a `group` tibble with three list-columns:
+  defined groups (e.g., by chromosome), which significantly reduces
+  runtime and can increase accuracy for both K-NN and PCA imputation.
+- `group_imp()` requires a `group` tibble, *preferably* created with
+  `group_features()`, with three list-columns:
   - `features`: **required** – a list-column where each element is a
     character vector of variable names to be imputed together.
   - `aux`: **optional** – auxiliary variables to include in each group.
@@ -154,9 +161,9 @@ PCA-based imputation with `group_imp()` can be parallelized using the
 `tune_imp()`.
 
 ``` r
-group_df <- tibble::tibble(
-  features = lapply(c("chr1", "chr2"), \(x) subset(sim_obj$group_feature, group == x)$feature_id)
-)
+# Use the `group_features()` helper function
+group_df <- group_features(obj, sim_obj$group_feature)
+group_df
 
 # We choose K-NN imputation, k = 5, from the `tune_imp` results.
 knn_group_results <- group_imp(obj, group = group_df, k = 5, cores = 2)
@@ -167,8 +174,8 @@ knn_group_results <- group_imp(obj, group = group_df, ncp = 3)
 mirai::daemons(0)
 ```
 
-Full matrix imputation can be performed using `knn_imp()` or
-`pca_imp()`.
+Alternatively, full matrix imputation can be performed using `knn_imp()`
+or `pca_imp()`.
 
 ``` r
 full_knn_results <- knn_imp(obj = obj, k = 5)

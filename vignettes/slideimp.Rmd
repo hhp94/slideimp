@@ -48,37 +48,21 @@ na_location <- replicate(
 na_location[[1]][1:10, ]
 ```
 
-We proceed to measure the accuracy of the imputation using "good" default parameters for K-NN (`k = 10`) and PCA (`ncp = 5`). For PCA imputation, we leverage the `{mirai}` package for parallelization while the `cores` arguments control parallelization for K-NN.
-```{r, eval = FALSE}
+We proceed to measure the accuracy of the imputation using "good" default parameters for K-NN (`k = 10`) and PCA (`ncp = 5`). For PCA imputation, we leverage the `{mirai}` package for parallelization while the `cores` argument control parallelization for K-NN.
+```{r}
 tune_knn <- tune_imp(obj, parameters = data.frame(k = 10), rep = na_location, cores = 4)
-
-mirai::daemons(4)
 tune_pca <- tune_imp(obj, parameters = data.frame(ncp = 5), rep = na_location)
-mirai::daemons(0)
 ```
 
-```{r, eval = F, include = F}
-# saveRDS(tune_knn, "vignettes/tune_knn.rds")
-# saveRDS(tune_pca, "vignettes/tune_pca.rds")
-```
-
-```{r, include = F}
-# tune_knn <- readRDS("tune_knn.rds")
-# tune_pca <- readRDS("tune_pca.rds")
-```
-
-In this case, PCA imputation performs better. Since the data only needs to be imputed once, using PCA imputation for this dataset is appropriate.
-```{r, eval = F}
+In this case, PCA imputation performs better. Since the data only needs to be imputed once and the run time is so low, using PCA imputation for this dataset is preferable.
+```{r}
 rmse_knn <- mean(compute_metrics(tune_knn, metrics = "rmse")$.estimate)
 rmse_pca <- mean(compute_metrics(tune_pca, metrics = "rmse")$.estimate)
 c("knn" = rmse_knn, "pca" = rmse_pca)
-
-# knn      pca
-# 489.4291 479.9512
 ```
 
 ## Subset and grouped K-NN and PCA imputation
-Some DNA methylation analyses only focuses on epigenetic clocks, which only require a subset of CpGs to be imputed. The `knn_imp()` function takes advantage of this to significantly reduce runtime. To impute only specific CpGs for K-NN imputation and make use of grouped imputation, we can use the `aux` column in the `group` data frame passed to the `group_imp()` function (equivalently the `subset` argument in the full K-NN `knn_imp()` function.
+Some DNA methylation analyses only focus on epigenetic clocks, which require only a subset of CpGs to be imputed. The `knn_imp()` function takes advantage of this to significantly reduce run time. To impute only specific CpGs for K-NN imputation and make use of grouped imputation we can use the `group_features()` function.
 
 Here, we simulate data where only a subset of CpGs are needed for imputation. PCA imputation does not benefit from subset imputation, but does benefit from grouped imputation.
 
@@ -98,27 +82,11 @@ We define the `features` list-column as a list of character vectors containing f
 
 ```{r}
 # Construct the group data.frame with one row per group (i.e., chromosome)
-group_df <- tibble::tibble(
-  # features: CpGs to be imputed (intersection of chromosome CpGs and subset_cpgs)
-  features = lapply(
-    c("chr1", "chr2"), # Iterate over each chromosome
-    \(x) {
-      # Get CpGs that are both: (1) on this chromosome AND (2) in our `subset_cpgs`
-      intersect(subset(sim_obj$group_feature, group == x)$feature_id, subset_cpgs)
-    }
-  ),
-  # aux: CpGs used to help imputation but not imputed themselves
-  aux = lapply(
-    c("chr1", "chr2"), # Iterate over each chromosome
-    \(x) {
-      # Get CpGs that are: (1) on this chromosome BUT (2) NOT in our `subset_cpgs`
-      setdiff(subset(sim_obj$group_feature, group == x)$feature_id, subset_cpgs)
-    }
-  )
-)
+group_df <- group_features(obj, sim_obj$group_feature, subset = subset_cpgs)
+group_df
 ```
 
-For demonstration purposes, we use the `parameters` column to add group-specific parameters. This can be useful if hyperparameters are tuned separately for each group, though this is typically not necessary. When `k` or `ncp` is too large for some groups, we can use the `parameters` column to specify group-specific `k` or `ncp` values.
+For demonstration purposes, we use the `parameters` column to add group-specific parameters. This can be useful if hyperparameters are tuned separately for each group, though this is typically not necessary. When `k` or `ncp` is too large for some groups, we can use the `parameters` column to specify group-specific `k` or `ncp` values. `k` and `ncp` can also be specified in `group_features()`.
 ```{r}
 pca_group <- group_df
 # For PCA imputation, we use ncp = 5 for the first group and ncp = 10 for the second group
@@ -165,7 +133,7 @@ for (i in seq_along(sample_names)) {
 methyl[1:5, 1:10]
 ```
 
-First, we convert the data into a beta matrix with features in the columns. **Important:** We sort the `methyl` object by position and name the CpGs by their genomic position. This is important because `slide_imp` impute the beta matrix column-wise in windows so the order of the column has to be meaningful.
+First, we convert the data into a beta matrix with features in the columns. **Important:** We sort the `methyl` object by position and name the CpGs by their genomic position. This is important because `slide_imp` imputes the beta matrix column-wise in windows so the order of the column has to be meaningful.
 
 ```{r}
 methyl <- methyl[order(methyl$start), ] # <---- Important, sort!
@@ -174,7 +142,7 @@ cov_matrix <- as.matrix(methyl[, paste0("coverage", seq_along(sample_names))])
 beta_matrix <- numCs_matrix / cov_matrix
 
 colnames(beta_matrix) <- sample_names
-row.names(beta_matrix) <- methyl$start
+rownames(beta_matrix) <- methyl$start
 
 beta_matrix <- t(beta_matrix)
 # Set 10% of the data to missing

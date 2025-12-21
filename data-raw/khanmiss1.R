@@ -13,8 +13,8 @@ khanmiss1 <- as.matrix(
 colnames(khanmiss1) <- names(khanmiss)[3:ncol(khanmiss)]
 anyDuplicated(khanmiss$X[2:nrow(khanmiss)])
 khanmiss$X <- c("", paste0("g", seq_len(nrow(khanmiss) - 1)))
-row.names(khanmiss1) <- khanmiss$X[2:nrow(khanmiss)]
-anyDuplicated(row.names(khanmiss1))
+rownames(khanmiss1) <- khanmiss$X[2:nrow(khanmiss)]
+anyDuplicated(rownames(khanmiss1))
 is.na(khanmiss1) |>
   rowSums() |>
   sort(decreasing = TRUE)
