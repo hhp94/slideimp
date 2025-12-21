@@ -159,15 +159,15 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' @inheritParams inject_na
 #' @inheritParams slide_imp
 #' @param parameters A data.frame specifying parameter combinations to tune, where each column
-#'   represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
-#'   for complex parameters. Duplicate rows are automatically removed. When `.f = NULL`, the
-#'   imputation method is inferred from the column names:
+#' represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
+#' for complex parameters. Duplicate rows are automatically removed. When `.f = NULL`, the
+#' imputation method is inferred from the column names:
 #'   - `k`: K-NN imputation
 #'   - `ncp`: PCA imputation
 #'   - `k` or `ncp` with `n_feat` and `n_overlap`: sliding window imputation
 #' @param rep Either an integer specifying the number of repetitions for random NA injection, or
-#'   a list defining fixed NA positions for each repetition (in which case `num_na` is ignored).
-#'   The list elements can be one of the following formats:
+#' a list defining fixed NA positions for each repetition (in which case `num_na` is ignored).
+#' The list elements can be one of the following formats:
 #'   - A two-column integer matrix. The first column is the row index, the second column is the column index.
 #'   Each row is an missing value.
 #'   - A numeric vector specifying linear locations of NAs.
@@ -177,8 +177,8 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' To setup parallelization for PCA and sliding window PCA imputation, use `mirai::daemons()`.
 #'
 #' @return A `tibble::tibble()` with columns from `parameters`, plus `param_set` (unique parameter set ID),
-#'   `rep` (repetition index), and `result` (a nested tibble containing `truth` and `estimate`
-#'   columns for true and imputed values, respectively).
+#' `rep` (repetition index), and `result` (a nested tibble containing `truth` and `estimate`
+#' columns for true and imputed values, respectively).
 #'
 #' @examples
 #' data(khanmiss1)
@@ -290,6 +290,7 @@ tune_imp <- function(
         )
       } else {
         .f <- "slide_imp"
+        parameters$.progress <- FALSE
       }
     } else if (has_k && has_ncp) {
       stop(
@@ -305,7 +306,6 @@ tune_imp <- function(
       .f <- "pca_imp"
     } else {
       stop(
-        "Cannot infer imputation method from `parameters` columns.\n",
         "Either specify `.f` directly, or include one of:\n",
         "- `k` for K-NN imputation (knn_imp)\n",
         "- `ncp` for PCA imputation (pca_imp)\n",

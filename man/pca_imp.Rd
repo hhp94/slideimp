@@ -29,7 +29,13 @@ pca_imp(
 
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
-\item{row.w}{row weights (by default, a vector of 1 for uniform row weights)}
+\item{row.w}{Row weights. Can be one of:
+\itemize{
+\item \code{NULL} (default): all rows weighted equally.
+\item A numeric vector of length \code{nrow(obj)}: custom positive weights.
+\item \code{"n_miss"}: rows with more missing values receive lower weight.
+Weights are normalized to sum to 1.
+}}
 
 \item{threshold}{the threshold for assessing convergence}
 

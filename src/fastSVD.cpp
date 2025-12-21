@@ -36,7 +36,7 @@ void qrSVD_cpp(const arma::mat &A, arma::mat &U, arma::vec &d, arma::mat &V, arm
   }
   if (!success)
   {
-    Rcpp::stop("SVD failed to converge after %d preconditioning attempts", lim_attempts);
+    Rcpp::warning("SVD failed to converge after %d preconditioning attempts", lim_attempts);
   }
 }
 

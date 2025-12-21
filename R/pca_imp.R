@@ -13,7 +13,11 @@
 #' @param scale boolean. By default TRUE leading to a same weight for each variable
 #' @param method "regularized" by default or "EM"
 #' @param coeff.ridge 1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)
-#' @param row.w row weights (by default, a vector of 1 for uniform row weights)
+#' @param row.w Row weights. Can be one of:
+#'  - `NULL` (default): all rows weighted equally.
+#'  - A numeric vector of length `nrow(obj)`: custom positive weights.
+#'  - `"n_miss"`: rows with more missing values receive lower weight.
+#' Weights are normalized to sum to 1.
 #' @param threshold the threshold for assessing convergence
 #' @param seed integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization
 #' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
@@ -51,7 +55,18 @@ pca_imp <- function(
   checkmate::assert_int(ncp, lower = 1, upper = min(ncol(obj), nrow(obj) - 1), .var.name = "ncp")
   checkmate::assert_number(coeff.ridge, lower = 0, .var.name = "coeff.ridge")
   checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
-  checkmate::assert_numeric(row.w, finite = TRUE, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
+  checkmate::assert(
+    checkmate::check_numeric(
+      row.w,
+      finite = TRUE,
+      any.missing = FALSE,
+      len = nrow(obj),
+      lower = 1e-10
+    ),
+    checkmate::check_choice(row.w, choices = "n_miss"),
+    null.ok = TRUE,
+    .var.name = "row.w"
+  )
   checkmate::assert_number(threshold, lower = 0, .var.name = "threshold")
   checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
@@ -66,22 +81,26 @@ pca_imp <- function(
     return(obj)
   }
 
-  init_obj <- Inf
-  method <- tolower(method)
+  miss <- is.na(obj)
+  cmiss <- colSums(miss)
+  if (any((cmiss / nrow(obj)) == 1)) {
+    stop("Col(s) with all missing detected. Remove before proceed")
+  }
 
-  nrX <- nrow(obj)
-  ncX <- ncol(obj)
+  init_obj <- Inf
 
   if (is.null(row.w)) {
-    row.w <- rep(1, nrX)
+    row.w <- rep(1, nrow(obj))
+  } else if (is.character(row.w) && row.w == "n_miss") {
+    n_miss_per_row <- rowSums(miss)
+    row.w <- 1 - (n_miss_per_row / ncol(obj))
+    if (!is.null(seed)) {
+      set.seed(seed)
+    }
+    row.w[row.w < 1e-8] <- 1e-8
   }
   row.w <- row.w / sum(row.w)
 
-  miss <- is.na(obj)
-  cmiss <- colSums(miss)
-  if (any(cmiss / nrX == 1)) {
-    stop("Col(s) with all missing detected. Remove before proceed")
-  }
   # pre-fill obj with 0, important. See comments in pca_imp_internal_cpp
   obj[miss] <- 0
   for (i in seq_len(nb.init)) {

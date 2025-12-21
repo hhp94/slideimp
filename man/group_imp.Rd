@@ -29,7 +29,7 @@ group_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{group}{A data.frame/\code{tibble::tibble()} with columns:
+\item{group}{Preferably created by \code{\link[=group_features]{group_features()}}. A data.frame with columns:
 \describe{
 \item{features}{A list column containing character vectors of feature column names to impute}
 \item{aux}{(Optional) A list column containing character vectors of auxiliary
@@ -145,4 +145,7 @@ pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
 mirai::daemons(0)
 
 pca_grouped
+}
+\seealso{
+\code{\link[=group_features]{group_features()}}
 }

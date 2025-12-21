@@ -1,3 +1,4 @@
+# group_imp ----
 test_that("grouped result is correct with aux columns, knn", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
@@ -213,5 +214,142 @@ test_that("group-specific parameters work correctly in parallel, pca", {
   # seeding in parallel is hard to reproduce correctly
   expect_true(
     cor(grouped_values, expected_values) > 0.999
+  )
+})
+
+# group_features ----
+test_that("group_features returns correct structure without k/ncp", {
+  obj <- matrix(1:10, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
+  features_df <- data.frame(
+    feature_id = c("a", "b", "c", "d"),
+    group = c("g1", "g1", "g2", "g2")
+  )
+
+  result <- group_features(obj, features_df)
+
+  expect_true(tibble::is_tibble(result))
+  expect_true("group" %in% names(result))
+  expect_true("features" %in% names(result))
+  expect_equal(sort(result$group), c("g1", "g2"))
+})
+
+test_that("group_features handles subset correctly", {
+  obj <- matrix(1:12, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e", "f")))
+  features_df <- data.frame(
+    feature_id = c("a", "b", "c", "d", "e", "f"),
+    group = c("g1", "g1", "g1", "g2", "g2", "g2")
+  )
+
+  result <- group_features(obj, features_df, subset = c("a", "b", "d", "e"))
+
+  expect_true("aux" %in% names(result))
+
+  g1_row <- result[result$group == "g1", ]
+  g2_row <- result[result$group == "g2", ]
+
+  # features in subset go to features column
+  expect_setequal(g1_row$features[[1]], c("a", "b"))
+  expect_setequal(g2_row$features[[1]], c("d", "e"))
+
+  # features not in subset go to aux column
+  expect_equal(g1_row$aux[[1]], "c")
+  expect_equal(g2_row$aux[[1]], "f")
+})
+
+test_that("group_features errors when no subset element found", {
+  obj <- matrix(1:6, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
+  features_df <- data.frame(
+    feature_id = c("a", "b", "c"),
+    group = c("g1", "g1", "g2")
+  )
+
+  expect_error(
+    suppressWarnings(group_features(obj, features_df, subset = c("x", "y", "z"))),
+    "No element"
+  )
+})
+
+test_that("group_features adds parameters column with k", {
+  obj <- matrix(1:10, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
+  features_df <- data.frame(
+    feature_id = c("a", "b", "c", "d", "e"),
+    group = c("g1", "g1", "g1", "g2", "g2")
+  )
+
+  result <- group_features(obj, features_df, k = 5)
+
+  expect_true("parameters" %in% names(result))
+
+  g1_row <- result[result$group == "g1", ]
+  g2_row <- result[result$group == "g2", ]
+
+  # k is capped at group_size - 1
+  expect_equal(g1_row$parameters[[1]]$k, 2) # 3 features, so k = min(2, 5) = 2
+  expect_equal(g2_row$parameters[[1]]$k, 1) # 2 features, so k = min(1, 5) = 1
+})
+
+test_that("group_features adds parameters column with ncp", {
+  obj <- matrix(1:10, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
+  features_df <- data.frame(
+    feature_id = c("a", "b", "c", "d", "e"),
+    group = c("g1", "g1", "g1", "g2", "g2")
+  )
+
+  result <- group_features(obj, features_df, ncp = 5)
+
+  expect_true("parameters" %in% names(result))
+
+  g1_row <- result[result$group == "g1", ]
+  g2_row <- result[result$group == "g2", ]
+
+  # ncp is capped at min(ncol(obj), group_size - 1, ncp)
+  expect_equal(g1_row$parameters[[1]]$ncp, 2) # min(5, 2, 5) = 2
+  expect_equal(g2_row$parameters[[1]]$ncp, 1) # min(5, 1, 5) = 1
+})
+
+test_that("group_features pads groups to min_group_size", {
+  obj <- matrix(1:12, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e", "f")))
+  features_df <- data.frame(
+    feature_id = c("a", "b", "c"),
+    group = c("g1", "g1", "g2")
+  )
+
+  result <- group_features(obj, features_df, min_group_size = 4, seed = 123)
+
+  expect_true("aux" %in% names(result))
+
+  g1_row <- result[result$group == "g1", ]
+  g2_row <- result[result$group == "g2", ]
+
+  # g1 has 2 features, needs 2 more to reach min_group_size of 4
+  expect_equal(length(g1_row$features[[1]]) + length(g1_row$aux[[1]]), 4)
+
+  # g2 has 1 feature, needs 3 more
+  expect_equal(length(g2_row$features[[1]]) + length(g2_row$aux[[1]]), 4)
+})
+
+test_that("group_features errors when min_group_size too large", {
+  obj <- matrix(1:6, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
+  features_df <- data.frame(
+    feature_id = c("a", "b", "c"),
+    group = c("g1", "g1", "g2")
+  )
+
+  expect_error(
+    group_features(obj, features_df, min_group_size = 100),
+    "too large"
+  )
+})
+
+test_that("group_features errors when no colnames match features_df", {
+  obj <- matrix(1:6, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
+  features_df <- data.frame(
+    feature_id = c("x", "y", "z"),
+    group = c("g1", "g1", "g2")
+  )
+
+  expect_error(
+    group_features(obj, features_df),
+    "matched with no group"
   )
 })

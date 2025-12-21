@@ -7,17 +7,17 @@ Authors@R:
            comment = c(ORCID = "0000-0002-8271-9355"))
 Description: Fast k-nearest neighbors (K-NN) and principal component
     analysis (PCA) imputation algorithms for missing values in
-    high-dimensional numeric matrices, such as intensive longitudinal or
-    epigenetic data. For extremely high-dimensional data with ordered
-    features, a sliding window approach for efficient K-NN or PCA
-    imputation is provided. Additional features include group-wise
-    imputation (e.g., by chromosome), hyperparameter tuning with repeated
-    cross-validation, multi-core parallelization, and optional subset
-    imputation. The K-NN algorithm is described in: Hastie, T.,
-    Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D.
-    (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA
-    imputation is an optimized version of the 'imputePCA()' function from
-    the 'missMDA' package described in: Josse, J. and Husson, F.  (2016)
+    high-dimensional numeric matrices, i.e., epigenetic data. For
+    extremely high-dimensional data with ordered features, a sliding
+    window approach for efficient K-NN or PCA imputation is provided.
+    Additional features include group-wise imputation (e.g., by
+    chromosome), hyperparameter tuning with repeated cross-validation,
+    multi-core parallelization, and optional subset imputation. The K-NN
+    algorithm is described in: Hastie, T., Tibshirani, R., Sherlock, G.,
+    Eisen, M., Brown, P. and Botstein, D.  (1999) "Imputing Missing Data
+    for Gene Expression Arrays". The PCA imputation is an optimized
+    version of the 'imputePCA()' function from the 'missMDA' package
+    described in: Josse, J. and Husson, F.  (2016)
     <doi:10.18637/jss.v070.i01> "missMDA: A Package for Handling Missing
     Values in Multivariate Data Analysis".
 License: GPL (>= 2)
@@ -28,6 +28,7 @@ Depends:
 Imports:
     bigmemory,
     checkmate,
+    collapse,
     mirai,
     purrr,
     Rcpp,

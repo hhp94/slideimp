@@ -20,6 +20,7 @@ slide_imp(
   pca_method = c("regularized", "em"),
   coeff.ridge = 1,
   seed = NULL,
+  row.w = NULL,
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
@@ -60,6 +61,14 @@ indices specifying which columns to impute.}
 
 \item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
 
+\item{row.w}{Row weights. Can be one of:
+\itemize{
+\item \code{NULL} (default): all rows weighted equally.
+\item A numeric vector of length \code{nrow(obj)}: custom positive weights.
+\item \code{"n_miss"}: rows with more missing values receive lower weight.
+Weights are normalized to sum to 1.
+}}
+
 \item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
 
 \item{maxiter}{integer, maximum number of iteration for the algorithm}
@@ -87,7 +96,7 @@ Specify \code{k} and related arguments to use K-NN, \code{ncp} and related argum
 }
 \examples{
 # Generate sample data with missing values with 20 samples and 100 columns
-# where the column order is sorted (e.g., by genomic position or time)
+# where the column order is sorted (i.e., by genomic position)
 
 set.seed(1234)
 beta_matrix <- t(sim_mat(100, 20)$input)
@@ -97,7 +106,8 @@ imputed_knn <- slide_imp(
   beta_matrix,
   k = 5,
   n_feat = 50,
-  n_overlap = 10
+  n_overlap = 10,
+  scale = FALSE # This argument belongs to PCA imputation and will be ignored
 )
 imputed_knn
 
