@@ -7,5 +7,4 @@
 ^\.vscode$
 ^\.github$
 ^cran-comments\.md$
-^doc$
-^Meta$
+^CRAN-SUBMISSION$

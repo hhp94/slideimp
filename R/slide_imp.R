@@ -103,6 +103,7 @@ slide_imp <- function(
   # Others
   .progress = TRUE
 ) {
+  # minimal pre-conditioning to avoid code fragility
   if (sum(c(is.null(k), is.null(ncp))) != 1L) {
     stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
   }
@@ -112,44 +113,23 @@ slide_imp <- function(
     "pca"
   }
   # Pre-conditioning ----
-  checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   cn <- colnames(obj)
   checkmate::assert_int(n_feat, lower = 2, upper = ncol(obj), null.ok = FALSE, .var.name = "n_feat")
   checkmate::assert_int(n_overlap, lower = 0, upper = n_feat - 1, null.ok = FALSE, .var.name = "n_overlap")
   if (imp_method == "knn") {
     knn_method <- match.arg(knn_method)
     checkmate::assert_int(k, lower = 1, upper = n_feat - 1, null.ok = FALSE, .var.name = "k")
-    checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
-    checkmate::assert_int(cores, lower = 1, null.ok = FALSE, .var.name = "cores")
-    checkmate::assert_flag(post_imp, .var.name = "post_imp", null.ok = FALSE)
-    checkmate::assert_number(dist_pow, lower = 0, null.ok = FALSE, .var.name = "dist_pow")
-    checkmate::assert(
-      checkmate::check_character(subset, min.len = 1, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
-      checkmate::check_integerish(subset, lower = 1, upper = ncol(obj), min.len = 1, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
-      combine = "or",
-      .var.name = "subset"
-    )
   } else if (imp_method == "pca") {
     pca_method <- match.arg(pca_method)
-    checkmate::assert_flag(scale, .var.name = "scale")
     checkmate::assert_int(ncp, lower = 1, upper = min(n_feat, nrow(obj)), .var.name = "ncp")
-    checkmate::assert_number(coeff.ridge, .var.name = "coeff.ridge")
-    checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
-    checkmate::assert_numeric(row.w, lower = 0, upper = 1, any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "row.w")
-    # checkmate::assert_integerish(ind.sup, lower = 1, upper = nrow(obj), any.missing = FALSE, len = nrow(obj), null.ok = TRUE, .var.name = "ind.sup")
-    checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
-    checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
-    checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
     obj_vars <- col_vars(obj)
-    if (
-      any(abs(obj_vars) < .Machine$double.eps^0.5 | is.nan(obj_vars) | is.na(obj_vars))
-    ) {
-      stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try `col_vars(obj)`")
+    if (any(obj_vars < .Machine$double.eps^0.5 | is.na(obj_vars))) {
+      stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
     }
     rm(obj_vars)
   }
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
-
   # Windowing Logic ----
   idx <- 1
   max_step <- ceiling((ncol(obj) - idx) / (n_feat - n_overlap))

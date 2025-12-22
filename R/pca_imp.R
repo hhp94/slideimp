@@ -48,7 +48,10 @@ pca_imp <- function(
   nb.init = 1, maxiter = 1000, miniter = 5
 ) {
   #### Main program
-  checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
+  if (!anyNA(obj)) {
+    return(obj)
+  }
   cn <- colnames(obj)
   method <- match.arg(method)
   checkmate::assert_flag(scale, .var.name = "scale")
@@ -72,14 +75,10 @@ pca_imp <- function(
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
   obj_vars <- col_vars(obj)
-  if (
-    any(abs(obj_vars) < .Machine$double.eps^0.5 | is.na(obj_vars))
-  ) {
-    stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try `col_vars(obj)`")
+  if (any(obj_vars < .Machine$double.eps^0.5 | is.na(obj_vars))) {
+    stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
   }
-  if (!anyNA(obj)) {
-    return(obj)
-  }
+  rm(obj_vars)
 
   miss <- is.na(obj)
   cmiss <- colSums(miss)

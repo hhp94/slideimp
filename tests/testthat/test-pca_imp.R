@@ -54,16 +54,15 @@ test_that("row.w = 'n_miss' floors near-zero weights", {
   mat <- matrix(rnorm(100), nrow = 10, ncol = 10)
   rownames(mat) <- paste0("row", 1:10)
   colnames(mat) <- paste0("col", 1:10)
-  mat[1, -1] <- NA  # row 1 has 9/10 missing -> weight = 0.1
+  mat[1, -1] <- NA # row 1 has 9/10 missing -> weight = 0.1
   mat[2, ] <- NA
-  mat[2, 1] <- rnorm(1)  # row 2 has 9/10 missing -> weight = 0.1
-  mat[3, 1:5] <- NA  # row 3 has 5/10 missing -> weight = 0.5
+  mat[2, 1] <- rnorm(1) # row 2 has 9/10 missing -> weight = 0.1
+  mat[3, 1:5] <- NA # row 3 has 5/10 missing -> weight = 0.5
 
   expect_no_error(pca_imp(mat, ncp = 2, row.w = "n_miss", seed = 123))
 })
 
 test_that("row.w rejects invalid strings", {
-
   mat <- matrix(rnorm(100), nrow = 10, ncol = 10)
   rownames(mat) <- paste0("row", 1:10)
   colnames(mat) <- paste0("col", 1:10)

@@ -13,6 +13,7 @@ group_imp(
   post_imp = NULL,
   dist_pow = NULL,
   tree = NULL,
+  cores = 1,
   ncp = NULL,
   scale = NULL,
   pca_method = NULL,
@@ -22,7 +23,6 @@ group_imp(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
-  cores = 1,
   .progress = TRUE
 )
 }
@@ -51,6 +51,9 @@ using column means (default = \code{TRUE}).}
 
 \item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
 
+\item{cores}{Controls the number of cores to parallelize over for K-NN imputation only.
+To setup parallelization for PCA imputation, use \code{mirai::daemons()}.}
+
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 
 \item{scale}{boolean. By default TRUE leading to a same weight for each variable}
@@ -68,9 +71,6 @@ using column means (default = \code{TRUE}).}
 \item{maxiter}{integer, maximum number of iteration for the algorithm}
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
-
-\item{cores}{Controls the number of cores to parallelize over for K-NN imputation only.
-To setup parallelization for PCA imputation, use \code{mirai::daemons()}.}
 
 \item{.progress}{Show imputation progress (default = FALSE)}
 }

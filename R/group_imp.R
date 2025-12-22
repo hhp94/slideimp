@@ -97,6 +97,7 @@ group_imp <- function(
   post_imp = NULL,
   dist_pow = NULL,
   tree = NULL,
+  cores = 1,
   # PCA-specific parameters
   ncp = NULL,
   scale = NULL,
@@ -107,12 +108,10 @@ group_imp <- function(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
-  # Others
-  cores = 1,
   .progress = TRUE
 ) {
   # pre-conditioning  ----
-  checkmate::assert_matrix(obj, mode = "numeric", row.names = "named", col.names = "unique", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
   checkmate::assert_names(colnames(group), must.include = c("features"), .var.name = "group")
   if (!tibble::is_tibble(group)) {
