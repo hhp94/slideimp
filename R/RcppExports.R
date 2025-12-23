@@ -32,38 +32,6 @@ impute_knn_brute <- function(obj, miss, k, n_col_miss, method, dist_pow, cores =
     .Call(`_slideimp_impute_knn_brute`, obj, miss, k, n_col_miss, method, dist_pow, cores)
 }
 
-#' @title Find K-Nearest Neighbors for Columns with Missing Values
-#'
-#' @description
-#' This function returns the information of nearest neighbors found.
-#' Used for benchmarking and unit testing logic of \code{impute_knn_brute} only.
-#'
-#' @param obj R matrix
-#' @param miss is.na(obj)
-#' @param k n neighbor
-#' @param n_col_miss Integer vector specifying the count of missing values per column.
-#' @param n_col_name Character vector of same length as n_col_miss containing column names.
-#' @param method distance metric
-#' @param cores n cores
-#'
-#' @return
-#' A named list where each element corresponds to one column with missing values
-#' (i.e., where n_col_miss > 0). Each sub-list contains:
-#'
-#' \itemize{
-#'   \item \code{indices}: An integer vector of 1-based indices of the nearest neighbor columns.
-#'   \item \code{distances}: A numeric vector of distances to the nearest neighbors.
-#'   \item \code{n_neighbors}: The number of valid neighbors found.
-#' }
-#'
-#' If no columns have missing values, an empty list is returned.
-#'
-#' @keywords internal
-#' @noRd
-find_knn_brute <- function(obj, miss, k, n_col_miss, n_col_name, method, cores = 1L) {
-    .Call(`_slideimp_find_knn_brute`, obj, miss, k, n_col_miss, n_col_name, method, cores)
-}
-
 #' Impute missing values in a matrix using treed k-nearest neighbors (K-NN)
 #'
 #' K-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.

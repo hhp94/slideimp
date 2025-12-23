@@ -50,23 +50,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// find_knn_brute
-Rcpp::List find_knn_brute(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const Rcpp::CharacterVector& n_col_name, const int method, int cores);
-RcppExport SEXP _slideimp_find_knn_brute(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP n_col_nameSEXP, SEXP methodSEXP, SEXP coresSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const arma::umat& >::type miss(missSEXP);
-    Rcpp::traits::input_parameter< const arma::uword >::type k(kSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type n_col_miss(n_col_missSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::CharacterVector& >::type n_col_name(n_col_nameSEXP);
-    Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(find_knn_brute(obj, miss, k, n_col_miss, n_col_name, method, cores));
-    return rcpp_result_gen;
-END_RCPP
-}
 // impute_knn_mlpack
 arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::umat& miss, const arma::uword k, const arma::uvec& n_col_miss, const int method, const std::string tree, const double dist_pow, const int cores);
 RcppExport SEXP _slideimp_impute_knn_mlpack(SEXP objSEXP, SEXP missSEXP, SEXP kSEXP, SEXP n_col_missSEXP, SEXP methodSEXP, SEXP treeSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
@@ -127,7 +110,6 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 11},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 7},
-    {"_slideimp_find_knn_brute", (DL_FUNC) &_slideimp_find_knn_brute, 7},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
     {"_slideimp_weighted_row_means", (DL_FUNC) &_slideimp_weighted_row_means, 4},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},

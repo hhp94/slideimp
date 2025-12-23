@@ -54,7 +54,6 @@ find_overlap_regions <- function(start, end) {
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
 #' # where the column order is sorted (i.e., by genomic position)
-#'
 #' set.seed(1234)
 #' beta_matrix <- t(sim_mat(100, 20)$input)
 #'
@@ -93,7 +92,7 @@ slide_imp <- function(
   # PCA-specific parameters
   ncp = NULL,
   scale = TRUE,
-  pca_method = c("regularized", "em"),
+  pca_method = c("regularized", "EM"),
   coeff.ridge = 1,
   seed = NULL,
   row.w = NULL,
@@ -124,7 +123,7 @@ slide_imp <- function(
     pca_method <- match.arg(pca_method)
     checkmate::assert_int(ncp, lower = 1, upper = min(n_feat, nrow(obj)), .var.name = "ncp")
     obj_vars <- col_vars(obj)
-    if (any(obj_vars < .Machine$double.eps^0.5 | is.na(obj_vars))) {
+    if (any(obj_vars < .Machine$double.eps | is.na(obj_vars))) {
       stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
     }
     rm(obj_vars)

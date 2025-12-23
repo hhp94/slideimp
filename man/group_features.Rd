@@ -15,10 +15,9 @@ group_features(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with named rows and unique column names. Columns
-represent features to be grouped.}
+\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{features_df}{A data frame with exactly two columns: \code{feature_id} and
+\item{features_df}{A data.frame with exactly two columns: \code{feature_id} and
 \code{group}. Maps feature identifiers to their respective groups. No missing
 values or duplicate \code{feature_id} values are allowed.}
 
@@ -29,10 +28,8 @@ imputation with \code{k} neighbors. Cannot be used together with \code{ncp}.}
 imputation with \code{ncp} principal components. Cannot be used together with
 \code{k}.}
 
-\item{subset}{Character vector or \code{NULL}. If provided, only these column
-names from \code{obj} are included in the main \code{features} column; remaining
-matched features are placed in \code{aux}. If \code{NULL}, all features go into
-\code{features}.}
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute.}
 
 \item{min_group_size}{Integer (default 0). Minimum number of features per
 group. If a group has fewer features, additional features are randomly
@@ -42,25 +39,22 @@ sampled from remaining columns to meet this threshold.}
 for \code{min_group_size} padding.}
 }
 \value{
-A \code{\link[tibble:tibble]{tibble::tibble()}} with columns:
-
-\describe{
-\item{group}{Character. The group identifier.}
-\item{features}{List of character vectors. Feature IDs belonging to each
-group (from \code{subset} if specified, otherwise all matched features).}
-\item{aux}{List of character vectors (if non-empty). Auxiliary feature IDs
-not in \code{subset}, plus any features added to meet \code{min_group_size}.
-Omitted if all groups have empty auxiliary features.}
-\item{parameters}{List of single-row tibbles (if \code{k} or \code{ncp} specified).
-Contains the adjusted \code{k} or \code{ncp} value for each group, capped by group
-size.}
+A \code{tibble::tibble()} with columns:
+\itemize{
+\item \strong{features}: A list-column containing character vectors of feature column
+names to impute
+\item \strong{aux}: A list-column containing character vectors of auxiliary
+column names used for imputation but not imputed themselves. Omitted if all
+elements are \code{NULL}
+\item \strong{parameters}: A list-column containing group-specific parameters if \code{k}
+or \code{ncp} are specified
 }
 }
 \description{
 Groups matrix columns (features) based on a provided grouping data.frame,
 optionally preparing parameters for K-NN or PCA imputation. This function
-organizes features into groups, handles subsetting, and can pad groups to
-meet a minimum size requirement.
+organizes features into groups, handles imputation of only a subset of features,
+and can pad groups to meet a minimum size.
 }
 \examples{
 sim_obj <- sim_mat(perc_col_NA = 1)

@@ -217,55 +217,6 @@ test_that("`slide_imp` edge case no overlap", {
   )
 })
 
-test_that("`find_knn_brute` returns correct neighbors as manual implementation", {
-  set.seed(1234)
-  to_test <- t(sim_mat(n = 10, m = 30, perc_NA = 0.5, perc_col_NA = 1)$input)
-  miss <- is.na(to_test)
-  # Ensure columns 1 and 2 have at least one NA
-  expect_true(anyNA(to_test[, 1]))
-  expect_true(anyNA(to_test[, 2]))
-  n_col_miss <- colSums(miss)
-  n_col_name <- colnames(to_test)
-  # Test only column 1 and 2
-  k <- 3
-  n_col_miss[3:length(n_col_miss)] <- 0
-  result <- find_knn_brute(
-    obj = to_test,
-    miss = miss,
-    k = k,
-    n_col_miss = n_col_miss,
-    n_col_name = n_col_name,
-    method = 0,
-    cores = 1
-  )
-  r_dist <- as.matrix(dist(t(to_test)))
-
-  # For each of the two columns, compute expected neighbors
-  for (col_idx in 1:2) {
-    col_name <- paste0("feat", col_idx)
-
-    # Get distances for this column, excluding self (diagonal)
-    distances <- r_dist[, col_idx]
-    distances[col_idx] <- Inf # Exclude self-distance
-
-    # Find k nearest neighbors
-    k_nearest_indices <- order(distances)[1:k]
-    k_nearest_distances <- unname(distances[k_nearest_indices])
-
-    # Check that the function returned the correct indices
-    expect_equal(result[[col_name]]$indices, k_nearest_indices)
-
-    # Check that the function returned the correct distances
-    expect_equal(
-      sqrt(result[[col_name]]$distances * nrow(to_test)),
-      k_nearest_distances
-    )
-
-    # Check that k neighbors were returned
-    expect_equal(result[[col_name]]$n_neighbors, k)
-  }
-})
-
 test_that("`weighted_row_means` works", {
   # Generate test data
   set.seed(123)

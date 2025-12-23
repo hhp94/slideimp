@@ -18,7 +18,7 @@ A named numeric vector of column variances
 Computes the sample variance for each column of a numeric matrix
 }
 \details{
-Variances for columns with 1 value after dropping \code{NA} are set to \code{NA}.
+Variances for columns with one unique value after dropping \code{NA} are set to \code{NA}.
 }
 \examples{
 col_vars(t(khanmiss1))

@@ -42,17 +42,11 @@ The stable version of `{slideimp}` can be installed from CRAN using:
 install.packages("slideimp")
 ```
 
-You can install the development version of `{slideimp}` from
-[GitHub](https://github.com/hhp94/slideimp) with:
+You can install the development version of `{slideimp}` with:
 
 ``` r
 pak::pkg_install("hhp94/slideimp")
 ```
-
-## Citation
-
-If you find `slideimp` helpful in your work, please cite our paper at
-<https://doi.org/10.64898/2025.12.15.694394>. Thank you!
 
 ## Workflow
 

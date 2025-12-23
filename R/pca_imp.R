@@ -17,6 +17,7 @@
 #'  - `NULL` (default): all rows weighted equally.
 #'  - A numeric vector of length `nrow(obj)`: custom positive weights.
 #'  - `"n_miss"`: rows with more missing values receive lower weight.
+#'
 #' Weights are normalized to sum to 1.
 #' @param threshold the threshold for assessing convergence
 #' @param seed integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization
@@ -38,8 +39,9 @@
 #' @examples
 #' data("khanmiss1")
 #'
-#' # Transpose to put genes on columns
-#' pca_imp(t(khanmiss1), ncp = 2)
+#' # Transpose to put genes on columns. Randomly initialize missing values 5
+#' # times (1st time is mean).
+#' pca_imp(t(khanmiss1), ncp = 2, nb.init = 5)
 #'
 #' @export
 pca_imp <- function(
@@ -75,17 +77,14 @@ pca_imp <- function(
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
   obj_vars <- col_vars(obj)
-  if (any(obj_vars < .Machine$double.eps^0.5 | is.na(obj_vars))) {
+  if (any(obj_vars < .Machine$double.eps | is.na(obj_vars))) {
     stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
   }
-  rm(obj_vars)
-
   miss <- is.na(obj)
-  cmiss <- colSums(miss)
-  if (any((cmiss / nrow(obj)) == 1)) {
+
+  if (any((colSums(miss) / nrow(obj)) == 1)) {
     stop("Col(s) with all missing detected. Remove before proceed")
   }
-
   init_obj <- Inf
 
   if (is.null(row.w)) {
@@ -93,10 +92,7 @@ pca_imp <- function(
   } else if (is.character(row.w) && row.w == "n_miss") {
     n_miss_per_row <- rowSums(miss)
     row.w <- 1 - (n_miss_per_row / ncol(obj))
-    if (!is.null(seed)) {
-      set.seed(seed)
-    }
-    row.w[row.w < 1e-8] <- 1e-8
+    row.w[row.w < 1e-10] <- 1e-10
   }
   row.w <- row.w / sum(row.w)
 

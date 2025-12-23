@@ -34,8 +34,9 @@ pca_imp(
 \item \code{NULL} (default): all rows weighted equally.
 \item A numeric vector of length \code{nrow(obj)}: custom positive weights.
 \item \code{"n_miss"}: rows with more missing values receive lower weight.
-Weights are normalized to sum to 1.
-}}
+}
+
+Weights are normalized to sum to 1.}
 
 \item{threshold}{the threshold for assessing convergence}
 
@@ -62,8 +63,9 @@ The output of the algorithm can be used as an input of the PCA function of the F
 \examples{
 data("khanmiss1")
 
-# Transpose to put genes on columns
-pca_imp(t(khanmiss1), ncp = 2)
+# Transpose to put genes on columns. Randomly initialize missing values 5
+# times (1st time is mean).
+pca_imp(t(khanmiss1), ncp = 2, nb.init = 5)
 
 }
 \references{

@@ -19,6 +19,7 @@ group_imp(
   pca_method = NULL,
   coeff.ridge = NULL,
   threshold = NULL,
+  row.w = NULL,
   seed = NULL,
   nb.init = NULL,
   maxiter = NULL,
@@ -30,11 +31,12 @@ group_imp(
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{group}{Preferably created by \code{\link[=group_features]{group_features()}}. A data.frame with columns:
-\describe{
-\item{features}{A list column containing character vectors of feature column names to impute}
-\item{aux}{(Optional) A list column containing character vectors of auxiliary
-column names used for imputation but not imputed themselves}
-\item{parameters}{(Optional) A list column containing group-specific parameters}
+\itemize{
+\item \strong{features}: A list-column containing character vectors of feature column
+names to impute
+\item \strong{aux}: (Optional) A list-column containing character vectors of auxiliary
+column names used for imputation but not imputed themselves
+\item \strong{parameters}: (Optional) A list-column containing group-specific parameters
 }}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
@@ -64,6 +66,15 @@ To setup parallelization for PCA imputation, use \code{mirai::daemons()}.}
 
 \item{threshold}{the threshold for assessing convergence}
 
+\item{row.w}{Row weights. Can be one of:
+\itemize{
+\item \code{NULL} (default): all rows weighted equally.
+\item A numeric vector of length \code{nrow(obj)}: custom positive weights.
+\item \code{"n_miss"}: rows with more missing values receive lower weight.
+}
+
+Weights are normalized to sum to 1.}
+
 \item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
 
 \item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
@@ -89,7 +100,7 @@ Specify \code{k} and related arguments to use K-NN, \code{ncp} and related argum
 If \code{k} and \code{ncp} are both \code{NULL}, then the group-wise parameters column i.e., \code{group$parameters}
 must be specified and must contains either \code{k} or \code{ncp} for all groups of group-wise parameters.
 
-Typical strategies for grouping may include:
+Strategies for grouping may include:
 \itemize{
 \item Breaking down search space by chromosomes
 \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
@@ -111,39 +122,33 @@ to_test <- sim_mat(
   perc_col_NA = 1,
   nchr = 2
 )
-
-# `group_1` will be all the CpGs on Chr1. Same for `group_2`
-group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
-
-# Impute only first 3 values of group 1, the rest are aux. Group 2 does 4 features.
-# Also optionally vary the parameters by group
-knn_df <- tibble::tibble(
-  features = list(group_1[1:3], group_2[1:4]),
-  aux = list(group_1, group_2),
-  parameters = list(
-    list(k = 3, dist_pow = 1),
-    list(k = 4, method = "manhattan")
-  )
-)
-knn_df
-
-# Run grouped imputation. t() to put features on the columns. `k` for K-NN has
-# been specified in `knn_df`.
+# t() to put features in columns
 obj <- t(to_test$input)
-knn_grouped <- group_imp(obj, group = knn_df)
-knn_grouped
+head(to_test$group_feature) # which group each feature belongs to
 
-# Specify `ncp` for PCA in the `group_imp` function since no group-wise parameters are
-# specified. Also run in parallel with `mirai::daemons(2)`
+# Use group_features() to create the group tibble. By setting `k = 5` in
+# group_features(), we are doing K-NN imputation in group_imp(). To make use
+# of the `subset` argument in knn_imp(), we specify subset in group_features().
+# For demonstration of different group-wise parameters we set `k = 10` for the
+# second group.
+subset_features <- sample(to_test$group_feature$feature_id, size = 10)
+head(subset_features)
+knn_df <- group_features(obj, to_test$group_feature, k = 5, subset = subset_features)
+knn_df
+knn_df$parameters[[2]]$k <- 10
+knn_df$parameters
 
-mirai::daemons(2) # Setup 2 cores for parallelization
-pca_df <- tibble::tibble(
-  features = list(group_1[1:3], group_2[1:4])
-)
+# Run grouped imputation. `k` for K-NN has been specified in `knn_df`.
+knn_grouped <- group_imp(obj, group = knn_df, cores = 2)
+knn_grouped # only features in subset are imputed
+
+# Specify `ncp` for PCA directly in the group_imp() function (instead of in
+# group_features()). We run in parallel with `mirai::daemons(2)`.
+
+mirai::daemons(2) # Set up 2 cores for parallelization
+pca_df <- group_features(obj, to_test$group_feature)
 pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
 mirai::daemons(0)
-
 pca_grouped
 }
 \seealso{

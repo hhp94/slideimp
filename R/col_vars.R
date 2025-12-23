@@ -6,7 +6,7 @@
 #' @param cores Number of cores to use for parallel computation. Defaults to 1.
 #'
 #' @details
-#' Variances for columns with 1 value after dropping `NA` are set to `NA`.
+#' Variances for columns with one unique value after dropping `NA` are set to `NA`.
 #'
 #' @return A named numeric vector of column variances
 #'
@@ -19,6 +19,7 @@ col_vars <- function(mat, cores = 1) {
     mat,
     mode = "numeric", null.ok = FALSE, min.rows = 1, min.cols = 1, .var.name = "mat"
   )
+  checkmate::assert_int(cores, lower = 1)
   vars <- col_vars_internal(mat = mat, cores = cores)[1, ]
   vars[is.nan(vars)] <- NA
   names(vars) <- colnames(mat)

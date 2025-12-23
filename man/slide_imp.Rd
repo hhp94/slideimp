@@ -17,7 +17,7 @@ slide_imp(
   subset = NULL,
   ncp = NULL,
   scale = TRUE,
-  pca_method = c("regularized", "em"),
+  pca_method = c("regularized", "EM"),
   coeff.ridge = 1,
   seed = NULL,
   row.w = NULL,
@@ -66,8 +66,9 @@ indices specifying which columns to impute.}
 \item \code{NULL} (default): all rows weighted equally.
 \item A numeric vector of length \code{nrow(obj)}: custom positive weights.
 \item \code{"n_miss"}: rows with more missing values receive lower weight.
-Weights are normalized to sum to 1.
-}}
+}
+
+Weights are normalized to sum to 1.}
 
 \item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
 
@@ -97,7 +98,6 @@ Specify \code{k} and related arguments to use K-NN, \code{ncp} and related argum
 \examples{
 # Generate sample data with missing values with 20 samples and 100 columns
 # where the column order is sorted (i.e., by genomic position)
-
 set.seed(1234)
 beta_matrix <- t(sim_mat(100, 20)$input)
 

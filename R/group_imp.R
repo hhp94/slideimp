@@ -7,12 +7,13 @@
 #' @inheritParams pca_imp
 #' @inheritParams slide_imp
 #' @param group Preferably created by [group_features()]. A data.frame with columns:
-#' \describe{
-#' \item{features}{A list column containing character vectors of feature column names to impute}
-#' \item{aux}{(Optional) A list column containing character vectors of auxiliary
-#' column names used for imputation but not imputed themselves}
-#' \item{parameters}{(Optional) A list column containing group-specific parameters}
-#' }
+#'
+#' - **features**: A list-column containing character vectors of feature column
+#' names to impute
+#' - **aux**: (Optional) A list-column containing character vectors of auxiliary
+#' column names used for imputation but not imputed themselves
+#' - **parameters**: (Optional) A list-column containing group-specific parameters
+#'
 #' @param cores Controls the number of cores to parallelize over for K-NN imputation only.
 #' To setup parallelization for PCA imputation, use `mirai::daemons()`.
 #' @param .progress Show imputation progress (default = FALSE)
@@ -25,12 +26,10 @@
 #' If `k` and `ncp` are both `NULL`, then the group-wise parameters column i.e., `group$parameters`
 #' must be specified and must contains either `k` or `ncp` for all groups of group-wise parameters.
 #'
-#' Typical strategies for grouping may include:
-#' \itemize{
-#' \item Breaking down search space by chromosomes
-#' \item Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
-#' \item Using clusters identified by column clustering techniques
-#' }
+#' Strategies for grouping may include:
+#' - Breaking down search space by chromosomes
+#' - Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
+#' - Using clusters identified by column clustering techniques
 #'
 #' Only features in each group (each row of the data.frame) will be imputed, using
 #' the search space defined as the union of the features and optional aux columns
@@ -53,39 +52,33 @@
 #'   perc_col_NA = 1,
 #'   nchr = 2
 #' )
-#'
-#' # `group_1` will be all the CpGs on Chr1. Same for `group_2`
-#' group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-#' group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
-#'
-#' # Impute only first 3 values of group 1, the rest are aux. Group 2 does 4 features.
-#' # Also optionally vary the parameters by group
-#' knn_df <- tibble::tibble(
-#'   features = list(group_1[1:3], group_2[1:4]),
-#'   aux = list(group_1, group_2),
-#'   parameters = list(
-#'     list(k = 3, dist_pow = 1),
-#'     list(k = 4, method = "manhattan")
-#'   )
-#' )
-#' knn_df
-#'
-#' # Run grouped imputation. t() to put features on the columns. `k` for K-NN has
-#' # been specified in `knn_df`.
+#' # t() to put features in columns
 #' obj <- t(to_test$input)
-#' knn_grouped <- group_imp(obj, group = knn_df)
-#' knn_grouped
+#' head(to_test$group_feature) # which group each feature belongs to
 #'
-#' # Specify `ncp` for PCA in the `group_imp` function since no group-wise parameters are
-#' # specified. Also run in parallel with `mirai::daemons(2)`
+#' # Use group_features() to create the group tibble. By setting `k = 5` in
+#' # group_features(), we are doing K-NN imputation in group_imp(). To make use
+#' # of the `subset` argument in knn_imp(), we specify subset in group_features().
+#' # For demonstration of different group-wise parameters we set `k = 10` for the
+#' # second group.
+#' subset_features <- sample(to_test$group_feature$feature_id, size = 10)
+#' head(subset_features)
+#' knn_df <- group_features(obj, to_test$group_feature, k = 5, subset = subset_features)
+#' knn_df
+#' knn_df$parameters[[2]]$k <- 10
+#' knn_df$parameters
 #'
-#' mirai::daemons(2) # Setup 2 cores for parallelization
-#' pca_df <- tibble::tibble(
-#'   features = list(group_1[1:3], group_2[1:4])
-#' )
+#' # Run grouped imputation. `k` for K-NN has been specified in `knn_df`.
+#' knn_grouped <- group_imp(obj, group = knn_df, cores = 2)
+#' knn_grouped # only features in subset are imputed
+#'
+#' # Specify `ncp` for PCA directly in the group_imp() function (instead of in
+#' # group_features()). We run in parallel with `mirai::daemons(2)`.
+#'
+#' mirai::daemons(2) # Set up 2 cores for parallelization
+#' pca_df <- group_features(obj, to_test$group_feature)
 #' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
 #' mirai::daemons(0)
-#'
 #' pca_grouped
 group_imp <- function(
   obj,
@@ -104,6 +97,7 @@ group_imp <- function(
   pca_method = NULL,
   coeff.ridge = NULL,
   threshold = NULL,
+  row.w = NULL,
   seed = NULL,
   nb.init = NULL,
   maxiter = NULL,
@@ -262,6 +256,7 @@ group_imp <- function(
         coeff.ridge = coeff.ridge,
         threshold = threshold,
         seed = seed,
+        row.w = row.w,
         nb.init = nb.init,
         maxiter = maxiter,
         miniter = miniter
@@ -355,42 +350,33 @@ group_imp <- function(
 #'
 #' Groups matrix columns (features) based on a provided grouping data.frame,
 #' optionally preparing parameters for K-NN or PCA imputation. This function
-#' organizes features into groups, handles subsetting, and can pad groups to
-#' meet a minimum size requirement.
+#' organizes features into groups, handles imputation of only a subset of features,
+#' and can pad groups to meet a minimum size.
 #'
-#' @param obj A numeric matrix with named rows and unique column names. Columns
-#'   represent features to be grouped.
-#' @param features_df A data frame with exactly two columns: `feature_id` and
-#'   `group`. Maps feature identifiers to their respective groups. No missing
-#'   values or duplicate `feature_id` values are allowed.
+#' @inheritParams knn_imp
+#' @param features_df A data.frame with exactly two columns: `feature_id` and
+#' `group`. Maps feature identifiers to their respective groups. No missing
+#' values or duplicate `feature_id` values are allowed.
 #' @param k Integer or `NULL`. If specified, prepares parameters for K-NN
-#'   imputation with `k` neighbors. Cannot be used together with `ncp`.
+#' imputation with `k` neighbors. Cannot be used together with `ncp`.
 #' @param ncp Integer or `NULL`. If specified, prepares parameters for PCA
-#'   imputation with `ncp` principal components. Cannot be used together with
-#'   `k`.
-#' @param subset Character vector or `NULL`. If provided, only these column
-#'   names from `obj` are included in the main `features` column; remaining
-#'   matched features are placed in `aux`. If `NULL`, all features go into
-#'   `features`.
+#' imputation with `ncp` principal components. Cannot be used together with
+#' `k`.
 #' @param min_group_size Integer (default 0). Minimum number of features per
-#'   group. If a group has fewer features, additional features are randomly
-#'   sampled from remaining columns to meet this threshold.
+#' group. If a group has fewer features, additional features are randomly
+#' sampled from remaining columns to meet this threshold.
 #' @param seed Numeric or `NULL`. Random seed for reproducibility when sampling
-#'   for `min_group_size` padding.
+#' for `min_group_size` padding.
 #'
-#' @return A [tibble::tibble()] with columns:
+#' @return A `tibble::tibble()` with columns:
 #'
-#' \describe{
-#'   \item{group}{Character. The group identifier.}
-#'   \item{features}{List of character vectors. Feature IDs belonging to each
-#'     group (from `subset` if specified, otherwise all matched features).}
-#'   \item{aux}{List of character vectors (if non-empty). Auxiliary feature IDs
-#'     not in `subset`, plus any features added to meet `min_group_size`.
-#'     Omitted if all groups have empty auxiliary features.}
-#'   \item{parameters}{List of single-row tibbles (if `k` or `ncp` specified).
-#'     Contains the adjusted `k` or `ncp` value for each group, capped by group
-#'     size.}
-#' }
+#' - **features**: A list-column containing character vectors of feature column
+#' names to impute
+#' - **aux**: A list-column containing character vectors of auxiliary
+#' column names used for imputation but not imputed themselves. Omitted if all
+#' elements are `NULL`
+#' - **parameters**: A list-column containing group-specific parameters if `k`
+#' or `ncp` are specified
 #'
 #' @examples
 #' sim_obj <- sim_mat(perc_col_NA = 1)
@@ -515,7 +501,7 @@ group_features <- function(
     group = names(features)
   )
 
-  # `aux` list column, first part is to handle the subset function
+  # `aux` list=column, first part is to handle the subset function
   aux <- collapse::fsubset(matched, !subset)
   aux <- tibble::tibble(
     aux = collapse::gsplit(aux$feature_id, aux$group, use.g.names = TRUE),
@@ -530,7 +516,7 @@ group_features <- function(
     \(x, y) length(x) + length(y)
   )
 
-  # pad groups to min_group_size if needed
+  # pad groups to `min_group_size` if needed
   if (min_group_size > 0) {
     group$need <- pmax(min_group_size - group$length, 0)
     group$min_group_size <- purrr::map2(group$features, group$need, \(x, y) {

@@ -5,6 +5,8 @@
 #' It attempts to find a valid set of positions within a maximum number of iterations.
 #'
 #' @inheritParams slide_imp
+#' @inheritParams tune_imp
+#'
 #' @param num_na The number of missing values used to estimate prediction quality.
 #' @param rowmax Number between 0 to 1. NA injection cannot create rows with more missing % than this number.
 #' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
@@ -20,14 +22,8 @@
 #' at those positions would exceed the missingness thresholds for any row or column (accounting for existing NAs).
 #' If no valid set is found within `max_iter` attempts, an error is thrown.
 #'
-#' @examples
-#' \dontrun{
-#' mat <- matrix(1:100, nrow = 10, ncol = 10)
-#' # Inject 10 NAs
-#' na_positions <- inject_na(mat, num_na = 10)
-#' mat[na_positions] <- NA
-#' }
 #' @keywords internal
+#' @noRd
 inject_na <- function(
   obj,
   num_na = NULL,
@@ -70,7 +66,7 @@ inject_na <- function(
   if (check_sd) {
     # initial check for zero variance
     cvars <- col_vars(obj)
-    if (any(abs(cvars) < .Machine$double.eps^0.5 | is.nan(cvars) | is.na(cvars))) {
+    if (any(cvars < .Machine$double.eps | is.na(cvars))) {
       stop("Zero variance columns detected before na injections")
     }
   }
@@ -106,7 +102,7 @@ inject_na <- function(
       obj_test <- obj
       obj_test[na_loc] <- NA
       cvars <- col_vars(obj_test)
-      sd_ok <- !any(abs(cvars) < .Machine$double.eps^0.5 | is.nan(cvars) | is.na(cvars))
+      sd_ok <- !any(cvars < .Machine$double.eps | is.na(cvars))
     }
   }
   return(na_loc)
@@ -156,8 +152,12 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'
 #' Tuning results can be evaluated using the `{yardstick}` package or [compute_metrics()].
 #'
-#' @inheritParams inject_na
 #' @inheritParams slide_imp
+#' @param num_na The number of missing values used to estimate prediction quality.
+#' @param rowmax Number between 0 to 1. NA injection cannot create rows with more missing % than this number.
+#' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
+#' @param check_sd Check if after NA injections zero variance columns are created or not.
+#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default to 1000).
 #' @param parameters A data.frame specifying parameter combinations to tune, where each column
 #' represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
 #' for complex parameters. Duplicate rows are automatically removed. When `.f = NULL`, the
@@ -568,7 +568,7 @@ calc_rsq_trad <- function(truth, estimate) {
   ss_res <- sum((truth_valid - estimate_valid)^2)
   mean_truth <- mean(truth_valid)
   ss_tot <- sum((truth_valid - mean_truth)^2)
-  if (abs(ss_tot) < .Machine$double.eps^0.5) {
+  if (abs(ss_tot) < .Machine$double.eps) {
     return(NA_real_)
   }
   1 - (ss_res / ss_tot)
