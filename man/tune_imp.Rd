@@ -111,7 +111,9 @@ custom_imp <- function(obj, mean = 0, sd = 1) {
   obj
 }
 
-mirai::daemons(2) # Setup 2 cores for parallelization
+if(requireNamespace("carrier")){
+  mirai::daemons(2) # Setup 2 cores for parallelization
+}
 parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 results_custom <- tune_imp(
   obj,

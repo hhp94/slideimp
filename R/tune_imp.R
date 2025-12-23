@@ -214,7 +214,9 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'   obj
 #' }
 #'
-#' mirai::daemons(2) # Setup 2 cores for parallelization
+#' if(requireNamespace("carrier")){
+#'   mirai::daemons(2) # Setup 2 cores for parallelization
+#' }
 #' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 #' results_custom <- tune_imp(
 #'   obj,

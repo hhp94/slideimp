@@ -75,7 +75,9 @@
 #' # Specify `ncp` for PCA directly in the group_imp() function (instead of in
 #' # group_features()). We run in parallel with `mirai::daemons(2)`.
 #'
-#' mirai::daemons(2) # Set up 2 cores for parallelization
+#' if(requireNamespace("carrier")){
+#'   mirai::daemons(2) # Set up 2 cores for parallelization
+#' }
 #' pca_df <- group_features(obj, to_test$group_feature)
 #' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
 #' mirai::daemons(0)
