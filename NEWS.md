@@ -1,3 +1,5 @@
+# slideimp (development version)
+
 # slideimp 0.5.4
 
 * CRAN resubmission.

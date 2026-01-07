@@ -1,7 +1,7 @@
 Type: Package
 Package: slideimp
 Title: Numeric Matrices K-NN and PCA Imputation
-Version: 0.5.4
+Version: 0.5.4.9000
 Authors@R:
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355"))
