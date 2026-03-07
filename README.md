@@ -85,11 +85,11 @@ We tune the results using 2 repeats (`rep = 2`) for illustration
 
 ``` r
 knn_params <- tibble::tibble(k = c(5, 20))
-# Parallelization is controlled by `cores` only for knn or slideimp knn
+# Parallelization with OpenMP is controlled by `cores` only for knn or slideimp knn
 tune_knn <- tune_imp(obj, parameters = knn_params, cores = 2, rep = 2)
 #> Tuning knn_imp
 #> Step 1/2: Injecting NA
-#> Running in parallel...
+#> Running Mode: parallel...
 #> Step 2/2: Tuning
 compute_metrics(tune_knn)
 #> # A tibble: 12 × 7
@@ -109,8 +109,8 @@ compute_metrics(tune_knn)
 #> 12    20     2         2     2 rsq     standard     0.0850
 ```
 
-For PCA and custom functions, setup parallelization with
-`mirai::daemons()`.
+For K-NN without OpenMP, PCA, and custom functions, setup
+parallelization with `mirai::daemons()`.
 
 ``` r
 mirai::daemons(2) # 2 Cores
@@ -209,4 +209,40 @@ slide_imp(obj = chr1_beta, n_feat = 50, n_overlap = 5, k = 10, cores = 2, .progr
 #> s5 0.6457875 0.4006866 0.7308792 0.4803642 0.5929590
 #> 
 #> # Showing [1:5, 1:5] of full matrix
+```
+
+## M-Values vs. Beta Values
+
+PCA imputation on beta values may produce values outside of the (0, 1)
+range. The resulting matrix can either be clamped to the (0, 1) interval
+afterwards, or M-values can be used for imputation.
+
+To use M-values, first convert the beta values to M-values with
+`qlogis_clamped()`, perform the imputation, and then convert the result
+back to beta values with `plogis()`:
+
+``` r
+obj[1:4, 1:4]
+#>        feat1     feat2     feat3     feat4
+#> s1 0.2391314        NA 0.7203854 0.0000000
+#> s2 0.0000000 0.2810446 0.1600776 0.1816453
+#> s3 0.5897476 0.3677927 0.5027545 0.3608640
+#> s4 0.4201222        NA        NA 0.3356484
+
+m_obj <- qlogis_clamped(obj)
+m_obj[1:4, 1:4]
+#>          feat1      feat2       feat3       feat4
+#> s1  -1.1574476         NA  0.94637423 -23.0258509
+#> s2 -23.0258509 -0.9392861 -1.65765062  -1.5052401
+#> s3   0.3629221 -0.5416979  0.01101798  -0.5716163
+#> s4  -0.3222719         NA          NA  -0.6827472
+m_obj_imputed <- pca_imp(m_obj, ncp = 2)
+
+obj_imputed <- plogis(m_obj_imputed)
+obj_imputed[1:4, 1:4]
+#>           feat1     feat2     feat3        feat4
+#> s1 0.2391313851 0.4621480 0.7203854 0.0000000001
+#> s2 0.0000000001 0.2810446 0.1600776 0.1816452794
+#> s3 0.5897476146 0.3677927 0.5027545 0.3608639590
+#> s4 0.4201221624 0.5292327 0.2640069 0.3356484352
 ```

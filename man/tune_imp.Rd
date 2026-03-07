@@ -55,8 +55,8 @@ Each row is an missing value.
 
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 
-\item{cores}{Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation only.
-To setup parallelization for PCA and sliding window PCA imputation, use \code{mirai::daemons()}.}
+\item{cores}{Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation with OpenMP only.
+To setup parallelization for K-NN without OpenMP, PCA, and sliding window PCA imputation, use \code{mirai::daemons()}.}
 }
 \value{
 A \code{tibble::tibble()} with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),
@@ -110,7 +110,7 @@ custom_imp <- function(obj, mean = 0, sd = 1) {
   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
   obj
 }
-
+\dontshow{if (requireNamespace("carrier", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 mirai::daemons(2) # Setup 2 cores for parallelization
 parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 results_custom <- tune_imp(
@@ -122,5 +122,5 @@ results_custom <- tune_imp(
 )
 mirai::daemons(0)
 compute_metrics(results_custom)
-
+\dontshow{\}) # examplesIf}
 }

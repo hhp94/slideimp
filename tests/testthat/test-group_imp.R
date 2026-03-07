@@ -180,7 +180,7 @@ test_that("grouped imputation works without aux columns, pca", {
 test_that("group-specific parameters work correctly in parallel, pca", {
   skip_on_cran()
   skip_on_ci()
-
+  skip_if_not_installed("carrier")
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
   group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id

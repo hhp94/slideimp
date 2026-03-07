@@ -88,3 +88,42 @@ sim_mat <- function(
     group_sample = group_sample
   ))
 }
+
+#' Clamped Quantile Function of the Logistic Distribution
+#'
+#' A wrapper around [stats::qlogis()] that clamps input probabilities
+#' away from 0 and 1 by `eps` to avoid infinite return values. Useful for converting
+#' beta values into M-values.
+#'
+#' @param obj A numeric matrix with values in between 0 and 1.
+#' @param eps A single positive number giving the clamping margin. Input values
+#' are squeezed into the interval (eps, 1 - eps) before [stats::qlogis()]. Defaults
+#' to `1e-10`.
+#' @param ... Additional arguments passed to [stats::qlogis()].
+#'
+#' @return A numeric matrix of the same dimensions as `obj` containing
+#' logit-transformed values. The output is guaranteed to be finite.
+#'
+#' @examples
+#' p <- matrix(c(0, 0.01, 0.5, 0.99, 1, NA), nrow = 2)
+#' qlogis_clamped(p)
+#'
+#' @export
+qlogis_clamped <- function(obj, eps = 1e-10, ...) {
+  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_number(
+    eps,
+    lower = .Machine$double.eps,
+    upper = 0.5,
+    finite  = TRUE,
+    null.ok = FALSE,
+    .var.name = "eps"
+  )
+
+  rng <- range(obj, na.rm = TRUE)
+  if (rng[1] < 0 || rng[2] > 1) {
+    stop("`obj` contains values outside of (0, 1).")
+  }
+
+  return(stats::qlogis(pmin(pmax(obj, eps), 1 - eps), ...))
+}

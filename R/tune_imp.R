@@ -173,8 +173,8 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'   - A numeric vector specifying linear locations of NAs.
 #' @param .f Custom function to tune. Must accept `obj` as the first argument, accept the arguments in `parameters`,
 #' and return a matrix with the same dimension as `obj` (default = `NULL`).
-#' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation only.
-#' To setup parallelization for PCA and sliding window PCA imputation, use `mirai::daemons()`.
+#' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation with OpenMP only.
+#' To setup parallelization for K-NN without OpenMP, PCA, and sliding window PCA imputation, use `mirai::daemons()`.
 #'
 #' @return A `tibble::tibble()` with columns from `parameters`, plus `param_set` (unique parameter set ID),
 #' `rep` (repetition index), and `result` (a nested tibble containing `truth` and `estimate`
@@ -213,7 +213,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #'   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
 #'   obj
 #' }
-#'
+#' @examplesIf requireNamespace("carrier", quietly = TRUE)
 #' mirai::daemons(2) # Setup 2 cores for parallelization
 #' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 #' results_custom <- tune_imp(
@@ -240,7 +240,6 @@ tune_imp <- function(
   .progress = TRUE,
   cores = 1
 ) {
-  fun <- NULL
   # pre-conditioning
   checkmate::assert_matrix(
     obj,
@@ -373,17 +372,6 @@ tune_imp <- function(
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
 
   .rowid <- seq_len(nrow(parameters))
-  parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
-    row_list <- as.list(row)
-    row_list <- lapply(row_list, function(x) {
-      if (is.list(x) && length(x) == 1) {
-        x[[1]]
-      } else {
-        x
-      }
-    })
-    row_list
-  })
 
   indices <- tibble::as_tibble(expand.grid(
     param_set = .rowid,
@@ -412,38 +400,43 @@ tune_imp <- function(
       simplify = FALSE
     )
   }
-  # parallelization warnings
+  # parallelization
   is_knn_mode <- {
     (is.character(.f) && .f == "knn_imp") ||
       (is.character(.f) && .f == "slide_imp" && "k" %in% names(parameters))
   }
 
   if (is.character(.f)) {
-    if (.f == "slide_imp") {
-      parameters$.progress <- FALSE
-    }
     if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
       check_sd <- TRUE
     }
   }
 
-  if (is_knn_mode) {
-    # KNN handles its own parallelization via cores parameter
-    parameters$cores <- cores
-    parallelize <- FALSE
-  } else {
-    # For PCA-based methods, use mirai parallelization
-    parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
-
-    if (!parallelize && cores > 1) {
-      warning(
-        sprintf(
-          "cores = %d but running **sequential**. Call `mirai::daemons(%d)` to set up the parallelization",
-          cores,
-          cores
-        )
+  parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+  if (cores > 1 & is_knn_mode) {
+    if (!has_openmp()) {
+      message("OpenMP not available. KNN will run single-threaded.")
+      cores <- 1
+    } else if (parallelize) {
+      message(
+        "Both `cores > 1` and `mirai::daemons()` detected. ",
+        "Setting `cores = 1` to avoid nested parallelism. ",
+        "Parallelization will be handled by `mirai`."
       )
+      cores <- 1
+    } else {
+      cores <- min(cores, get_max_threads())
     }
+    parameters$cores <- cores
+  }
+  if (cores > 1 & !is_knn_mode) {
+    message(
+      sprintf(
+        "cores = %d but is ignored for non-KNN imputation. Call `mirai::daemons(%d)` to set up parallelization.",
+        cores,
+        cores
+      )
+    )
   }
 
   if (parallelize) {
@@ -455,9 +448,9 @@ tune_imp <- function(
   }
 
   if (.progress && parallelize || .progress && is_knn_mode && cores > 1) {
-    message("Running in parallel...")
+    message("Running Mode: parallel...")
   } else {
-    message("Running in sequential...")
+    message("Running Mode: sequential...")
   }
 
   # Create the crated function based on the type of imputation
@@ -477,6 +470,18 @@ tune_imp <- function(
     target_function <- .f
     validate_output <- TRUE
   }
+  # Parameter list
+  parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
+    row_list <- as.list(row)
+    row_list <- lapply(row_list, function(x) {
+      if (is.list(x) && length(x) == 1) {
+        x[[1]]
+      } else {
+        x
+      }
+    })
+    row_list
+  })
   # Create a single unified crated function
   crated_fn <- fn(
     function(i) {
@@ -526,7 +531,7 @@ tune_imp <- function(
     parameters_list = parameters_list
   )
   if (.progress) {
-    message("Step 2/2: Tuning")
+    message("Step 2/2: Tuning\n")
   }
   # Execute the mapping with the crated function
   result_list <- purrr::map(seq_len(nrow(indices)), crated_fn, .progress = .progress)

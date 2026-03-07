@@ -82,6 +82,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// has_openmp
+bool has_openmp();
+RcppExport SEXP _slideimp_has_openmp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(has_openmp());
+    return rcpp_result_gen;
+END_RCPP
+}
+// get_max_threads
+int get_max_threads();
+RcppExport SEXP _slideimp_get_max_threads() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(get_max_threads());
+    return rcpp_result_gen;
+END_RCPP
+}
 // col_min_max
 arma::rowvec col_min_max(const arma::mat& mat, const int min);
 RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP, SEXP minSEXP) {
@@ -112,6 +132,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 7},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
     {"_slideimp_weighted_row_means", (DL_FUNC) &_slideimp_weighted_row_means, 4},
+    {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},
+    {"_slideimp_get_max_threads", (DL_FUNC) &_slideimp_get_max_threads, 0},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
     {NULL, NULL, 0}

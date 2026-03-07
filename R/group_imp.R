@@ -14,8 +14,8 @@
 #' column names used for imputation but not imputed themselves
 #' - **parameters**: (Optional) A list-column containing group-specific parameters
 #'
-#' @param cores Controls the number of cores to parallelize over for K-NN imputation only.
-#' To setup parallelization for PCA imputation, use `mirai::daemons()`.
+#' @param cores Controls the number of cores to parallelize over for K-NN imputation with OpenMP only.
+#' To setup parallelization for K-NN without OpenMP and PCA imputation, use `mirai::daemons()`.
 #' @param .progress Show imputation progress (default = FALSE)
 #'
 #' @details
@@ -71,10 +71,9 @@
 #' # Run grouped imputation. `k` for K-NN has been specified in `knn_df`.
 #' knn_grouped <- group_imp(obj, group = knn_df, cores = 2)
 #' knn_grouped # only features in subset are imputed
-#'
+#' @examplesIf requireNamespace("carrier", quietly = TRUE)
 #' # Specify `ncp` for PCA directly in the group_imp() function (instead of in
 #' # group_features()). We run in parallel with `mirai::daemons(2)`.
-#'
 #' mirai::daemons(2) # Set up 2 cores for parallelization
 #' pca_df <- group_features(obj, to_test$group_feature)
 #' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
@@ -218,7 +217,6 @@ group_imp <- function(
   if (anyDuplicated(all_feats) > 0) {
     stop("Same features can't be in more than 1 groups")
   }
-  # imputation ----
   iter <- seq_len(nrow(group))
   indices <- lapply(iter, function(g) {
     # Have to convert to index to be able to use bigmemory
@@ -234,6 +232,35 @@ group_imp <- function(
       )
     )
   })
+
+  # parallel logic ----
+  is_knn_mode <- imp_method == "knn"
+  parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+
+  if (cores > 1 & is_knn_mode) {
+    if (!has_openmp()) {
+      message("OpenMP not available. KNN will run single-threaded.")
+      cores <- 1
+    } else if (parallelize) {
+      message(
+        "Both `cores > 1` and `mirai::daemons()` detected. ",
+        "Setting `cores = 1` to avoid nested parallelism. ",
+        "Parallelization will be handled by `mirai`."
+      )
+      cores <- 1
+    } else {
+      cores <- min(cores, get_max_threads())
+    }
+  }
+  if (cores > 1 & !is_knn_mode) {
+    message(
+      sprintf(
+        "cores = %d but is ignored for PCA imputation. Call `mirai::daemons(%d)` to set up parallelization.",
+        cores,
+        cores
+      )
+    )
+  }
 
   params <- lapply(iter, function(g) {
     if (imp_method == "knn") {
@@ -274,67 +301,50 @@ group_imp <- function(
     return(group_params)
   })
 
-  if (imp_method == "knn") {
-    if (.progress) {
-      if (cores > 1) {
-        message("Running in parallel...")
-      } else {
-        message("Running in sequential...")
-      }
+  # imputation ----
+  imp_fn <- if (is_knn_mode) knn_imp else pca_imp
+
+  if (.progress) {
+    if (parallelize || (is_knn_mode && cores > 1)) {
+      message("Running Mode: parallel...")
+    } else {
+      message("Running Mode: sequential...")
     }
+  }
+
+  if (parallelize) {
+    big_obj <- bigmemory::as.big.matrix(obj)
+    big_obj_desc <- bigmemory::describe(big_obj)
+
+    crated_fn <- purrr::in_parallel(
+      function(i) {
+        attached_matrix <- bigmemory::attach.big.matrix(big_obj_desc)
+        imputed <- do.call(
+          imp_fn,
+          c(list(obj = attached_matrix[, indices[[i]]$col_idx]), params[[i]])
+        )[, indices[[i]]$features_idx_local]
+        colnames(imputed) <- indices[[i]]$features_names
+        return(imputed)
+      },
+      big_obj_desc = big_obj_desc,
+      imp_fn = imp_fn,
+      indices = indices,
+      params = params
+    )
+    results <- purrr::map(iter, crated_fn, .progress = .progress)
+  } else {
     results <- purrr::map(
       iter,
       function(i) {
-        do.call(
-          knn_imp,
+        imputed <- do.call(
+          imp_fn,
           c(list(obj = obj[, indices[[i]]$col_idx]), params[[i]])
         )[, indices[[i]]$features_idx_local]
+        colnames(imputed) <- indices[[i]]$features_names
+        return(imputed)
       },
       .progress = .progress
     )
-  } else {
-    parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
-    if (parallelize) {
-      if (.progress) {
-        message("Running in parallel...")
-      }
-      # have to use bigmemory big matrix. This will create only one copy in RAM.
-      big_obj <- bigmemory::as.big.matrix(obj)
-      big_obj_desc <- bigmemory::describe(big_obj)
-      crated_fn <- purrr::in_parallel(
-        function(i) {
-          attached_matrix <- bigmemory::attach.big.matrix(big_obj_desc)
-          imputed <- do.call(
-            pca_imp,
-            c(list(obj = attached_matrix[, indices[[i]]$col_idx]), params[[i]])
-          )[, indices[[i]]$features_idx_local]
-          colnames(imputed) <- indices[[i]]$features_names
-          return(imputed)
-        },
-        big_obj_desc = big_obj_desc,
-        pca_imp = pca_imp,
-        indices = indices,
-        params = params
-      )
-      results <- purrr::map(iter, crated_fn, .progress = .progress)
-    } else {
-      if (cores > 1) {
-        warning(
-          sprintf(
-            "cores = %d but running in **sequential**. Call `mirai::daemons(%d)` to set up the parallelization",
-            cores,
-            cores
-          )
-        )
-      }
-      results <- purrr::map(
-        iter,
-        function(i) {
-          do.call(pca_imp, c(list(obj = obj[, indices[[i]]$col_idx]), params[[i]]))[, indices[[i]]$features_idx_local]
-        },
-        .progress = .progress
-      )
-    }
   }
 
   for (res in results) {

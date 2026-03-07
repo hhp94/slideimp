@@ -67,12 +67,12 @@ We tune the results using 2 repeats (`rep = 2`) for illustration (increase in ac
 
 ```{r}
 knn_params <- tibble::tibble(k = c(5, 20))
-# Parallelization is controlled by `cores` only for knn or slideimp knn
+# Parallelization with OpenMP is controlled by `cores` only for knn or slideimp knn
 tune_knn <- tune_imp(obj, parameters = knn_params, cores = 2, rep = 2)
 compute_metrics(tune_knn)
 ```
 
-For PCA and custom functions, setup parallelization with `mirai::daemons()`.
+For K-NN without OpenMP, PCA, and custom functions, setup parallelization with `mirai::daemons()`.
 ```{r, eval = F}
 mirai::daemons(2) # 2 Cores
 # Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`
@@ -139,3 +139,20 @@ chr1_beta[1:5, 1:5]
 # K-NN imputation using k = 10. Specify `ncp` for sliding window PCA imputation.
 slide_imp(obj = chr1_beta, n_feat = 50, n_overlap = 5, k = 10, cores = 2, .progress = FALSE)
 ```
+
+## M-Values vs. Beta Values
+PCA imputation on beta values may produce values outside of the (0, 1) range. The resulting matrix can either be clamped to the (0, 1) interval afterwards, or M-values can be used for imputation.  
+
+To use M-values, first convert the beta values to M-values with `qlogis_clamped()`, perform the imputation, and then convert the result back to beta values with `plogis()`:
+
+```{r}
+obj[1:4, 1:4]
+
+m_obj <- qlogis_clamped(obj)
+m_obj[1:4, 1:4]
+m_obj_imputed <- pca_imp(m_obj, ncp = 2)
+
+obj_imputed <- plogis(m_obj_imputed)
+obj_imputed[1:4, 1:4]
+```
+

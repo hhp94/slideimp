@@ -53,8 +53,8 @@ using column means (default = \code{TRUE}).}
 
 \item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
 
-\item{cores}{Controls the number of cores to parallelize over for K-NN imputation only.
-To setup parallelization for PCA imputation, use \code{mirai::daemons()}.}
+\item{cores}{Controls the number of cores to parallelize over for K-NN imputation with OpenMP only.
+To setup parallelization for K-NN without OpenMP and PCA imputation, use \code{mirai::daemons()}.}
 
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 
@@ -141,15 +141,15 @@ knn_df$parameters
 # Run grouped imputation. `k` for K-NN has been specified in `knn_df`.
 knn_grouped <- group_imp(obj, group = knn_df, cores = 2)
 knn_grouped # only features in subset are imputed
-
+\dontshow{if (requireNamespace("carrier", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 # Specify `ncp` for PCA directly in the group_imp() function (instead of in
 # group_features()). We run in parallel with `mirai::daemons(2)`.
-
 mirai::daemons(2) # Set up 2 cores for parallelization
 pca_df <- group_features(obj, to_test$group_feature)
 pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
 mirai::daemons(0)
 pca_grouped
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 \code{\link[=group_features]{group_features()}}
