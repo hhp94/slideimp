@@ -71,6 +71,14 @@ weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
     .Call(`_slideimp_weighted_row_means`, obj, miss, nn_columns, nn_weights)
 }
 
+has_openmp <- function() {
+    .Call(`_slideimp_has_openmp`)
+}
+
+get_max_threads <- function() {
+    .Call(`_slideimp_get_max_threads`)
+}
+
 col_min_max <- function(mat, min = 0L) {
     .Call(`_slideimp_col_min_max`, mat, min)
 }
