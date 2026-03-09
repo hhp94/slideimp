@@ -75,10 +75,6 @@ has_openmp <- function() {
     .Call(`_slideimp_has_openmp`)
 }
 
-get_max_threads <- function() {
-    .Call(`_slideimp_get_max_threads`)
-}
-
 col_min_max <- function(mat, min = 0L) {
     .Call(`_slideimp_col_min_max`, mat, min)
 }

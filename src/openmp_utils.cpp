@@ -13,12 +13,3 @@ bool has_openmp() {
   return false;
 #endif
 }
-
-// [[Rcpp::export]]
-int get_max_threads() {
-#ifdef _OPENMP
-  return omp_get_max_threads();
-#else
-  return 1;
-#endif
-}

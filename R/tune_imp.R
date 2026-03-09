@@ -410,8 +410,6 @@ tune_imp <- function(
         "Parallelization will be handled by `mirai`."
       )
       cores <- 1
-    } else {
-      cores <- min(cores, get_max_threads())
     }
     parameters$cores <- cores
   }
