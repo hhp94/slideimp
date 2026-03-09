@@ -85,28 +85,28 @@ We tune the results using 2 repeats (`rep = 2`) for illustration
 
 ``` r
 knn_params <- tibble::tibble(k = c(5, 20))
-# Parallelization with OpenMP is controlled by `cores` only for knn or slideimp knn
-tune_knn <- tune_imp(obj, parameters = knn_params, cores = 2, rep = 2)
+# Parallelization with OpenMP is controlled by `cores` only for knn or slideimp knn with OpenMP only.
+tune_knn <- tune_imp(obj, parameters = knn_params, .f = "knn_imp", cores = 2, rep = 2)
 #> Tuning knn_imp
 #> Step 1/2: Injecting NA
-#> Running Mode: parallel...
+#> Running Mode: sequential...
 #> Step 2/2: Tuning
 compute_metrics(tune_knn)
 #> # A tibble: 12 × 7
 #>        k cores param_set   rep .metric .estimator .estimate
 #>    <dbl> <dbl>     <int> <int> <chr>   <chr>          <dbl>
-#>  1     5     2         1     1 mae     standard     0.178  
-#>  2     5     2         1     1 rmse    standard     0.225  
-#>  3     5     2         1     1 rsq     standard     0.00454
-#>  4    20     2         2     1 mae     standard     0.149  
-#>  5    20     2         2     1 rmse    standard     0.190  
-#>  6    20     2         2     1 rsq     standard     0.0172 
-#>  7     5     2         1     2 mae     standard     0.202  
-#>  8     5     2         1     2 rmse    standard     0.259  
-#>  9     5     2         1     2 rsq     standard     0.00960
-#> 10    20     2         2     2 mae     standard     0.172  
-#> 11    20     2         2     2 rmse    standard     0.219  
-#> 12    20     2         2     2 rsq     standard     0.0850
+#>  1     5     1         1     1 mae     standard     0.178  
+#>  2     5     1         1     1 rmse    standard     0.225  
+#>  3     5     1         1     1 rsq     standard     0.00454
+#>  4    20     1         2     1 mae     standard     0.149  
+#>  5    20     1         2     1 rmse    standard     0.190  
+#>  6    20     1         2     1 rsq     standard     0.0172 
+#>  7     5     1         1     2 mae     standard     0.202  
+#>  8     5     1         1     2 rmse    standard     0.259  
+#>  9     5     1         1     2 rsq     standard     0.00960
+#> 10    20     1         2     2 mae     standard     0.172  
+#> 11    20     1         2     2 rmse    standard     0.219  
+#> 12    20     1         2     2 rsq     standard     0.0850
 ```
 
 For K-NN without OpenMP, PCA, and custom functions, setup
@@ -117,9 +117,9 @@ mirai::daemons(2) # 2 Cores
 # Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`
 # and the `cores` argument is ignored.
 
-# PCA imputation. Specified by the `ncp` column in the `pca_params` tibble.
+# PCA imputation.
 pca_params <- tibble::tibble(ncp = c(1, 5))
-tune_pca <- tune_imp(obj, parameters = pca_params, rep = 2)
+tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", rep = 2)
 
 # The parameters have `mean` and `sd` columns.
 custom_params <- tibble::tibble(mean = 1, sd = 0)

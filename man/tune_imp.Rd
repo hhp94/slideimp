@@ -7,12 +7,12 @@
 tune_imp(
   obj,
   parameters,
-  .f = NULL,
+  .f,
   rep = 1,
   num_na = 100,
   rowmax = 0.9,
   colmax = 0.9,
-  check_sd = FALSE,
+  check_sd = TRUE,
   max_iter = 1000,
   .progress = TRUE,
   cores = 1
@@ -21,18 +21,14 @@ tune_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{parameters}{A data.frame specifying parameter combinations to tune, where each column
+\item{parameters}{A \code{\link[tibble:tibble]{tibble::tibble()}}/data.frame specifying parameter combinations to tune, where each column
 represents a parameter accepted by \code{.f} (excluding \code{obj}). List columns are supported
-for complex parameters. Duplicate rows are automatically removed. When \code{.f = NULL}, the
-imputation method is inferred from the column names:
-\itemize{
-\item \code{k}: K-NN imputation
-\item \code{ncp}: PCA imputation
-\item \code{k} or \code{ncp} with \code{n_feat} and \code{n_overlap}: sliding window imputation
-}}
+for complex parameters. Duplicate rows are automatically removed.}
 
-\item{.f}{Custom function to tune. Must accept \code{obj} as the first argument, accept the arguments in \code{parameters},
-and return a matrix with the same dimension as \code{obj} (default = \code{NULL}).}
+\item{.f}{The imputation method to tune. Either a character string (\code{"knn_imp"}, \code{"pca_imp"},
+or \code{"slide_imp"}) specifying a built-in method, or a custom function. Custom functions must
+accept \code{obj} as the first argument, accept the arguments in \code{parameters}, and return a matrix
+with the same dimensions as \code{obj}.}
 
 \item{rep}{Either an integer specifying the number of repetitions for random NA injection, or
 a list defining fixed NA positions for each repetition (in which case \code{num_na} is ignored).
@@ -71,7 +67,15 @@ or user-supplied custom functions by repeated cross-validation.
 The function supports tuning for built-in imputation methods ("slide_imp", "knn_imp", "pca_imp")
 or custom functions provided via \code{.f}.
 
-When using a custom \code{.f}, the columns in \code{parameters} must correspond to the arguments of \code{.f}
+When \code{.f} is a character string, the columns in \code{parameters} are validated against the chosen
+method's requirements:
+\itemize{
+\item \code{"knn_imp"}: requires \code{k} in \code{parameters}
+\item \code{"pca_imp"}: requires \code{ncp} in \code{parameters}
+\item \code{"slide_imp"}: requires \code{n_feat} and \code{n_overlap}, plus exactly one of \code{k} or \code{ncp}
+}
+
+When \code{.f} is a custom function, the columns in \code{parameters} must correspond to the arguments of \code{.f}
 (excluding the \code{obj} argument). The custom function must accept \code{obj} (a numeric matrix) as its
 first argument and return a numeric matrix of identical dimensions.
 
@@ -85,7 +89,7 @@ obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 parameters <- data.frame(k = c(5, 10))
 
 # With random NA injection
-results <- tune_imp(obj, parameters, rep = 1, num_na = 20)
+results <- tune_imp(obj, parameters, .f = "knn_imp", rep = 1, num_na = 20)
 
 # Compute metrics on results
 compute_metrics(results)
@@ -99,6 +103,7 @@ na_positions <- list(
 results_fixed <- tune_imp(
   obj,
   data.frame(k = 10),
+  .f = "knn_imp",
   rep = na_positions
 )
 

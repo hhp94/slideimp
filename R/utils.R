@@ -113,12 +113,15 @@ qlogis_clamped <- function(obj, eps = 1e-10, ...) {
   checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
   checkmate::assert_number(
     eps,
-    lower = .Machine$double.eps,
+    lower = 0,
     upper = 0.5,
-    finite  = TRUE,
+    finite = TRUE,
     null.ok = FALSE,
     .var.name = "eps"
   )
+  if (eps <= .Machine$double.eps) {
+    warning("`eps` may be too small.")
+  }
 
   rng <- range(obj, na.rm = TRUE)
   if (rng[1] < 0 || rng[2] > 1) {

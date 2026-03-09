@@ -24,7 +24,7 @@ test_that("tune_imp works", {
 
   # Check `slide_imp`
   expect_no_error({
-    slide_imp_imp_res <- tune_imp(obj, slide_imp_par, rep = 1, num_na = 200)
+    slide_imp_imp_res <- tune_imp(obj, slide_imp_par, .f = "slide_imp", rep = 1, num_na = 200)
   })
 
   expect_true(
@@ -46,7 +46,7 @@ test_that("tune_imp works", {
     post_imp = TRUE
   )
   expect_no_error({
-    knn_imp_res <- tune_imp(obj, knn_imp_par, rep = 1, num_na = 100)
+    knn_imp_res <- tune_imp(obj, knn_imp_par, .f = "knn_imp", rep = 1, num_na = 100)
   })
 
   expect_true(
@@ -64,7 +64,7 @@ test_that("tune_imp works", {
   # Check `pca_imp`
   pca_imp_par <- data.frame(ncp = 2, miniter = 2)
   expect_no_error({
-    pca_imp_res <- tune_imp(obj, pca_imp_par, rep = 1, num_na = 100)
+    pca_imp_res <- tune_imp(obj, pca_imp_par, .f = "pca_imp", rep = 1, num_na = 100)
   })
 
   expect_true(
@@ -132,6 +132,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     slide_imp_res <- tune_imp(
       obj,
       slide_imp_par,
+      .f = "slide_imp",
       rep = na_loc_list, # Using list instead of integer
     )
   })
@@ -162,6 +163,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     knn_imp_res <- tune_imp(
       obj,
       knn_imp_par,
+      .f = "knn_imp",
       rep = na_loc_list
     )
   })
@@ -213,6 +215,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     varied_res <- tune_imp(
       obj,
       slide_imp_par,
+      .f = "slide_imp",
       rep = varied_na_locs
     )
   })

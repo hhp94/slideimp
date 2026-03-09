@@ -138,7 +138,6 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 
 #' Tune Parameters for Imputation Methods
 #'
-#' @description
 #' Tunes hyperparameters for imputation methods such as [slide_imp()], [knn_imp()], [pca_imp()],
 #' or user-supplied custom functions by repeated cross-validation.
 #'
@@ -146,7 +145,13 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' The function supports tuning for built-in imputation methods ("slide_imp", "knn_imp", "pca_imp")
 #' or custom functions provided via `.f`.
 #'
-#' When using a custom `.f`, the columns in `parameters` must correspond to the arguments of `.f`
+#' When `.f` is a character string, the columns in `parameters` are validated against the chosen
+#' method's requirements:
+#'   - `"knn_imp"`: requires `k` in `parameters`
+#'   - `"pca_imp"`: requires `ncp` in `parameters`
+#'   - `"slide_imp"`: requires `n_feat` and `n_overlap`, plus exactly one of `k` or `ncp`
+#'
+#' When `.f` is a custom function, the columns in `parameters` must correspond to the arguments of `.f`
 #' (excluding the `obj` argument). The custom function must accept `obj` (a numeric matrix) as its
 #' first argument and return a numeric matrix of identical dimensions.
 #'
@@ -158,21 +163,19 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
 #' @param check_sd Check if after NA injections zero variance columns are created or not.
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default to 1000).
-#' @param parameters A data.frame specifying parameter combinations to tune, where each column
+#' @param parameters A [tibble::tibble()]/data.frame specifying parameter combinations to tune, where each column
 #' represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
-#' for complex parameters. Duplicate rows are automatically removed. When `.f = NULL`, the
-#' imputation method is inferred from the column names:
-#'   - `k`: K-NN imputation
-#'   - `ncp`: PCA imputation
-#'   - `k` or `ncp` with `n_feat` and `n_overlap`: sliding window imputation
+#' for complex parameters. Duplicate rows are automatically removed.
 #' @param rep Either an integer specifying the number of repetitions for random NA injection, or
 #' a list defining fixed NA positions for each repetition (in which case `num_na` is ignored).
 #' The list elements can be one of the following formats:
 #'   - A two-column integer matrix. The first column is the row index, the second column is the column index.
 #'   Each row is an missing value.
 #'   - A numeric vector specifying linear locations of NAs.
-#' @param .f Custom function to tune. Must accept `obj` as the first argument, accept the arguments in `parameters`,
-#' and return a matrix with the same dimension as `obj` (default = `NULL`).
+#' @param .f The imputation method to tune. Either a character string (`"knn_imp"`, `"pca_imp"`,
+#' or `"slide_imp"`) specifying a built-in method, or a custom function. Custom functions must
+#' accept `obj` as the first argument, accept the arguments in `parameters`, and return a matrix
+#' with the same dimensions as `obj`.
 #' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation with OpenMP only.
 #' To setup parallelization for K-NN without OpenMP, PCA, and sliding window PCA imputation, use `mirai::daemons()`.
 #'
@@ -188,7 +191,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' parameters <- data.frame(k = c(5, 10))
 #'
 #' # With random NA injection
-#' results <- tune_imp(obj, parameters, rep = 1, num_na = 20)
+#' results <- tune_imp(obj, parameters, .f = "knn_imp", rep = 1, num_na = 20)
 #'
 #' # Compute metrics on results
 #' compute_metrics(results)
@@ -202,6 +205,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' results_fixed <- tune_imp(
 #'   obj,
 #'   data.frame(k = 10),
+#'   .f = "knn_imp",
 #'   rep = na_positions
 #' )
 #'
@@ -230,12 +234,12 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 tune_imp <- function(
   obj,
   parameters,
-  .f = NULL,
+  .f,
   rep = 1,
   num_na = 100,
   rowmax = 0.9,
   colmax = 0.9,
-  check_sd = FALSE,
+  check_sd = TRUE,
   max_iter = 1000,
   .progress = TRUE,
   cores = 1
@@ -264,65 +268,47 @@ tune_imp <- function(
   )
   parameters <- unique(parameters)
 
-  # .f logics
-  if (is.null(.f)) {
-    has_k <- "k" %in% names(parameters)
-    has_ncp <- "ncp" %in% names(parameters)
-    has_slide_params <- any(c("n_feat", "n_overlap") %in% names(parameters))
-    if (has_slide_params) {
+  # validate .f
+  if (is.character(.f)) {
+    stopifnot(
+      "`.f` must be 'slide_imp', 'knn_imp', or 'pca_imp'." =
+        .f %in% c("slide_imp", "knn_imp", "pca_imp") && length(.f) == 1
+    )
+
+    if (.f == "slide_imp") {
       if (!all(c("n_feat", "n_overlap") %in% names(parameters))) {
-        stop("`parameters` must have both `n_feat` and `n_overlap` for `slide_imp` tuning.")
+        stop("`slide_imp` requires both `n_feat` and `n_overlap` in `parameters`.")
       }
-      if (has_k && has_ncp) {
-        stop(
-          "For sliding window imputation (slide_imp), cannot have both `k` and `ncp` in `parameters`.\n",
-          "Provide only one:\n",
-          "- `k` for slide_imp with K-NN\n",
-          "- `ncp` for slide_imp with PCA"
-        )
-      } else if (!has_k && !has_ncp) {
-        stop(
-          "For sliding window imputation (slide_imp), must provide either `k` or `ncp` in `parameters` along with `n_feat` and `n_overlap`.\n",
-          "Provide:\n",
-          "- `k` for slide_imp with K-NN\n",
-          "- `ncp` for slide_imp with PCA"
-        )
-      } else {
-        .f <- "slide_imp"
+      if ("k" %in% names(parameters) && "ncp" %in% names(parameters)) {
+        stop("`slide_imp` requires exactly one of `k` or `ncp` in `parameters`, not both.")
+      }
+      if (!any(c("k", "ncp") %in% names(parameters))) {
+        stop("`slide_imp` requires either `k` or `ncp` in `parameters`.")
+      }
+      if(!".progress" %in% names(parameters)) {
         parameters$.progress <- FALSE
       }
-    } else if (has_k && has_ncp) {
-      stop(
-        "Both `k` and `ncp` found in `parameters`.\n",
-        "Specify either:\n",
-        "- `k` for K-NN imputation (knn_imp)\n",
-        "- `ncp` for PCA imputation (pca_imp)\n",
-        "- `n_feat` and `n_overlap` plus either `k` or `ncp` for sliding window imputation (slide_imp)"
-      )
-    } else if (has_k) {
-      .f <- "knn_imp"
-    } else if (has_ncp) {
-      .f <- "pca_imp"
-    } else {
-      stop(
-        "Either specify `.f` directly, or include one of:\n",
-        "- `k` for K-NN imputation (knn_imp)\n",
-        "- `ncp` for PCA imputation (pca_imp)\n",
-        "- `n_feat` and `n_overlap` plus either `k` or `ncp` for sliding window imputation (slide_imp)"
-      )
+    } else if (.f == "knn_imp") {
+      if (!"k" %in% names(parameters)) {
+        stop("`knn_imp` requires `k` in `parameters`.")
+      }
+      if ("ncp" %in% names(parameters)) {
+        stop("`knn_imp` does not accept `ncp`. Did you mean `.f = 'pca_imp'`?")
+      }
+    } else if (.f == "pca_imp") {
+      if (!"ncp" %in% names(parameters)) {
+        stop("`pca_imp` requires `ncp` in `parameters`.")
+      }
+      if ("k" %in% names(parameters)) {
+        stop("`pca_imp` does not accept `k`. Did you mean `.f = 'knn_imp'`?")
+      }
     }
-  }
-  # validate .f
-  stopifnot(
-    "`.f` must be a function or 'slide_imp' or 'knn_imp' or 'pca_imp'." = (
-      is.function(.f) || (is.character(.f) && (.f %in% c("slide_imp", "knn_imp", "pca_imp")) && length(.f) == 1)
-    )
-  )
 
-  if (is.function(.f)) {
+    message(sprintf("Tuning %s", .f))
+  } else if (is.function(.f)) {
     message("Tuning custom function")
   } else {
-    message(sprintf("Tuning %s", .f))
+    stop("`.f` must be a function or one of 'slide_imp', 'knn_imp', 'pca_imp'.")
   }
 
   if (is.numeric(rep)) {

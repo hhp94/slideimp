@@ -48,10 +48,10 @@ na_location <- replicate(
 na_location[[1]][1:10, ]
 ```
 
-We proceed to measure the accuracy of the imputation using "good" default parameters for K-NN (`k = 10`) and PCA (`ncp = 5`). For PCA imputation, we leverage the `{mirai}` package for parallelization while the `cores` argument control parallelization for K-NN.
+We proceed to measure the accuracy of the imputation using "good" default parameters for K-NN (`k = 10`) and PCA (`ncp = 5`). For PCA imputation, we leverage the `{mirai}` package for parallelization while the `cores` argument control parallelization for K-NN (with OpenMP only).
 ```{r}
-tune_knn <- tune_imp(obj, parameters = data.frame(k = 10), rep = na_location, cores = 4)
-tune_pca <- tune_imp(obj, parameters = data.frame(ncp = 5), rep = na_location)
+tune_knn <- tune_imp(obj, parameters = data.frame(k = 10), .f = "knn_imp", rep = na_location, cores = 4)
+tune_pca <- tune_imp(obj, parameters = data.frame(ncp = 5), .f = "pca_imp", rep = na_location)
 ```
 
 In this case, PCA imputation performs better. Since the data only needs to be imputed once and the run time is so low, using PCA imputation for this dataset is preferable.
@@ -159,6 +159,7 @@ slide_knn_params <- tibble::tibble(k = c(10, 20), n_feat = 100, n_overlap = 10)
 tune_slide_knn <- tune_imp(
   obj = beta_matrix,
   parameters = slide_knn_params,
+  .f = "slide_imp",
   cores = 4,
   rep = 2
 )
