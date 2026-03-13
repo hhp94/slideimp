@@ -6,8 +6,10 @@
 \usage{
 slide_imp(
   obj,
-  n_feat,
-  n_overlap,
+  location,
+  window_size,
+  overlap_size = 0,
+  min_window_n = 2L,
   k = NULL,
   colmax = 0.9,
   knn_method = c("euclidean", "manhattan"),
@@ -30,9 +32,18 @@ slide_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{n_feat}{Number of features in a window.}
+\item{location}{A sorted numeric vector of length \code{ncol(obj)} giving the
+position of each column (e.g., genomic coordinates). Used to define
+sliding windows.}
 
-\item{n_overlap}{Number of overlapping features between two windows.}
+\item{window_size}{Window width in the same units as \code{location}.}
+
+\item{overlap_size}{Overlap between consecutive windows in the same units
+as \code{location}. Must be less than \code{window_size}. Default is \code{0}.}
+
+\item{min_window_n}{Minimum number of columns a window must contain to be
+imputed. Windows smaller than this are dropped. \code{k} and \code{ncp} must also
+be smaller than \code{min_window_n}. Default is \code{2}.}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
@@ -82,16 +93,18 @@ Weights are normalized to sum to 1.}
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise.
-
-This method assumes that columns are meaningfully sorted.
+Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise. This
+method assumes that columns are meaningfully sorted by \code{location}.
 }
 \details{
 The sliding window approach divides the input matrix into smaller, overlapping
-segments and applies imputation to each window independently. Values in overlapping
-areas are averaged across windows to produce the final imputed result.
-This approach assumes that features (columns) are sorted meaningfully (e.g.,
-by genomic position, time, etc.).
+segments based on \code{location} values and applies imputation to each window
+independently. Values in overlapping areas are averaged across windows to
+produce the final imputed result.
+
+Windows are determined by \code{find_windows()}, which walks along the sorted
+\code{location} vector and groups columns whose positions fall within
+\code{window_size} of each other.
 
 Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA.
 }
@@ -100,13 +113,15 @@ Specify \code{k} and related arguments to use K-NN, \code{ncp} and related argum
 # where the column order is sorted (i.e., by genomic position)
 set.seed(1234)
 beta_matrix <- t(sim_mat(100, 20)$input)
+location <- 1:100
 
 # Sliding Window K-NN imputation by specifying `k`
 imputed_knn <- slide_imp(
   beta_matrix,
+  location = location,
   k = 5,
-  n_feat = 50,
-  n_overlap = 10,
+  window_size = 50,
+  overlap_size = 10,
   scale = FALSE # This argument belongs to PCA imputation and will be ignored
 )
 imputed_knn
@@ -114,9 +129,10 @@ imputed_knn
 # Sliding Window PCA imputation by specifying `ncp`
 pca_knn <- slide_imp(
   beta_matrix,
+  location = location,
   ncp = 2,
-  n_feat = 50,
-  n_overlap = 10
+  window_size = 50,
+  overlap_size = 10
 )
 pca_knn
 

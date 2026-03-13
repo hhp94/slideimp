@@ -5,6 +5,10 @@ pca_imp_internal_cpp <- function(X, miss, ncp, scale, regularized, threshold, in
     .Call(`_slideimp_pca_imp_internal_cpp`, X, miss, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge)
 }
 
+find_windows <- function(x, window, overlap = 0.0) {
+    .Call(`_slideimp_find_windows`, x, window, overlap)
+}
+
 #' Impute missing values in a matrix using k-nearest neighbors (K-NN) with brute-force
 #'
 #' This function imputes missing values in a matrix using a k-nearest neighbors

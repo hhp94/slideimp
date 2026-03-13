@@ -285,7 +285,7 @@ tune_imp <- function(
       if (!any(c("k", "ncp") %in% names(parameters))) {
         stop("`slide_imp` requires either `k` or `ncp` in `parameters`.")
       }
-      if(!".progress" %in% names(parameters)) {
+      if (!".progress" %in% names(parameters)) {
         parameters$.progress <- FALSE
       }
     } else if (.f == "knn_imp") {
