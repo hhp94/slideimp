@@ -9,7 +9,7 @@ slide_imp(
   location,
   window_size,
   overlap_size = 0,
-  min_window_n = 2L,
+  min_window_n,
   k = NULL,
   colmax = 0.9,
   knn_method = c("euclidean", "manhattan"),
@@ -43,7 +43,7 @@ as \code{location}. Must be less than \code{window_size}. Default is \code{0}.}
 
 \item{min_window_n}{Minimum number of columns a window must contain to be
 imputed. Windows smaller than this are dropped. \code{k} and \code{ncp} must also
-be smaller than \code{min_window_n}. Default is \code{2}.}
+be smaller than \code{min_window_n}.}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 

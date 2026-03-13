@@ -15,7 +15,8 @@ tune_imp(
   check_sd = TRUE,
   max_iter = 1000,
   .progress = TRUE,
-  cores = 1
+  cores = 1,
+  location = NULL
 )
 }
 \arguments{
@@ -53,6 +54,10 @@ Each row is an missing value.
 
 \item{cores}{Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation with OpenMP only.
 To setup parallelization for K-NN without OpenMP, PCA, and sliding window PCA imputation, use \code{mirai::daemons()}.}
+
+\item{location}{A sorted numeric vector of length \code{ncol(obj)} giving the
+position of each column (e.g., genomic coordinates). Used to define
+sliding windows.}
 }
 \value{
 A \code{tibble::tibble()} with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),
@@ -72,7 +77,7 @@ method's requirements:
 \itemize{
 \item \code{"knn_imp"}: requires \code{k} in \code{parameters}
 \item \code{"pca_imp"}: requires \code{ncp} in \code{parameters}
-\item \code{"slide_imp"}: requires \code{n_feat} and \code{n_overlap}, plus exactly one of \code{k} or \code{ncp}
+\item \code{"slide_imp"}: requires \code{window_size} and \code{overlap_size}, plus exactly one of \code{k} or \code{ncp}
 }
 
 When \code{.f} is a custom function, the columns in \code{parameters} must correspond to the arguments of \code{.f}

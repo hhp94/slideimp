@@ -11,9 +11,10 @@ test_that("grid_to_linear correctly converts 2D positions to linear indices", {
 test_that("tune_imp works", {
   data(khanmiss1)
   slide_imp_par <- data.frame(
-    n_feat = c(100, 100),
+    window_size = c(100, 100),
     k = c(5, 10),
-    n_overlap = c(10, 10),
+    overlap_size = c(10, 10),
+    min_window_n = 20,
     knn_method = "euclidean",
     post_imp = FALSE
   )
@@ -22,9 +23,17 @@ test_that("tune_imp works", {
   obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
   expect_true(anyNA(obj))
 
+  location <- 1:ncol(obj)
   # Check `slide_imp`
   expect_no_error({
-    slide_imp_imp_res <- tune_imp(obj, slide_imp_par, .f = "slide_imp", rep = 1, num_na = 200)
+    slide_imp_imp_res <- tune_imp(
+      obj,
+      slide_imp_par,
+      .f = "slide_imp",
+      location = location,
+      rep = 1,
+      num_na = 200
+    )
   })
 
   expect_true(
@@ -121,15 +130,18 @@ test_that("tune_imp works when rep is a list of NA locations", {
 
   # Test with slide_imp
   slide_imp_par <- data.frame(
-    n_feat = 100,
+    window_size = 100,
     k = 5,
-    n_overlap = 10,
+    overlap_size = 10,
     knn_method = "euclidean",
+    min_window_n = 10,
     post_imp = FALSE
   )
 
+  location <- 1:ncol(obj)
   expect_no_error({
     slide_imp_res <- tune_imp(
+      location = location,
       obj,
       slide_imp_par,
       .f = "slide_imp",
@@ -211,9 +223,11 @@ test_that("tune_imp works when rep is a list of NA locations", {
     sample(1:length(obj), 5, replace = FALSE)
   )
 
+  location <- 1:ncol(obj)
   expect_no_error({
     varied_res <- tune_imp(
       obj,
+      location = location,
       slide_imp_par,
       .f = "slide_imp",
       rep = varied_na_locs

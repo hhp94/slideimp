@@ -89,24 +89,24 @@ knn_params <- tibble::tibble(k = c(5, 20))
 tune_knn <- tune_imp(obj, parameters = knn_params, .f = "knn_imp", cores = 2, rep = 2)
 #> Tuning knn_imp
 #> Step 1/2: Injecting NA
-#> Running Mode: sequential...
+#> Running Mode: parallel...
 #> Step 2/2: Tuning
 compute_metrics(tune_knn)
 #> # A tibble: 12 × 7
 #>        k cores param_set   rep .metric .estimator .estimate
 #>    <dbl> <dbl>     <int> <int> <chr>   <chr>          <dbl>
-#>  1     5     1         1     1 mae     standard     0.178  
-#>  2     5     1         1     1 rmse    standard     0.225  
-#>  3     5     1         1     1 rsq     standard     0.00454
-#>  4    20     1         2     1 mae     standard     0.149  
-#>  5    20     1         2     1 rmse    standard     0.190  
-#>  6    20     1         2     1 rsq     standard     0.0172 
-#>  7     5     1         1     2 mae     standard     0.202  
-#>  8     5     1         1     2 rmse    standard     0.259  
-#>  9     5     1         1     2 rsq     standard     0.00960
-#> 10    20     1         2     2 mae     standard     0.172  
-#> 11    20     1         2     2 rmse    standard     0.219  
-#> 12    20     1         2     2 rsq     standard     0.0850
+#>  1     5     2         1     1 mae     standard     0.178  
+#>  2     5     2         1     1 rmse    standard     0.225  
+#>  3     5     2         1     1 rsq     standard     0.00454
+#>  4    20     2         2     1 mae     standard     0.149  
+#>  5    20     2         2     1 rmse    standard     0.190  
+#>  6    20     2         2     1 rsq     standard     0.0172 
+#>  7     5     2         1     2 mae     standard     0.202  
+#>  8     5     2         1     2 rmse    standard     0.259  
+#>  9     5     2         1     2 rsq     standard     0.00960
+#> 10    20     2         2     2 mae     standard     0.172  
+#> 11    20     2         2     2 rmse    standard     0.219  
+#> 12    20     2         2     2 rsq     standard     0.0850
 ```
 
 For K-NN without OpenMP, PCA, and custom functions, setup
@@ -179,9 +179,9 @@ full_pca_results <- pca_imp(obj = obj, ncp = 5)
 ## Sliding Window Imputation
 
 Sliding window imputation can be performed using `slide_imp()`.
-**Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes and
-converted into either beta or M values before sliding window imputation.
-See vignette for more details.
+**Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes
+(i.e. run `slide_imp()` separately on each chromosome) before
+imputation. See the package vignette for more details.
 
 ``` r
 chr1_beta <- t(sim_mat(m = 10, n = 2000, perc_NA = 0.3, perc_col_NA = 1, nchr = 1)$input)
@@ -194,10 +194,38 @@ chr1_beta[1:5, 1:5]
 #> s3        NA        NA        NA 0.3108793        NA
 #> s4 0.5401526 0.5779956 0.4271064        NA 0.3309645
 #> s5 0.6457875        NA 0.7308792 0.4803642 0.5929590
+```
 
-# From the tune results, choose window size of 50, overlap of size 5 between windows,
-# K-NN imputation using k = 10. Specify `ncp` for sliding window PCA imputation.
-slide_imp(obj = chr1_beta, n_feat = 50, n_overlap = 5, k = 10, cores = 2, .progress = FALSE)
+**`slide_imp()` parameter explanations**
+
+- `location`: Sorted numeric vector of length `ncol(obj)` giving the
+  position of each column (e.g. genomic coordinates in *bp*).
+- `window_size`: Width of each sliding window **(same unit as
+  `location`)**.
+- `overlap_size` (optional): Overlap width between consecutive windows
+  (same units as `location`). Must be strictly less than `window_size`.
+- `min_window_n`: Minimum number of columns a window must contain to be
+  imputed. Windows smaller than this are dropped. Must be greater than
+  `k` (for KNN) or `ncp` (for PCA).
+- `k`: *(specifying KNN imputation)* Number of nearest neighbors to use
+  inside each window.
+- `ncp`: *(specifying PCA imputation)* Number of principal components to
+  retain. Use this instead of `k` when performing sliding-window PCA
+  imputation.
+
+``` r
+location <- seq_len(ncol(chr1_beta))   # 1, 2, ..., 2000 for this simulated chromosome
+
+slide_imp(
+  obj = chr1_beta,
+  location = location,
+  window_size = 50,
+  overlap_size = 5,
+  min_window_n = 11, # must be > k = 10
+  k = 10,
+  cores = 2,
+  .progress = FALSE
+)
 #> ImputedMatrix (KNN)
 #> Dimensions: 10 x 2000
 #> 
@@ -209,40 +237,4 @@ slide_imp(obj = chr1_beta, n_feat = 50, n_overlap = 5, k = 10, cores = 2, .progr
 #> s5 0.6457875 0.4006866 0.7308792 0.4803642 0.5929590
 #> 
 #> # Showing [1:5, 1:5] of full matrix
-```
-
-## M-Values vs. Beta Values
-
-PCA imputation on beta values may produce values outside of the (0, 1)
-range. The resulting matrix can either be clamped to the (0, 1) interval
-afterwards, or M-values can be used for imputation.
-
-To use M-values, first convert the beta values to M-values with
-`qlogis_clamped()`, perform the imputation, and then convert the result
-back to beta values with `plogis()`:
-
-``` r
-obj[1:4, 1:4]
-#>        feat1     feat2     feat3     feat4
-#> s1 0.2391314        NA 0.7203854 0.0000000
-#> s2 0.0000000 0.2810446 0.1600776 0.1816453
-#> s3 0.5897476 0.3677927 0.5027545 0.3608640
-#> s4 0.4201222        NA        NA 0.3356484
-
-m_obj <- qlogis_clamped(obj)
-m_obj[1:4, 1:4]
-#>          feat1      feat2       feat3       feat4
-#> s1  -1.1574476         NA  0.94637423 -23.0258509
-#> s2 -23.0258509 -0.9392861 -1.65765062  -1.5052401
-#> s3   0.3629221 -0.5416979  0.01101798  -0.5716163
-#> s4  -0.3222719         NA          NA  -0.6827472
-m_obj_imputed <- pca_imp(m_obj, ncp = 2)
-
-obj_imputed <- plogis(m_obj_imputed)
-obj_imputed[1:4, 1:4]
-#>           feat1     feat2     feat3        feat4
-#> s1 0.2391313851 0.4621480 0.7203854 0.0000000001
-#> s2 0.0000000001 0.2810446 0.1600776 0.1816452794
-#> s3 0.5897476146 0.3677927 0.5027545 0.3608639590
-#> s4 0.4201221624 0.5292327 0.2640069 0.3356484352
 ```

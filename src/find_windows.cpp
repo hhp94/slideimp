@@ -16,27 +16,31 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
 
   while (i < n)
   {
-    // current threshhold is starting value + window
+    // current threshold is starting value + window (half-open: [x[i], x[i]+window))
     double threshold = x[i] + window;
     int j = i;
-    // scan forward, until reach a value of x larger than threshold
-    while (j + 1 < n && x[j + 1] <= threshold)
+    // scan forward, until reach a value of x >= threshold
+    while (j + 1 < n && x[j + 1] < threshold)
     {
-      j++;
+      ++j;
     }
     // note down start value and end values and iterate k
     starts[k] = i + 1;
     ends[k] = j + 1;
-    k++;
+    ++k;
 
-    // find next start: first index past i whose value exceeds threshold - overlap.
-    // When overlap == 0, cutoff == threshold, so x[m] <= threshold for all m <= j,
-    // and we land on j + 1 — identical to the original behavior.
+    // if this window already covers the last element, we're done
+    if (j == n - 1)
+      break;
+
+    // find next start: first index past i whose value >= cutoff.
+    // When overlap == 0, cutoff == threshold, so x[m] < threshold for all m <= j,
+    // and we land on j + 1 — identical to non-overlapping behavior.
     double cutoff = threshold - overlap;
     int next_i = i + 1; // guarantee forward progress
-    while (next_i <= j && x[next_i] <= cutoff)
+    while (next_i <= j && x[next_i] < cutoff)
     {
-      next_i++;
+      ++next_i;
     }
     i = next_i;
   }

@@ -149,7 +149,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' method's requirements:
 #'   - `"knn_imp"`: requires `k` in `parameters`
 #'   - `"pca_imp"`: requires `ncp` in `parameters`
-#'   - `"slide_imp"`: requires `n_feat` and `n_overlap`, plus exactly one of `k` or `ncp`
+#'   - `"slide_imp"`: requires `window_size` and `overlap_size`, plus exactly one of `k` or `ncp`
 #'
 #' When `.f` is a custom function, the columns in `parameters` must correspond to the arguments of `.f`
 #' (excluding the `obj` argument). The custom function must accept `obj` (a numeric matrix) as its
@@ -242,7 +242,8 @@ tune_imp <- function(
   check_sd = TRUE,
   max_iter = 1000,
   .progress = TRUE,
-  cores = 1
+  cores = 1,
+  location = NULL
 ) {
   # pre-conditioning
   checkmate::assert_matrix(
@@ -276,8 +277,22 @@ tune_imp <- function(
     )
 
     if (.f == "slide_imp") {
-      if (!all(c("n_feat", "n_overlap") %in% names(parameters))) {
-        stop("`slide_imp` requires both `n_feat` and `n_overlap` in `parameters`.")
+      # validate location argument (required for slide_imp)
+      if (is.null(location)) {
+        stop("`slide_imp` requires the `location` argument to be provided.")
+      }
+      checkmate::assert_numeric(
+        location,
+        len = nc,
+        any.missing = FALSE,
+        sorted = TRUE,
+        finite = TRUE,
+        null.ok = FALSE,
+        .var.name = "location"
+      )
+      # validate required tuning parameters
+      if (!all(c("window_size", "overlap_size", "min_window_n") %in% names(parameters))) {
+        stop("`slide_imp` requires `window_size`, `overlap_size`, and `min_window_n` in `parameters`.")
       }
       if ("k" %in% names(parameters) && "ncp" %in% names(parameters)) {
         stop("`slide_imp` requires exactly one of `k` or `ncp` in `parameters`, not both.")
@@ -454,6 +469,11 @@ tune_imp <- function(
     target_function <- .f
     validate_output <- TRUE
   }
+
+  # Build extra fixed args for slide_imp (location is not a tuning parameter)
+  is_slide <- is.character(.f) && .f == "slide_imp"
+  fixed_args <- if (is_slide) list(location = location) else list()
+
   # Parameter list
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
     row_list <- as.list(row)
@@ -466,7 +486,7 @@ tune_imp <- function(
     })
     row_list
   })
-  # Create a single unified crated function
+  # create a single unified crated function
   crated_fn <- fn(
     function(i) {
       tryCatch(
@@ -479,10 +499,10 @@ tune_imp <- function(
           truth_vec <- obj[na_positions]
           # Get parameters for this iteration
           param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
-          # Run imputation function
+          # Run imputation function (include fixed_args for slide_imp)
           imputed_result <- do.call(
             target_function,
-            args = c(list(obj = pre), param_vec)
+            args = c(list(obj = pre), fixed_args, param_vec)
           )
           # validate result if it's a custom function
           if (validate_output) {
@@ -512,14 +532,15 @@ tune_imp <- function(
     indices = indices,
     nr = nr,
     nc = nc,
-    parameters_list = parameters_list
+    parameters_list = parameters_list,
+    fixed_args = fixed_args
   )
   if (.progress) {
     message("Step 2/2: Tuning\n")
   }
-  # Execute the mapping with the crated function
+  # execute the mapping with the crated function
   result_list <- purrr::map(seq_len(nrow(indices)), crated_fn, .progress = .progress)
-  # Combine parameters with results
+  # combine parameters with results
   result_df <- tibble::as_tibble(cbind(
     parameters[indices$param_set, , drop = FALSE],
     indices,

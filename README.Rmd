@@ -128,31 +128,34 @@ full_pca_results <- pca_imp(obj = obj, ncp = 5)
 ```
 
 ## Sliding Window Imputation
-Sliding window imputation can be performed using `slide_imp()`. **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes and converted into either beta or M values before sliding window imputation. See vignette for more details.
+Sliding window imputation can be performed using `slide_imp()`. **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e. run `slide_imp()` separately on each chromosome) before imputation. See the package vignette for more details.
 
 ```{r}
 chr1_beta <- t(sim_mat(m = 10, n = 2000, perc_NA = 0.3, perc_col_NA = 1, nchr = 1)$input)
 dim(chr1_beta)
 chr1_beta[1:5, 1:5]
-
-# From the tune results, choose window size of 50, overlap of size 5 between windows,
-# K-NN imputation using k = 10. Specify `ncp` for sliding window PCA imputation.
-slide_imp(obj = chr1_beta, n_feat = 50, n_overlap = 5, k = 10, cores = 2, .progress = FALSE)
 ```
 
-## M-Values vs. Beta Values
-PCA imputation on beta values may produce values outside of the (0, 1) range. The resulting matrix can either be clamped to the (0, 1) interval afterwards, or M-values can be used for imputation.  
+**`slide_imp()` parameter explanations**
 
-To use M-values, first convert the beta values to M-values with `qlogis_clamped()`, perform the imputation, and then convert the result back to beta values with `plogis()`:
+* `location`: Sorted numeric vector of length `ncol(obj)` giving the position of each column (e.g. genomic coordinates in *bp*).
+* `window_size`: Width of each sliding window **(same unit as `location`)**.
+* `overlap_size` (optional): Overlap width between consecutive windows (same units as `location`). Must be strictly less than `window_size`.
+* `min_window_n`: Minimum number of columns a window must contain to be imputed. Windows smaller than this are dropped. Must be greater than `k` (for KNN) or `ncp` (for PCA).
+* `k`: *(specifying KNN imputation)* Number of nearest neighbors to use inside each window.
+* `ncp`: *(specifying PCA imputation)* Number of principal components to retain. Use this instead of `k` when performing sliding-window PCA imputation.
 
 ```{r}
-obj[1:4, 1:4]
+location <- seq_len(ncol(chr1_beta))   # 1, 2, ..., 2000 for this simulated chromosome
 
-m_obj <- qlogis_clamped(obj)
-m_obj[1:4, 1:4]
-m_obj_imputed <- pca_imp(m_obj, ncp = 2)
-
-obj_imputed <- plogis(m_obj_imputed)
-obj_imputed[1:4, 1:4]
+slide_imp(
+  obj = chr1_beta,
+  location = location,
+  window_size = 50,
+  overlap_size = 5,
+  min_window_n = 11, # must be > k = 10
+  k = 10,
+  cores = 2,
+  .progress = FALSE
+)
 ```
-

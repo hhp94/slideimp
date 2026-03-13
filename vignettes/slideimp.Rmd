@@ -151,10 +151,10 @@ beta_matrix[sample.int(length(beta_matrix), floor(length(beta_matrix) * 0.1))] <
 beta_matrix[1:5, 1:5]
 ```
 
-This example dataset is small, but in actual analyses with millions of CpGs, we can tune the K-NN or PCA imputation on just the first tens of thousands of CpGs. Here, we perform K-NN imputation by specifying `k`, a window size (`n_feat`) of 100, and a 10-CpG overlap (`n_overlap`) between windows.
+This example dataset is small, but in actual analyses with millions of CpGs, we can tune the K-NN or PCA imputation on just the first tens of thousands of CpGs. Here, we perform K-NN imputation by specifying `k`, a window size (`window_size`) of 100, and a 10-CpG overlap (`overlap_size`) between windows.
 ```{r}
 # For example, we are tuning `k` value here.
-slide_knn_params <- tibble::tibble(k = c(10, 20), n_feat = 100, n_overlap = 10)
+slide_knn_params <- tibble::tibble(k = c(10, 20), window_size = 100, overlap_size = 10)
 # Increase rep from 2 in actual analyses
 tune_slide_knn <- tune_imp(
   obj = beta_matrix,
@@ -168,6 +168,6 @@ compute_metrics(tune_slide_knn)
 
 Finally, we can use `slide_imp()` to impute the `beta_matrix`.
 ```{r}
-imputed_beta <- slide_imp(obj = beta_matrix, n_feat = 100, n_overlap = 10, k = 10, cores = 4)
+imputed_beta <- slide_imp(obj = beta_matrix, window_size = 100, overlap_size = 10, k = 10, cores = 4)
 imputed_beta
 ```

@@ -41,7 +41,7 @@ find_overlap_regions <- function(start, end) {
 #'   as `location`. Must be less than `window_size`. Default is `0`.
 #' @param min_window_n Minimum number of columns a window must contain to be
 #'   imputed. Windows smaller than this are dropped. `k` and `ncp` must also
-#'   be smaller than `min_window_n`. Default is `2`.
+#'   be smaller than `min_window_n`.
 #' @param knn_method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
 #' @param pca_method "regularized" by default or "EM".
 #' @param .progress Show progress bar (default = `TRUE`).
@@ -94,7 +94,7 @@ slide_imp <- function(
   location,
   window_size,
   overlap_size = 0,
-  min_window_n = 2L,
+  min_window_n,
   # KNN-specific parameters
   k = NULL,
   colmax = 0.9,

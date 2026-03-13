@@ -48,31 +48,39 @@ test_that("`slide_imp` knn mode works", {
   final_imputed <- final_imputed / counts
 
   # slide_imp should exactly replicate this result
+  location <- 1:ncol(to_test)
   simple_mean <- slide_imp(
     to_test,
-    n_feat = 100,
-    n_overlap = 10,
+    location = location,
+    window_size = 100,
+    overlap_size = 10,
     k = 3,
+    min_window_n = 10,
     colmax = 0.9,
     post_imp = TRUE
   )
+
   expect_identical(simple_mean[, ], final_imputed)
 
   # slide_imp weighted should be different than simple mean
   weighted_1 <- slide_imp(
     to_test,
-    n_feat = 100,
-    n_overlap = 10,
+    location = location,
+    window_size = 100,
+    overlap_size = 10,
     k = 3,
+    min_window_n = 10,
     colmax = 0.9,
     post_imp = TRUE,
     dist_pow = 1
   )
   weighted_2 <- slide_imp(
     to_test,
-    n_feat = 100,
-    n_overlap = 10,
+    location = location,
+    window_size = 100,
+    overlap_size = 10,
     k = 3,
+    min_window_n = 10,
     colmax = 0.9,
     post_imp = TRUE,
     dist_pow = 2
@@ -140,12 +148,15 @@ test_that("`slide_imp` subset works", {
   counts[, window_cols] <- counts[, window_cols] + 1
   final_imputed <- final_imputed / counts
   # slide_imp should exactly replicate this result
+  location <- 1:ncol(to_test)
   expect_equal(
     slide_imp(
       to_test,
-      n_feat = 20,
-      n_overlap = 5,
+      location = location,
+      window_size = 20,
+      overlap_size = 5,
       k = 3,
+      min_window_n = 10,
       colmax = 0.9,
       post_imp = TRUE,
       subset = subset
@@ -204,11 +215,14 @@ test_that("`slide_imp` edge case no overlap", {
   counts[, 201:300] <- counts[, 201:300] + 1
   final_imputed <- final_imputed / counts
   # slide_imp should exactly replicate this result
+  location <- 1:ncol(to_test)
   expect_equal(
     slide_imp(
       to_test,
-      n_feat = 100,
-      n_overlap = 0,
+      location = location,
+      window_size = 100,
+      overlap_size = 0,
+      min_window_n = 10,
       k = 3,
       colmax = 0.9,
       post_imp = TRUE
@@ -315,10 +329,13 @@ test_that("`slide_imp` pca mode works", {
   final_imputed <- final_imputed / counts
   set.seed(1234)
   # slide_imp should exactly replicate this result
+  location <- 1:ncol(to_test)
   simple_mean <- slide_imp(
     to_test,
-    n_feat = 100,
-    n_overlap = 10,
+    location = location,
+    window_size = 100,
+    overlap_size = 10,
+    min_window_n = 10,
     ncp = 2,
     miniter = 2,
     seed = 1234
@@ -337,11 +354,14 @@ test_that("`slide_imp` errors on zero-variance features in PCA mode", {
     )$input
   )
   to_test[, 1] <- 1
+  location <- 1:ncol(to_test)
   expect_error(
     slide_imp(
       to_test,
-      n_feat = 100,
-      n_overlap = 10,
+      location = location,
+      window_size = 100,
+      overlap_size = 10,
+      min_window_n = 10,
       ncp = 2,
       miniter = 2
     ),

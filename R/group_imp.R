@@ -1,3 +1,33 @@
+group_indices <- function(
+  g, feat_splits, aux_splits, aux_lengths,
+  has_any_aux, group_features
+) {
+  f_idx <- feat_splits[[g]]
+  if (has_any_aux && aux_lengths[g] > 0) {
+    col_idx <- c(f_idx, aux_splits[[g]])
+  } else {
+    col_idx <- f_idx
+  }
+  list(
+    features_idx_local = seq_along(f_idx),
+    col_idx = col_idx,
+    features_names = group_features[[g]]
+  )
+}
+
+process_group_params <- function(g, base_params, group, is_knn_mode, has_parameters) {
+  group_params <- base_params
+  if (is_knn_mode) {
+    group_params$subset <- group$features[[g]]
+  }
+  if (has_parameters && !is.null(group$parameters[[g]])) {
+    group_specific <- group$parameters[[g]]
+    group_specific[["cores"]] <- NULL
+    group_params[names(group_specific)] <- group_specific
+  }
+  group_params
+}
+
 #' Grouped K-NN or PCA Imputation
 #'
 #' K-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
@@ -111,11 +141,13 @@ group_imp <- function(
     group <- tibble::as_tibble(group)
   }
   checkmate::assert_list(group$features, types = "character", min.len = 1, .var.name = "group$features")
-  for (i in seq_along(group$features)) {
-    if (anyDuplicated(group$features[[i]]) > 0) {
-      warning(paste("Group", i, "contains repeated features. Removing duplicates ..."))
-      group$features[[i]] <- unique(group$features[[i]])
-    }
+  has_dups_feats <- vapply(group$features, \(x) anyDuplicated(x) > 0, logical(1))
+  if (any(has_dups_feats)) {
+    warning(paste(
+      "Group(s)", paste(which(has_dups_feats), collapse = ", "),
+      "contain repeated features. Removing duplicates ..."
+    ))
+    group$features[has_dups_feats] <- lapply(group$features[has_dups_feats], unique)
   }
   features_length <- vapply(group$features, length, numeric(1))
   empty_features <- features_length == 0
@@ -124,10 +156,9 @@ group_imp <- function(
   }
   if ("aux" %in% names(group)) {
     checkmate::assert_list(group$aux, types = c("character", "null"), min.len = 1, .var.name = "group$aux")
-    for (i in seq_along(group$aux)) {
-      if (anyDuplicated(group$aux[[i]]) > 0) {
-        group$aux[[i]] <- unique(group$aux[[i]])
-      }
+    has_dups_aux <- vapply(group$aux, \(x) anyDuplicated(x) > 0, logical(1))
+    if (any(has_dups_aux)) {
+      group$aux[has_dups_aux] <- lapply(group$aux[has_dups_aux], unique)
     }
   } else {
     group$aux <- list(NULL)
@@ -218,20 +249,45 @@ group_imp <- function(
     stop("Same features can't be in more than 1 groups")
   }
   iter <- seq_len(nrow(group))
-  indices <- lapply(iter, function(g) {
-    # Have to convert to index to be able to use bigmemory
-    columns <- unique(c(group$features[[g]], group$aux[[g]]))
-    non_features <- setdiff(columns, group$features[[g]])
-    features_idx <- match(group$features[[g]], cn)
-    non_features_idx <- match(non_features, cn)
-    return(
-      list(
-        features_idx_local = seq_along(features_idx),
-        col_idx = c(features_idx, non_features_idx),
-        features_names = cn[features_idx]
-      )
-    )
-  })
+
+  # Column-index lookups for each group ----
+  # Step 1: Map feature names to column positions in `obj`, in one batch.
+  # Instead of looping per-group with match(), we unlist everything,
+  # do a single fmatch(), then split the result back by group.
+  all_feats_vec <- unlist(group$features)
+  all_feats_pos <- collapse::fmatch(all_feats_vec, cn) # integer positions in obj
+  feat_lengths <- lengths(group$features) # how many features per group
+  # the recreate per-group splits: group 1 gets first feat_lengths[1] positions, etc.
+  feat_splits <- collapse::gsplit(all_feats_pos, rep(iter, feat_lengths))
+  # Step 2: Compute aux-only columns (aux that are NOT already in features).
+  # This avoids double-counting a column that appears in both lists.
+  aux_only <- purrr::map2(group$aux, group$features, setdiff)
+  aux_lengths <- lengths(aux_only)
+  has_any_aux <- sum(aux_lengths) > 0
+  # Step 3: Same batch lookup for aux columns, but only if any exist.
+  aux_splits <- list()
+  if (has_any_aux) {
+    all_aux_vec <- unlist(aux_only)
+    all_aux_pos <- collapse::fmatch(all_aux_vec, cn)
+    aux_splits <- collapse::gsplit(all_aux_pos, rep(iter, aux_lengths))
+  }
+  # Step 4: Assemble per-group index bundles.
+  # Each element contains:
+  # - col_idx: combined column positions (features first, then aux)
+  # used to subset obj into a sub-matrix for imputation
+  # - features_idx_local: 1:window_sizeures where the feature columns sit inside
+  # the sub-matrix (always the first columns, since features are pre-pended before
+  # aux in col_idx)
+  # - features_names: original column names, used to write results back
+  indices <- lapply(
+    iter,
+    group_indices,
+    feat_splits = feat_splits,
+    aux_splits = aux_splits,
+    aux_lengths = aux_lengths,
+    has_any_aux = has_any_aux,
+    group_features = group$features
+  )
 
   # parallel logic ----
   is_knn_mode <- imp_method == "knn"
@@ -260,44 +316,32 @@ group_imp <- function(
     )
   }
 
-  params <- lapply(iter, function(g) {
-    if (imp_method == "knn") {
-      group_params <- list(
-        k = k,
-        colmax = colmax,
-        method = knn_method,
-        cores = cores,
-        post_imp = post_imp,
-        subset = group$features[[g]], # only columns in features need to be imputed
-        dist_pow = dist_pow,
-        tree = tree
-      )
-    } else {
-      # pca has to impute features + aux, but only features will be in the results
-      group_params <- list(
-        ncp = ncp,
-        scale = scale,
-        method = pca_method,
-        coeff.ridge = coeff.ridge,
-        threshold = threshold,
-        seed = seed,
-        row.w = row.w,
-        nb.init = nb.init,
-        maxiter = maxiter,
-        miniter = miniter
-      )
-    }
+  # group level parameters ----
+  if (imp_method == "knn") {
+    base_params <- list(
+      k = k, colmax = colmax, method = knn_method,
+      cores = cores, post_imp = post_imp,
+      dist_pow = dist_pow, tree = tree
+    )
+  } else {
+    base_params <- list(
+      ncp = ncp, scale = scale, method = pca_method,
+      coeff.ridge = coeff.ridge, threshold = threshold,
+      seed = seed, row.w = row.w, nb.init = nb.init,
+      maxiter = maxiter, miniter = miniter
+    )
+  }
+  # Strip NULLs
+  base_params <- base_params[!vapply(base_params, is.null, logical(1))]
 
-    # use group-specific parameters if provided
-    if (has_parameters && !is.null(group$parameters[[g]])) {
-      group_specific <- group$parameters[[g]]
-      for (param_name in setdiff(names(group_specific), "cores")) {
-        group_params[[param_name]] <- group_specific[[param_name]]
-      }
-    }
-    group_params <- group_params[!vapply(group_params, is.null, logical(1))]
-    return(group_params)
-  })
+  params <- lapply(
+    iter,
+    process_group_params,
+    base_params = base_params,
+    group = group,
+    is_knn_mode = is_knn_mode,
+    has_parameters = has_parameters
+  )
 
   # imputation ----
   imp_fn <- if (is_knn_mode) knn_imp else pca_imp
@@ -317,10 +361,9 @@ group_imp <- function(
     crated_fn <- purrr::in_parallel(
       function(i) {
         attached_matrix <- bigmemory::attach.big.matrix(big_obj_desc)
-        imputed <- do.call(
-          imp_fn,
-          c(list(obj = attached_matrix[, indices[[i]]$col_idx]), params[[i]])
-        )[, indices[[i]]$features_idx_local]
+        sub_mat <- attached_matrix[, indices[[i]]$col_idx, drop = FALSE]
+        imputed <- do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))
+        imputed <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
         colnames(imputed) <- indices[[i]]$features_names
         return(imputed)
       },
@@ -334,10 +377,9 @@ group_imp <- function(
     results <- purrr::map(
       iter,
       function(i) {
-        imputed <- do.call(
-          imp_fn,
-          c(list(obj = obj[, indices[[i]]$col_idx]), params[[i]])
-        )[, indices[[i]]$features_idx_local]
+        sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
+        imputed <- do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))
+        imputed <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
         colnames(imputed) <- indices[[i]]$features_names
         return(imputed)
       },
@@ -345,9 +387,7 @@ group_imp <- function(
     )
   }
 
-  for (res in results) {
-    obj[, colnames(res)] <- res
-  }
+  obj[, all_feats_pos] <- do.call(cbind, results)
 
   class(obj) <- c("ImputedMatrix", class(obj))
   attr(obj, "imp_method") <- imp_method
