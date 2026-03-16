@@ -40,7 +40,7 @@ find_overlap_regions <- function(start, end) {
 #' @param overlap_size Overlap between consecutive windows in the same units
 #'   as `location`. Must be less than `window_size`. Default is `0`.
 #' @param min_window_n Minimum number of columns a window must contain to be
-#'   imputed. Windows smaller than this are dropped. `k` and `ncp` must also
+#'   imputed. Windows smaller than this are not imputed. `k` and `ncp` must also
 #'   be smaller than `min_window_n`.
 #' @param knn_method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
 #' @param pca_method "regularized" by default or "EM".
@@ -74,6 +74,7 @@ find_overlap_regions <- function(start, end) {
 #'   k = 5,
 #'   window_size = 50,
 #'   overlap_size = 10,
+#'   min_window_n = 10,
 #'   scale = FALSE # This argument belongs to PCA imputation and will be ignored
 #' )
 #' imputed_knn
@@ -84,7 +85,8 @@ find_overlap_regions <- function(start, end) {
 #'   location = location,
 #'   ncp = 2,
 #'   window_size = 50,
-#'   overlap_size = 10
+#'   overlap_size = 10,
+#'   min_window_n = 10
 #' )
 #' pca_knn
 #'
@@ -213,11 +215,17 @@ slide_imp <- function(
       }
     })
   }
+
   # Overlap regions to average over
   overlap <- find_overlap_regions(start, end)
 
   # Sliding Imputation ----
-  result <- matrix(0, nrow = nrow(obj), ncol = ncol(obj), dimnames = list(rownames(obj), colnames(obj)))
+  result <- matrix(
+    0,
+    nrow = nrow(obj), ncol = ncol(obj),
+    dimnames = list(rownames(obj), colnames(obj))
+  )
+
   if (.progress) {
     message("Step 1/2: Imputing")
     n_windows <- length(start)

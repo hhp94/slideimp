@@ -99,9 +99,9 @@ Then, preferably perform imputation by group with `group_imp()` if the variables
 
 - `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation.
 - `group_imp()` requires a `group` tibble, *preferably* created with `group_features()`, with three list-columns:
-  - `features`: **required** – a list-column where each element is a character vector of variable names to be imputed together.
-  - `aux`: **optional** – auxiliary variables to include in each group.
-  - `parameters`: **optional** – group-specific imputation parameters.
+  - `features`: **required** - a list-column where each element is a character vector of variable names to be imputed together.
+  - `aux`: **optional** - auxiliary variables to include in each group.
+  - `parameters`: **optional** - group-specific imputation parameters.
 - In this example, we have data from 2 chromosomes so the `group` tibble should have **two rows** (one per chromosome), with the corresponding variables listed in the `features` column for each row.
 
 PCA-based imputation with `group_imp()` can be parallelized using the `{mirai}` package, similar to how parallelization is done with `tune_imp()`.
@@ -136,17 +136,17 @@ dim(chr1_beta)
 chr1_beta[1:5, 1:5]
 ```
 
-**`slide_imp()` parameter explanations**
+`slide_imp()` parameters:
 
-* `location`: Sorted numeric vector of length `ncol(obj)` giving the position of each column (e.g. genomic coordinates in *bp*).
-* `window_size`: Width of each sliding window **(same unit as `location`)**.
-* `overlap_size` (optional): Overlap width between consecutive windows (same units as `location`). Must be strictly less than `window_size`.
-* `min_window_n`: Minimum number of columns a window must contain to be imputed. Windows smaller than this are dropped. Must be greater than `k` (for KNN) or `ncp` (for PCA).
-* `k`: *(specifying KNN imputation)* Number of nearest neighbors to use inside each window.
-* `ncp`: *(specifying PCA imputation)* Number of principal components to retain. Use this instead of `k` when performing sliding-window PCA imputation.
+* `location`: **required** - a sorted numeric vector of length `ncol(obj)` giving the position of each column (e.g. genomic coordinates in *bp*).
+* `window_size`: **required** - width of each sliding window (same unit as `location`).
+* `overlap_size`: **optional** - overlap width between consecutive windows (same units as `location`). Must be strictly less than `window_size`.
+* `min_window_n`: **required** - minimum number of columns a window must contain to be imputed. Windows smaller than this are dropped. Must be greater than `k` (for KNN) or `ncp` (for PCA).
+* `k`: **required** - *(specifying KNN imputation)* Number of nearest neighbors to use inside each window.
+* `ncp`: **required** - *(specifying PCA imputation)* Number of principal components to retain. Use this instead of `k` when performing sliding-window PCA imputation.
 
 ```{r}
-location <- seq_len(ncol(chr1_beta))   # 1, 2, ..., 2000 for this simulated chromosome
+location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromosome
 
 slide_imp(
   obj = chr1_beta,

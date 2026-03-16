@@ -50,8 +50,21 @@ na_location[[1]][1:10, ]
 
 We proceed to measure the accuracy of the imputation using "good" default parameters for K-NN (`k = 10`) and PCA (`ncp = 5`). For PCA imputation, we leverage the `{mirai}` package for parallelization while the `cores` argument control parallelization for K-NN (with OpenMP only).
 ```{r}
-tune_knn <- tune_imp(obj, parameters = data.frame(k = 10), .f = "knn_imp", rep = na_location, cores = 4)
-tune_pca <- tune_imp(obj, parameters = data.frame(ncp = 5), .f = "pca_imp", rep = na_location)
+tune_knn <- tune_imp(
+  obj,
+  parameters = data.frame(k = 10),
+  .f = "knn_imp",
+  rep = na_location,
+  cores = 4 # works for K-NN/slide_imp K-NN with OpenMP only
+)
+
+# mirai requires the carrier package for parallelization
+tune_pca <- tune_imp(
+  obj,
+  parameters = data.frame(ncp = 5),
+  .f = "pca_imp",
+  rep = na_location
+)
 ```
 
 In this case, PCA imputation performs better. Since the data only needs to be imputed once and the run time is so low, using PCA imputation for this dataset is preferable.
@@ -64,7 +77,7 @@ c("knn" = rmse_knn, "pca" = rmse_pca)
 ## Subset and grouped K-NN and PCA imputation
 Some DNA methylation analyses only focus on epigenetic clocks, which require only a subset of CpGs to be imputed. The `knn_imp()` function takes advantage of this to significantly reduce run time. To impute only specific CpGs for K-NN imputation and make use of grouped imputation we can use the `group_features()` function.
 
-Here, we simulate data where only a subset of CpGs are needed for imputation. PCA imputation does not benefit from subset imputation, but does benefit from grouped imputation.
+Here, we simulate data where only a subset of CpGs are needed for imputation.
 
 ```{r}
 # 500 features, 50 samples, 2 chromosomes
@@ -90,10 +103,10 @@ For demonstration purposes, we use the `parameters` column to add group-specific
 ```{r}
 pca_group <- group_df
 # For PCA imputation, we use ncp = 5 for the first group and ncp = 10 for the second group
-pca_group$parameters <- list(data.frame(ncp = 5), data.frame(ncp = 10))
+pca_group$parameters <- list(list(ncp = 5), list(ncp = 10))
 # For K-NN imputation, we use k = 5 for both groups
 knn_group <- group_df
-knn_group$parameters <- list(data.frame(k = 5), data.frame(k = 5))
+knn_group$parameters <- list(list(k = 5), list(k = 5))
 
 pca_group
 knn_group
@@ -151,23 +164,46 @@ beta_matrix[sample.int(length(beta_matrix), floor(length(beta_matrix) * 0.1))] <
 beta_matrix[1:5, 1:5]
 ```
 
-This example dataset is small, but in actual analyses with millions of CpGs, we can tune the K-NN or PCA imputation on just the first tens of thousands of CpGs. Here, we perform K-NN imputation by specifying `k`, a window size (`window_size`) of 100, and a 10-CpG overlap (`overlap_size`) between windows.
+We also need the `location` object, which is the actual location of each of the column (e.g., actual genomic locations). This object is used to determine which columns are grouped together given a window size. For demonstration, we are saying these columns are just 1 base pair apart.
+```{r}
+location <- 1:ncol(beta_matrix)
+location[1:5]
+```
+
+This example dataset is small, but in actual analyses with millions of CpGs, we can tune the K-NN or PCA imputation on just the first tens of thousands of CpGs. Here, we perform K-NN imputation by specifying `k`, a window size (`window_size`) of 100 (base pairs), and a 10-bp overlap (`overlap_size`) between windows. We need to specify the minimum number of CpGs in a group that will be imputed `min_window_n`. Groups with size below `min_window_n` is not imputed.
 ```{r}
 # For example, we are tuning `k` value here.
-slide_knn_params <- tibble::tibble(k = c(10, 20), window_size = 100, overlap_size = 10)
+slide_knn_params <- tibble::tibble(
+  k = c(10, 20),
+  window_size = 100,
+  overlap_size = 10,
+  min_window_n = 30 # has to be larger than k
+)
+
 # Increase rep from 2 in actual analyses
 tune_slide_knn <- tune_imp(
   obj = beta_matrix,
   parameters = slide_knn_params,
   .f = "slide_imp",
   cores = 4,
-  rep = 2
+  rep = 2,
+  location = location
 )
+
 compute_metrics(tune_slide_knn)
 ```
 
 Finally, we can use `slide_imp()` to impute the `beta_matrix`.
 ```{r}
-imputed_beta <- slide_imp(obj = beta_matrix, window_size = 100, overlap_size = 10, k = 10, cores = 4)
+imputed_beta <- slide_imp(
+  obj = beta_matrix,
+  location = location,
+  window_size = 100,
+  overlap_size = 10,
+  k = 10,
+  min_window_n = 30,
+  cores = 4
+)
+
 imputed_beta
 ```

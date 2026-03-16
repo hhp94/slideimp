@@ -196,25 +196,27 @@ chr1_beta[1:5, 1:5]
 #> s5 0.6457875        NA 0.7308792 0.4803642 0.5929590
 ```
 
-**`slide_imp()` parameter explanations**
+`slide_imp()` parameters:
 
-- `location`: Sorted numeric vector of length `ncol(obj)` giving the
-  position of each column (e.g. genomic coordinates in *bp*).
-- `window_size`: Width of each sliding window **(same unit as
-  `location`)**.
-- `overlap_size` (optional): Overlap width between consecutive windows
-  (same units as `location`). Must be strictly less than `window_size`.
-- `min_window_n`: Minimum number of columns a window must contain to be
-  imputed. Windows smaller than this are dropped. Must be greater than
-  `k` (for KNN) or `ncp` (for PCA).
-- `k`: *(specifying KNN imputation)* Number of nearest neighbors to use
-  inside each window.
-- `ncp`: *(specifying PCA imputation)* Number of principal components to
-  retain. Use this instead of `k` when performing sliding-window PCA
-  imputation.
+- `location`: **required** - a sorted numeric vector of length
+  `ncol(obj)` giving the position of each column (e.g. genomic
+  coordinates in *bp*).
+- `window_size`: **required** - width of each sliding window (same unit
+  as `location`).
+- `overlap_size`: **optional** - overlap width between consecutive
+  windows (same units as `location`). Must be strictly less than
+  `window_size`.
+- `min_window_n`: **required** - minimum number of columns a window must
+  contain to be imputed. Windows smaller than this are dropped. Must be
+  greater than `k` (for KNN) or `ncp` (for PCA).
+- `k`: **required** - *(specifying KNN imputation)* Number of nearest
+  neighbors to use inside each window.
+- `ncp`: **required** - *(specifying PCA imputation)* Number of
+  principal components to retain. Use this instead of `k` when
+  performing sliding-window PCA imputation.
 
 ``` r
-location <- seq_len(ncol(chr1_beta))   # 1, 2, ..., 2000 for this simulated chromosome
+location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromosome
 
 slide_imp(
   obj = chr1_beta,

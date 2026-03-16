@@ -122,6 +122,7 @@ imputed_knn <- slide_imp(
   k = 5,
   window_size = 50,
   overlap_size = 10,
+  min_window_n = 10,
   scale = FALSE # This argument belongs to PCA imputation and will be ignored
 )
 imputed_knn
@@ -132,7 +133,8 @@ pca_knn <- slide_imp(
   location = location,
   ncp = 2,
   window_size = 50,
-  overlap_size = 10
+  overlap_size = 10,
+  min_window_n = 10
 )
 pca_knn
 
