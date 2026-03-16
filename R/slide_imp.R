@@ -102,7 +102,7 @@ slide_imp <- function(
   colmax = 0.9,
   knn_method = c("euclidean", "manhattan"),
   cores = 1,
-  post_imp = TRUE,
+  post_imp = FALSE,
   dist_pow = 0,
   subset = NULL,
   # PCA-specific parameters
@@ -289,7 +289,7 @@ slide_imp <- function(
   }
 
   # Post-imputation ----
-  if (imp_method == "knn" && post_imp) {
+  if (post_imp) {
     if (.progress) {
       message("Post-imputation: filling remaining NAs with column means")
     }

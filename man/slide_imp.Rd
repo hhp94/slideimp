@@ -14,7 +14,7 @@ slide_imp(
   colmax = 0.9,
   knn_method = c("euclidean", "manhattan"),
   cores = 1,
-  post_imp = TRUE,
+  post_imp = FALSE,
   dist_pow = 0,
   subset = NULL,
   ncp = NULL,
@@ -42,7 +42,7 @@ sliding windows.}
 as \code{location}. Must be less than \code{window_size}. Default is \code{0}.}
 
 \item{min_window_n}{Minimum number of columns a window must contain to be
-imputed. Windows smaller than this are dropped. \code{k} and \code{ncp} must also
+imputed. Windows smaller than this are not imputed. \code{k} and \code{ncp} must also
 be smaller than \code{min_window_n}.}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
