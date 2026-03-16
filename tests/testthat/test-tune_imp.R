@@ -319,3 +319,99 @@ test_that("tune_imp handles mixed linear and 2D positions in list", {
     expect_true(all(res$estimate == 67))
   }
 })
+
+test_that("compute_metrics works with TuneImp, data.frame, and tibble objects", {
+  set.seed(123)
+  obj <- matrix(1:100, nrow = 10, ncol = 10)
+
+  simple_imp <- function(obj, mu) {
+    miss <- is.na(obj)
+    obj[miss] <- rnorm(n = sum(miss), mean = mu)
+    return(obj)
+  }
+
+  params <- data.frame(mu = 42)
+  result_tune <- tune_imp(
+    obj,
+    params,
+    rep = 2,
+    num_na = 10,
+    .f = simple_imp
+  )
+
+  # TuneImp object
+  out_tune <- compute_metrics(result_tune)
+  expect_s3_class(out_tune, "tbl_df")
+  expect_true(all(c(".metric", ".estimator", ".estimate", "n", "n_miss") %in% names(out_tune)))
+  expect_equal(sort(unique(out_tune$.metric)), c("mae", "rmse", "rsq"))
+
+  # Plain data.frame
+  result_df <- as.data.frame(result_tune)
+  class(result_df) <- "data.frame"
+  out_df <- compute_metrics(result_df)
+  expect_s3_class(out_df, "tbl_df")
+  expect_equal(out_df$.estimate, out_tune$.estimate)
+
+  # Tibble (inherits from data.frame, so dispatch hits data.frame method)
+  result_tbl <- tibble::as_tibble(result_tune)
+  class(result_tbl) <- c("tbl_df", "tbl", "data.frame")
+  out_tbl <- compute_metrics(result_tbl)
+  expect_s3_class(out_tbl, "tbl_df")
+  expect_equal(out_tbl$.estimate, out_tune$.estimate)
+})
+
+test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
+  set.seed(456)
+  obj <- matrix(1:100, nrow = 10, ncol = 10)
+
+  simple_imp <- function(obj, mu) {
+    miss <- is.na(obj)
+    obj[miss] <- rnorm(n = sum(miss), mean = mu)
+    return(obj)
+  }
+
+  params <- data.frame(mu = 42)
+  result <- tune_imp(
+    obj,
+    params,
+    rep = 2,
+    num_na = 10,
+    .f = simple_imp
+  )
+
+  # No NAs case: all estimates should be present
+  out_clean <- compute_metrics(result)
+  expect_true(all(out_clean$n == 10))
+  expect_true(all(out_clean$n_miss == 0))
+
+  # Inject NAs into the estimate column of each result element
+  result$result[[1]]$estimate[c(1, 3)] <- NA
+  result$result[[2]]$estimate[c(2, 5, 7)] <- NA
+
+  out_na <- compute_metrics(result)
+
+  # Rep 1: 10 rows, 2 missing
+  rows_rep1 <- out_na[out_na$rep == 1, ]
+  expect_true(all(rows_rep1$n == 10))
+  expect_true(all(rows_rep1$n_miss == 2))
+
+  # Rep 2: 10 rows, 3 missing
+  rows_rep2 <- out_na[out_na$rep == 2, ]
+  expect_true(all(rows_rep2$n == 10))
+  expect_true(all(rows_rep2$n_miss == 3))
+
+  # n and n_miss are consistent across metrics within the same rep
+  for (r in unique(out_na$rep)) {
+    subset <- out_na[out_na$rep == r, ]
+    expect_length(unique(subset$n), 1)
+    expect_length(unique(subset$n_miss), 1)
+  }
+})
+
+test_that("compute_metrics.data.frame errors without required columns", {
+  bad_df <- data.frame(x = 1:3)
+  expect_error(compute_metrics(bad_df), "result")
+
+  bad_result <- data.frame(result = I(list(data.frame(a = 1, b = 2))))
+  expect_error(compute_metrics(bad_result), "truth.*estimate")
+})

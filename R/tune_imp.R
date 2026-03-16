@@ -639,6 +639,19 @@ compute_metrics <- function(results, metrics = c("mae", "rmse", "rsq")) {
 }
 
 #' @export
+compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse", "rsq")) {
+  if (!"result" %in% names(results)) {
+    stop("`results` must contain a 'result' column.")
+  }
+  first_result <- results$result[[1]]
+  if (!is.data.frame(first_result) ||
+    !all(c("truth", "estimate") %in% names(first_result))) {
+    stop("Each element of 'result' must be a data.frame with 'truth' and 'estimate' columns.")
+  }
+  compute_metrics.TuneImp(results, metrics = metrics)
+}
+
+#' @export
 compute_metrics.TuneImp <- function(results, metrics = c("mae", "rmse", "rsq")) {
   checkmate::assert_character(metrics, unique = TRUE)
 
@@ -660,18 +673,24 @@ compute_metrics.TuneImp <- function(results, metrics = c("mae", "rmse", "rsq")) 
   }
 
   metric_fns <- .metrics_list[metrics]
+
+  # always compute n and n_miss per result element
+  results$n <- vapply(results$result, nrow, integer(1))
+  results$n_miss <- vapply(results$result, function(x) sum(is.na(x$estimate)), integer(1))
   results$metrics <- lapply(
     results$result,
     \(x) calc_all_metrics(x, metric_fns = metric_fns)
   )
+
   keep_cols <- setdiff(names(results), c("result", "metrics"))
 
   out <- do.call(rbind, lapply(seq_len(nrow(results)), function(i) {
     row_data <- results[i, keep_cols, drop = FALSE]
-    row_data <- row_data[rep(1, nrow(results$metrics[[i]])), , drop = FALSE]
-    row_data <- cbind(row_data, results$metrics[[i]])
-    row_data
+    metric_df <- results$metrics[[i]]
+    row_data <- row_data[rep(1, nrow(metric_df)), , drop = FALSE]
+    rownames(row_data) <- NULL
+    cbind(row_data, metric_df)
   }))
 
-  return(tibble::as_tibble(out))
+  tibble::as_tibble(out)
 }
