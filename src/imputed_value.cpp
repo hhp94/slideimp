@@ -88,55 +88,55 @@ void impute_column_values(
     }
 }
 
-//' @title Weighted Row Mean
-//'
-//' @description Calculate weighted row means for specified columns, accounting for missing values.
-//'
-//' @param obj A numeric matrix containing the data.
-//' @param miss An unsigned integer matrix indicating missing values (0 for observed, 1 for missing).
-//' @param nn_columns An unsigned integer vector of column indices for the neighbors.
-//' @param nn_weights A numeric vector of weights corresponding to the neighbors.
-//'
-//' @return A column vector containing the weighted row means, with NaN where computation is not possible.
-//'
-//' @keywords internal
-//' @noRd
-// [[Rcpp::export]]
-arma::vec weighted_row_means(
-    const arma::mat &obj,
-    const arma::umat &miss,
-    const arma::uvec &nn_columns,
-    const arma::vec &nn_weights)
-{
-    const arma::uword n_rows = obj.n_rows;
-    const arma::uword n_neighbors = nn_columns.n_elem;
-    arma::vec predicted(n_rows);
-    // Pre-fetch column pointers to avoid repeated indexing
-    std::vector<const double *> data_cols(n_neighbors);
-    std::vector<const arma::uword *> miss_cols(n_neighbors);
-    for (arma::uword j = 0; j < n_neighbors; ++j)
-    {
-        data_cols[j] = obj.colptr(nn_columns(j));
-        miss_cols[j] = miss.colptr(nn_columns(j));
-    }
-    const double *weight_ptr = nn_weights.memptr();
-    // Process each row
-    for (arma::uword r = 0; r < n_rows; ++r)
-    {
-        double numerator = 0.0;
-        double denominator = 0.0;
-        for (arma::uword j = 0; j < n_neighbors; ++j)
-        {
-            if (miss_cols[j][r] == 0)
-            {
-                double weight = weight_ptr[j];
-                numerator += data_cols[j][r] * weight;
-                denominator += weight;
-            }
-        }
-        // If denominator is zero then return NaN
-        predicted(r) = (denominator > 0.0) ? (numerator / denominator) : arma::datum::nan;
-    }
-
-    return predicted;
-}
+// //' @title Weighted Row Mean
+// //'
+// //' @description Calculate weighted row means for specified columns, accounting for missing values.
+// //'
+// //' @param obj A numeric matrix containing the data.
+// //' @param miss An unsigned integer matrix indicating missing values (0 for observed, 1 for missing).
+// //' @param nn_columns An unsigned integer vector of column indices for the neighbors.
+// //' @param nn_weights A numeric vector of weights corresponding to the neighbors.
+// //'
+// //' @return A column vector containing the weighted row means, with NaN where computation is not possible.
+// //'
+// //' @keywords internal
+// //' @noRd
+// // [[Rcpp::export]]
+// arma::vec weighted_row_means(
+//     const arma::mat &obj,
+//     const arma::umat &miss,
+//     const arma::uvec &nn_columns,
+//     const arma::vec &nn_weights)
+// {
+//     const arma::uword n_rows = obj.n_rows;
+//     const arma::uword n_neighbors = nn_columns.n_elem;
+//     arma::vec predicted(n_rows);
+//     // Pre-fetch column pointers to avoid repeated indexing
+//     std::vector<const double *> data_cols(n_neighbors);
+//     std::vector<const arma::uword *> miss_cols(n_neighbors);
+//     for (arma::uword j = 0; j < n_neighbors; ++j)
+//     {
+//         data_cols[j] = obj.colptr(nn_columns(j));
+//         miss_cols[j] = miss.colptr(nn_columns(j));
+//     }
+//     const double *weight_ptr = nn_weights.memptr();
+//     // Process each row
+//     for (arma::uword r = 0; r < n_rows; ++r)
+//     {
+//         double numerator = 0.0;
+//         double denominator = 0.0;
+//         for (arma::uword j = 0; j < n_neighbors; ++j)
+//         {
+//             if (miss_cols[j][r] == 0)
+//             {
+//                 double weight = weight_ptr[j];
+//                 numerator += data_cols[j][r] * weight;
+//                 denominator += weight;
+//             }
+//         }
+//         // If denominator is zero then return NaN
+//         predicted(r) = (denominator > 0.0) ? (numerator / denominator) : arma::datum::nan;
+//     }
+//
+//     return predicted;
+// }

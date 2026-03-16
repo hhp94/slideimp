@@ -81,20 +81,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// weighted_row_means
-arma::vec weighted_row_means(const arma::mat& obj, const arma::umat& miss, const arma::uvec& nn_columns, const arma::vec& nn_weights);
-RcppExport SEXP _slideimp_weighted_row_means(SEXP objSEXP, SEXP missSEXP, SEXP nn_columnsSEXP, SEXP nn_weightsSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const arma::umat& >::type miss(missSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type nn_columns(nn_columnsSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type nn_weights(nn_weightsSEXP);
-    rcpp_result_gen = Rcpp::wrap(weighted_row_means(obj, miss, nn_columns, nn_weights));
-    return rcpp_result_gen;
-END_RCPP
-}
 // has_openmp
 bool has_openmp();
 RcppExport SEXP _slideimp_has_openmp() {
@@ -135,7 +121,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 7},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
-    {"_slideimp_weighted_row_means", (DL_FUNC) &_slideimp_weighted_row_means, 4},
     {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},

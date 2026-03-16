@@ -388,7 +388,7 @@ test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
   result$result[[1]]$estimate[c(1, 3)] <- NA
   result$result[[2]]$estimate[c(2, 5, 7)] <- NA
 
-  out_na <- compute_metrics(result)
+  out_na <- compute_metrics(result, metrics =  c("mae", "rmse", "mape", "bias", "rsq", "rsq_trad"))
 
   # Rep 1: 10 rows, 2 missing
   rows_rep1 <- out_na[out_na$rep == 1, ]

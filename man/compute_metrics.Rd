@@ -4,14 +4,14 @@
 \alias{compute_metrics}
 \title{Compute Prediction Accuracy Metrics}
 \usage{
-compute_metrics(results, metrics = c("mae", "rmse", "rsq"))
+compute_metrics(results, metrics = c("mae", "rmse"))
 }
 \arguments{
 \item{results}{A tibble from \code{\link[=tune_imp]{tune_imp()}} containing a \code{result} column
 with tibbles that have \code{truth} and \code{estimate} columns.}
 
 \item{metrics}{A character vector of metric names to compute. Defaults
-to \code{c("mae", "rmse", "rsq")}. Also available: \code{"mape"}, \code{"bias"}, \code{"calc_rsq_trad"}.}
+to \code{c("mae", "rmse")}. Also available: \code{"mape"}, \code{"bias"}, \code{"rsq"}, and \code{"rsq_trad"}.}
 }
 \value{
 A tibble with the original parameters and unnested metrics

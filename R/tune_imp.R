@@ -615,7 +615,7 @@ calc_all_metrics <- function(x, metric_fns) {
 #' @param results A tibble from [tune_imp()] containing a `result` column
 #' with tibbles that have `truth` and `estimate` columns.
 #' @param metrics A character vector of metric names to compute. Defaults
-#' to `c("mae", "rmse", "rsq")`. Also available: `"mape"`, `"bias"`, `"calc_rsq_trad"`.
+#' to `c("mae", "rmse")`. Also available: `"mape"`, `"bias"`, `"rsq"`, and `"rsq_trad"`.
 #'
 #' @return A tibble with the original parameters and unnested metrics
 #' (`.metric`, `.estimator`, `.estimate`).
@@ -634,12 +634,12 @@ calc_all_metrics <- function(x, metric_fns) {
 #' compute_metrics(results)
 #'
 #' @export
-compute_metrics <- function(results, metrics = c("mae", "rmse", "rsq")) {
+compute_metrics <- function(results, metrics = c("mae", "rmse")) {
   UseMethod("compute_metrics")
 }
 
 #' @export
-compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse", "rsq")) {
+compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
   if (!"result" %in% names(results)) {
     stop("`results` must contain a 'result' column.")
   }
@@ -652,7 +652,7 @@ compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse", "rsq"
 }
 
 #' @export
-compute_metrics.TuneImp <- function(results, metrics = c("mae", "rmse", "rsq")) {
+compute_metrics.TuneImp <- function(results, metrics = c("mae", "rmse")) {
   checkmate::assert_character(metrics, unique = TRUE)
 
   .metrics_list <- list(

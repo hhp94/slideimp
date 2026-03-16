@@ -255,7 +255,6 @@ std::vector<NeighborInfo> distance_vector(
 //' or a weighted average (inverse distance weighting) of non-missing values from
 //' these neighbors, depending on the `weighted` parameter.
 //'
-//'
 //' @param obj Numeric matrix with missing values represented as NA (NaN).
 //' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 //' @param k Number of nearest neighbors to use for imputation.

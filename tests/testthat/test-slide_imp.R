@@ -231,54 +231,6 @@ test_that("`slide_imp` edge case no overlap", {
   )
 })
 
-test_that("`weighted_row_means` works", {
-  # Generate test data
-  set.seed(123)
-  to_test <- t(sim_mat(n = 10, m = 10, perc_NA = 0.5, perc_col_NA = 1)$input)
-
-  # Create miss matrix (1 = missing, 0 = observed)
-  miss <- is.na(to_test)
-
-  # All columns with equal weights should match rowMeans
-  n_cols <- ncol(to_test)
-  nn_columns <- 0:(n_cols - 1) # 0-indexed for C++
-  nn_weights <- rep(1, n_cols) # Equal weights
-
-  # All Columns
-  r1 <- weighted_row_means(to_test, miss, nn_columns, nn_weights)[, 1]
-  e1 <- unname(rowMeans(to_test, na.rm = TRUE))
-
-  expect_equal(r1, e1)
-
-  # Selected Columns
-  selected_cols <- c(1, 3, 4) # R indexing
-  r2 <- weighted_row_means(to_test, miss, selected_cols - 1, nn_weights)[, 1]
-  e2 <- unname(rowMeans(to_test[, selected_cols, drop = FALSE], na.rm = TRUE))
-
-  expect_equal(r2, e2)
-
-  # Weighted all cols
-  set.seed(1234)
-  r_weights <- runif(n_cols, min = 0.1, max = 2)
-  r3 <- weighted_row_means(to_test, miss, nn_columns, r_weights)[, 1]
-
-  # Manual Calculation
-  weighted_mat <- sweep(to_test, MARGIN = 2, r_weights, FUN = "*")
-  weight_mat <- sweep(!is.na(to_test), MARGIN = 2, r_weights, FUN = "*")
-  e3 <- rowSums(weighted_mat, na.rm = TRUE) / rowSums(weight_mat, na.rm = TRUE)
-
-  expect_equal(r3, unname(e3))
-
-  # Weighted selected cols
-  r4 <- weighted_row_means(to_test, miss, selected_cols - 1, r_weights[selected_cols])[, 1]
-  sel_mat <- to_test[, selected_cols, drop = FALSE]
-  weighted_mat_sel <- sweep(sel_mat, MARGIN = 2, r_weights[selected_cols], FUN = "*")
-  weight_mat_sel <- sweep(!is.na(sel_mat), MARGIN = 2, r_weights[selected_cols], FUN = "*")
-  e4 <- rowSums(weighted_mat_sel, na.rm = TRUE) / rowSums(weight_mat_sel, na.rm = TRUE)
-
-  expect_equal(r4, unname(e4))
-})
-
 test_that("`slide_imp` pca mode works", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using

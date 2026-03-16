@@ -18,7 +18,6 @@ find_windows <- function(x, window, overlap = 0.0) {
 #' or a weighted average (inverse distance weighting) of non-missing values from
 #' these neighbors, depending on the `weighted` parameter.
 #'
-#'
 #' @param obj Numeric matrix with missing values represented as NA (NaN).
 #' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
 #' @param k Number of nearest neighbors to use for imputation.
@@ -56,23 +55,6 @@ impute_knn_brute <- function(obj, miss, k, n_col_miss, method, dist_pow, cores =
 #' @noRd
 impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, dist_pow, cores = 1L) {
     .Call(`_slideimp_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, dist_pow, cores)
-}
-
-#' @title Weighted Row Mean
-#'
-#' @description Calculate weighted row means for specified columns, accounting for missing values.
-#'
-#' @param obj A numeric matrix containing the data.
-#' @param miss An unsigned integer matrix indicating missing values (0 for observed, 1 for missing).
-#' @param nn_columns An unsigned integer vector of column indices for the neighbors.
-#' @param nn_weights A numeric vector of weights corresponding to the neighbors.
-#'
-#' @return A column vector containing the weighted row means, with NaN where computation is not possible.
-#'
-#' @keywords internal
-#' @noRd
-weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
-    .Call(`_slideimp_weighted_row_means`, obj, miss, nn_columns, nn_weights)
 }
 
 has_openmp <- function() {
