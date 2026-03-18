@@ -558,11 +558,7 @@ group_features <- function(
 
   # combine
   group <- collapse::join(features, aux, on = "group", how = "left", verbose = FALSE)
-  group$length <- purrr::map2_dbl(
-    group$features,
-    group$aux,
-    \(x, y) length(x) + length(y)
-  )
+  group$length <- lengths(group$features) + lengths(group$aux)
 
   # pad groups to `min_group_size` if needed
   if (min_group_size > 0) {
@@ -579,11 +575,7 @@ group_features <- function(
     })
     group$aux <- purrr::map2(group$aux, group$min_group_size, \(x, y) c(x, y))
     group[, c("need", "min_group_size")] <- NULL
-    group$length <- purrr::map2_dbl(
-      group$features,
-      group$aux,
-      \(x, y) length(x) + length(y)
-    )
+    group$length <- lengths(group$features) + lengths(group$aux)
   }
 
   # add group specific `parameters` list column
