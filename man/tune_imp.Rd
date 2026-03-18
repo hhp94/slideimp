@@ -6,7 +6,7 @@
 \usage{
 tune_imp(
   obj,
-  parameters,
+  parameters = NULL,
   .f,
   rep = 1,
   num_na = 100,
@@ -24,7 +24,8 @@ tune_imp(
 
 \item{parameters}{A \code{\link[tibble:tibble]{tibble::tibble()}}/data.frame specifying parameter combinations to tune, where each column
 represents a parameter accepted by \code{.f} (excluding \code{obj}). List columns are supported
-for complex parameters. Duplicate rows are automatically removed.}
+for complex parameters. Duplicate rows are automatically removed. \code{NULL} would be equal to tune the
+function with default parameters.}
 
 \item{.f}{The imputation method to tune. Either a character string (\code{"knn_imp"}, \code{"pca_imp"},
 or \code{"slide_imp"}) specifying a built-in method, or a custom function. Custom functions must

@@ -14,12 +14,11 @@
 #' @param perc_col_NA A numeric value between 0 and 1 indicating the proportion of rows to select for `NA` introduction. Default is `0.5`.
 #' @param beta If TRUE (default) then simulate beta values by scaling the values between 0 and 1.
 #'
-#' @return A `list` containing three elements:
-#' \itemize{
-#'   \item `input`: The simulated `n` x `m` numeric matrix with values between 0 and 1.
-#'   \item `group_feature`: A `data.frame` with feature IDs and their assigned chromosome group.
-#'   \item `group_sample`: A `data.frame` with sample IDs and their assigned group.
-#' }
+#' @returns A `list` with the following elements:
+#'
+#' * `input`: The simulated `n` x `m` numeric matrix with values between 0 and 1.
+#' * `group_feature`: A `data.frame` with feature IDs and their assigned chromosome group.
+#' * `group_sample`: A `data.frame` with sample IDs and their assigned group.
 #'
 #' @export
 #'

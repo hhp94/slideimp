@@ -145,9 +145,21 @@ chr1_beta[1:5, 1:5]
 * `k`: **required** - *(specifying KNN imputation)* Number of nearest neighbors to use inside each window.
 * `ncp`: **required** - *(specifying PCA imputation)* Number of principal components to retain. Use this instead of `k` when performing sliding-window PCA imputation.
 
+Use the function `compute_windows()` to examine the windows calculated by `slide_imp()` before imputation.
+
 ```{r}
 location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromosome
 
+# Examine the windows calculated by `slide_imp()`
+windows <- compute_windows(
+  location,
+  window_size = 50,
+  overlap_size = 5,
+  min_window_n = 11
+)
+windows
+
+# Then do the imputation
 slide_imp(
   obj = chr1_beta,
   location = location,

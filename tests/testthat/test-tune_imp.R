@@ -36,6 +36,17 @@ test_that("tune_imp works", {
     )
   })
 
+  # `slide_imp` requires parameters
+  expect_error({
+    slide_imp_imp_res <- tune_imp(
+      obj,
+      .f = "slide_imp",
+      location = location,
+      rep = 1,
+      num_na = 200
+    )
+  }, regexp = "requires")
+
   expect_true(
     all(
       vapply(
@@ -343,7 +354,7 @@ test_that("compute_metrics works with TuneImp, data.frame, and tibble objects", 
   out_tune <- compute_metrics(result_tune)
   expect_s3_class(out_tune, "tbl_df")
   expect_true(all(c(".metric", ".estimator", ".estimate", "n", "n_miss") %in% names(out_tune)))
-  expect_equal(sort(unique(out_tune$.metric)), c("mae", "rmse", "rsq"))
+  expect_equal(sort(unique(out_tune$.metric)), c("mae", "rmse"))
 
   # Plain data.frame
   result_df <- as.data.frame(result_tune)
@@ -388,7 +399,10 @@ test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
   result$result[[1]]$estimate[c(1, 3)] <- NA
   result$result[[2]]$estimate[c(2, 5, 7)] <- NA
 
-  out_na <- compute_metrics(result, metrics =  c("mae", "rmse", "mape", "bias", "rsq", "rsq_trad"))
+  out_na <- compute_metrics(
+    result,
+    metrics = c("mae", "rmse", "mape", "bias", "rsq", "rsq_trad")
+  )
 
   # Rep 1: 10 rows, 2 missing
   rows_rep1 <- out_na[out_na$rep == 1, ]
@@ -414,4 +428,126 @@ test_that("compute_metrics.data.frame errors without required columns", {
 
   bad_result <- data.frame(result = I(list(data.frame(a = 1, b = 2))))
   expect_error(compute_metrics(bad_result), "truth.*estimate")
+})
+
+test_that("tune_imp works with custom function and list-column parameters", {
+  set.seed(42)
+  obj <- matrix(rnorm(200), nrow = 10, ncol = 20)
+
+  # Custom function that takes a vector of weights per column and fills NAs
+  # with a weighted column mean
+  weighted_fill <- function(obj, weights) {
+    stopifnot(length(weights) == ncol(obj))
+    for (j in seq_len(ncol(obj))) {
+      col_mean <- mean(obj[, j], na.rm = TRUE)
+      obj[is.na(obj[, j]), j] <- col_mean * weights[j]
+    }
+    return(obj)
+  }
+
+  # parameters with a list column: each row holds a different weight vector
+  custom_par <- tibble::tibble(
+    weights = list(
+      rep(1, 20),
+      rep(0.5, 20),
+      seq(0.1, 2, length.out = 20)
+    )
+  )
+
+  expect_no_error({
+    res <- tune_imp(
+      obj,
+      custom_par,
+      .f = weighted_fill,
+      rep = 2,
+      num_na = 30
+    )
+  })
+
+  # Should have 3 param sets * 2 reps = 6 rows
+  expect_equal(nrow(res), 6)
+  expect_true("result" %in% names(res))
+  expect_true(
+    all(
+      vapply(res$result, \(x) {
+        is.numeric(x$estimate) && nrow(x) > 0
+      }, logical(1))
+    )
+  )
+  # The weights list column should be preserved in the output
+  expect_true("weights" %in% names(res))
+  expect_true(is.list(res$weights))
+})
+
+test_that("tune_imp works with custom function and NULL parameters", {
+  set.seed(99)
+  obj <- matrix(rnorm(150), nrow = 10, ncol = 15)
+
+  # a function with only `obj` — fills NAs with 0
+  zero_fill <- function(obj) {
+    obj[is.na(obj)] <- 0
+    return(obj)
+  }
+
+  expect_no_error({
+    res <- tune_imp(
+      obj,
+      parameters = NULL,
+      .f = zero_fill,
+      rep = 3,
+      num_na = 20
+    )
+  })
+
+  # 1 param set * 3 reps = 3 rows
+  expect_equal(nrow(res), 3)
+  expect_true("result" %in% names(res))
+  # placeholder column should be stripped
+  expect_false(".placeholder" %in% names(res))
+  expect_true(
+    all(
+      vapply(res$result, \(x) {
+        is.numeric(x$estimate) && is.numeric(x$truth) && nrow(x) > 0
+      }, logical(1))
+    )
+  )
+})
+
+test_that("tune_imp with NULL parameters and a function that has defaults", {
+  set.seed(7)
+  obj <- matrix(rnorm(100), nrow = 5, ncol = 20)
+
+  fill_with_default <- function(obj, value = -999, scale = 1.0) {
+    obj[is.na(obj)] <- value * scale
+    return(obj)
+  }
+
+  # NULL parameters should run the function using its defaults
+  expect_no_error({
+    res_null <- tune_imp(
+      obj,
+      parameters = NULL,
+      .f = fill_with_default,
+      rep = 1,
+      num_na = 10
+    )
+  })
+
+  expect_equal(nrow(res_null), 1)
+  # all imputed values should be -999 (the defaults)
+  expect_true(all(res_null$result[[1]]$estimate == -999))
+
+  # compare with explicit parameters to make sure NULL truly uses defaults
+  explicit_par <- data.frame(value = -999, scale = 1.0)
+  expect_no_error({
+    res_explicit <- tune_imp(
+      obj,
+      parameters = explicit_par,
+      .f = fill_with_default,
+      rep = 1,
+      num_na = 10
+    )
+  })
+
+  expect_equal(res_null$result[[1]]$estimate, res_explicit$result[[1]]$estimate)
 })

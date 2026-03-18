@@ -320,3 +320,34 @@ test_that("`slide_imp` errors on zero-variance features in PCA mode", {
     regexp = "Features with zero variance after na.rm not permitted for PCA Imputation"
   )
 })
+
+test_that("`compute_windows` returns expected structure", {
+  result <- compute_windows(1:100, window_size = 50, overlap_size = 10)
+  expect_s3_class(result, "tbl_df")
+  expect_named(result, c("start", "end", "window_n", "keep"))
+  expect_true(all(result$window_n == (result$end - result$start + 1L)))
+})
+
+test_that("`compute_windows` flags small windows with `min_window_n`", {
+  result <- compute_windows(1:100, window_size = 50, overlap_size = 10, min_window_n = 60)
+  expect_true(all(result$keep == (result$window_n >= 60)))
+  expect_true(any(!result$keep))
+})
+
+test_that("`compute_windows` produces more windows with overlap", {
+  no_overlap <- compute_windows(1:100, window_size = 50, overlap_size = 0)
+  with_overlap <- compute_windows(1:100, window_size = 50, overlap_size = 25)
+  expect_gte(nrow(with_overlap), nrow(no_overlap))
+})
+
+test_that("`compute_windows` rejects invalid inputs", {
+  expect_error(compute_windows(1:100, window_size = 50, overlap_size = 50))
+  expect_error(compute_windows(1:100, window_size = -1))
+  expect_error(compute_windows(c(3, 1, 2), window_size = 50))
+})
+
+test_that("`compute_windows` returns correct windows for known input", {
+  result <- compute_windows(1:10, window_size = 5, overlap_size = 0)
+  expect_equal(result$start, c(1L, 6L))
+  expect_equal(result$end, c(5L, 10L))
+})

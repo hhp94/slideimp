@@ -30,7 +30,7 @@ sim_mat(
 \item{beta}{If TRUE (default) then simulate beta values by scaling the values between 0 and 1.}
 }
 \value{
-A \code{list} containing three elements:
+A \code{list} with the following elements:
 \itemize{
 \item \code{input}: The simulated \code{n} x \code{m} numeric matrix with values between 0 and 1.
 \item \code{group_feature}: A \code{data.frame} with feature IDs and their assigned chromosome group.

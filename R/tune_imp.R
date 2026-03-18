@@ -165,7 +165,8 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default to 1000).
 #' @param parameters A [tibble::tibble()]/data.frame specifying parameter combinations to tune, where each column
 #' represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
-#' for complex parameters. Duplicate rows are automatically removed.
+#' for complex parameters. Duplicate rows are automatically removed. `NULL` would be equal to tune the
+#' function with default parameters.
 #' @param rep Either an integer specifying the number of repetitions for random NA injection, or
 #' a list defining fixed NA positions for each repetition (in which case `num_na` is ignored).
 #' The list elements can be one of the following formats:
@@ -233,7 +234,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' @export
 tune_imp <- function(
   obj,
-  parameters,
+  parameters = NULL,
   .f,
   rep = 1,
   num_na = 100,
@@ -258,16 +259,23 @@ tune_imp <- function(
   nc <- ncol(obj)
 
   checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
-  checkmate::assert_data_frame(
-    parameters,
-    any.missing = FALSE,
-    all.missing = FALSE,
-    min.rows = 1,
-    col.names = "unique",
-    .var.name = "parameters",
-    null.ok = FALSE
-  )
-  parameters <- unique(parameters)
+  # if parameters is NULL, create a 1-row placeholder
+  if (is.null(parameters)) {
+    parameters_is_null <- TRUE
+    parameters <- tibble::tibble(.placeholder = TRUE)
+  } else {
+    parameters_is_null <- FALSE
+    checkmate::assert_data_frame(
+      parameters,
+      any.missing = FALSE,
+      all.missing = FALSE,
+      min.rows = 1,
+      col.names = "unique",
+      .var.name = "parameters",
+      null.ok = FALSE
+    )
+    parameters <- unique(parameters)
+  }
 
   # validate .f
   if (is.character(.f)) {
@@ -477,6 +485,10 @@ tune_imp <- function(
   # Parameter list
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
     row_list <- as.list(row)
+    # remove placeholder column
+    if (parameters_is_null) {
+      row_list$.placeholder <- NULL
+    }
     row_list <- lapply(row_list, function(x) {
       if (is.list(x) && length(x) == 1) {
         x[[1]]
@@ -546,6 +558,10 @@ tune_imp <- function(
     indices,
     tibble::tibble(result = result_list)
   ))
+
+  if (parameters_is_null) {
+    result_df$.placeholder <- NULL
+  }
 
   class(result_df) <- c("TuneImp", class(result_df))
   return(result_df)

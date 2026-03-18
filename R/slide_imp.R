@@ -178,7 +178,9 @@ slide_imp <- function(
     )
   }
   if (any(!keep) && .progress) {
-    message(sprintf("Dropping %d window(s) with fewer than %d columns.", sum(!keep), min_window_n))
+    message(
+      sprintf("Dropping %d window(s) with fewer than %d columns.", sum(!keep), min_window_n)
+    )
   }
   start <- start[keep]
   end <- end[keep]
@@ -306,4 +308,58 @@ slide_imp <- function(
   class(result) <- c("ImputedMatrix", class(result))
   attr(result, "imp_method") <- imp_method
   return(result)
+}
+
+#' Compute Sliding Windows
+#'
+#' Compute the sliding windows used in the [slide_imp()] function.
+#'
+#' @inheritParams slide_imp
+#'
+#' @returns A [tibble::tibble()] with one row per window and the following columns:
+#'
+#' * `start`: Integer. Start index of the window in `location`.
+#' * `end`: Integer. End index of the window in `location`.
+#' * `window_n`: Integer. Number of columns in the window.
+#' * `keep`: Logical. `TRUE` if `window_n >= min_window_n`.
+#'
+#' @examples
+#' location <- 1:100
+#'
+#' compute_windows(location, window_size = 50, overlap_size = 10, min_window_n = 10)
+#'
+#' @export
+compute_windows <- function(location, window_size, overlap_size = 0, min_window_n = 0) {
+  checkmate::assert_numeric(location,
+    any.missing = FALSE, sorted = TRUE,
+    finite = TRUE, null.ok = FALSE, .var.name = "location"
+  )
+  checkmate::assert_number(window_size,
+    lower = .Machine$double.eps, finite = TRUE,
+    null.ok = FALSE, .var.name = "window_size"
+  )
+  checkmate::assert_number(overlap_size,
+    lower = 0, finite = TRUE,
+    null.ok = FALSE, .var.name = "overlap_size"
+  )
+  if (overlap_size >= window_size) {
+    stop("`overlap_size` must be strictly less than `window_size`.")
+  }
+  checkmate::assert_int(min_window_n,
+    lower = 0L, null.ok = FALSE,
+    .var.name = "min_window_n"
+  )
+
+  windows <- find_windows(location, window_size, overlap_size)
+  start <- windows$start
+  end <- windows$end
+  window_n <- end - start + 1L
+  keep <- window_n >= min_window_n
+
+  tibble::tibble(
+    start = start,
+    end = end,
+    window_n = window_n,
+    keep = keep
+  )
 }

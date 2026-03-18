@@ -92,21 +92,17 @@ tune_knn <- tune_imp(obj, parameters = knn_params, .f = "knn_imp", cores = 2, re
 #> Running Mode: parallel...
 #> Step 2/2: Tuning
 compute_metrics(tune_knn)
-#> # A tibble: 12 × 7
-#>        k cores param_set   rep .metric .estimator .estimate
-#>    <dbl> <dbl>     <int> <int> <chr>   <chr>          <dbl>
-#>  1     5     2         1     1 mae     standard     0.178  
-#>  2     5     2         1     1 rmse    standard     0.225  
-#>  3     5     2         1     1 rsq     standard     0.00454
-#>  4    20     2         2     1 mae     standard     0.149  
-#>  5    20     2         2     1 rmse    standard     0.190  
-#>  6    20     2         2     1 rsq     standard     0.0172 
-#>  7     5     2         1     2 mae     standard     0.202  
-#>  8     5     2         1     2 rmse    standard     0.259  
-#>  9     5     2         1     2 rsq     standard     0.00960
-#> 10    20     2         2     2 mae     standard     0.172  
-#> 11    20     2         2     2 rmse    standard     0.219  
-#> 12    20     2         2     2 rsq     standard     0.0850
+#> # A tibble: 8 × 9
+#>       k cores param_set   rep     n n_miss .metric .estimator .estimate
+#>   <dbl> <dbl>     <int> <int> <int>  <int> <chr>   <chr>          <dbl>
+#> 1     5     2         1     1   100      0 mae     standard       0.178
+#> 2     5     2         1     1   100      0 rmse    standard       0.225
+#> 3    20     2         2     1   100      0 mae     standard       0.149
+#> 4    20     2         2     1   100      0 rmse    standard       0.190
+#> 5     5     2         1     2   100      0 mae     standard       0.202
+#> 6     5     2         1     2   100      0 rmse    standard       0.259
+#> 7    20     2         2     2   100      0 mae     standard       0.172
+#> 8    20     2         2     2   100      0 rmse    standard       0.219
 ```
 
 For K-NN without OpenMP, PCA, and custom functions, setup
@@ -142,10 +138,10 @@ variables can be meaningfully grouped (e.g., by chromosomes).
   runtime and can increase accuracy for both K-NN and PCA imputation.
 - `group_imp()` requires a `group` tibble, *preferably* created with
   `group_features()`, with three list-columns:
-  - `features`: **required** – a list-column where each element is a
+  - `features`: **required** - a list-column where each element is a
     character vector of variable names to be imputed together.
-  - `aux`: **optional** – auxiliary variables to include in each group.
-  - `parameters`: **optional** – group-specific imputation parameters.
+  - `aux`: **optional** - auxiliary variables to include in each group.
+  - `parameters`: **optional** - group-specific imputation parameters.
 - In this example, we have data from 2 chromosomes so the `group` tibble
   should have **two rows** (one per chromosome), with the corresponding
   variables listed in the `features` column for each row.
@@ -215,9 +211,36 @@ chr1_beta[1:5, 1:5]
   principal components to retain. Use this instead of `k` when
   performing sliding-window PCA imputation.
 
+Use the function `compute_windows()` to examine the windows calculated
+by `slide_imp()` before imputation.
+
 ``` r
 location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromosome
 
+# Examine the windows calculated by `slide_imp()`
+windows <- compute_windows(
+  location,
+  window_size = 50,
+  overlap_size = 5,
+  min_window_n = 11
+)
+windows
+#> # A tibble: 45 × 4
+#>    start   end window_n keep 
+#>    <int> <int>    <int> <lgl>
+#>  1     1    50       50 TRUE 
+#>  2    46    95       50 TRUE 
+#>  3    91   140       50 TRUE 
+#>  4   136   185       50 TRUE 
+#>  5   181   230       50 TRUE 
+#>  6   226   275       50 TRUE 
+#>  7   271   320       50 TRUE 
+#>  8   316   365       50 TRUE 
+#>  9   361   410       50 TRUE 
+#> 10   406   455       50 TRUE 
+#> # ℹ 35 more rows
+
+# Then do the imputation
 slide_imp(
   obj = chr1_beta,
   location = location,
