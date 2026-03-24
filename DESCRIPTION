@@ -27,6 +27,7 @@ Depends:
 Imports:
     bigmemory,
     checkmate,
+    cli,
     collapse,
     mirai,
     purrr,

@@ -37,15 +37,18 @@ test_that("tune_imp works", {
   })
 
   # `slide_imp` requires parameters
-  expect_error({
-    slide_imp_imp_res <- tune_imp(
-      obj,
-      .f = "slide_imp",
-      location = location,
-      rep = 1,
-      num_na = 200
-    )
-  }, regexp = "requires")
+  expect_error(
+    {
+      slide_imp_imp_res <- tune_imp(
+        obj,
+        .f = "slide_imp",
+        location = location,
+        rep = 1,
+        num_na = 200
+      )
+    },
+    regexp = "requires"
+  )
 
   expect_true(
     all(
