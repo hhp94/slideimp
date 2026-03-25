@@ -7,31 +7,49 @@
 #' @inheritParams slide_imp
 #' @inheritParams tune_imp
 #'
-#' @param num_na The number of missing values used to estimate prediction quality.
-#' @param rowmax Number between 0 to 1. NA injection cannot create rows with more missing % than this number.
-#' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
-#' @param check_sd Check if after NA injections zero variance columns are created or not.
-#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default to 1000).
+#' @param num_na The number of missing values to inject.
+#' @param rowmax Number between 0 and 1. NA injection cannot create rows with a higher proportion of
+#'   missing values than this threshold.
+#' @param colmax Number between 0 and 1. NA injection cannot create columns with a higher proportion of
+#'   missing values than this threshold.
+#' @param check_sd Logical. If `TRUE`, also ensure that no column becomes zero-variance after injection.
+#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default `1000`).
 #'
 #' @return A vector of integer indices indicating the positions in the matrix
 #' where NAs should be injected.
 #'
 #' @details
-#' The function uses the `num_na` parameter to determine the number of NAs to inject.
-#' It then repeatedly samples random positions from existing non-NA elements and checks if injecting NAs
-#' at those positions would exceed the missingness thresholds for any row or column (accounting for existing NAs).
-#' If no valid set is found within `max_iter` attempts, an error is thrown.
+#' The function first checks that the existing missingness in `obj` already respects the `rowmax`
+#' and `colmax` thresholds. It then repeatedly samples random positions from the currently non-NA
+#' elements and verifies that adding the new NAs would not violate the row/column missingness limits
+#' (or create zero-variance columns when `check_sd = TRUE`). Sampling continues until a valid set of
+#' positions is found or `max_iter` is reached (in which case an error is thrown).
 #'
-#' @keywords internal
-#' @noRd
+#' @examples
+#' #' set.seed(123)
+#' #'
+#' #' # Create a sample matrix (no existing NAs)
+#' #' mat <- matrix(rnorm(100), nrow = 20, ncol = 5)
+#' #'
+#' #' # Basic usage - inject 10 NAs (defaults: rowmax/colmax = 0.9, check_sd = FALSE)
+#' #' na_loc <- inject_na(mat, num_na = 10)
+#'
+#' @export
 inject_na <- function(
   obj,
-  num_na = NULL,
+  num_na,
   rowmax = 0.9,
   colmax = 0.9,
   check_sd = FALSE,
   max_iter = 1000
 ) {
+  checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
+  checkmate::assert_int(num_na, lower = 1, .var.name = "num_na")
+  checkmate::assert_number(rowmax, lower = 0, upper = 1, .var.name = "rowmax")
+  checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
+  checkmate::assert_flag(check_sd, .var.name = "check_sd")
+  checkmate::assert_int(max_iter, lower = 1, .var.name = "max_iter")
+
   # subset the matrix to the specified features and samples
   na_mat <- !is.na(obj)
   # check if existing NA pattern already exceeds thresholds
@@ -52,7 +70,7 @@ inject_na <- function(
   }
   not_na <- which(na_mat)
   # ensure 'num_na' does not exceed the number of available non-NA elements
-  if (num_na > length(not_na)) {
+  if (num_na >= length(not_na)) {
     stop(
       sprintf(
         "'num_na' (%d) exceeds the number of available non-NA elements (%d).
@@ -387,9 +405,8 @@ tune_imp <- function(
     rep = seq_len(n_reps)
   ))
 
-  if (.progress) {
-    message("Step 1/2: Injecting NA")
-  }
+  message("Step 1/2: Injecting NA")
+
   # Generate or use NA injection locations
   if (rep_is_list) {
     # Use the provided list of NA locations
@@ -454,7 +471,7 @@ tune_imp <- function(
     }
   }
 
-  if (.progress && parallelize || .progress && is_knn_mode && cores > 1) {
+  if (parallelize || is_knn_mode && cores > 1) {
     message("Running Mode: parallel...")
   } else {
     message("Running Mode: sequential...")
@@ -547,9 +564,9 @@ tune_imp <- function(
     parameters_list = parameters_list,
     fixed_args = fixed_args
   )
-  if (.progress) {
-    message("Step 2/2: Tuning\n")
-  }
+
+  message("Step 2/2: Tuning\n")
+
   # execute the mapping with the crated function
   result_list <- purrr::map(seq_len(nrow(indices)), crated_fn, .progress = .progress)
   # combine parameters with results
