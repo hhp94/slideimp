@@ -17,9 +17,9 @@ group_features(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{features_df}{A data.frame with exactly two columns: \code{feature_id} and
+\item{features_df}{A data.frame with exactly two columns: \code{features} and
 \code{group}. Maps feature identifiers to their respective groups. No missing
-values or duplicate \code{feature_id} values are allowed.}
+values or duplicate \code{features} values are allowed.}
 
 \item{k}{Integer or \code{NULL}. If specified, prepares parameters for K-NN
 imputation with \code{k} neighbors. Cannot be used together with \code{ncp}.}
@@ -70,7 +70,7 @@ head(obj_meta)
 group_df <- group_features(
   obj,
   obj_meta,
-  subset = sample(obj_meta$feature_id, size = 10),
+  subset = sample(obj_meta$features, size = 10),
   k = 10
 )
 group_df

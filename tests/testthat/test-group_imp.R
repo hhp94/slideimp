@@ -1,10 +1,118 @@
 # group_imp ----
+test_that("group column + features column API works correctly", {
+  set.seed(1234)
+  to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
+  obj <- t(to_test$input)
+
+  # group_feature to match the expected API
+  group_long <- tibble::tibble(
+    group = to_test$group_feature$group,
+    features = to_test$group_feature$features
+  )
+
+  # equivalent list-column form for comparison
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
+
+  group_list <- tibble::tibble(
+    features = list(group_1, group_2)
+  )
+
+  expect_identical(
+    group_imp(obj, group = group_long, k = 5),
+    group_imp(obj, group = group_list, k = 5)
+  )
+
+  expect_identical(
+    group_imp(obj, group = group_long, ncp = 5, nb.init = 10, seed = 1234),
+    group_imp(obj, group = group_list, ncp = 5, nb.init = 10, seed = 1234)
+  )
+})
+
+test_that("group column API collapses duplicate groups correctly", {
+  set.seed(1234)
+  to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
+  obj <- t(to_test$input)
+
+  # duplicate some rows so the same group label appears in separate blocks
+  gf <- to_test$group_feature
+  group_doubled <- tibble::tibble(
+    group = c(gf$group, gf$group),
+    features = c(gf$features, gf$features)
+  )
+
+  group_single <- tibble::tibble(
+    group = gf$group,
+    features = gf$features
+  )
+
+  expect_identical(
+    group_imp(obj, group = group_doubled, k = 3),
+    group_imp(obj, group = group_single, k = 3)
+  )
+})
+
+test_that("group column API accepts factor group column", {
+  set.seed(1234)
+  to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
+  obj <- t(to_test$input)
+
+  group_df <- tibble::tibble(
+    group = factor(to_test$group_feature$group),
+    features = to_test$group_feature$features
+  )
+
+  expect_no_error(group_imp(obj, group = group_df, k = 2))
+})
+
+# --- Preconditioning tests for the `group` parameter ---
+test_that("group must be a data.frame", {
+  obj <- matrix(1:12, nrow = 3, dimnames = list(NULL, paste0("f", 1:4)))
+  expect_error(
+    group_imp(obj, group = list(features = list("f1")), k = 2),
+    "group"
+  )
+})
+
+test_that("group must contain a 'features' column", {
+  obj <- matrix(1:12, nrow = 3, dimnames = list(NULL, paste0("f", 1:4)))
+  group_df <- tibble::tibble(stuff = list(c("f1", "f2")))
+  expect_error(group_imp(obj, group = group_df, k = 2), "features")
+})
+
+test_that("group errors when features is character without group column", {
+  obj <- matrix(1:12, nrow = 3, dimnames = list(NULL, paste0("f", 1:4)))
+  group_df <- tibble::tibble(features = c("f1", "f2"))
+  expect_error(
+    group_imp(obj, group = group_df, k = 2),
+    "no 'group' column"
+  )
+})
+
+test_that("group errors on NA in group column", {
+  obj <- matrix(1:12, nrow = 3, dimnames = list(NULL, paste0("f", 1:4)))
+  group_df <- tibble::tibble(
+    group = c("a", NA_character_),
+    features = c("f1", "f2")
+  )
+  expect_error(group_imp(obj, group = group_df, k = 2), "NA")
+})
+
+test_that("group features column must not have NAs", {
+  obj <- matrix(1:12, nrow = 3, dimnames = list(NULL, paste0("f", 1:4)))
+  group_df <- tibble::tibble(
+    group = c("a", "a"),
+    features = c("f1", NA_character_)
+  )
+  expect_error(group_imp(obj, group = group_df, k = 2), "features")
+})
+
 test_that("grouped result is correct with aux columns, knn", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
 
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
 
   # impute only first 3 values of group 1, the rest are aux. Group 2 do 4 features.
   group_df <- tibble::tibble(
@@ -31,8 +139,8 @@ test_that("grouped result is correct with aux columns, pca", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
 
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
 
   # impute only first 3 values of group 1, the rest are aux. Group 2 do 4 features.
   group_df <- tibble::tibble(
@@ -57,8 +165,8 @@ test_that("grouped result is correct with aux columns, pca", {
 test_that("group-specific parameters work correctly", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
 
   # Different k values for each group
   group_df <- tibble::tibble(
@@ -84,8 +192,8 @@ test_that("group-specific parameters work correctly", {
 test_that("duplicate features across groups throws error", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
 
   group_df <- tibble::tibble(
     features = list(group_1[1:5], c(group_1[5], group_2[1:3])), # group_1[5] in both
@@ -102,8 +210,8 @@ test_that("duplicate features across groups throws error", {
 test_that("grouped imputation works without aux columns, knn", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
 
   # no aux columns, only features
   group_df <- tibble::tibble(
@@ -127,8 +235,8 @@ test_that("grouped imputation works without aux columns, knn", {
 test_that("group-specific parameters work correctly, pca", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
   # Different ncp and coeff.ridge values for each group
   group_df <- tibble::tibble(
     features = list(group_1[1:3], group_2[1:4]),
@@ -155,8 +263,8 @@ test_that("group-specific parameters work correctly, pca", {
 test_that("grouped imputation works without aux columns, pca", {
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
 
   # no aux columns, only features
   group_df <- tibble::tibble(
@@ -183,8 +291,8 @@ test_that("group-specific parameters work correctly in parallel, pca", {
   skip_if_not_installed("carrier")
   set.seed(1234)
   to_test <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1)
-  group_1 <- subset(to_test$group_feature, group == "chr1")$feature_id
-  group_2 <- subset(to_test$group_feature, group == "chr2")$feature_id
+  group_1 <- subset(to_test$group_feature, group == "chr1")$features
+  group_2 <- subset(to_test$group_feature, group == "chr2")$features
   # Different ncp and coeff.ridge values for each group
   group_df <- tibble::tibble(
     features = list(group_1[1:3], group_2[1:4]),
@@ -221,7 +329,7 @@ test_that("group-specific parameters work correctly in parallel, pca", {
 test_that("group_features returns correct structure without k/ncp", {
   obj <- matrix(1:10, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
   features_df <- data.frame(
-    feature_id = c("a", "b", "c", "d"),
+    features = c("a", "b", "c", "d"),
     group = c("g1", "g1", "g2", "g2")
   )
 
@@ -236,7 +344,7 @@ test_that("group_features returns correct structure without k/ncp", {
 test_that("group_features handles subset correctly", {
   obj <- matrix(1:12, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e", "f")))
   features_df <- data.frame(
-    feature_id = c("a", "b", "c", "d", "e", "f"),
+    features = c("a", "b", "c", "d", "e", "f"),
     group = c("g1", "g1", "g1", "g2", "g2", "g2")
   )
 
@@ -259,7 +367,7 @@ test_that("group_features handles subset correctly", {
 test_that("group_features errors when no subset element found", {
   obj <- matrix(1:6, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
   features_df <- data.frame(
-    feature_id = c("a", "b", "c"),
+    features = c("a", "b", "c"),
     group = c("g1", "g1", "g2")
   )
 
@@ -272,7 +380,7 @@ test_that("group_features errors when no subset element found", {
 test_that("group_features adds parameters column with k", {
   obj <- matrix(1:10, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
   features_df <- data.frame(
-    feature_id = c("a", "b", "c", "d", "e"),
+    features = c("a", "b", "c", "d", "e"),
     group = c("g1", "g1", "g1", "g2", "g2")
   )
 
@@ -291,7 +399,7 @@ test_that("group_features adds parameters column with k", {
 test_that("group_features adds parameters column with ncp", {
   obj <- matrix(1:10, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
   features_df <- data.frame(
-    feature_id = c("a", "b", "c", "d", "e"),
+    features = c("a", "b", "c", "d", "e"),
     group = c("g1", "g1", "g1", "g2", "g2")
   )
 
@@ -310,7 +418,7 @@ test_that("group_features adds parameters column with ncp", {
 test_that("group_features pads groups to min_group_size", {
   obj <- matrix(1:12, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e", "f")))
   features_df <- data.frame(
-    feature_id = c("a", "b", "c"),
+    features = c("a", "b", "c"),
     group = c("g1", "g1", "g2")
   )
 
@@ -331,7 +439,7 @@ test_that("group_features pads groups to min_group_size", {
 test_that("group_features errors when min_group_size too large", {
   obj <- matrix(1:6, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
   features_df <- data.frame(
-    feature_id = c("a", "b", "c"),
+    features = c("a", "b", "c"),
     group = c("g1", "g1", "g2")
   )
 
@@ -344,7 +452,7 @@ test_that("group_features errors when min_group_size too large", {
 test_that("group_features errors when no colnames match features_df", {
   obj <- matrix(1:6, nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
   features_df <- data.frame(
-    feature_id = c("x", "y", "z"),
+    features = c("x", "y", "z"),
     group = c("g1", "g1", "g2")
   )
 

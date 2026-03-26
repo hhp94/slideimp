@@ -30,13 +30,22 @@ group_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{group}{Preferably created by \code{\link[=group_features]{group_features()}}. A data.frame with columns:
+\item{group}{A data.frame/\code{\link[tibble:tibble]{tibble::tibble()}} describing how features should be grouped for
+imputation. Accepts two formats:
+
+\strong{Long format}:
 \itemize{
-\item \strong{features}: A list-column containing character vectors of feature column
-names to impute
-\item \strong{aux}: (Optional) A list-column containing character vectors of auxiliary
-column names used for imputation but not imputed themselves
-\item \strong{parameters}: (Optional) A list-column containing group-specific parameters
+\item \strong{group}: A column identifying which group each feature belongs to
+\item \strong{features}: A character column of individual feature names
+}
+
+\strong{List-column format} (preferably created by \code{\link[=group_features]{group_features()}}):
+\itemize{
+\item \strong{features}: A list-column of character vectors of feature column names
+to impute
+\item \strong{aux}: (Optional) A list-column of character vectors of auxiliary column
+names used for imputation but not imputed themselves
+\item \strong{parameters}: (Optional) A list-column of group-specific parameter lists
 }}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
@@ -107,10 +116,9 @@ Strategies for grouping may include:
 \item Using clusters identified by column clustering techniques
 }
 
-Only features in each group (each row of the data.frame) will be imputed, using
-the search space defined as the union of the features and optional aux columns
-of that group. Columns that are in aux or in the object but not in any features
-will be left unchanged.
+Only features in each group will be imputed, using the search space defined as the
+union of the features and optional aux columns of that group. Columns that are in
+aux or in the object but not in any features will be left unchanged.
 }
 \examples{
 # Generate example data with missing values
@@ -126,12 +134,18 @@ to_test <- sim_mat(
 obj <- t(to_test$input)
 head(to_test$group_feature) # which group each feature belongs to
 
-# Use group_features() to create the group tibble. By setting `k = 5` in
-# group_features(), we are doing K-NN imputation in group_imp(). To make use
-# of the `subset` argument in knn_imp(), we specify subset in group_features().
-# For demonstration of different group-wise parameters we set `k = 10` for the
-# second group.
-subset_features <- sample(to_test$group_feature$feature_id, size = 10)
+# Long format API: pass a data.frame with 'group' and 'features' columns.
+long_fmt <- to_test$group_feature
+head(long_fmt)
+knn_long <- group_imp(obj, group = long_fmt, k = 5, cores = 2)
+knn_long
+
+# List-column format API: Use group_features() to create the group tibble.
+# By setting `k = 5` in group_features(), we are doing K-NN imputation in group_imp().
+# To make use of the `subset` argument in knn_imp(), we specify subset in group_features().
+# For demonstration of different group-wise parameters we set `k = 10` for the second group.
+
+subset_features <- sample(to_test$group_feature$features, size = 10)
 head(subset_features)
 knn_df <- group_features(obj, to_test$group_feature, k = 5, subset = subset_features)
 knn_df

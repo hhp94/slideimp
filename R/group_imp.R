@@ -37,13 +37,19 @@ normalize_list_column <- function(x) {
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
 #' @inheritParams slide_imp
-#' @param group Preferably created by [group_features()]. A data.frame with columns:
+#' @param group A data.frame/[tibble::tibble()] describing how features should be grouped for
+#'   imputation. Accepts two formats:
 #'
-#' - **features**: A list-column containing character vectors of feature column
-#' names to impute
-#' - **aux**: (Optional) A list-column containing character vectors of auxiliary
-#' column names used for imputation but not imputed themselves
-#' - **parameters**: (Optional) A list-column containing group-specific parameters
+#'   **Long format**:
+#'   - **group**: A column identifying which group each feature belongs to
+#'   - **features**: A character column of individual feature names
+#'
+#'   **List-column format** (preferably created by [group_features()]):
+#'   - **features**: A list-column of character vectors of feature column names
+#'     to impute
+#'   - **aux**: (Optional) A list-column of character vectors of auxiliary column
+#'     names used for imputation but not imputed themselves
+#'   - **parameters**: (Optional) A list-column of group-specific parameter lists
 #'
 #' @param cores Controls the number of cores to parallelize over for K-NN imputation with OpenMP only.
 #' To setup parallelization for K-NN without OpenMP and PCA imputation, use `mirai::daemons()`.
@@ -62,10 +68,9 @@ normalize_list_column <- function(x) {
 #' - Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
 #' - Using clusters identified by column clustering techniques
 #'
-#' Only features in each group (each row of the data.frame) will be imputed, using
-#' the search space defined as the union of the features and optional aux columns
-#' of that group. Columns that are in aux or in the object but not in any features
-#' will be left unchanged.
+#' Only features in each group will be imputed, using the search space defined as the
+#' union of the features and optional aux columns of that group. Columns that are in
+#' aux or in the object but not in any features will be left unchanged.
 #'
 #' @inherit knn_imp note return
 #'
@@ -87,12 +92,18 @@ normalize_list_column <- function(x) {
 #' obj <- t(to_test$input)
 #' head(to_test$group_feature) # which group each feature belongs to
 #'
-#' # Use group_features() to create the group tibble. By setting `k = 5` in
-#' # group_features(), we are doing K-NN imputation in group_imp(). To make use
-#' # of the `subset` argument in knn_imp(), we specify subset in group_features().
-#' # For demonstration of different group-wise parameters we set `k = 10` for the
-#' # second group.
-#' subset_features <- sample(to_test$group_feature$feature_id, size = 10)
+#' # Long format API: pass a data.frame with 'group' and 'features' columns.
+#' long_fmt <- to_test$group_feature
+#' head(long_fmt)
+#' knn_long <- group_imp(obj, group = long_fmt, k = 5, cores = 2)
+#' knn_long
+#'
+#' # List-column format API: Use group_features() to create the group tibble.
+#' # By setting `k = 5` in group_features(), we are doing K-NN imputation in group_imp().
+#' # To make use of the `subset` argument in knn_imp(), we specify subset in group_features().
+#' # For demonstration of different group-wise parameters we set `k = 10` for the second group.
+#'
+#' subset_features <- sample(to_test$group_feature$features, size = 10)
 #' head(subset_features)
 #' knn_df <- group_features(obj, to_test$group_feature, k = 5, subset = subset_features)
 #' knn_df
@@ -110,6 +121,7 @@ normalize_list_column <- function(x) {
 #' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
 #' mirai::daemons(0)
 #' pca_grouped
+#'
 group_imp <- function(
   obj,
   group,
@@ -140,6 +152,25 @@ group_imp <- function(
   checkmate::assert_names(colnames(group), must.include = c("features"), .var.name = "group")
   if (!tibble::is_tibble(group)) {
     group <- tibble::as_tibble(group)
+  }
+  if ("group" %in% names(group) && inherits(group$features, "character")) {
+    stopifnot("NA is not allowed in group$group" = !anyNA(group$group))
+    checkmate::assert_character(group$features, any.missing = FALSE, .var.name = "group$features")
+    if (is.numeric(group$group) && !checkmate::test_integerish(group$group)) {
+      warning(
+        "Non-integer numeric 'group$group' values detected. ",
+        "`group_imp` reserves the name `group` in the `group` parameter ",
+        "to group the features in the `features` column. ",
+        "Did you mean to use integer or character labels for `group$group`?"
+      )
+    }
+    group <- collapse::fsummarize(collapse::fgroup_by(group, group), features = list(features))
+    group$group <- NULL
+  } else if (inherits(group$features, "character")) {
+    stop(
+      "`group` has a character 'features' column but no 'group' column. ",
+      "Either add a 'group' column to define groups, or use list-columns (see ?group_features)."
+    )
   }
   checkmate::assert_list(group$features,
     types = "character", min.len = 1,
@@ -177,7 +208,6 @@ group_imp <- function(
     if (use_global && has_parameters) {
       stop("Cannot specify both global 'k'/'ncp' and group$parameters. Please use one or the other")
     }
-    message(paste("Performing group-wise", toupper(imp_method), "imputation with the same parameters for all groups.", sep = " "))
   } else {
     if (!has_parameters) {
       stop("Must specify either global 'k' for K-NN imputation, 'ncp' for PCA imputation, or provide group$parameters")
@@ -215,8 +245,11 @@ group_imp <- function(
         paste(unknown_params, collapse = ", ")
       )
     }
-    message(paste("Performing group-wise", toupper(imp_method), "imputation with group-wise parameters.", sep = " "))
   }
+  message(sprintf(
+    "Imputing %d group(s) using %s with %s parameters.",
+    nrow(group), toupper(imp_method), if (use_global) "global" else "group-wise"
+  ))
   group_size <- feat_lengths + aux_lengths
   if (has_parameters) {
     param_values <- vapply(group$parameters, function(p) p[[required_param]], numeric(1))
@@ -335,12 +368,10 @@ group_imp <- function(
   # imputation ----
   imp_fn <- if (is_knn_mode) knn_imp else pca_imp
 
-  if (.progress) {
-    if (parallelize || (is_knn_mode && cores > 1)) {
-      message("Running Mode: parallel...")
-    } else {
-      message("Running Mode: sequential...")
-    }
+  if (parallelize || (is_knn_mode && cores > 1)) {
+    message("Running Mode: parallel...")
+  } else {
+    message("Running Mode: sequential...")
   }
 
   if (parallelize) {
@@ -405,9 +436,9 @@ group_imp <- function(
 #' and can pad groups to meet a minimum size.
 #'
 #' @inheritParams knn_imp
-#' @param features_df A data.frame with exactly two columns: `feature_id` and
+#' @param features_df A data.frame with exactly two columns: `features` and
 #' `group`. Maps feature identifiers to their respective groups. No missing
-#' values or duplicate `feature_id` values are allowed.
+#' values or duplicate `features` values are allowed.
 #' @param k Integer or `NULL`. If specified, prepares parameters for K-NN
 #' imputation with `k` neighbors. Cannot be used together with `ncp`.
 #' @param ncp Integer or `NULL`. If specified, prepares parameters for PCA
@@ -443,7 +474,7 @@ group_imp <- function(
 #' group_df <- group_features(
 #'   obj,
 #'   obj_meta,
-#'   subset = sample(obj_meta$feature_id, size = 10),
+#'   subset = sample(obj_meta$features, size = 10),
 #'   k = 10
 #' )
 #' group_df
@@ -483,12 +514,12 @@ group_features <- function(
   )
   checkmate::assert_subset(
     colnames(features_df),
-    c("feature_id", "group"),
+    c("features", "group"),
     .var.name = "features_df"
   )
   stopifnot(
-    "`features_df$feature_id` cannot contain duplicated values" =
-      anyDuplicated(features_df$feature_id) == 0L
+    "`features_df$features` cannot contain duplicated values" =
+      anyDuplicated(features_df$features) == 0L
   )
   if (!is.null(k) && !is.null(ncp)) {
     stop("Specify either `k` for K-NN imputation or `ncp` for PCA imputation or neither, not both")
@@ -523,11 +554,11 @@ group_features <- function(
   }
 
   # cn_df is used for joining
-  cn_df <- data.frame(feature_id = cn)
+  cn_df <- data.frame(features = cn)
   if (!is.null(subset)) {
     # If there are subset, move all non subsets to `aux`
     cn_df$subset <- as.logical(
-      collapse::fmatch(cn_df$feature_id, subset, nomatch = 0)
+      collapse::fmatch(cn_df$features, subset, nomatch = 0)
     )
   } else {
     # else everything is in features
@@ -537,7 +568,7 @@ group_features <- function(
   matched <- collapse::join(
     cn_df,
     features_df,
-    on = "feature_id",
+    on = "features",
     how = "left",
     verbose = FALSE
   )
@@ -548,14 +579,14 @@ group_features <- function(
   # `features` list-column, to be imputed
   features <- collapse::fsubset(matched, subset)
   features <- tibble::tibble(
-    features = collapse::gsplit(features$feature_id, features$group, use.g.names = TRUE),
+    features = collapse::gsplit(features$features, features$group, use.g.names = TRUE),
     group = names(features)
   )
 
   # `aux` list=column, first part is to handle the subset function
   aux <- collapse::fsubset(matched, !subset)
   aux <- tibble::tibble(
-    aux = collapse::gsplit(aux$feature_id, aux$group, use.g.names = TRUE),
+    aux = collapse::gsplit(aux$features, aux$group, use.g.names = TRUE),
     group = names(aux)
   )
 
@@ -570,7 +601,7 @@ group_features <- function(
       if (y == 0) {
         return(NULL)
       }
-      pool <- setdiff(matched$feature_id, x)
+      pool <- setdiff(matched$features, x)
       if (length(pool) < y) {
         stop("`min_group_size` is too large")
       }
