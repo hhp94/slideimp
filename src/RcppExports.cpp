@@ -46,16 +46,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// find_windows_flank_cpp
-List find_windows_flank_cpp(NumericVector location, IntegerVector subset, double window_size);
-RcppExport SEXP _slideimp_find_windows_flank_cpp(SEXP locationSEXP, SEXP subsetSEXP, SEXP window_sizeSEXP) {
+// find_windows_flank
+List find_windows_flank(NumericVector location, IntegerVector subset, double window_size);
+RcppExport SEXP _slideimp_find_windows_flank(SEXP locationSEXP, SEXP subsetSEXP, SEXP window_sizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type location(locationSEXP);
     Rcpp::traits::input_parameter< IntegerVector >::type subset(subsetSEXP);
     Rcpp::traits::input_parameter< double >::type window_size(window_sizeSEXP);
-    rcpp_result_gen = Rcpp::wrap(find_windows_flank_cpp(location, subset, window_size));
+    rcpp_result_gen = Rcpp::wrap(find_windows_flank(location, subset, window_size));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -132,7 +132,7 @@ END_RCPP
 static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 11},
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
-    {"_slideimp_find_windows_flank_cpp", (DL_FUNC) &_slideimp_find_windows_flank_cpp, 3},
+    {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 7},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
     {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},

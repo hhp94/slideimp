@@ -9,6 +9,7 @@ slide_imp(
   location,
   window_size,
   overlap_size = 0,
+  flank = FALSE,
   min_window_n,
   k = NULL,
   colmax = 0.9,
@@ -40,6 +41,9 @@ sliding windows.}
 
 \item{overlap_size}{Overlap between consecutive windows in the same units
 as \code{location}. Must be less than \code{window_size}. Default is \code{0}.}
+
+\item{flank}{Boolean. Should \code{window_size} be windows flanking each features in \code{subset} or not?
+Needs to provide \code{subset} if \code{TRUE} (default = \code{FALSE}).}
 
 \item{min_window_n}{Minimum number of columns a window must contain to be
 imputed. Windows smaller than this are not imputed. \code{k} and \code{ncp} must also
@@ -97,14 +101,16 @@ Performs sliding window K-NN or PCA imputation of large numeric matrices column-
 method assumes that columns are meaningfully sorted by \code{location}.
 }
 \details{
-The sliding window approach divides the input matrix into smaller, overlapping
-segments based on \code{location} values and applies imputation to each window
+The sliding window approach divides the input matrix into smaller segments
+based on \code{location} values and applies imputation to each window
 independently. Values in overlapping areas are averaged across windows to
 produce the final imputed result.
 
-Windows are determined by \code{find_windows()}, which walks along the sorted
-\code{location} vector and groups columns whose positions fall within
-\code{window_size} of each other.
+Windows can be tiling windows defined by greedy partitioned of the location vector
+into windows of \code{window_size}
+
+Windows can also be defined as the \code{window_size} of the window flanking each
+feature provided in the \code{subset} argument.
 
 Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA.
 }

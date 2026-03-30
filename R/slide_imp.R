@@ -39,6 +39,8 @@ find_overlap_regions <- function(start, end) {
 #' @param window_size Window width in the same units as `location`.
 #' @param overlap_size Overlap between consecutive windows in the same units
 #'   as `location`. Must be less than `window_size`. Default is `0`.
+#' @param flank Boolean. Should `window_size` be windows flanking each features in `subset` or not?
+#'   Needs to provide `subset` if `TRUE` (default = `FALSE`).
 #' @param min_window_n Minimum number of columns a window must contain to be
 #'   imputed. Windows smaller than this are not imputed. `k` and `ncp` must also
 #'   be smaller than `min_window_n`.
@@ -47,14 +49,16 @@ find_overlap_regions <- function(start, end) {
 #' @param .progress Show progress bar (default = `TRUE`).
 #'
 #' @details
-#' The sliding window approach divides the input matrix into smaller, overlapping
-#' segments based on `location` values and applies imputation to each window
+#' The sliding window approach divides the input matrix into smaller segments
+#' based on `location` values and applies imputation to each window
 #' independently. Values in overlapping areas are averaged across windows to
 #' produce the final imputed result.
 #'
-#' Windows are determined by `find_windows()`, which walks along the sorted
-#' `location` vector and groups columns whose positions fall within
-#' `window_size` of each other.
+#' Windows can be tiling windows defined by greedy partitioned of the location vector
+#' into windows of `window_size`
+#'
+#' Windows can also be defined as the `window_size` of the window flanking each
+#' feature provided in the `subset` argument.
 #'
 #' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA.
 #'
@@ -96,6 +100,7 @@ slide_imp <- function(
   location,
   window_size,
   overlap_size = 0,
+  flank = FALSE,
   min_window_n,
   # KNN-specific parameters
   k = NULL,
@@ -145,14 +150,19 @@ slide_imp <- function(
   if (overlap_size >= window_size) {
     stop("`overlap_size` must be strictly less than `window_size`.")
   }
+  checkmate::assert_flag(flank, .var.name = "flank", null.ok = FALSE)
+  if (flank) {
+    stopifnot("`subset` must be provided when `flank = TRUE`." = !is.null(subset))
+    overlap_size <- 0
+  }
   checkmate::assert_int(min_window_n, lower = 2L, null.ok = FALSE, .var.name = "min_window_n")
   if (imp_method == "knn") {
     knn_method <- match.arg(knn_method)
-    checkmate::assert_int(k, lower = 1, upper = min_window_n - 1L, null.ok = FALSE, .var.name = "k")
+    checkmate::assert_int(k, lower = 1L, upper = min_window_n - 1L, null.ok = FALSE, .var.name = "k")
   } else if (imp_method == "pca") {
     pca_method <- match.arg(pca_method)
     checkmate::assert_int(ncp,
-      lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1),
+      lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
       .var.name = "ncp"
     )
     obj_vars <- col_vars(obj)
@@ -163,10 +173,41 @@ slide_imp <- function(
   }
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
 
-  # Windowing Logic ----
-  windows <- find_windows(location, window_size, overlap_size)
-  start <- windows$start
-  end <- windows$end
+  # resolve subset to sorted integer indices (needed before windowing when flank = TRUE)
+  if (!is.null(subset)) {
+    if (is.character(subset)) {
+      checkmate::assert_character(
+        subset,
+        any.missing = FALSE, unique = TRUE, min.len = 1L, .var.name = "`subset`"
+      )
+      checkmate::assert_subset(subset, cn, .var.name = "`subset`")
+      subset <- match(subset, cn)
+    } else {
+      # numeric indices
+      checkmate::assert_integerish(
+        subset,
+        lower = 1L, upper = ncol(obj), any.missing = FALSE, unique = TRUE,
+        min.len = 1L, .var.name = "`subset`"
+      )
+      subset <- as.integer(subset)
+    }
+    subset <- sort(subset)
+  } else {
+    subset <- seq_len(ncol(obj))
+  }
+
+  # windowing Logic ----
+  if (flank) {
+    fw <- find_windows_flank(location, subset, window_size)
+    start <- fw$start
+    end <- fw$end
+    # each window has exactly one target column; subset_local gives its local index
+    subset_list <- as.list(fw$subset_local)
+  } else {
+    windows <- find_windows(location, window_size, overlap_size)
+    start <- windows$start
+    end <- windows$end
+  }
 
   # drop windows that are too small. Temporary solution
   window_n <- end - start + 1L
@@ -185,28 +226,13 @@ slide_imp <- function(
   start <- start[keep]
   end <- end[keep]
 
-  # PCA will always impute all the values
-  if (imp_method == "knn") {
-    if (!is.null(subset)) {
-      if (is.character(subset)) {
-        stopifnot("`subset` are characters but `obj` doesn't have colnames" = !is.null(cn))
-        matched <- match(subset, cn, nomatch = NA)
-        subset <- matched[!is.na(matched)]
-        subset <- sort(subset)
-      } else {
-        subset <- as.integer(subset)
-        if (any(!subset %in% seq_len(ncol(obj)))) {
-          stop("Invalid indices in `subset`: must be between 1 and ncol(obj)")
-        }
-        subset <- sort(unique(subset))
-      }
-      if (length(subset) == 0) {
-        stop("`subset` is not found in `colnames(obj)`")
-      }
-    } else {
-      subset <- seq_len(ncol(obj))
-    }
-    # Calculate where the subset indices in each window
+  if (flank) {
+    subset_list <- subset_list[keep]
+    # track which original target columns (global indices) survived filtering
+    target_cols <- subset[keep]
+  }
+
+  if (imp_method == "knn" && !flank) {
     subset_list <- lapply(seq_along(start), function(i) {
       first <- findInterval(start[i] - 1, subset) + 1
       last <- findInterval(end[i], subset)
@@ -218,8 +244,10 @@ slide_imp <- function(
     })
   }
 
-  # Overlap regions to average over
-  overlap <- find_overlap_regions(start, end)
+  # Overlap regions to average over (non-flank only)
+  if (!flank) {
+    overlap <- find_overlap_regions(start, end)
+  }
 
   # Sliding Imputation ----
   result <- matrix(
@@ -265,28 +293,52 @@ slide_imp <- function(
       )
     }
 
-    result[, window_cols] <- result[, window_cols] + imputed_window
+    if (flank) {
+      # in flank mode each window targets a single column; only store that column
+      local_idx <- subset_list[[i]]
+      result[, window_cols[local_idx]] <- result[, window_cols[local_idx]] + imputed_window[, local_idx]
+    } else {
+      result[, window_cols] <- result[, window_cols] + imputed_window
+    }
   }
 
   if (.progress) {
     message("Step 2/2: Averaging overlapping regions")
   }
-  counts_vec <- overlap$counts_vec
-  # Pad to ncol(obj) in case trailing columns are uncovered
-  if (length(counts_vec) < ncol(obj)) {
-    counts_vec <- c(counts_vec, rep(0L, ncol(obj) - length(counts_vec)))
-  }
-  # Average only where multiple windows overlap
-  gt_1_idx <- which(counts_vec > 1)
-  if (length(gt_1_idx) > 0) {
-    result[, gt_1_idx] <- sweep(result[, gt_1_idx, drop = FALSE], 2, counts_vec[gt_1_idx], "/")
-  }
-  # Restore original values for columns not covered by any window
-  uncovered <- which(counts_vec == 0)
-  if (length(uncovered) > 0) {
-    result[, uncovered] <- obj[, uncovered]
-    if (.progress) {
-      message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
+
+  if (flank) {
+    # in flank mode each target column is imputed exactly once, no averaging needed.
+    # columns not targeted by any surviving window get original values.
+    uncovered <- setdiff(subset, target_cols)
+    if (length(uncovered) > 0) {
+      result[, uncovered] <- obj[, uncovered]
+      if (.progress) {
+        message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
+      }
+    }
+    # columns outside `subset` were never targets; restore originals
+    non_subset <- setdiff(seq_len(ncol(obj)), subset)
+    if (length(non_subset) > 0) {
+      result[, non_subset] <- obj[, non_subset]
+    }
+  } else {
+    counts_vec <- overlap$counts_vec
+    # pad to ncol(obj) in case trailing columns are uncovered
+    if (length(counts_vec) < ncol(obj)) {
+      counts_vec <- c(counts_vec, rep(0L, ncol(obj) - length(counts_vec)))
+    }
+    # average only where multiple windows overlap
+    gt_1_idx <- which(counts_vec > 1)
+    if (length(gt_1_idx) > 0) {
+      result[, gt_1_idx] <- sweep(result[, gt_1_idx, drop = FALSE], 2, counts_vec[gt_1_idx], "/")
+    }
+    # restore original values for columns not covered by any window
+    uncovered <- which(counts_vec == 0)
+    if (length(uncovered) > 0) {
+      result[, uncovered] <- obj[, uncovered]
+      if (.progress) {
+        message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
+      }
     }
   }
 
