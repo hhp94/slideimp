@@ -484,8 +484,7 @@ test_that("`compute_windows` flank returns expected structure", {
 test_that("`compute_windows` flank produces correct windows for known input", {
   # location = 1:50, window_size = 10, subset = c(5, 25, 45)
   # center=5:  [1, 15]  -> local idx 5
-
-# center=25: [15, 35] -> local idx 11
+  # center=25: [15, 35] -> local idx 11
   # center=45: [35, 50] -> local idx 11
   result <- compute_windows(
     1:50,

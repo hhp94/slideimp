@@ -107,7 +107,7 @@ find_overlap_regions <- function(start, end) {
 #' imputed_flank <- slide_imp(
 #'   beta_matrix,
 #'   location = location,
-#'   k = 5,
+#'   k = 2,
 #'   window_size = 30,
 #'   flank = TRUE,
 #'   subset = c(10, 30, 70),
@@ -123,6 +123,7 @@ slide_imp <- function(
   overlap_size = 0,
   flank = FALSE,
   min_window_n,
+  subset = NULL,
   # KNN-specific parameters
   k = NULL,
   colmax = 0.9,
@@ -130,7 +131,6 @@ slide_imp <- function(
   cores = 1,
   post_imp = FALSE,
   dist_pow = 0,
-  subset = NULL,
   # PCA-specific parameters
   ncp = NULL,
   scale = TRUE,
@@ -408,8 +408,9 @@ slide_imp <- function(
 #'
 #' @export
 compute_windows <- function(
-    location, window_size, overlap_size = 0, min_window_n = 0,
-    subset = NULL, flank = FALSE) {
+  location, window_size, overlap_size = 0, min_window_n = 0,
+  subset = NULL, flank = FALSE
+) {
   checkmate::assert_numeric(location,
     any.missing = FALSE, sorted = TRUE,
     finite = TRUE, null.ok = FALSE, .var.name = "location"

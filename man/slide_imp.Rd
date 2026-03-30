@@ -11,13 +11,13 @@ slide_imp(
   overlap_size = 0,
   flank = FALSE,
   min_window_n,
+  subset = NULL,
   k = NULL,
   colmax = 0.9,
   knn_method = c("euclidean", "manhattan"),
   cores = 1,
   post_imp = FALSE,
   dist_pow = 0,
-  subset = NULL,
   ncp = NULL,
   scale = TRUE,
   pca_method = c("regularized", "EM"),
@@ -52,6 +52,9 @@ provided. Default = \code{FALSE}.}
 imputed. Windows smaller than this are not imputed. \code{k} and \code{ncp} must also
 be smaller than \code{min_window_n}.}
 
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute.}
+
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
 \item{colmax}{A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.}
@@ -65,9 +68,6 @@ using column means (default = \code{TRUE}).}
 
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
-
-\item{subset}{Character vector of column names or integer vector of column
-indices specifying which columns to impute.}
 
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 
@@ -157,7 +157,7 @@ pca_knn
 imputed_flank <- slide_imp(
   beta_matrix,
   location = location,
-  k = 5,
+  k = 2,
   window_size = 30,
   flank = TRUE,
   subset = c(10, 30, 70),

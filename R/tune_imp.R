@@ -320,7 +320,7 @@ tune_imp <- function(
       if (!all(c("window_size", "overlap_size", "min_window_n") %in% names(parameters))) {
         stop("`slide_imp` requires `window_size`, `overlap_size`, and `min_window_n` in `parameters`.")
       }
-      if("flank" %in% names(parameters)) {
+      if ("flank" %in% names(parameters)) {
         stop("Tuning with `flank` passed as parameters is not yet supported.")
       }
       if ("k" %in% names(parameters) && "ncp" %in% names(parameters)) {
