@@ -9,6 +9,10 @@ find_windows <- function(x, window, overlap = 0.0) {
     .Call(`_slideimp_find_windows`, x, window, overlap)
 }
 
+find_windows_flank_cpp <- function(location, subset, window_size) {
+    .Call(`_slideimp_find_windows_flank_cpp`, location, subset, window_size)
+}
+
 #' Impute missing values in a matrix using k-nearest neighbors (K-NN) with brute-force
 #'
 #' This function imputes missing values in a matrix using a k-nearest neighbors
