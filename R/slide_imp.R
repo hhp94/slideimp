@@ -34,16 +34,19 @@ find_overlap_regions <- function(start, end) {
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
 #' @param location A sorted numeric vector of length `ncol(obj)` giving the
-#'   position of each column (e.g., genomic coordinates). Used to define
-#'   sliding windows.
+#' position of each column (e.g., genomic coordinates). Used to define
+#' sliding windows.
 #' @param window_size Window width in the same units as `location`.
 #' @param overlap_size Overlap between consecutive windows in the same units
-#'   as `location`. Must be less than `window_size`. Default is `0`.
-#' @param flank Boolean. Should `window_size` be windows flanking each features in `subset` or not?
-#'   Needs to provide `subset` if `TRUE` (default = `FALSE`).
+#' as `location`. Must be less than `window_size`. Default is `0`. Ignored
+#' when `flank = TRUE`.
+#' @param flank Logical. If `TRUE`, instead of sliding windows across the
+#' whole matrix, one window of width `window_size` is created flanking each feature
+#' listed in `subset`. In this mode `overlap_size` is ignored. Requires `subset` to be
+#' provided. Default = `FALSE`.
 #' @param min_window_n Minimum number of columns a window must contain to be
-#'   imputed. Windows smaller than this are not imputed. `k` and `ncp` must also
-#'   be smaller than `min_window_n`.
+#' imputed. Windows smaller than this are not imputed. `k` and `ncp` must also
+#' be smaller than `min_window_n`.
 #' @param knn_method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
 #' @param pca_method "regularized" by default or "EM".
 #' @param .progress Show progress bar (default = `TRUE`).
@@ -54,11 +57,15 @@ find_overlap_regions <- function(start, end) {
 #' independently. Values in overlapping areas are averaged across windows to
 #' produce the final imputed result.
 #'
-#' Windows can be tiling windows defined by greedy partitioned of the location vector
-#' into windows of `window_size`
+#' Two windowing modes are supported:
 #'
-#' Windows can also be defined as the `window_size` of the window flanking each
-#' feature provided in the `subset` argument.
+#' * `flank = FALSE` (default): Greedily partitions the
+#'   `location` vector into windows of width `window_size` with the requested
+#'   `overlap_size` between consecutive windows.
+#'
+#' * `flank = TRUE`: Creates one window per feature
+#'   in `subset` that exactly flanks that specific feature using the supplied
+#'   `window_size`.
 #'
 #' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA.
 #'
@@ -71,7 +78,7 @@ find_overlap_regions <- function(start, end) {
 #' beta_matrix <- t(sim_mat(100, 20)$input)
 #' location <- 1:100
 #'
-#' # Sliding Window K-NN imputation by specifying `k`
+#' # Sliding Window K-NN imputation by specifying `k` (sliding windows)
 #' imputed_knn <- slide_imp(
 #'   beta_matrix,
 #'   location = location,
@@ -83,7 +90,7 @@ find_overlap_regions <- function(start, end) {
 #' )
 #' imputed_knn
 #'
-#' # Sliding Window PCA imputation by specifying `ncp`
+#' # Sliding Window PCA imputation by specifying `ncp` (sliding windows)
 #' pca_knn <- slide_imp(
 #'   beta_matrix,
 #'   location = location,
@@ -93,6 +100,20 @@ find_overlap_regions <- function(start, end) {
 #'   min_window_n = 10
 #' )
 #' pca_knn
+#'
+#' # Sliding Window K-NN imputation with flanking windows (flank = TRUE)
+#' # Only the columns listed in `subset` are imputed; each uses its own
+#' # centered window of width `window_size`.
+#' imputed_flank <- slide_imp(
+#'   beta_matrix,
+#'   location = location,
+#'   k = 5,
+#'   window_size = 30,
+#'   flank = TRUE,
+#'   subset = c(10, 30, 70),
+#'   min_window_n = 5
+#' )
+#' imputed_flank
 #'
 #' @export
 slide_imp <- function(
@@ -198,11 +219,11 @@ slide_imp <- function(
 
   # windowing Logic ----
   if (flank) {
-    fw <- find_windows_flank(location, subset, window_size)
-    start <- fw$start
-    end <- fw$end
+    windows <- find_windows_flank(location, subset, window_size)
+    start <- windows$start
+    end <- windows$end
     # each window has exactly one target column; subset_local gives its local index
-    subset_list <- as.list(fw$subset_local)
+    subset_list <- as.list(windows$subset_local)
   } else {
     windows <- find_windows(location, window_size, overlap_size)
     start <- windows$start
@@ -364,24 +385,31 @@ slide_imp <- function(
 
 #' Compute Sliding Windows
 #'
-#' Compute the sliding windows used in the [slide_imp()] function.
+#' Computes the sliding windows used internally by [slide_imp()].
 #'
 #' @inheritParams slide_imp
 #'
-#' @returns A [tibble::tibble()] with one row per window and the following columns:
+#' @returns A [tibble::tibble()] with one row per window. The columns returned
+#' depend on the value of `flank`:
 #'
-#' * `start`: Integer. Start index of the window in `location`.
-#' * `end`: Integer. End index of the window in `location`.
-#' * `window_n`: Integer. Number of columns in the window.
-#' * `keep`: Logical. `TRUE` if `window_n >= min_window_n`.
+#' * `flank = FALSE` (default): `start`, `end`, `window_n`, `keep`.
+#' * `flank = TRUE`: `start`, `end`, `target` (global index from `subset`),
+#'   `subset_local` (local index of the target column inside the window),
+#'   `window_n`, `keep`.
 #'
 #' @examples
 #' location <- 1:100
 #'
+#' # Sliding windows (default)
 #' compute_windows(location, window_size = 50, overlap_size = 10, min_window_n = 10)
 #'
+#' # With `flank = TRUE`
+#' compute_windows(location, window_size = 20, flank = TRUE, subset = c(10, 50, 80))
+#'
 #' @export
-compute_windows <- function(location, window_size, overlap_size = 0, min_window_n = 0) {
+compute_windows <- function(
+    location, window_size, overlap_size = 0, min_window_n = 0,
+    subset = NULL, flank = FALSE) {
   checkmate::assert_numeric(location,
     any.missing = FALSE, sorted = TRUE,
     finite = TRUE, null.ok = FALSE, .var.name = "location"
@@ -390,28 +418,56 @@ compute_windows <- function(location, window_size, overlap_size = 0, min_window_
     lower = .Machine$double.eps, finite = TRUE,
     null.ok = FALSE, .var.name = "window_size"
   )
-  checkmate::assert_number(overlap_size,
-    lower = 0, finite = TRUE,
-    null.ok = FALSE, .var.name = "overlap_size"
-  )
-  if (overlap_size >= window_size) {
-    stop("`overlap_size` must be strictly less than `window_size`.")
+  checkmate::assert_flag(flank, .var.name = "flank", null.ok = FALSE)
+
+  if (flank) {
+    stopifnot("`subset` must be provided when `flank = TRUE`." = !is.null(subset))
+    checkmate::assert_integerish(
+      subset,
+      lower = 1L, upper = length(location), any.missing = FALSE, unique = TRUE,
+      min.len = 1L, .var.name = "`subset`"
+    )
+    subset <- sort(as.integer(subset))
+
+    windows <- find_windows_flank(location, subset, window_size)
+    start <- windows$start
+    end <- windows$end
+    subset_local <- windows$subset_local
+    window_n <- end - start + 1L
+    keep <- window_n >= min_window_n
+
+    tibble::tibble(
+      start = start,
+      end = end,
+      target = subset,
+      subset_local = subset_local,
+      window_n = window_n,
+      keep = keep
+    )
+  } else {
+    checkmate::assert_number(overlap_size,
+      lower = 0, finite = TRUE,
+      null.ok = FALSE, .var.name = "overlap_size"
+    )
+    if (overlap_size >= window_size) {
+      stop("`overlap_size` must be strictly less than `window_size`.")
+    }
+    checkmate::assert_int(min_window_n,
+      lower = 0L, null.ok = FALSE,
+      .var.name = "min_window_n"
+    )
+
+    windows <- find_windows(location, window_size, overlap_size)
+    start <- windows$start
+    end <- windows$end
+    window_n <- end - start + 1L
+    keep <- window_n >= min_window_n
+
+    tibble::tibble(
+      start = start,
+      end = end,
+      window_n = window_n,
+      keep = keep
+    )
   }
-  checkmate::assert_int(min_window_n,
-    lower = 0L, null.ok = FALSE,
-    .var.name = "min_window_n"
-  )
-
-  windows <- find_windows(location, window_size, overlap_size)
-  start <- windows$start
-  end <- windows$end
-  window_n <- end - start + 1L
-  keep <- window_n >= min_window_n
-
-  tibble::tibble(
-    start = start,
-    end = end,
-    window_n = window_n,
-    keep = keep
-  )
 }

@@ -321,6 +321,122 @@ test_that("`slide_imp` errors on zero-variance features in PCA mode", {
   )
 })
 
+test_that("`slide_imp` flank works with knn", {
+  set.seed(1234)
+  to_test <- t(
+    sim_mat(
+      n = 50,
+      m = 10,
+      perc_NA = 0.5,
+      perc_col_NA = 1
+    )$input
+  )
+  location <- 1:ncol(to_test)
+  subset <- c(5, 25, 45)
+  window_size <- 20
+  min_window_n <- 10
+
+  fw <- find_windows_flank(location, subset, window_size)
+  start <- fw$start
+  end <- fw$end
+  subset_local <- fw$subset_local
+
+  window_n <- end - start + 1L
+  keep <- window_n >= min_window_n
+  start <- start[keep]
+  end <- end[keep]
+  subset_local <- subset_local[keep]
+  target_cols <- subset[keep]
+
+  result <- to_test
+  for (i in seq_along(start)) {
+    window_cols <- start[i]:end[i]
+    imputed_window <- knn_imp(
+      obj = to_test[, window_cols, drop = FALSE],
+      k = 3,
+      colmax = 0.9,
+      post_imp = TRUE,
+      subset = subset_local[i]
+    )
+    local_idx <- subset_local[i]
+    result[, window_cols[local_idx]] <- imputed_window[, local_idx]
+  }
+
+  expect_equal(
+    slide_imp(
+      to_test,
+      location = location,
+      window_size = window_size,
+      flank = TRUE,
+      k = 3,
+      min_window_n = min_window_n,
+      colmax = 0.9,
+      post_imp = TRUE,
+      subset = subset,
+      .progress = FALSE
+    )[, ],
+    result
+  )
+})
+
+test_that("`slide_imp` flank works with pca", {
+  set.seed(1234)
+  to_test <- t(
+    sim_mat(
+      n = 50,
+      m = 10,
+      perc_NA = 0.5,
+      perc_col_NA = 1
+    )$input
+  )
+  location <- 1:ncol(to_test)
+  subset <- c(5, 25, 45)
+  window_size <- 20
+  min_window_n <- 10
+
+  fw <- find_windows_flank(location, subset, window_size)
+  start <- fw$start
+  end <- fw$end
+  subset_local <- fw$subset_local
+
+  window_n <- end - start + 1L
+  keep <- window_n >= min_window_n
+  start <- start[keep]
+  end <- end[keep]
+  subset_local <- subset_local[keep]
+  target_cols <- subset[keep]
+
+  result <- to_test
+  for (i in seq_along(start)) {
+    window_cols <- start[i]:end[i]
+    imputed_window <- pca_imp(
+      obj = to_test[, window_cols, drop = FALSE],
+      ncp = 2,
+      scale = TRUE,
+      method = "regularized",
+      seed = 1234
+    )
+    local_idx <- subset_local[i]
+    result[, window_cols[local_idx]] <- imputed_window[, local_idx]
+  }
+
+  expect_equal(
+    slide_imp(
+      to_test,
+      location = location,
+      window_size = window_size,
+      flank = TRUE,
+      ncp = 2,
+      min_window_n = min_window_n,
+      scale = TRUE,
+      subset = subset,
+      seed = 1234,
+      .progress = FALSE
+    )[, ],
+    result
+  )
+})
+
 test_that("`compute_windows` returns expected structure", {
   result <- compute_windows(1:100, window_size = 50, overlap_size = 10)
   expect_s3_class(result, "tbl_df")
@@ -350,4 +466,58 @@ test_that("`compute_windows` returns correct windows for known input", {
   result <- compute_windows(1:10, window_size = 5, overlap_size = 0)
   expect_equal(result$start, c(1L, 6L))
   expect_equal(result$end, c(5L, 10L))
+})
+
+test_that("`compute_windows` flank returns expected structure", {
+  result <- compute_windows(
+    1:50,
+    window_size = 10,
+    subset = c(5, 25, 45),
+    flank = TRUE
+  )
+  expect_s3_class(result, "tbl_df")
+  expect_named(result, c("start", "end", "target", "subset_local", "window_n", "keep"))
+  expect_equal(nrow(result), 3L)
+  expect_true(all(result$window_n == (result$end - result$start + 1L)))
+})
+
+test_that("`compute_windows` flank produces correct windows for known input", {
+  # location = 1:50, window_size = 10, subset = c(5, 25, 45)
+  # center=5:  [1, 15]  -> local idx 5
+
+# center=25: [15, 35] -> local idx 11
+  # center=45: [35, 50] -> local idx 11
+  result <- compute_windows(
+    1:50,
+    window_size = 10,
+    subset = c(5, 25, 45),
+    flank = TRUE
+  )
+  expect_equal(result$start, c(1L, 15L, 35L))
+  expect_equal(result$end, c(15L, 35L, 50L))
+  expect_equal(result$target, c(5L, 25L, 45L))
+  expect_equal(result$subset_local, c(5L, 11L, 11L))
+})
+
+test_that("`compute_windows` flank flags small windows with `min_window_n`", {
+  # Use a small window_size so edge targets produce small windows
+  # location = 1:20, subset = c(1, 10, 20), window_size = 3
+  # center=1:  [1, 4]  -> n=4
+  # center=10: [7, 13] -> n=7
+  # center=20: [17, 20] -> n=4
+  result <- compute_windows(
+    1:20,
+    window_size = 3,
+    subset = c(1, 10, 20),
+    flank = TRUE,
+    min_window_n = 5
+  )
+  expect_equal(result$keep, c(FALSE, TRUE, FALSE))
+})
+
+test_that("`compute_windows` flank requires subset", {
+  expect_error(
+    compute_windows(1:50, window_size = 10, flank = TRUE),
+    "subset"
+  )
 })

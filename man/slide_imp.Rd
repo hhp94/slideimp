@@ -40,10 +40,13 @@ sliding windows.}
 \item{window_size}{Window width in the same units as \code{location}.}
 
 \item{overlap_size}{Overlap between consecutive windows in the same units
-as \code{location}. Must be less than \code{window_size}. Default is \code{0}.}
+as \code{location}. Must be less than \code{window_size}. Default is \code{0}. Ignored
+when \code{flank = TRUE}.}
 
-\item{flank}{Boolean. Should \code{window_size} be windows flanking each features in \code{subset} or not?
-Needs to provide \code{subset} if \code{TRUE} (default = \code{FALSE}).}
+\item{flank}{Logical. If \code{TRUE}, instead of sliding windows across the
+whole matrix, one window of width \code{window_size} is created flanking each feature
+listed in \code{subset}. In this mode \code{overlap_size} is ignored. Requires \code{subset} to be
+provided. Default = \code{FALSE}.}
 
 \item{min_window_n}{Minimum number of columns a window must contain to be
 imputed. Windows smaller than this are not imputed. \code{k} and \code{ncp} must also
@@ -106,11 +109,15 @@ based on \code{location} values and applies imputation to each window
 independently. Values in overlapping areas are averaged across windows to
 produce the final imputed result.
 
-Windows can be tiling windows defined by greedy partitioned of the location vector
-into windows of \code{window_size}
-
-Windows can also be defined as the \code{window_size} of the window flanking each
-feature provided in the \code{subset} argument.
+Two windowing modes are supported:
+\itemize{
+\item \code{flank = FALSE} (default): Greedily partitions the
+\code{location} vector into windows of width \code{window_size} with the requested
+\code{overlap_size} between consecutive windows.
+\item \code{flank = TRUE}: Creates one window per feature
+in \code{subset} that exactly flanks that specific feature using the supplied
+\code{window_size}.
+}
 
 Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA.
 }
@@ -121,7 +128,7 @@ set.seed(1234)
 beta_matrix <- t(sim_mat(100, 20)$input)
 location <- 1:100
 
-# Sliding Window K-NN imputation by specifying `k`
+# Sliding Window K-NN imputation by specifying `k` (sliding windows)
 imputed_knn <- slide_imp(
   beta_matrix,
   location = location,
@@ -133,7 +140,7 @@ imputed_knn <- slide_imp(
 )
 imputed_knn
 
-# Sliding Window PCA imputation by specifying `ncp`
+# Sliding Window PCA imputation by specifying `ncp` (sliding windows)
 pca_knn <- slide_imp(
   beta_matrix,
   location = location,
@@ -143,5 +150,19 @@ pca_knn <- slide_imp(
   min_window_n = 10
 )
 pca_knn
+
+# Sliding Window K-NN imputation with flanking windows (flank = TRUE)
+# Only the columns listed in `subset` are imputed; each uses its own
+# centered window of width `window_size`.
+imputed_flank <- slide_imp(
+  beta_matrix,
+  location = location,
+  k = 5,
+  window_size = 30,
+  flank = TRUE,
+  subset = c(10, 30, 70),
+  min_window_n = 5
+)
+imputed_flank
 
 }

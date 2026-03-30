@@ -4,7 +4,14 @@
 \alias{compute_windows}
 \title{Compute Sliding Windows}
 \usage{
-compute_windows(location, window_size, overlap_size = 0, min_window_n = 0)
+compute_windows(
+  location,
+  window_size,
+  overlap_size = 0,
+  min_window_n = 0,
+  subset = NULL,
+  flank = FALSE
+)
 }
 \arguments{
 \item{location}{A sorted numeric vector of length \code{ncol(obj)} giving the
@@ -14,27 +21,41 @@ sliding windows.}
 \item{window_size}{Window width in the same units as \code{location}.}
 
 \item{overlap_size}{Overlap between consecutive windows in the same units
-as \code{location}. Must be less than \code{window_size}. Default is \code{0}.}
+as \code{location}. Must be less than \code{window_size}. Default is \code{0}. Ignored
+when \code{flank = TRUE}.}
 
 \item{min_window_n}{Minimum number of columns a window must contain to be
 imputed. Windows smaller than this are not imputed. \code{k} and \code{ncp} must also
 be smaller than \code{min_window_n}.}
+
+\item{subset}{Character vector of column names or integer vector of column
+indices specifying which columns to impute.}
+
+\item{flank}{Logical. If \code{TRUE}, instead of sliding windows across the
+whole matrix, one window of width \code{window_size} is created flanking each feature
+listed in \code{subset}. In this mode \code{overlap_size} is ignored. Requires \code{subset} to be
+provided. Default = \code{FALSE}.}
 }
 \value{
-A \code{\link[tibble:tibble]{tibble::tibble()}} with one row per window and the following columns:
+A \code{\link[tibble:tibble]{tibble::tibble()}} with one row per window. The columns returned
+depend on the value of \code{flank}:
 \itemize{
-\item \code{start}: Integer. Start index of the window in \code{location}.
-\item \code{end}: Integer. End index of the window in \code{location}.
-\item \code{window_n}: Integer. Number of columns in the window.
-\item \code{keep}: Logical. \code{TRUE} if \code{window_n >= min_window_n}.
+\item \code{flank = FALSE} (default): \code{start}, \code{end}, \code{window_n}, \code{keep}.
+\item \code{flank = TRUE}: \code{start}, \code{end}, \code{target} (global index from \code{subset}),
+\code{subset_local} (local index of the target column inside the window),
+\code{window_n}, \code{keep}.
 }
 }
 \description{
-Compute the sliding windows used in the \code{\link[=slide_imp]{slide_imp()}} function.
+Computes the sliding windows used internally by \code{\link[=slide_imp]{slide_imp()}}.
 }
 \examples{
 location <- 1:100
 
+# Sliding windows (default)
 compute_windows(location, window_size = 50, overlap_size = 10, min_window_n = 10)
+
+# With `flank = TRUE`
+compute_windows(location, window_size = 20, flank = TRUE, subset = c(10, 50, 80))
 
 }
