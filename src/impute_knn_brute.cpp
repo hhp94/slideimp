@@ -55,6 +55,9 @@ inline double calc_distance_raw(
 {
   double dist = 0.0;
   double n_valid = 0.0;
+#if defined(_OPENMP)
+#pragma omp simd reduction(+:dist, n_valid)
+#endif
   for (arma::uword r = 0; r < n_rows; ++r)
   {
     double valid = target_nmiss[r] * other_nmiss[r];
@@ -100,6 +103,9 @@ inline double calc_distance_raw_complete(
     const double n_valid)
 {
   double dist = 0.0;
+#if defined(_OPENMP)
+#pragma omp simd reduction(+:dist)
+#endif
   for (arma::uword r = 0; r < n_rows; ++r)
   {
     double diff = target_ptr[r] - other_ptr[r];
