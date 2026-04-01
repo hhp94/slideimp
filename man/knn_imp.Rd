@@ -13,7 +13,8 @@ knn_imp(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  tree = NULL
+  tree = NULL,
+  max_cache = 4
 )
 }
 \arguments{
@@ -37,6 +38,13 @@ indices specifying which columns to impute.}
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
 \item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
+
+\item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
+greater than \code{0}, pairwise distances between columns with missing values
+are precomputed and cached, which is faster for moderate-sized data but
+uses O(m^2) memory where m is the number of columns with missing values.
+Set to \code{0} to disable caching and trade speed for lower memory usage on
+very wide data.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.

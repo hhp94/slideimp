@@ -131,6 +131,7 @@ slide_imp <- function(
   cores = 1,
   post_imp = FALSE,
   dist_pow = 0,
+  max_cache = 4,
   # PCA-specific parameters
   ncp = NULL,
   scale = TRUE,
@@ -297,6 +298,7 @@ slide_imp <- function(
         method = knn_method,
         post_imp = post_imp,
         dist_pow = dist_pow,
+        max_cache = max_cache,
         subset = subset_list[[i]]
       )
     } else if (imp_method == "pca") {

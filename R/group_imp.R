@@ -133,6 +133,7 @@ group_imp <- function(
   dist_pow = NULL,
   tree = NULL,
   cores = 1,
+  max_cache = NULL,
   # PCA-specific parameters
   ncp = NULL,
   scale = NULL,
@@ -228,7 +229,10 @@ group_imp <- function(
     }
     imp_method <- if (all(has_k)) "knn" else "pca"
     if (imp_method == "knn") {
-      allowed_params <- c("k", "method", "colmax", "cores", "post_imp", "dist_pow", "tree")
+      allowed_params <- c(
+        "k", "method", "colmax", "cores", "post_imp", "dist_pow", "tree",
+        "max_cache"
+      )
       required_param <- "k"
     } else {
       allowed_params <- c(

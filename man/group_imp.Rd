@@ -14,6 +14,7 @@ group_imp(
   dist_pow = NULL,
   tree = NULL,
   cores = 1,
+  max_cache = NULL,
   ncp = NULL,
   scale = NULL,
   pca_method = NULL,
@@ -64,6 +65,13 @@ using column means (default = \code{TRUE}).}
 
 \item{cores}{Controls the number of cores to parallelize over for K-NN imputation with OpenMP only.
 To setup parallelization for K-NN without OpenMP and PCA imputation, use \code{mirai::daemons()}.}
+
+\item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
+greater than \code{0}, pairwise distances between columns with missing values
+are precomputed and cached, which is faster for moderate-sized data but
+uses O(m^2) memory where m is the number of columns with missing values.
+Set to \code{0} to disable caching and trade speed for lower memory usage on
+very wide data.}
 
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 

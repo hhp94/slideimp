@@ -1,3 +1,20 @@
+check_cache_memory <- function(n_miss_cols, max_cache) {
+  if (n_miss_cols <= 1L) return(invisible(NULL))
+  n <- as.numeric(n_miss_cols)
+  cache_gb <- (n * (n - 1) / 2) * 8 / 1024^3
+  if (cache_gb > max_cache) {
+    stop(sprintf(
+      paste0(
+        "Cache would require %.1f GB for %d missing columns, ",
+        "which exceeds `max_cache` (%.1f GB). ",
+        "Increase `max_cache` or set `max_cache = 0` to disable the cache."
+      ),
+      cache_gb, n_miss_cols, max_cache
+    ))
+  }
+  invisible(NULL)
+}
+
 #' K-Nearest Neighbor Imputation for Numeric Matrices
 #'
 #' @description
@@ -32,6 +49,12 @@
 #' @param dist_pow The amount of penalization for further away nearest neighbors in the weighted average.
 #' `dist_pow = 0` (default) is the simple average of the nearest neighbors.
 #' @param tree Either `NULL` (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the `{mlpack}` ball-tree or kd-tree algorithms.
+#' @param max_cache Maximum allowed cache size in GB (default `4`). When
+#' greater than `0`, pairwise distances between columns with missing values
+#' are precomputed and cached, which is faster for moderate-sized data but
+#' uses O(m^2) memory where m is the number of columns with missing values.
+#' Set to `0` to disable caching and trade speed for lower memory usage on
+#' very wide data.
 #'
 #' @return A numeric matrix of the same dimensions as `obj` with missing values imputed.
 #'
@@ -59,7 +82,8 @@ knn_imp <- function(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  tree = NULL
+  tree = NULL,
+  max_cache = 4
 ) {
   # Pre-conditioning
   method <- match.arg(method)
@@ -76,6 +100,7 @@ knn_imp <- function(
   )
   stopifnot(length(dist_pow) == 1, dist_pow >= 0, !is.infinite(dist_pow))
   checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
+  checkmate::assert_number(max_cache, lower = 0, finite = TRUE, null.ok = FALSE, .var.name = "max_cache")
   # subset logic
   subset <- if (is.null(subset)) {
     seq_len(ncol(obj))
@@ -112,7 +137,14 @@ knn_imp <- function(
   # Set all values outside of subset to be zero cmiss. This will make
   # `impute_knn_brute`/`impute_knn_mlpack` skip these columns
   pre_imp_cmiss[pos_complement] <- 0L
-  # Impute
+  cache <- max_cache > 0
+  if (cache) {
+    check_cache_memory(
+      n_miss_cols = sum(pre_imp_cmiss > 0L),
+      max_cache = max_cache
+    )
+  }
+  # Impute ----
   if (is.null(tree)) {
     imputed_values <- impute_knn_brute(
       obj = pre_imp_cols,
@@ -124,7 +156,8 @@ knn_imp <- function(
         "manhattan" = 1L
       ),
       dist_pow = dist_pow,
-      cores = cores
+      cores = cores,
+      cache = cache
     )
   } else {
     imputed_values <- impute_knn_mlpack(

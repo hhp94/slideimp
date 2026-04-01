@@ -18,6 +18,7 @@ slide_imp(
   cores = 1,
   post_imp = FALSE,
   dist_pow = 0,
+  max_cache = 4,
   ncp = NULL,
   scale = TRUE,
   pca_method = c("regularized", "EM"),
@@ -68,6 +69,13 @@ using column means (default = \code{TRUE}).}
 
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
+
+\item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
+greater than \code{0}, pairwise distances between columns with missing values
+are precomputed and cached, which is faster for moderate-sized data but
+uses O(m^2) memory where m is the number of columns with missing values.
+Set to \code{0} to disable caching and trade speed for lower memory usage on
+very wide data.}
 
 \item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
 

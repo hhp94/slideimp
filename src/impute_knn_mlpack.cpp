@@ -45,10 +45,12 @@ arma::mat impute_knn_mlpack(
   arma::uvec col_index_miss = arma::find(n_col_miss > 0);
   // Initialize result matrix and get column offsets using helper function
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(miss, col_index_miss, n_col_miss, col_offsets);
+  // convert miss to miss8 to eliminate memory over head in calc_distance
+  arma::Mat<unsigned char> miss8 = arma::conv_to<arma::Mat<unsigned char>>::from(miss);
+  arma::mat result = initialize_result_matrix(miss8, col_index_miss, n_col_miss, col_offsets);
   if (result.n_rows == 0)
   {
-    return result; // No missing values
+    return result;
   }
   arma::mat query_mat = obj.cols(col_index_miss);
   // Matrices to store output
@@ -105,7 +107,7 @@ arma::mat impute_knn_mlpack(
     nn_columns_mat.col(0) = nn_columns;
 
     impute_column_values(
-        result, obj, miss,
+        result, obj, miss8,
         col_offsets(i), target_col_idx,
         nn_columns_mat, weights);
   }

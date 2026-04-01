@@ -10,7 +10,7 @@ constexpr double epsilon = 1e-10;
 // Helper function to initialize the result matrix with row and column indices
 // Returns the result matrix and populates col_offsets for later use
 arma::mat initialize_result_matrix(
-    const arma::umat &miss,
+    const arma::Mat<unsigned char> &miss,
     const arma::uvec &col_index_miss,
     const arma::uvec &n_col_miss,
     arma::uvec &col_offsets);
@@ -19,7 +19,7 @@ arma::mat initialize_result_matrix(
 void impute_column_values(
     arma::mat &result,
     const arma::mat &obj,
-    const arma::umat &miss,
+    const arma::Mat<unsigned char> &miss,
     const arma::uword col_offset,
     const arma::uword target_col_idx,
     const arma::umat &nn_columns_mat,
