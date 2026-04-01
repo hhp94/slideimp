@@ -311,6 +311,7 @@ void impute_knn_brute_impl(
     const arma::uvec &grp_miss_no_imp,
     const arma::uvec &grp_complete,
     const arma::uvec &col_offsets,
+    const std::vector<arma::uvec> &rows_to_impute_vec,
     const double dist_pow,
     int cores,
     const StrictLowerTriangularMatrix *cache_ptr)
@@ -344,7 +345,8 @@ void impute_knn_brute_impl(
     nn_columns_mat.col(0) = nn_columns;
     impute_column_values(result, obj, nmiss,
                          col_offsets(i), grp_impute(i),
-                         nn_columns_mat, weights);
+                         nn_columns_mat, weights,
+                         rows_to_impute_vec[i]);
   }
 }
 
@@ -369,6 +371,7 @@ void dispatch_cache(
     const arma::uvec &grp_miss_no_imp,
     const arma::uvec &grp_complete,
     const arma::uvec &col_offsets,
+    const std::vector<arma::uvec> &rows_to_impute_vec,
     const double dist_pow,
     const bool use_cache,
     int cores)
@@ -392,13 +395,13 @@ void dispatch_cache(
 
     impute_knn_brute_impl<Method, true>(
         result, obj, nmiss, k, grp_impute, grp_miss_no_imp, grp_complete,
-        col_offsets, dist_pow, cores, &cache);
+        col_offsets, rows_to_impute_vec, dist_pow, cores, &cache);
   }
   else
   {
     impute_knn_brute_impl<Method, false>(
         result, obj, nmiss, k, grp_impute, grp_miss_no_imp, grp_complete,
-        col_offsets, dist_pow, cores, nullptr);
+        col_offsets, rows_to_impute_vec, dist_pow, cores, nullptr);
   }
 }
 
@@ -422,7 +425,8 @@ arma::mat impute_knn_brute(
   }
 
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(nmiss, grp_impute, n_miss_impute, col_offsets);
+  std::vector<arma::uvec> rows_to_impute_vec;
+  arma::mat result = initialize_result_matrix(nmiss, grp_impute, n_miss_impute, col_offsets, rows_to_impute_vec);
   if (result.n_rows == 0)
   {
     return result;
@@ -432,11 +436,11 @@ arma::mat impute_knn_brute(
   {
   case 0:
     dispatch_cache<0>(result, obj, nmiss, k, grp_impute, grp_miss_no_imp,
-                      grp_complete, col_offsets, dist_pow, cache, cores);
+                      grp_complete, col_offsets, rows_to_impute_vec, dist_pow, cache, cores);
     break;
   case 1:
     dispatch_cache<1>(result, obj, nmiss, k, grp_impute, grp_miss_no_imp,
-                      grp_complete, col_offsets, dist_pow, cache, cores);
+                      grp_complete, col_offsets, rows_to_impute_vec, dist_pow, cache, cores);
     break;
   default:
     throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan");

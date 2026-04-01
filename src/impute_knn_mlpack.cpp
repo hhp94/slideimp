@@ -1,4 +1,5 @@
 #include "imputed_value.h"
+#include <vector>
 #include <mlpack.h>
 #include <mlpack/methods/neighbor_search/neighbor_search.hpp>
 #include <RcppArmadillo.h>
@@ -28,9 +29,10 @@ arma::mat impute_knn_mlpack(
     n_miss_impute(i) = obj.n_rows - arma::accu(nmiss.col(grp_impute(i)));
   }
 
-  // Initialize result matrix and get column offsets using helper function
+  // Initialize result matrix, column offsets, and precomputed row indices
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(nmiss, grp_impute, n_miss_impute, col_offsets);
+  std::vector<arma::uvec> rows_to_impute_vec;
+  arma::mat result = initialize_result_matrix(nmiss, grp_impute, n_miss_impute, col_offsets, rows_to_impute_vec);
   if (result.n_rows == 0)
   {
     return result;
@@ -85,7 +87,8 @@ arma::mat impute_knn_mlpack(
     impute_column_values(
         result, obj, nmiss,
         col_offsets(i), target_col_idx,
-        nn_columns_mat, weights);
+        nn_columns_mat, weights,
+        rows_to_impute_vec[i]);
   }
 
   return result;

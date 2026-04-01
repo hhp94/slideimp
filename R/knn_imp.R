@@ -137,9 +137,6 @@ knn_imp <- function(
   pre_imp_cols <- obj[, eligible, drop = FALSE]
   pre_imp_miss <- miss[, eligible, drop = FALSE]
 
-  # Important: pre-fill with zero (required for auto-vectorization in brute-force path)
-  pre_imp_cols[pre_imp_miss] <- 0.0
-
   # Column groups (1-based local indices into pre_imp_cols)
   orig_indices <- which(eligible)
   local_cmiss <- cmiss[eligible]
@@ -159,6 +156,8 @@ knn_imp <- function(
 
   # Impute
   if (!tree) {
+    # Important: pre-fill with zero (required for auto-vectorization in brute-force path)
+    pre_imp_cols[pre_imp_miss] <- 0.0
     imputed_values <- impute_knn_brute(
       obj = pre_imp_cols,
       nmiss = !pre_imp_miss,

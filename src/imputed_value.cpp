@@ -3,12 +3,14 @@
 #include <cmath>
 #include <algorithm>
 
-// initialize matrix to store the result. Also modify col_offsets
+// initialize matrix to store the result. Also modify col_offsets and
+// precompute the row indices that need imputation for each column.
 arma::mat initialize_result_matrix(
     const arma::mat &nmiss,
     const arma::uvec &col_index_miss,
     const arma::uvec &n_col_miss,
-    arma::uvec &col_offsets)
+    arma::uvec &col_offsets,
+    std::vector<arma::uvec> &rows_to_impute_vec)
 {
     // 2 columns for ij indices + n_imp columns for values. There's only one imputation
     const arma::uword n_col_result = 3;
@@ -32,11 +34,13 @@ arma::mat initialize_result_matrix(
     // col 0 offset = 0, col 1 -> N offset = cumsum number of missing in each col
     col_offsets.subvec(1, miss_counts.n_elem) = arma::cumsum(miss_counts);
 
-    // Pre-fill result with row and column indices (1-based for R)
+    // Precompute row indices and fill result with ij indices (1-based for R)
+    rows_to_impute_vec.resize(col_index_miss.n_elem);
     for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
     {
         const arma::uword target_col_idx = col_index_miss(i);
-        const arma::uvec rows_to_impute = arma::find(nmiss.col(target_col_idx) == 0);
+        rows_to_impute_vec[i] = arma::find(nmiss.col(target_col_idx) == 0);
+        const arma::uvec &rows_to_impute = rows_to_impute_vec[i];
 
         for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
         {
@@ -51,8 +55,6 @@ arma::mat initialize_result_matrix(
 }
 
 // basically the imputation for loop down each column. Modify the result matrix.
-// group the bootstrap and single imputation together because for these we only
-// have to work on rows with missing.
 void impute_column_values(
     arma::mat &result,
     const arma::mat &obj,
@@ -60,10 +62,9 @@ void impute_column_values(
     const arma::uword col_offset,
     const arma::uword target_col_idx,
     const arma::umat &nn_columns_mat,
-    const arma::vec &nn_weights)
+    const arma::vec &nn_weights,
+    const arma::uvec &rows_to_impute)
 {
-    // Find which rows are missing in this specific column
-    arma::uvec rows_to_impute = arma::find(nmiss.col(target_col_idx) == 0);
     // For each missing cell in this column, calculate the imputed value
     for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
     {
