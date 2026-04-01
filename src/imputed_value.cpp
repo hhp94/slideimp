@@ -5,7 +5,7 @@
 
 // initialize matrix to store the result. Also modify col_offsets
 arma::mat initialize_result_matrix(
-    const arma::Mat<unsigned char> &miss,
+    const arma::mat &miss,
     const arma::uvec &col_index_miss,
     const arma::uvec &n_col_miss,
     arma::uvec &col_offsets)
@@ -56,7 +56,7 @@ arma::mat initialize_result_matrix(
 void impute_column_values(
     arma::mat &result,
     const arma::mat &obj,
-    const arma::Mat<unsigned char> &miss,
+    const arma::mat &miss,
     const arma::uword col_offset,
     const arma::uword target_col_idx,
     const arma::umat &nn_columns_mat,

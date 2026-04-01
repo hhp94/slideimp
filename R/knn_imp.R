@@ -130,6 +130,8 @@ knn_imp <- function(
   knn_imp_cols <- (cmiss / nrow(obj)) < colmax
   pre_imp_cols <- obj[, knn_imp_cols, drop = FALSE]
   pre_imp_miss <- miss[, knn_imp_cols, drop = FALSE]
+  # IMPORTANT: Prefil value with NA to avoid branched code and enable autovectorization in C++
+  pre_imp_cols[pre_imp_miss] <- 0.0
   pre_imp_cmiss <- cmiss[knn_imp_cols]
   knn_indices <- which(knn_imp_cols)
   complement_knn <- intersect(complement, knn_indices)

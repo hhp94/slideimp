@@ -30,7 +30,7 @@
 // [[Rcpp::export]]
 arma::mat impute_knn_mlpack(
     const arma::mat &obj,         // data with NA pre-filled. So there's no NA
-    const arma::umat &miss,       // missing data matrix
+    const arma::mat &miss,       // missing data matrix
     const arma::uword k,          // n neighbors
     const arma::uvec &n_col_miss, // vector of missing per column
     const int method,             // 0 = "euclidean" or 1 = "manhattan"
@@ -45,9 +45,7 @@ arma::mat impute_knn_mlpack(
   arma::uvec col_index_miss = arma::find(n_col_miss > 0);
   // Initialize result matrix and get column offsets using helper function
   arma::uvec col_offsets;
-  // convert miss to miss8 to eliminate memory over head in calc_distance
-  arma::Mat<unsigned char> miss8 = arma::conv_to<arma::Mat<unsigned char>>::from(miss);
-  arma::mat result = initialize_result_matrix(miss8, col_index_miss, n_col_miss, col_offsets);
+  arma::mat result = initialize_result_matrix(miss, col_index_miss, n_col_miss, col_offsets);
   if (result.n_rows == 0)
   {
     return result;
@@ -107,7 +105,7 @@ arma::mat impute_knn_mlpack(
     nn_columns_mat.col(0) = nn_columns;
 
     impute_column_values(
-        result, obj, miss8,
+        result, obj, miss,
         col_offsets(i), target_col_idx,
         nn_columns_mat, weights);
   }
