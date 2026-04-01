@@ -9,7 +9,7 @@ test_that("`impute_knn_brute` and impute_knn_mlpack calculates the missing locat
   # For brute
   imputed_index_brute <- impute_knn_brute(
     obj = to_test,
-    miss = miss,
+    nmiss = !miss,
     k = 5,
     n_col_miss = n_col_miss,
     method = 0,
@@ -19,7 +19,7 @@ test_that("`impute_knn_brute` and impute_knn_mlpack calculates the missing locat
 
   imputed_index_mlpack <- impute_knn_mlpack(
     obj = mean_imp_col(to_test),
-    miss = miss,
+    nmiss = !miss,
     k = 5,
     n_col_miss = n_col_miss,
     method = 0,

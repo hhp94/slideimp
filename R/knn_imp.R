@@ -101,7 +101,8 @@ knn_imp <- function(
   stopifnot(length(dist_pow) == 1, dist_pow >= 0, !is.infinite(dist_pow))
   checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
   checkmate::assert_number(max_cache, lower = 0, finite = TRUE, null.ok = FALSE, .var.name = "max_cache")
-  # subset logic
+
+  # Subset logic
   subset <- if (is.null(subset)) {
     seq_len(ncol(obj))
   } else if (length(subset) == 0) {
@@ -115,30 +116,29 @@ knn_imp <- function(
   } else {
     subset
   }
-  # Early return for empty subset or no missing data
   if (!anyNA(obj[, subset, drop = FALSE])) {
     return(obj)
   }
-  # Calculate complement for further processing
-  complement <- setdiff(seq_len(ncol(obj)), subset)
+
   miss <- is.na(obj)
   cmiss <- colSums(miss)
-  if (any(cmiss / nrow(obj) == 1)) {
+  miss_rate <- cmiss / nrow(obj)
+
+  if (any(miss_rate == 1)) {
     stop("Col(s) with all missing detected. Remove before proceed")
   }
+
   # Partition
-  knn_imp_cols <- (cmiss / nrow(obj)) < colmax
+  knn_imp_cols <- miss_rate < colmax
   pre_imp_cols <- obj[, knn_imp_cols, drop = FALSE]
   pre_imp_miss <- miss[, knn_imp_cols, drop = FALSE]
-  # IMPORTANT: Prefil value with NA to avoid branched code and enable autovectorization in C++
+  # IMPORTANT: Prefill with 0 to avoid branched code and enable autovectorization in C++
   pre_imp_cols[pre_imp_miss] <- 0.0
   pre_imp_cmiss <- cmiss[knn_imp_cols]
   knn_indices <- which(knn_imp_cols)
-  complement_knn <- intersect(complement, knn_indices)
-  pos_complement <- match(complement_knn, knn_indices)
-  # Set all values outside of subset to be zero cmiss. This will make
-  # `impute_knn_brute`/`impute_knn_mlpack` skip these columns
-  pre_imp_cmiss[pos_complement] <- 0L
+  # Zero out cmiss for columns outside subset so the C++ backend skips them
+  pre_imp_cmiss[!knn_indices %in% subset] <- 0L
+
   cache <- max_cache > 0
   if (cache) {
     check_cache_memory(
@@ -146,54 +146,46 @@ knn_imp <- function(
       max_cache = max_cache
     )
   }
-  # Impute ----
+
+  # Impute
   if (is.null(tree)) {
     imputed_values <- impute_knn_brute(
       obj = pre_imp_cols,
-      miss = pre_imp_miss,
+      nmiss = !pre_imp_miss,
       k = k,
       n_col_miss = pre_imp_cmiss,
-      method = switch(method,
-        "euclidean" = 0L,
-        "manhattan" = 1L
-      ),
+      method = switch(method, "euclidean" = 0L, "manhattan" = 1L),
       dist_pow = dist_pow,
       cores = cores,
       cache = cache
     )
   } else {
     imputed_values <- impute_knn_mlpack(
-      # Has to pre-fill with col means
       obj = mean_imp_col(pre_imp_cols),
-      miss = pre_imp_miss,
+      nmiss = !pre_imp_miss,
       k = k,
       n_col_miss = pre_imp_cmiss,
-      method = switch(method,
-        "euclidean" = 0L,
-        "manhattan" = 1L
-      ),
+      method = switch(method, "euclidean" = 0L, "manhattan" = 1L),
       tree = tree,
       dist_pow = dist_pow,
       cores = cores
     )
   }
-  # Convert NaN values back to NA
-  imputed_values[is.nan(imputed_values)] <- NA_real_
-  # Map column indices from pre_imp_cols to original matrix columns and create
-  # the index matrix for direct assignment
-  imp_indices <- cbind(imputed_values[, 1], knn_indices[imputed_values[, 2]])
-  # Impute the object
-  obj[imp_indices] <- imputed_values[, 3] # 3rd column is the first imputation
 
-  if (post_imp) {
-    if (anyNA(obj[, subset, drop = FALSE])) {
-      na_indices <- which(is.na(obj[, subset, drop = FALSE]), arr.ind = TRUE)
-      sub_means <- colMeans(obj[, subset, drop = FALSE], na.rm = TRUE)
-      i_vec <- na_indices[, 1]
-      jj_vec <- na_indices[, 2]
-      j_vec <- subset[jj_vec]
-      obj[cbind(i_vec, j_vec)] <- sub_means[jj_vec]
-    }
+  # convert NaN values back to NA due to C++ handling
+  imputed_values[is.nan(imputed_values)] <- NA_real_
+
+  # map column indices from pre_imp_cols back to original matrix columns
+  imp_indices <- cbind(imputed_values[, 1], knn_indices[imputed_values[, 2]])
+  obj[imp_indices] <- imputed_values[, 3]
+
+  # post-imputation: fill any remaining NAs with column means
+  if (post_imp && anyNA(obj[, subset, drop = FALSE])) {
+    na_indices <- which(is.na(obj[, subset, drop = FALSE]), arr.ind = TRUE)
+    sub_means <- colMeans(obj[, subset, drop = FALSE], na.rm = TRUE)
+    i_vec <- na_indices[, 1]
+    jj_vec <- na_indices[, 2]
+    obj[cbind(i_vec, subset[jj_vec])] <- sub_means[jj_vec]
   }
 
   class(obj) <- c("ImputedMatrix", class(obj))

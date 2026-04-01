@@ -1,5 +1,3 @@
-// [[Rcpp::depends(mlpack, RcppArmadillo)]]
-
 #include "imputed_value.h"
 #include <mlpack.h>
 #include <mlpack/methods/neighbor_search/neighbor_search.hpp>
@@ -9,28 +7,10 @@
 #include <omp.h>
 #endif
 
-//' Impute missing values in a matrix using treed k-nearest neighbors (K-NN)
-//'
-//' K-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
-//'
-//' @param obj Numeric matrix with missing values represented as NA (NaN).
-//' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
-//' @param k Number of nearest neighbors to use for imputation.
-//' @param n_col_miss Integer vector specifying the count of missing values per column.
-//' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
-//' @param tree Which type of tree? "kd" or "ball".
-//' @param dist_pow A positive double that controls the penalty for larger distances in
-//' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
-//' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-//' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index.
-//'
-//' @keywords internal
-//' @noRd
 // [[Rcpp::export]]
 arma::mat impute_knn_mlpack(
     const arma::mat &obj,         // data with NA pre-filled. So there's no NA
-    const arma::mat &miss,       // missing data matrix
+    const arma::mat &nmiss,       // missing data matrix
     const arma::uword k,          // n neighbors
     const arma::uvec &n_col_miss, // vector of missing per column
     const int method,             // 0 = "euclidean" or 1 = "manhattan"
@@ -45,7 +25,7 @@ arma::mat impute_knn_mlpack(
   arma::uvec col_index_miss = arma::find(n_col_miss > 0);
   // Initialize result matrix and get column offsets using helper function
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(miss, col_index_miss, n_col_miss, col_offsets);
+  arma::mat result = initialize_result_matrix(nmiss, col_index_miss, n_col_miss, col_offsets);
   if (result.n_rows == 0)
   {
     return result;
@@ -105,7 +85,7 @@ arma::mat impute_knn_mlpack(
     nn_columns_mat.col(0) = nn_columns;
 
     impute_column_values(
-        result, obj, miss,
+        result, obj, nmiss,
         col_offsets(i), target_col_idx,
         nn_columns_mat, weights);
   }

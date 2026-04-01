@@ -13,30 +13,12 @@ find_windows_flank <- function(location, subset, window_size) {
     .Call(`_slideimp_find_windows_flank`, location, subset, window_size)
 }
 
-impute_knn_brute <- function(obj, miss, k, n_col_miss, method, dist_pow, cache = TRUE, cores = 1L) {
-    .Call(`_slideimp_impute_knn_brute`, obj, miss, k, n_col_miss, method, dist_pow, cache, cores)
+impute_knn_brute <- function(obj, nmiss, k, n_col_miss, method, dist_pow, cache = TRUE, cores = 1L) {
+    .Call(`_slideimp_impute_knn_brute`, obj, nmiss, k, n_col_miss, method, dist_pow, cache, cores)
 }
 
-#' Impute missing values in a matrix using treed k-nearest neighbors (K-NN)
-#'
-#' K-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
-#'
-#' @param obj Numeric matrix with missing values represented as NA (NaN).
-#' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
-#' @param k Number of nearest neighbors to use for imputation.
-#' @param n_col_miss Integer vector specifying the count of missing values per column.
-#' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
-#' @param tree Which type of tree? "kd" or "ball".
-#' @param dist_pow A positive double that controls the penalty for larger distances in
-#' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
-#' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param cores Number of CPU cores to use for parallel processing (default = 1).
-#' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index.
-#'
-#' @keywords internal
-#' @noRd
-impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, dist_pow, cores = 1L) {
-    .Call(`_slideimp_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, dist_pow, cores)
+impute_knn_mlpack <- function(obj, nmiss, k, n_col_miss, method, tree, dist_pow, cores = 1L) {
+    .Call(`_slideimp_impute_knn_mlpack`, obj, nmiss, k, n_col_miss, method, tree, dist_pow, cores)
 }
 
 has_openmp <- function() {

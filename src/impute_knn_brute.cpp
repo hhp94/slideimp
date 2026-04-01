@@ -49,16 +49,16 @@ struct StrictLowerTriangularMatrix
 // Euclidean (method 0): called from distance_vector where target is hoisted outside
 inline double calc_distance_euclidean(
     const double *__restrict__ target_ptr,
-    const double *__restrict__ target_miss,
+    const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const double *__restrict__ other_miss,
+    const double *__restrict__ other_nmiss,
     const arma::uword n_rows)
 {
   double dist = 0.0;
   double n_valid = 0.0;
   for (arma::uword r = 0; r < n_rows; ++r)
   {
-    double valid = (1.0 - target_miss[r]) * (1.0 - other_miss[r]);
+    double valid = target_nmiss[r] * other_nmiss[r];
     double diff = target_ptr[r] - other_ptr[r];
     dist += valid * diff * diff;
     n_valid += valid;
@@ -70,16 +70,16 @@ inline double calc_distance_euclidean(
 // Manhattan (method 1)
 inline double calc_distance_manhattan(
     const double *__restrict__ target_ptr,
-    const double *__restrict__ target_miss,
+    const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const double *__restrict__ other_miss,
+    const double *__restrict__ other_nmiss,
     const arma::uword n_rows)
 {
   double dist = 0.0;
   double n_valid = 0.0;
   for (arma::uword r = 0; r < n_rows; ++r)
   {
-    double valid = (1.0 - target_miss[r]) * (1.0 - other_miss[r]);
+    double valid = target_nmiss[r] * other_nmiss[r];
     double diff = target_ptr[r] - other_ptr[r];
     dist += valid * std::abs(diff);
     n_valid += valid;
@@ -94,33 +94,33 @@ inline double calc_distance_manhattan(
 template <int Method>
 inline double calc_distance(
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     arma::uword idx1,
     arma::uword idx2);
 
 template <>
 inline double calc_distance<0>(
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     arma::uword idx1,
     arma::uword idx2)
 {
   return calc_distance_euclidean(
-      obj.colptr(idx1), miss.colptr(idx1),
-      obj.colptr(idx2), miss.colptr(idx2),
+      obj.colptr(idx1), nmiss.colptr(idx1),
+      obj.colptr(idx2), nmiss.colptr(idx2),
       obj.n_rows);
 }
 
 template <>
 inline double calc_distance<1>(
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     arma::uword idx1,
     arma::uword idx2)
 {
   return calc_distance_manhattan(
-      obj.colptr(idx1), miss.colptr(idx1),
-      obj.colptr(idx2), miss.colptr(idx2),
+      obj.colptr(idx1), nmiss.colptr(idx1),
+      obj.colptr(idx2), nmiss.colptr(idx2),
       obj.n_rows);
 }
 
@@ -130,31 +130,31 @@ inline double calc_distance<1>(
 template <int Method>
 inline double calc_distance_raw(
     const double *__restrict__ target_ptr,
-    const double *__restrict__ target_miss,
+    const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const double *__restrict__ other_miss,
+    const double *__restrict__ other_nmiss,
     const arma::uword n_rows);
 
 template <>
 inline double calc_distance_raw<0>(
     const double *__restrict__ target_ptr,
-    const double *__restrict__ target_miss,
+    const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const double *__restrict__ other_miss,
+    const double *__restrict__ other_nmiss,
     const arma::uword n_rows)
 {
-  return calc_distance_euclidean(target_ptr, target_miss, other_ptr, other_miss, n_rows);
+  return calc_distance_euclidean(target_ptr, target_nmiss, other_ptr, other_nmiss, n_rows);
 }
 
 template <>
 inline double calc_distance_raw<1>(
     const double *__restrict__ target_ptr,
-    const double *__restrict__ target_miss,
+    const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const double *__restrict__ other_miss,
+    const double *__restrict__ other_nmiss,
     const arma::uword n_rows)
 {
-  return calc_distance_manhattan(target_ptr, target_miss, other_ptr, other_miss, n_rows);
+  return calc_distance_manhattan(target_ptr, target_nmiss, other_ptr, other_nmiss, n_rows);
 }
 
 // ============================================================================
@@ -199,14 +199,14 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
 template <int Method>
 std::vector<NeighborInfo> distance_vector_brute(
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     const arma::uword target_col,
     const arma::uword n_cols,
     const arma::uword k)
 {
   const arma::uword n_rows = obj.n_rows;
   const double *target_ptr = obj.colptr(target_col);
-  const double *target_miss = miss.colptr(target_col);
+  const double *target_nmiss = nmiss.colptr(target_col);
 
   std::vector<NeighborInfo> top_k;
   top_k.reserve(k);
@@ -215,8 +215,8 @@ std::vector<NeighborInfo> distance_vector_brute(
   auto process = [&](arma::uword col)
   {
     double dist = calc_distance_raw<Method>(
-        target_ptr, target_miss,
-        obj.colptr(col), miss.colptr(col),
+        target_ptr, target_nmiss,
+        obj.colptr(col), nmiss.colptr(col),
         n_rows);
     if (remaining > 0)
     {
@@ -245,7 +245,7 @@ std::vector<NeighborInfo> distance_vector_brute(
 template <int Method>
 std::vector<NeighborInfo> distance_vector_cached(
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     const arma::uword index,
     const arma::uvec &col_index_miss,
     const arma::uvec &col_index_non_miss,
@@ -255,7 +255,7 @@ std::vector<NeighborInfo> distance_vector_cached(
   const arma::uword n_rows = obj.n_rows;
   const arma::uword target_col = col_index_miss(index);
   const double *target_ptr = obj.colptr(target_col);
-  const double *target_miss_ptr = miss.colptr(target_col);
+  const double *target_nmiss_ptr = nmiss.colptr(target_col);
 
   std::vector<NeighborInfo> top_k;
   top_k.reserve(k);
@@ -280,8 +280,8 @@ std::vector<NeighborInfo> distance_vector_cached(
   for (; m < col_index_non_miss.n_elem && remaining > 0; ++m)
   {
     double dist = calc_distance_raw<Method>(
-        target_ptr, target_miss_ptr,
-        obj.colptr(col_index_non_miss(m)), miss.colptr(col_index_non_miss(m)),
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(col_index_non_miss(m)), nmiss.colptr(col_index_non_miss(m)),
         n_rows);
     insert_before_k(top_k, dist, col_index_non_miss(m));
     --remaining;
@@ -300,8 +300,8 @@ std::vector<NeighborInfo> distance_vector_cached(
   for (; m < col_index_non_miss.n_elem; ++m)
   {
     double dist = calc_distance_raw<Method>(
-        target_ptr, target_miss_ptr,
-        obj.colptr(col_index_non_miss(m)), miss.colptr(col_index_non_miss(m)),
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(col_index_non_miss(m)), nmiss.colptr(col_index_non_miss(m)),
         n_rows);
     insert_if_better_than_worst(top_k, dist, col_index_non_miss(m));
   }
@@ -315,7 +315,7 @@ template <int Method, bool cache>
 void impute_knn_brute_impl(
     arma::mat &result,
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     const arma::uword k,
     const arma::uvec &col_index_miss,
     const arma::uvec &col_offsets,
@@ -334,13 +334,13 @@ void impute_knn_brute_impl(
     if constexpr (cache)
     {
       top_k = distance_vector_cached<Method>(
-          obj, miss, i, col_index_miss,
+          obj, nmiss, i, col_index_miss,
           *col_index_non_miss_ptr, *cache_ptr, k);
     }
     else
     {
       top_k = distance_vector_brute<Method>(
-          obj, miss, col_index_miss(i), obj.n_cols, k);
+          obj, nmiss, col_index_miss(i), obj.n_cols, k);
     }
 
     arma::uword n_neighbors = top_k.size();
@@ -361,7 +361,7 @@ void impute_knn_brute_impl(
 
     arma::umat nn_columns_mat(n_neighbors, 1);
     nn_columns_mat.col(0) = nn_columns;
-    impute_column_values(result, obj, miss,
+    impute_column_values(result, obj, nmiss,
                          col_offsets(i), col_index_miss(i),
                          nn_columns_mat, weights);
   }
@@ -374,7 +374,7 @@ template <int Method>
 void dispatch_cache(
     arma::mat &result,
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     const arma::uword k,
     const arma::uvec &col_index_miss,
     const arma::uvec &col_offsets,
@@ -397,18 +397,18 @@ void dispatch_cache(
       for (arma::uword col = 0; col < row; ++col)
       {
         cache(row, col) = calc_distance<Method>(
-            obj, miss, col_index_miss(row), col_index_miss(col));
+            obj, nmiss, col_index_miss(row), col_index_miss(col));
       }
     }
 
     impute_knn_brute_impl<Method, true>(
-        result, obj, miss, k, col_index_miss, col_offsets, dist_pow, cores,
+        result, obj, nmiss, k, col_index_miss, col_offsets, dist_pow, cores,
         &col_index_non_miss, &cache);
   }
   else
   {
     impute_knn_brute_impl<Method, false>(
-        result, obj, miss, k, col_index_miss, col_offsets, dist_pow, cores,
+        result, obj, nmiss, k, col_index_miss, col_offsets, dist_pow, cores,
         nullptr, nullptr);
   }
 }
@@ -416,7 +416,7 @@ void dispatch_cache(
 // [[Rcpp::export]]
 arma::mat impute_knn_brute(
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     const arma::uword k,
     const arma::uvec &n_col_miss,
     const int method,
@@ -426,7 +426,7 @@ arma::mat impute_knn_brute(
 {
   arma::uvec col_index_miss = arma::find(n_col_miss > 0);
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(miss, col_index_miss, n_col_miss, col_offsets);
+  arma::mat result = initialize_result_matrix(nmiss, col_index_miss, n_col_miss, col_offsets);
   if (result.n_rows == 0)
   {
     return result;
@@ -434,11 +434,11 @@ arma::mat impute_knn_brute(
   switch (method)
   {
   case 0:
-    dispatch_cache<0>(result, obj, miss, k, col_index_miss, col_offsets,
+    dispatch_cache<0>(result, obj, nmiss, k, col_index_miss, col_offsets,
                       n_col_miss, dist_pow, cache, cores);
     break;
   case 1:
-    dispatch_cache<1>(result, obj, miss, k, col_index_miss, col_offsets,
+    dispatch_cache<1>(result, obj, nmiss, k, col_index_miss, col_offsets,
                       n_col_miss, dist_pow, cache, cores);
     break;
   default:

@@ -5,7 +5,7 @@
 
 // initialize matrix to store the result. Also modify col_offsets
 arma::mat initialize_result_matrix(
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     const arma::uvec &col_index_miss,
     const arma::uvec &n_col_miss,
     arma::uvec &col_offsets)
@@ -36,7 +36,7 @@ arma::mat initialize_result_matrix(
     for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
     {
         const arma::uword target_col_idx = col_index_miss(i);
-        const arma::uvec rows_to_impute = arma::find(miss.col(target_col_idx));
+        const arma::uvec rows_to_impute = arma::find(nmiss.col(target_col_idx) == 0);
 
         for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
         {
@@ -56,14 +56,14 @@ arma::mat initialize_result_matrix(
 void impute_column_values(
     arma::mat &result,
     const arma::mat &obj,
-    const arma::mat &miss,
+    const arma::mat &nmiss,
     const arma::uword col_offset,
     const arma::uword target_col_idx,
     const arma::umat &nn_columns_mat,
     const arma::vec &nn_weights)
 {
     // Find which rows are missing in this specific column
-    arma::uvec rows_to_impute = arma::find(miss.col(target_col_idx));
+    arma::uvec rows_to_impute = arma::find(nmiss.col(target_col_idx) == 0);
     // For each missing cell in this column, calculate the imputed value
     for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
     {
@@ -76,7 +76,7 @@ void impute_column_values(
         {
             arma::uword neighbor_col_idx = nn_columns_mat(j, 0);
             // A neighbor can only contribute if its value in the same row is NOT missing
-            if (miss(row_idx, neighbor_col_idx) == 0)
+            if (nmiss(row_idx, neighbor_col_idx) == 1)
             {
                 double weight = nn_weights(j);
                 weighted_sum += weight * obj(row_idx, neighbor_col_idx);
