@@ -61,7 +61,7 @@ using column means (default = \code{TRUE}).}
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
-\item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
+\item{tree}{Logical flag. \code{FALSE} (default) = brute-force K-NN. \code{TRUE} = use mlpack BallTree.}
 
 \item{cores}{Controls the number of cores to parallelize over for K-NN imputation with OpenMP only.
 To setup parallelization for K-NN without OpenMP and PCA imputation, use \code{mirai::daemons()}.}

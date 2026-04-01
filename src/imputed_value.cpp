@@ -26,7 +26,7 @@ arma::mat initialize_result_matrix(
     result.fill(arma::datum::nan);
 
     // Calculate offsets for efficient filling
-    arma::uvec miss_counts = n_col_miss.elem(col_index_miss);
+    arma::uvec miss_counts = n_col_miss;
     col_offsets.set_size(miss_counts.n_elem + 1);
     col_offsets.fill(arma::fill::zeros);
     // col 0 offset = 0, col 1 -> N offset = cumsum number of missing in each col
@@ -42,7 +42,7 @@ arma::mat initialize_result_matrix(
         {
             const arma::uword row_idx = rows_to_impute(r);
             const arma::uword res_row = col_offsets(i) + r;
-            result(res_row, 0) = row_idx + 1; // R Row index (1-based)
+            result(res_row, 0) = row_idx + 1;        // R Row index (1-based)
             result(res_row, 1) = target_col_idx + 1; // R Column index (1-based)
         }
     }

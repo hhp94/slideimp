@@ -13,7 +13,7 @@ knn_imp(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  tree = NULL,
+  tree = FALSE,
   max_cache = 4
 )
 }
@@ -37,7 +37,7 @@ indices specifying which columns to impute.}
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
-\item{tree}{Either \code{NULL} (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the \code{{mlpack}} ball-tree or kd-tree algorithms.}
+\item{tree}{Logical flag. \code{FALSE} (default) = brute-force K-NN. \code{TRUE} = use mlpack BallTree.}
 
 \item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
 greater than \code{0}, pairwise distances between columns with missing values
@@ -58,18 +58,19 @@ This function performs \strong{column-wise} nearest neighbor imputation.
 When \code{dist_pow > 0}, imputed values are computed as distance-weighted averages
 where weights are inverse distances raised to the power of \code{dist_pow}.
 
-The \code{tree} parameter enables faster neighbor search using spatial data structures
-but requires pre-filling missing values with column means, which may introduce bias
-in high-missingness data. Tree construction overhead may reduce performance for
-low-dimensional data.
+The \code{tree} parameter (when \code{TRUE}) uses a BallTree for faster neighbor search
+via \code{{mlpack}} but \strong{requires pre-filling} missing values with column means.
+This can introduce a small bias when missingness is high.
 }
 \section{Performance Optimization}{
 
 \itemize{
-\item \strong{Tree methods}: Only use when imputation runtime becomes prohibitive and
-missingness is low (<5\% missing)
-\item \strong{Subset imputation}: Use \code{subset} parameter for efficiency when only
-specific columns need imputation (e.g., epigenetic clocks CpGs)
+\item \strong{\code{tree = TRUE}} (BallTree): Only use when imputation runtime becomes prohibitive
+and missingness is low (<5\% missing). Tree construction has overhead.
+\item \strong{\code{tree = FALSE}} (default, brute-force): Always safe and usually faster for
+small-to-moderate data or high-dimensional cases.
+\item \strong{Subset imputation}: Use the \code{subset} parameter for efficiency when only
+specific columns need imputation (e.g., epigenetic clocks CpGs).
 }
 }
 

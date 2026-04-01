@@ -1,5 +1,7 @@
 check_cache_memory <- function(n_miss_cols, max_cache) {
-  if (n_miss_cols <= 1L) return(invisible(NULL))
+  if (n_miss_cols <= 1L) {
+    return(invisible(NULL))
+  }
   n <- as.numeric(n_miss_cols)
   cache_gb <- (n * (n - 1) / 2) * 8 / 1024^3
   if (cache_gb > max_cache) {
@@ -26,16 +28,17 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 #' When `dist_pow > 0`, imputed values are computed as distance-weighted averages
 #' where weights are inverse distances raised to the power of `dist_pow`.
 #'
-#' The `tree` parameter enables faster neighbor search using spatial data structures
-#' but requires pre-filling missing values with column means, which may introduce bias
-#' in high-missingness data. Tree construction overhead may reduce performance for
-#' low-dimensional data.
+#' The `tree` parameter (when `TRUE`) uses a BallTree for faster neighbor search
+#' via `{mlpack}` but **requires pre-filling** missing values with column means.
+#' This can introduce a small bias when missingness is high.
 #'
 #' @section Performance Optimization:
-#' - **Tree methods**: Only use when imputation runtime becomes prohibitive and
-#'  missingness is low (<5% missing)
-#' - **Subset imputation**: Use `subset` parameter for efficiency when only
-#'  specific columns need imputation (e.g., epigenetic clocks CpGs)
+#' - **`tree = TRUE`** (BallTree): Only use when imputation runtime becomes prohibitive
+#'   and missingness is low (<5% missing). Tree construction has overhead.
+#' - **`tree = FALSE`** (default, brute-force): Always safe and usually faster for
+#'   small-to-moderate data or high-dimensional cases.
+#' - **Subset imputation**: Use the `subset` parameter for efficiency when only
+#'   specific columns need imputation (e.g., epigenetic clocks CpGs).
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param k Number of nearest neighbors for imputation. 10 is a good starting point.
@@ -48,7 +51,7 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 #' indices specifying which columns to impute.
 #' @param dist_pow The amount of penalization for further away nearest neighbors in the weighted average.
 #' `dist_pow = 0` (default) is the simple average of the nearest neighbors.
-#' @param tree Either `NULL` (default, brute-force K-NN), "ball", or "kd" to find nearest neighbors using the `{mlpack}` ball-tree or kd-tree algorithms.
+#' @param tree Logical flag. `FALSE` (default) = brute-force K-NN. `TRUE` = use mlpack BallTree.
 #' @param max_cache Maximum allowed cache size in GB (default `4`). When
 #' greater than `0`, pairwise distances between columns with missing values
 #' are precomputed and cached, which is faster for moderate-sized data but
@@ -82,7 +85,7 @@ knn_imp <- function(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  tree = NULL,
+  tree = FALSE,
   max_cache = 4
 ) {
   # Pre-conditioning
@@ -93,68 +96,80 @@ knn_imp <- function(
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   checkmate::assert(
-    checkmate::check_character(subset, min.len = 0, any.missing = FALSE, unique = TRUE, null.ok = TRUE),
-    checkmate::check_integerish(subset, lower = 1, upper = ncol(obj), min.len = 0, any.missing = FALSE, null.ok = TRUE, unique = TRUE),
+    checkmate::check_character(
+      subset,
+      min.len = 0, max.len = ncol(obj), any.missing = FALSE, unique = TRUE, null.ok = TRUE
+    ),
+    checkmate::check_integerish(
+      subset,
+      lower = 1, upper = ncol(obj), min.len = 0, max.len = ncol(obj),
+      any.missing = FALSE, null.ok = TRUE, unique = TRUE
+    ),
     combine = "or",
     .var.name = "subset"
   )
   stopifnot(length(dist_pow) == 1, dist_pow >= 0, !is.infinite(dist_pow))
-  checkmate::assert_choice(tree, choices = c("kd", "ball"), null.ok = TRUE, .var.name = "tree")
+  checkmate::assert_flag(tree, .var.name = "tree")
   checkmate::assert_number(max_cache, lower = 0, finite = TRUE, null.ok = FALSE, .var.name = "max_cache")
 
   # Subset logic
-  subset <- if (is.null(subset)) {
-    seq_len(ncol(obj))
+  if (is.null(subset)) {
+    subset <- seq_len(ncol(obj))
   } else if (length(subset) == 0) {
-    integer(0)
+    subset <- integer(0)
   } else if (is.character(subset)) {
     if (is.null(colnames(obj))) {
       stop("`subset` contains characters but `obj` doesn't have column names")
     }
     matched_indices <- match(subset, colnames(obj), nomatch = NA)
-    matched_indices[!is.na(matched_indices)]
-  } else {
-    subset
-  }
-  if (!anyNA(obj[, subset, drop = FALSE])) {
-    return(obj)
+    subset <- matched_indices[!is.na(matched_indices)]
   }
 
   miss <- is.na(obj)
   cmiss <- colSums(miss)
   miss_rate <- cmiss / nrow(obj)
-
   if (any(miss_rate == 1)) {
     stop("Col(s) with all missing detected. Remove before proceed")
   }
 
-  # Partition
-  knn_imp_cols <- miss_rate < colmax
-  pre_imp_cols <- obj[, knn_imp_cols, drop = FALSE]
-  pre_imp_miss <- miss[, knn_imp_cols, drop = FALSE]
-  # IMPORTANT: Prefill with 0 to avoid branched code and enable autovectorization in C++
+  # Partition into eligible and non-eligible columns
+  eligible <- miss_rate < colmax
+  pre_imp_cols <- obj[, eligible, drop = FALSE]
+  pre_imp_miss <- miss[, eligible, drop = FALSE]
+
+  # Important: pre-fill with zero (required for auto-vectorization in brute-force path)
   pre_imp_cols[pre_imp_miss] <- 0.0
-  pre_imp_cmiss <- cmiss[knn_imp_cols]
-  knn_indices <- which(knn_imp_cols)
-  # Zero out cmiss for columns outside subset so the C++ backend skips them
-  pre_imp_cmiss[!knn_indices %in% subset] <- 0L
+
+  # Column groups (1-based local indices into pre_imp_cols)
+  orig_indices <- which(eligible)
+  local_cmiss <- cmiss[eligible]
+  local_has_miss <- which(local_cmiss > 0L)
+  local_in_subset <- which(orig_indices %in% subset)
+  grp_impute <- sort(intersect(local_has_miss, local_in_subset))
+  grp_miss_no_imp <- sort(setdiff(local_has_miss, local_in_subset))
+  grp_complete <- which(local_cmiss == 0L)
 
   cache <- max_cache > 0
   if (cache) {
     check_cache_memory(
-      n_miss_cols = sum(pre_imp_cmiss > 0L),
+      n_miss_cols = length(grp_impute),
       max_cache = max_cache
     )
   }
 
   # Impute
-  if (is.null(tree)) {
+  if (!tree) {
     imputed_values <- impute_knn_brute(
       obj = pre_imp_cols,
       nmiss = !pre_imp_miss,
       k = k,
-      n_col_miss = pre_imp_cmiss,
-      method = switch(method, "euclidean" = 0L, "manhattan" = 1L),
+      grp_impute = as.integer(grp_impute - 1L),
+      grp_miss_no_imp = as.integer(grp_miss_no_imp - 1L),
+      grp_complete = as.integer(grp_complete - 1L),
+      method = switch(method,
+        "euclidean" = 0L,
+        "manhattan" = 1L
+      ),
       dist_pow = dist_pow,
       cores = cores,
       cache = cache
@@ -164,9 +179,11 @@ knn_imp <- function(
       obj = mean_imp_col(pre_imp_cols),
       nmiss = !pre_imp_miss,
       k = k,
-      n_col_miss = pre_imp_cmiss,
-      method = switch(method, "euclidean" = 0L, "manhattan" = 1L),
-      tree = tree,
+      grp_impute = as.integer(grp_impute - 1L),
+      method = switch(method,
+        "euclidean" = 0L,
+        "manhattan" = 1L
+      ),
       dist_pow = dist_pow,
       cores = cores
     )
@@ -176,7 +193,7 @@ knn_imp <- function(
   imputed_values[is.nan(imputed_values)] <- NA_real_
 
   # map column indices from pre_imp_cols back to original matrix columns
-  imp_indices <- cbind(imputed_values[, 1], knn_indices[imputed_values[, 2]])
+  imp_indices <- cbind(imputed_values[, 1], orig_indices[imputed_values[, 2]])
   obj[imp_indices] <- imputed_values[, 3]
 
   # post-imputation: fill any remaining NAs with column means

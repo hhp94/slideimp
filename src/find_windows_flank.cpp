@@ -8,7 +8,7 @@ List find_windows_flank(NumericVector location,
                         double window_size)
 {
   int n = location.size();   // total number of positions
-  int n_sub  = subset.size(); // number of centers we care about
+  int n_sub = subset.size(); // number of centers we care about
 
   IntegerVector start(n_sub);
   IntegerVector end(n_sub);
@@ -40,8 +40,7 @@ List find_windows_flank(NumericVector location,
   }
 
   return List::create(
-    Named("start") = start,
-    Named("end") = end,
-    Named("subset_local") = subset_local
-  );
+      Named("start") = start,
+      Named("end") = end,
+      Named("subset_local") = subset_local);
 }

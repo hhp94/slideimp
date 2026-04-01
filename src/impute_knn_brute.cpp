@@ -11,9 +11,9 @@
 #include <omp.h>
 #endif
 
-// ============================================================================
+// =============================================================================
 // Strict lower-triangular cache for pairwise distances
-// ============================================================================
+// =============================================================================
 struct StrictLowerTriangularMatrix
 {
   size_t n;
@@ -35,131 +35,89 @@ struct StrictLowerTriangularMatrix
   {
     return data[i * (i - 1) / 2 + j];
   }
-
-  size_t total_bytes() const noexcept
-  {
-    return data.size() * sizeof(double);
-  }
 };
 
-// ============================================================================
-// Distance functions
-// ============================================================================
+// ======================== TEMPLATING README (Part 1) =========================
+// We use a non-type template parameter `Method` (0 = Euclidean, 1 = Manhattan)
+// so the compiler can generate two completely separate functions at compile time.
+// This eliminates the runtime `switch` / `if` that would otherwise sit inside
+// the hottest loop (distance_vector). The specializations below are what actually
+// call the correct distance routine.
 
-// Euclidean (method 0): called from distance_vector where target is hoisted outside
-inline double calc_distance_euclidean(
-    const double *__restrict__ target_ptr,
-    const double *__restrict__ target_nmiss,
-    const double *__restrict__ other_ptr,
-    const double *__restrict__ other_nmiss,
-    const arma::uword n_rows)
-{
-  double dist = 0.0;
-  double n_valid = 0.0;
-  for (arma::uword r = 0; r < n_rows; ++r)
-  {
-    double valid = target_nmiss[r] * other_nmiss[r];
-    double diff = target_ptr[r] - other_ptr[r];
-    dist += valid * diff * diff;
-    n_valid += valid;
-  }
-  if (static_cast<int>(n_valid) == 0) return arma::datum::inf;
-  return dist / n_valid;
-}
-
-// Manhattan (method 1)
-inline double calc_distance_manhattan(
-    const double *__restrict__ target_ptr,
-    const double *__restrict__ target_nmiss,
-    const double *__restrict__ other_ptr,
-    const double *__restrict__ other_nmiss,
-    const arma::uword n_rows)
-{
-  double dist = 0.0;
-  double n_valid = 0.0;
-  for (arma::uword r = 0; r < n_rows; ++r)
-  {
-    double valid = target_nmiss[r] * other_nmiss[r];
-    double diff = target_ptr[r] - other_ptr[r];
-    dist += valid * std::abs(diff);
-    n_valid += valid;
-  }
-  if (static_cast<int>(n_valid) == 0) return arma::datum::inf;
-  return dist / n_valid;
-}
-
-// ============================================================================
-// Armadillo-index versions for cache-fill (both sides looked up here)
-// ============================================================================
-template <int Method>
-inline double calc_distance(
-    const arma::mat &obj,
-    const arma::mat &nmiss,
-    arma::uword idx1,
-    arma::uword idx2);
-
-template <>
-inline double calc_distance<0>(
-    const arma::mat &obj,
-    const arma::mat &nmiss,
-    arma::uword idx1,
-    arma::uword idx2)
-{
-  return calc_distance_euclidean(
-      obj.colptr(idx1), nmiss.colptr(idx1),
-      obj.colptr(idx2), nmiss.colptr(idx2),
-      obj.n_rows);
-}
-
-template <>
-inline double calc_distance<1>(
-    const arma::mat &obj,
-    const arma::mat &nmiss,
-    arma::uword idx1,
-    arma::uword idx2)
-{
-  return calc_distance_manhattan(
-      obj.colptr(idx1), nmiss.colptr(idx1),
-      obj.colptr(idx2), nmiss.colptr(idx2),
-      obj.n_rows);
-}
-
-// ============================================================================
-// Method dispatch helper
-// ============================================================================
+// These are functions that are called in group 1 and 2
 template <int Method>
 inline double calc_distance_raw(
     const double *__restrict__ target_ptr,
     const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
     const double *__restrict__ other_nmiss,
-    const arma::uword n_rows);
+    const arma::uword n_rows)
+{
+  double dist = 0.0;
+  double n_valid = 0.0;
+  for (arma::uword r = 0; r < n_rows; ++r)
+  {
+    double valid = target_nmiss[r] * other_nmiss[r];
+    double diff = target_ptr[r] - other_ptr[r];
+    if constexpr (Method == 0)
+    {
+      dist += valid * diff * diff;
+    }
+    // Add other distances here
+    else
+    {
+      dist += valid * std::abs(diff);
+    }
+    n_valid += valid;
+  }
+  if (n_valid == 0.0)
+  {
+    return arma::datum::inf;
+  }
+  return dist / n_valid;
+}
 
-template <>
-inline double calc_distance_raw<0>(
+template <int Method>
+inline double calc_distance(
+    const arma::mat &obj,
+    const arma::mat &nmiss,
+    arma::uword idx1,
+    arma::uword idx2)
+{
+  return calc_distance_raw<Method>(
+      obj.colptr(idx1), nmiss.colptr(idx1),
+      obj.colptr(idx2), nmiss.colptr(idx2),
+      obj.n_rows);
+}
+
+// This is an optimized kernel called in group 3 only since all other_nmiss is 1
+template <int Method>
+inline double calc_distance_raw_complete(
     const double *__restrict__ target_ptr,
     const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const double *__restrict__ other_nmiss,
-    const arma::uword n_rows)
+    const arma::uword n_rows,
+    const double n_valid)
 {
-  return calc_distance_euclidean(target_ptr, target_nmiss, other_ptr, other_nmiss, n_rows);
+  double dist = 0.0;
+  for (arma::uword r = 0; r < n_rows; ++r)
+  {
+    double diff = target_ptr[r] - other_ptr[r];
+    if constexpr (Method == 0)
+    {
+      dist += target_nmiss[r] * diff * diff;
+    }
+    else
+    {
+      dist += target_nmiss[r] * std::abs(diff);
+    }
+  }
+  return dist / n_valid;
 }
 
-template <>
-inline double calc_distance_raw<1>(
-    const double *__restrict__ target_ptr,
-    const double *__restrict__ target_nmiss,
-    const double *__restrict__ other_ptr,
-    const double *__restrict__ other_nmiss,
-    const arma::uword n_rows)
-{
-  return calc_distance_manhattan(target_ptr, target_nmiss, other_ptr, other_nmiss, n_rows);
-}
-
-// ============================================================================
+// =============================================================================
 // Neighbor tracking
-// ============================================================================
+// =============================================================================
 struct NeighborInfo
 {
   double distance;
@@ -193,155 +151,172 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
   }
 }
 
-// ============================================================================
-// distance_vector — on the fly
-// ============================================================================
-template <int Method>
-std::vector<NeighborInfo> distance_vector_brute(
-    const arma::mat &obj,
-    const arma::mat &nmiss,
-    const arma::uword target_col,
-    const arma::uword n_cols,
-    const arma::uword k)
-{
-  const arma::uword n_rows = obj.n_rows;
-  const double *target_ptr = obj.colptr(target_col);
-  const double *target_nmiss = nmiss.colptr(target_col);
-
-  std::vector<NeighborInfo> top_k;
-  top_k.reserve(k);
-  arma::uword remaining = k;
-
-  auto process = [&](arma::uword col)
-  {
-    double dist = calc_distance_raw<Method>(
-        target_ptr, target_nmiss,
-        obj.colptr(col), nmiss.colptr(col),
-        n_rows);
-    if (remaining > 0)
-    {
-      insert_before_k(top_k, dist, col);
-      --remaining;
-    }
-    else
-    {
-      insert_if_better_than_worst(top_k, dist, col);
-    }
-  };
-  for (arma::uword i = 0; i < target_col; ++i)
-  {
-    process(i);
-  }
-  for (arma::uword i = target_col + 1; i < n_cols; ++i)
-  {
-    process(i);
-  }
-  return top_k;
-}
-
-// ============================================================================
-// distance_vector — cached path (target pointers hoisted for non-miss lookups)
-// ============================================================================
-template <int Method>
-std::vector<NeighborInfo> distance_vector_cached(
+// =============================================================================
+// Unified distance_vector
+//   Group 1a: grp_impute[0 .. index-1]       (cached)
+//   Group 1b: grp_impute[index+1 .. end]     (cached)
+//   Group 2:  grp_miss_no_imp                (on-the-fly)
+//   Group 3:  grp_complete                   (on-the-fly, optimized calc_distance_)
+// =============================================================================
+// ======================== TEMPLATING README (Part 2) =========================
+// This function is templated on TWO non-type parameters:
+//   1. int Method -> chooses Euclidean or Manhattan at compile time
+//   2. bool UseCache -> decides whether to read from the cache or compute on-the-fly
+//
+// Because both are known at compile time, the compiler can:
+//   * inline the correct distance function (no virtual call, no branch)
+//   * completely eliminate the `if (UseCache)` test inside the hot lambdas
+//   * generate two completely separate code paths (cached vs. non-cached)
+//
+// The `constexpr if` below is the key: when UseCache = false the whole
+// cache-lookup branch is compiled away.
+// =============================================================================
+template <int Method, bool UseCache>
+std::vector<NeighborInfo> distance_vector(
     const arma::mat &obj,
     const arma::mat &nmiss,
     const arma::uword index,
-    const arma::uvec &col_index_miss,
-    const arma::uvec &col_index_non_miss,
-    const StrictLowerTriangularMatrix &cache,
-    const arma::uword k)
+    const arma::uvec &grp_impute,
+    const arma::uvec &grp_miss_no_imp,
+    const arma::uvec &grp_complete,
+    const arma::uword k,
+    const StrictLowerTriangularMatrix *cache_ptr = nullptr)
 {
   const arma::uword n_rows = obj.n_rows;
-  const arma::uword target_col = col_index_miss(index);
+  const arma::uword target_col = grp_impute(index);
   const double *target_ptr = obj.colptr(target_col);
   const double *target_nmiss_ptr = nmiss.colptr(target_col);
+  const double target_n_valid = arma::accu(nmiss.col(target_col));
 
   std::vector<NeighborInfo> top_k;
   top_k.reserve(k);
   arma::uword remaining = k;
 
-  // ---- Fill phase (first k neighbors) ----
+  // Group 1: other grp_impute columns (cached when UseCache)
+  auto impute_dist_before = [&](arma::uword p) -> double
+  {
+    if constexpr (UseCache)
+    {
+      return (*cache_ptr)(index, p);
+    }
+    else
+    {
+      return calc_distance_raw<Method>(
+          target_ptr, target_nmiss_ptr,
+          obj.colptr(grp_impute(p)), nmiss.colptr(grp_impute(p)),
+          n_rows);
+    }
+  };
+
+  auto impute_dist_after = [&](arma::uword p) -> double
+  {
+    if constexpr (UseCache)
+    {
+      return (*cache_ptr)(p, index);
+    }
+    else
+    {
+      return calc_distance_raw<Method>(
+          target_ptr, target_nmiss_ptr,
+          obj.colptr(grp_impute(p)), nmiss.colptr(grp_impute(p)),
+          n_rows);
+    }
+  };
+
+  // Group 2: grp_miss_no_imp (on-the-fly)
+  auto miss_no_imp_dist = [&](arma::uword p) -> double
+  {
+    return calc_distance_raw<Method>(
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(grp_miss_no_imp(p)), nmiss.colptr(grp_miss_no_imp(p)),
+        n_rows);
+  };
+
+  // Group 3: grp_complete (on-the-fly, optimized calc_distance_)
+  auto complete_dist = [&](arma::uword p) -> double
+  {
+    return calc_distance_raw_complete<Method>(
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(grp_complete(p)),
+        n_rows, target_n_valid);
+  };
+
+  // ---- Group 1a: impute columns before self, fill ----
   arma::uword i = 0;
   for (; i < index && remaining > 0; ++i)
   {
-    double dist = cache(index, i);
-    insert_before_k(top_k, dist, col_index_miss(i));
+    insert_before_k(top_k, impute_dist_before(i), grp_impute(i));
     --remaining;
   }
+  // ---- Group 1b: impute columns after self, fill ----
   arma::uword j = index + 1;
-  for (; j < col_index_miss.n_elem && remaining > 0; ++j)
+  for (; j < grp_impute.n_elem && remaining > 0; ++j)
   {
-    double dist = cache(j, index);
-    insert_before_k(top_k, dist, col_index_miss(j));
+    insert_before_k(top_k, impute_dist_after(j), grp_impute(j));
     --remaining;
   }
+  // ---- Group 2: miss_no_imp, fill ----
   arma::uword m = 0;
-  for (; m < col_index_non_miss.n_elem && remaining > 0; ++m)
+  for (; m < grp_miss_no_imp.n_elem && remaining > 0; ++m)
   {
-    double dist = calc_distance_raw<Method>(
-        target_ptr, target_nmiss_ptr,
-        obj.colptr(col_index_non_miss(m)), nmiss.colptr(col_index_non_miss(m)),
-        n_rows);
-    insert_before_k(top_k, dist, col_index_non_miss(m));
+    insert_before_k(top_k, miss_no_imp_dist(m), grp_miss_no_imp(m));
     --remaining;
   }
-  // ---- Replacement phase (remaining neighbors) ----
+  // ---- Group 3: complete, fill ----
+  arma::uword c = 0;
+  for (; c < grp_complete.n_elem && remaining > 0; ++c)
+  {
+    insert_before_k(top_k, complete_dist(c), grp_complete(c));
+    --remaining;
+  }
+  // ---- Group 1a: impute columns before self, replacement ----
   for (; i < index; ++i)
   {
-    double dist = cache(index, i);
-    insert_if_better_than_worst(top_k, dist, col_index_miss(i));
+    insert_if_better_than_worst(top_k, impute_dist_before(i), grp_impute(i));
   }
-  for (; j < col_index_miss.n_elem; ++j)
+  // ---- Group 1b: impute columns after self, replacement ----
+  for (; j < grp_impute.n_elem; ++j)
   {
-    double dist = cache(j, index);
-    insert_if_better_than_worst(top_k, dist, col_index_miss(j));
+    insert_if_better_than_worst(top_k, impute_dist_after(j), grp_impute(j));
   }
-  for (; m < col_index_non_miss.n_elem; ++m)
+  // ---- Group 2: miss_no_imp, replacement ----
+  for (; m < grp_miss_no_imp.n_elem; ++m)
   {
-    double dist = calc_distance_raw<Method>(
-        target_ptr, target_nmiss_ptr,
-        obj.colptr(col_index_non_miss(m)), nmiss.colptr(col_index_non_miss(m)),
-        n_rows);
-    insert_if_better_than_worst(top_k, dist, col_index_non_miss(m));
+    insert_if_better_than_worst(top_k, miss_no_imp_dist(m), grp_miss_no_imp(m));
+  }
+  // ---- Group 3: complete — replacement ----
+  for (; c < grp_complete.n_elem; ++c)
+  {
+    insert_if_better_than_worst(top_k, complete_dist(c), grp_complete(c));
   }
   return top_k;
 }
 
-// ============================================================================
+// =============================================================================
 // Main imputation function
-// ============================================================================
-template <int Method, bool cache>
+// =============================================================================
+template <int Method, bool UseCache>
 void impute_knn_brute_impl(
     arma::mat &result,
     const arma::mat &obj,
     const arma::mat &nmiss,
     const arma::uword k,
-    const arma::uvec &col_index_miss,
+    const arma::uvec &grp_impute,
+    const arma::uvec &grp_miss_no_imp,
+    const arma::uvec &grp_complete,
     const arma::uvec &col_offsets,
     const double dist_pow,
     int cores,
-    const arma::uvec *col_index_non_miss_ptr,
     const StrictLowerTriangularMatrix *cache_ptr)
 {
 #ifdef _OPENMP
   omp_set_num_threads(cores);
 #pragma omp parallel for
 #endif
-  for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+  for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
   {
-    std::vector<NeighborInfo> top_k;
-    if constexpr (cache)
-    {
-      top_k = distance_vector_cached<Method>(
-          obj, nmiss, i, col_index_miss,
-          *col_index_non_miss_ptr, *cache_ptr, k);
-    }
-    else
-    {
-      top_k = distance_vector_brute<Method>(
-          obj, nmiss, col_index_miss(i), obj.n_cols, k);
-    }
+    std::vector<NeighborInfo> top_k = distance_vector<Method, UseCache>(
+        obj, nmiss, i, grp_impute, grp_miss_no_imp, grp_complete, k, cache_ptr);
 
     arma::uword n_neighbors = top_k.size();
     if (n_neighbors == 0)
@@ -362,54 +337,62 @@ void impute_knn_brute_impl(
     arma::umat nn_columns_mat(n_neighbors, 1);
     nn_columns_mat.col(0) = nn_columns;
     impute_column_values(result, obj, nmiss,
-                         col_offsets(i), col_index_miss(i),
+                         col_offsets(i), grp_impute(i),
                          nn_columns_mat, weights);
   }
 }
 
-// ============================================================================
+// =============================================================================
 // Cache setup + dispatch
-// ============================================================================
+// =============================================================================
+// ======================== TEMPLATING README (Part 3) =========================
+// This is the runtime -> compile-time bridge.
+//  * The user passes `cache = true/false` (runtime bool)
+//  * We decide here whether to build the cache and then call the *templated*
+//    version with UseCache = true or false.
+//  * Once inside the templated `impute_knn_brute_impl<Method, true/false>`,
+//    everything is compile-time again -> zero runtime branching in the hot path.
+// =============================================================================
 template <int Method>
 void dispatch_cache(
     arma::mat &result,
     const arma::mat &obj,
     const arma::mat &nmiss,
     const arma::uword k,
-    const arma::uvec &col_index_miss,
+    const arma::uvec &grp_impute,
+    const arma::uvec &grp_miss_no_imp,
+    const arma::uvec &grp_complete,
     const arma::uvec &col_offsets,
-    const arma::uvec &n_col_miss,
     const double dist_pow,
     const bool use_cache,
     int cores)
 {
   if (use_cache)
   {
-    arma::uvec col_index_non_miss = arma::find(n_col_miss == 0);
-    StrictLowerTriangularMatrix cache(col_index_miss.n_elem);
+    StrictLowerTriangularMatrix cache(grp_impute.n_elem);
 
 #ifdef _OPENMP
     omp_set_num_threads(cores);
 #pragma omp parallel for schedule(dynamic)
 #endif
-    for (arma::uword row = 1; row < col_index_miss.n_elem; ++row)
+    for (arma::uword row = 1; row < grp_impute.n_elem; ++row)
     {
       for (arma::uword col = 0; col < row; ++col)
       {
         cache(row, col) = calc_distance<Method>(
-            obj, nmiss, col_index_miss(row), col_index_miss(col));
+            obj, nmiss, grp_impute(row), grp_impute(col));
       }
     }
 
     impute_knn_brute_impl<Method, true>(
-        result, obj, nmiss, k, col_index_miss, col_offsets, dist_pow, cores,
-        &col_index_non_miss, &cache);
+        result, obj, nmiss, k, grp_impute, grp_miss_no_imp, grp_complete,
+        col_offsets, dist_pow, cores, &cache);
   }
   else
   {
     impute_knn_brute_impl<Method, false>(
-        result, obj, nmiss, k, col_index_miss, col_offsets, dist_pow, cores,
-        nullptr, nullptr);
+        result, obj, nmiss, k, grp_impute, grp_miss_no_imp, grp_complete,
+        col_offsets, dist_pow, cores, nullptr);
   }
 }
 
@@ -418,28 +401,36 @@ arma::mat impute_knn_brute(
     const arma::mat &obj,
     const arma::mat &nmiss,
     const arma::uword k,
-    const arma::uvec &n_col_miss,
+    const arma::uvec &grp_impute,
+    const arma::uvec &grp_miss_no_imp,
+    const arma::uvec &grp_complete,
     const int method,
     const double dist_pow,
     const bool cache = true,
     int cores = 1)
 {
-  arma::uvec col_index_miss = arma::find(n_col_miss > 0);
+  arma::uvec n_miss_impute(grp_impute.n_elem);
+  for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
+  {
+    n_miss_impute(i) = obj.n_rows - arma::accu(nmiss.col(grp_impute(i)));
+  }
+
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(nmiss, col_index_miss, n_col_miss, col_offsets);
+  arma::mat result = initialize_result_matrix(nmiss, grp_impute, n_miss_impute, col_offsets);
   if (result.n_rows == 0)
   {
     return result;
   }
+
   switch (method)
   {
   case 0:
-    dispatch_cache<0>(result, obj, nmiss, k, col_index_miss, col_offsets,
-                      n_col_miss, dist_pow, cache, cores);
+    dispatch_cache<0>(result, obj, nmiss, k, grp_impute, grp_miss_no_imp,
+                      grp_complete, col_offsets, dist_pow, cache, cores);
     break;
   case 1:
-    dispatch_cache<1>(result, obj, nmiss, k, col_index_miss, col_offsets,
-                      n_col_miss, dist_pow, cache, cores);
+    dispatch_cache<1>(result, obj, nmiss, k, grp_impute, grp_miss_no_imp,
+                      grp_complete, col_offsets, dist_pow, cache, cores);
     break;
   default:
     throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan");
