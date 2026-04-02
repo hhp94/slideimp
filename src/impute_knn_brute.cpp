@@ -1,8 +1,4 @@
-// [[Rcpp::depends(RcppArmadillo)]]
-
 #include "imputed_value.h"
-#include <RcppArmadillo.h>
-#include <vector>
 #include <limits>
 #include <stdexcept>
 #include <cmath>

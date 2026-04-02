@@ -1,7 +1,6 @@
 #ifndef IMPUTED_VALUE_H
 #define IMPUTED_VALUE_H
 
-// [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include <vector>
 

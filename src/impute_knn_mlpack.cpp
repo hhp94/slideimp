@@ -1,8 +1,6 @@
 #include "imputed_value.h"
-#include <vector>
 #include <mlpack.h>
 #include <mlpack/methods/neighbor_search/neighbor_search.hpp>
-#include <RcppArmadillo.h>
 #include <stdexcept>
 #if defined(_OPENMP)
 #include <omp.h>
