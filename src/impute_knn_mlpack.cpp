@@ -10,29 +10,21 @@
 
 // [[Rcpp::export]]
 arma::mat impute_knn_mlpack(
-    const arma::mat &obj,           // data with NA pre-filled (no NA values)
-    const arma::mat &nmiss,         // missing data matrix
-    const arma::uword k,            // number of neighbors
-    const arma::uvec &grp_impute,   // 0-based indices of columns to impute
-    const int method,               // 0 = euclidean, 1 = manhattan
-    const double dist_pow,          // controls distance penalty for weighted average
-    const int cores = 1)            // number of cores for parallel processing
+    const arma::mat &obj,         // data with NA pre-filled (no NA values)
+    const arma::mat &nmiss,       // missing data matrix
+    const arma::uword k,          // number of neighbors
+    const arma::uvec &grp_impute, // 0-based indices of columns to impute
+    const int method,             // 0 = euclidean, 1 = manhattan
+    const double dist_pow,        // controls distance penalty for weighted average
+    const int cores = 1)          // number of cores for parallel processing
 {
 #ifdef _OPENMP
   omp_set_num_threads(cores);
 #endif
 
-  // Compute per-column missing counts aligned 1-to-1 with grp_impute
-  arma::uvec n_miss_impute(grp_impute.n_elem);
-  for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
-  {
-    n_miss_impute(i) = obj.n_rows - arma::accu(nmiss.col(grp_impute(i)));
-  }
-
-  // Initialize result matrix, column offsets, and precomputed row indices
   arma::uvec col_offsets;
   std::vector<arma::uvec> rows_to_impute_vec;
-  arma::mat result = initialize_result_matrix(nmiss, grp_impute, n_miss_impute, col_offsets, rows_to_impute_vec);
+  arma::mat result = initialize_result_matrix(nmiss, grp_impute, col_offsets, rows_to_impute_vec);
   if (result.n_rows == 0)
   {
     return result;
@@ -44,7 +36,6 @@ arma::mat impute_knn_mlpack(
   arma::umat resultingNeighbors;
   arma::mat resultingDistances;
 
-  // Perform K-NN search using BallTree only (kd-tree support has been removed)
   if (method == 0)
   {
     using KNNType = mlpack::NeighborSearch<mlpack::NearestNeighborSort, mlpack::EuclideanDistance, arma::mat, mlpack::BallTree>;
@@ -82,12 +73,10 @@ arma::mat impute_knn_mlpack(
     arma::uword target_col_idx = grp_impute(i);
 
     // Single deterministic imputation
-    arma::umat nn_columns_mat(n_neighbors, 1);
-    nn_columns_mat.col(0) = nn_columns;
     impute_column_values(
         result, obj, nmiss,
         col_offsets(i), target_col_idx,
-        nn_columns_mat, weights,
+        nn_columns, weights,
         rows_to_impute_vec[i]);
   }
 

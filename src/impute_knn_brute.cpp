@@ -56,7 +56,7 @@ inline double calc_distance_raw(
   double dist = 0.0;
   double n_valid = 0.0;
 #if defined(_OPENMP)
-#pragma omp simd reduction(+:dist, n_valid)
+#pragma omp simd reduction(+ : dist, n_valid)
 #endif
   for (arma::uword r = 0; r < n_rows; ++r)
   {
@@ -104,7 +104,7 @@ inline double calc_distance_raw_complete(
 {
   double dist = 0.0;
 #if defined(_OPENMP)
-#pragma omp simd reduction(+:dist)
+#pragma omp simd reduction(+ : dist)
 #endif
   for (arma::uword r = 0; r < n_rows; ++r)
   {
@@ -133,17 +133,11 @@ struct NeighborInfo
 
 inline void insert_before_k(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
 {
-  auto it = std::upper_bound(
-      top_k.begin(),
-      top_k.end(),
-      dist,
-      [](double d, const NeighborInfo &ni)
-      {
-        return d < ni.distance;
-      });
-  top_k.insert(it, NeighborInfo(dist, idx));
+  top_k.emplace_back(dist, idx);
 }
 
+// compare the new distance with the worst. This converges when enough neighbor
+// candidates are iterated through with the early return
 inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
 {
   if (dist >= top_k.back().distance)
@@ -275,6 +269,12 @@ std::vector<NeighborInfo> distance_vector(
     insert_before_k(top_k, complete_dist(c), grp_complete(c));
     --remaining;
   }
+
+  // just fill up the distances and sort the top_k once between replacement
+  std::sort(top_k.begin(), top_k.end(),
+            [](const NeighborInfo &a, const NeighborInfo &b)
+            { return a.distance < b.distance; });
+
   // ---- Group 1a: impute columns before self, replacement ----
   for (; i < index; ++i)
   {
@@ -332,20 +332,16 @@ void impute_knn_brute_impl(
     }
 
     arma::uvec nn_columns(n_neighbors);
-    arma::vec nn_dists(n_neighbors);
+    arma::vec weights(n_neighbors);
     for (arma::uword j = 0; j < n_neighbors; ++j)
     {
       nn_columns(j) = top_k[j].index;
-      nn_dists(j) = top_k[j].distance;
+      weights(j) = 1.0 / std::pow(top_k[j].distance + epsilon, dist_pow);
     }
 
-    arma::vec weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-
-    arma::umat nn_columns_mat(n_neighbors, 1);
-    nn_columns_mat.col(0) = nn_columns;
     impute_column_values(result, obj, nmiss,
                          col_offsets(i), grp_impute(i),
-                         nn_columns_mat, weights,
+                         nn_columns, weights,
                          rows_to_impute_vec[i]);
   }
 }
@@ -418,15 +414,9 @@ arma::mat impute_knn_brute(
     const bool cache = true,
     int cores = 1)
 {
-  arma::uvec n_miss_impute(grp_impute.n_elem);
-  for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
-  {
-    n_miss_impute(i) = obj.n_rows - arma::accu(nmiss.col(grp_impute(i)));
-  }
-
   arma::uvec col_offsets;
   std::vector<arma::uvec> rows_to_impute_vec;
-  arma::mat result = initialize_result_matrix(nmiss, grp_impute, n_miss_impute, col_offsets, rows_to_impute_vec);
+  arma::mat result = initialize_result_matrix(nmiss, grp_impute, col_offsets, rows_to_impute_vec);
   if (result.n_rows == 0)
   {
     return result;

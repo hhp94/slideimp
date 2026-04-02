@@ -8,31 +8,36 @@
 arma::mat initialize_result_matrix(
     const arma::mat &nmiss,
     const arma::uvec &col_index_miss,
-    const arma::uvec &n_col_miss,
     arma::uvec &col_offsets,
     std::vector<arma::uvec> &rows_to_impute_vec)
 {
-    // 2 columns for ij indices + n_imp columns for values. There's only one imputation
+    // col 1 = row index, col 2 = col index, col 3 = missing values
     const arma::uword n_col_result = 3;
 
-    // Find columns that contain missing values
     if (col_index_miss.n_elem == 0)
     {
-        // Return empty matrix if no missing values exist
         return arma::mat(0, n_col_result);
     }
 
-    // Calculate total number of missing values
+    // compute per-column missing counts internally
+    arma::uvec n_col_miss(col_index_miss.n_elem);
+    for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+    {
+        n_col_miss(i) = nmiss.n_rows - arma::accu(nmiss.col(col_index_miss(i)));
+    }
+
     arma::uword sum_missing = arma::accu(n_col_miss);
+    if (sum_missing == 0)
+    {
+        return arma::mat(0, n_col_result);
+    }
+
     arma::mat result(sum_missing, n_col_result);
     result.fill(arma::datum::nan);
 
-    // Calculate offsets for efficient filling
-    arma::uvec miss_counts = n_col_miss;
-    col_offsets.set_size(miss_counts.n_elem + 1);
+    col_offsets.set_size(n_col_miss.n_elem + 1);
     col_offsets.fill(arma::fill::zeros);
-    // col 0 offset = 0, col 1 -> N offset = cumsum number of missing in each col
-    col_offsets.subvec(1, miss_counts.n_elem) = arma::cumsum(miss_counts);
+    col_offsets.subvec(1, n_col_miss.n_elem) = arma::cumsum(n_col_miss);
 
     // Precompute row indices and fill result with ij indices (1-based for R)
     rows_to_impute_vec.resize(col_index_miss.n_elem);
@@ -54,37 +59,71 @@ arma::mat initialize_result_matrix(
     return result;
 }
 
-// basically the imputation for loop down each column. Modify the result matrix.
+// ======================== LOOP ORDER NOTE ====================================
+// The intuitive approach is: for each missing row, loop over the k neighbors
+// and accumulate a weighted average. That's easy to understand, but it means the
+// inner loop touches k *different* column pointers on every iteration so the CPU
+// can't prefetch any of them, and the compiler can't vectorize because consecutive
+// iterations read from unrelated memory. This is a slight optimization
+//
+// We iterate NEIGHBORS instead in the outer loop and ROWS in the inner loop.
+// This gives us:
+//  1. The neighbor's weight `w` is loaded once and reused for every miss row.
+//  2. The inner loop reads through exactly one base pointer (the neighbor's column)
+//  plus varying row offsets.
+// =============================================================================
 void impute_column_values(
     arma::mat &result,
     const arma::mat &obj,
     const arma::mat &nmiss,
     const arma::uword col_offset,
     const arma::uword target_col_idx,
-    const arma::umat &nn_columns_mat,
+    const arma::uvec &nn_columns_vec,
     const arma::vec &nn_weights,
     const arma::uvec &rows_to_impute)
 {
-    // For each missing cell in this column, calculate the imputed value
-    for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
+    const arma::uword n_rows = rows_to_impute.n_elem;
+    if (n_rows == 0)
     {
-        const arma::uword row_idx = rows_to_impute(r);
-        const arma::uword res_row = col_offset + r;
-        double weighted_sum = 0.0;
-        double weight_total = 0.0;
-        // Aggregate values from neighbors
-        for (arma::uword j = 0; j < nn_columns_mat.n_rows; ++j)
+        return;
+    }
+    // accumulation buffers: one entry per missing row in this column. This enables
+    // vectorization. Previously, we had two double to hold the accumulators
+    arma::vec weighted_sums(n_rows, arma::fill::zeros);
+    arma::vec weight_totals(n_rows, arma::fill::zeros);
+    double *__restrict__ ws_ptr = weighted_sums.memptr();
+    double *__restrict__ wt_ptr = weight_totals.memptr();
+
+    // pre-cache the column pointers for each neighbor because this doesn't change
+    // in the inner loop.
+    std::vector<const double *> nn_nmiss_ptrs(nn_columns_vec.n_elem);
+    std::vector<const double *> nn_obj_ptrs(nn_columns_vec.n_elem);
+    for (arma::uword j = 0; j < nn_columns_vec.n_elem; ++j)
+    {
+        nn_nmiss_ptrs[j] = nmiss.colptr(nn_columns_vec(j));
+        nn_obj_ptrs[j] = obj.colptr(nn_columns_vec(j));
+    }
+
+    // ---- outer loop over neighbors ----
+    for (arma::uword j = 0; j < nn_columns_vec.n_elem; ++j)
+    {
+        const double w = nn_weights(j);
+        const double *obj_col = nn_obj_ptrs[j];
+        const double *nmiss_col = nn_nmiss_ptrs[j];
+        // ---- inner loop over missing rows ----
+        for (arma::uword r = 0; r < n_rows; ++r)
         {
-            arma::uword neighbor_col_idx = nn_columns_mat(j, 0);
-            // A neighbor can only contribute if its value in the same row is NOT missing
-            if (nmiss(row_idx, neighbor_col_idx) == 1)
-            {
-                double weight = nn_weights(j);
-                weighted_sum += weight * obj(row_idx, neighbor_col_idx);
-                weight_total += weight;
-            }
+            const arma::uword row_idx = rows_to_impute(r);
+            double valid = nmiss_col[row_idx];
+            double weight = w * valid;
+            ws_ptr[r] += weight * obj_col[row_idx];
+            wt_ptr[r] += weight;
         }
-        double imputed_value = (weight_total > 0.0) ? (weighted_sum / weight_total) : arma::datum::nan;
-        result(res_row, 2) = imputed_value;
+    }
+
+    // ---- write imputed values to the result matrix ----
+    for (arma::uword r = 0; r < n_rows; ++r)
+    {
+        result(col_offset + r, 2) = (wt_ptr[r] > 0.0) ? (ws_ptr[r] / wt_ptr[r]) : arma::datum::nan;
     }
 }

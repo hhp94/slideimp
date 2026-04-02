@@ -12,7 +12,6 @@ constexpr double epsilon = 1e-10;
 arma::mat initialize_result_matrix(
     const arma::mat &nmiss,
     const arma::uvec &col_index_miss,
-    const arma::uvec &n_col_miss,
     arma::uvec &col_offsets,
     std::vector<arma::uvec> &rows_to_impute_vec);
 
@@ -23,7 +22,7 @@ void impute_column_values(
     const arma::mat &nmiss,
     const arma::uword col_offset,
     const arma::uword target_col_idx,
-    const arma::umat &nn_columns_mat,
+    const arma::uvec &nn_columns_vec,
     const arma::vec &nn_weights,
     const arma::uvec &rows_to_impute);
 
