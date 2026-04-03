@@ -51,10 +51,10 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 #' indices specifying which columns to impute.
 #' @param dist_pow The amount of penalization for further away nearest neighbors in the weighted average.
 #' `dist_pow = 0` (default) is the simple average of the nearest neighbors.
-#' @param tree Logical flag. `FALSE` (default) = brute-force K-NN. `TRUE` = use mlpack BallTree.
+#' @param tree Logical. `FALSE` (default) = brute-force K-NN. `TRUE` = use mlpack BallTree.
 #' @param max_cache Maximum allowed cache size in GB (default `4`). When
 #' greater than `0`, pairwise distances between columns with missing values
-#' are precomputed and cached, which is faster for moderate-sized data but
+#' are pre-computed and cached, which is faster for moderate-sized data but
 #' uses O(m^2) memory where m is the number of columns with missing values.
 #' Set to `0` to disable caching and trade speed for lower memory usage on
 #' very wide data.

@@ -24,6 +24,8 @@
 #' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
 #' @param maxiter integer, maximum number of iteration for the algorithm
 #' @param miniter integer, minimum number of iteration for the algorithm
+#' @param partial boolean. Use a partial eigen solver? Set to `FALSE` when `ncp` is
+#' very large may run faster (Default = `TRUE`).
 #'
 #' @inherit knn_imp return
 #'
@@ -47,7 +49,7 @@
 pca_imp <- function(
   obj, ncp = 2, scale = TRUE, method = c("regularized", "EM"),
   coeff.ridge = 1, row.w = NULL, threshold = 1e-6, seed = NULL,
-  nb.init = 1, maxiter = 1000, miniter = 5
+  nb.init = 1, maxiter = 1000, miniter = 5, partial = TRUE
 ) {
   #### Main program
   checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
@@ -76,6 +78,7 @@ pca_imp <- function(
   checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
+  checkmate::assert_flag(partial, null.ok = FALSE, .var.name = "partial")
   obj_vars <- col_vars(obj)
   if (any(obj_vars < .Machine$double.eps | is.na(obj_vars))) {
     stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
@@ -109,11 +112,12 @@ pca_imp <- function(
       scale = scale,
       regularized = (method == "regularized"),
       threshold = threshold,
-      init = i,
+      init = if (i == 1) 0 else i,
       maxiter = maxiter,
       miniter = miniter,
       row_w = row.w,
-      coeff_ridge = coeff.ridge
+      coeff_ridge = coeff.ridge,
+      partial = partial
     )
     cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {

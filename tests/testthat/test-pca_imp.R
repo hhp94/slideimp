@@ -70,3 +70,27 @@ test_that("row.w rejects invalid strings", {
 
   expect_error(pca_imp(mat, ncp = 2, row.w = "invalid"))
 })
+
+test_that("full eig_sym and partial_eig_sym paths return numerically identical results", {
+  set.seed(1234)
+  # Medium-sized matrix so we can easily force both solver paths
+  to_test <- t(sim_mat(n = 70, m = 40, perc_NA = 0.4, perc_col_NA = 1)$input)
+  row.w <- runif(nrow(to_test))
+  row.w <- row.w / sum(row.w)
+
+  # full Armadillo eig_sym("dc") path
+  r_full <- pca_imp(to_test, ncp = 3, row.w = row.w, partial = FALSE, nb.init = 10, seed = 1234)
+
+  # partial dsyevr path
+  r_partial <- pca_imp(to_test, ncp = 3, row.w = row.w, partial = TRUE, nb.init = 10, seed = 1234)
+
+  # the two paths must be essentially identical
+  expect_equal(r_full, r_partial, tolerance = 1e-10)
+  expect_equal(r_full[, ], r_partial[, ], tolerance = 1e-10)
+
+  # Test without row weight
+  r_full_now <- pca_imp(to_test, ncp = 3, partial = FALSE, nb.init = 10, seed = 1234)
+  r_partial_now <- pca_imp(to_test, ncp = 3, partial = TRUE, nb.init = 10, seed = 1234)
+
+  expect_equal(r_full_now, r_partial_now, tolerance = 1e-10)
+})

@@ -1,80 +1,74 @@
-#include <RcppArmadillo.h>
-// [[Rcpp::depends(RcppArmadillo)]]
+#include "partial_eig.h"
 
-// Codes copied from bootSVD and FactoMiner::svd.triplet. All pre-conditioning done in R
-arma::mat genQ_cpp(arma::uword n)
+// symmetric eigendecomposition on the cross-product matrix
+void fastSVD_triplet(const arma::mat &Xhat,
+                     const arma::colvec &sqrt_row_w,
+                     const arma::colvec &inv_sqrt_row_w,
+                     arma::uword ncp,
+                     bool tall,
+                     arma::vec &vs_top,
+                     double &trace_val,
+                     arma::mat &U,
+                     arma::mat &V,
+                     arma::mat &X_work,
+                     arma::mat &AA_NxN,
+                     bool partial,
+                     double tol = 1e-15)
 {
-  Rcpp::NumericVector rv = Rcpp::rnorm(n * n);
-  arma::mat normal_mat(rv.begin(), n, n, false, true);
-  arma::mat Q, R;
-  arma::qr_econ(Q, R, normal_mat);
-  return Q;
-}
+  // weight rows: X_work = diag(sqrt_row_w) * Xhat
+  X_work = Xhat;
+  X_work.each_col() %= sqrt_row_w;
 
-void qrSVD_cpp(const arma::mat &A, arma::mat &U, arma::vec &d, arma::mat &V, arma::uword lim_attempts = 50)
-{
-  arma::uword n = A.n_rows;
-  arma::uword p = A.n_cols;
-  bool success = arma::svd_econ(U, d, V, A);
-  if (success)
+  // form the smaller cross-product
+  if (tall)
   {
-    return;
-  }
-  arma::uword attempt = 0;
-  while (!success && attempt < lim_attempts)
-  {
-    attempt++;
-    arma::mat Q_n = genQ_cpp(n);
-    arma::mat Q_p = (n == p) ? Q_n : genQ_cpp(p);
-    arma::mat precond = Q_n.t() * A * Q_p;
-    success = arma::svd_econ(U, d, V, precond);
-    if (success)
-    {
-      U = Q_n * U;
-      V = Q_p * V;
-    }
-  }
-  if (!success)
-  {
-    Rcpp::warning("SVD failed to converge after %d preconditioning attempts", lim_attempts);
-  }
-}
-
-void fastSVD_triplet(const arma::mat &A, const arma::rowvec &row_w, arma::uword ncp,
-                     arma::vec &vs, arma::mat &U, arma::mat &V, double tol = 1e-15)
-{
-  // normalize row weights and scale X by multiplying each row by corresponding sqrt(row_w) weight
-  arma::rowvec sqrt_row_w = arma::sqrt(row_w);
-  arma::mat X = A.each_col() % sqrt_row_w.t();
-
-  arma::uword rows = X.n_rows;
-  arma::uword cols = X.n_cols;
-  bool tall = (rows >= cols);
-
-  arma::mat AA_NxN;
-  if (!tall)
-  {
-    AA_NxN = X * X.t();
+    AA_NxN = X_work.t() * X_work; // cols x cols
   }
   else
   {
-    AA_NxN = X.t() * X;
+    AA_NxN = X_work * X_work.t(); // rows x rows
   }
 
-  arma::mat Vn_full;
-  arma::vec d_squared;
-  arma::mat V_unused;
-  qrSVD_cpp(AA_NxN, Vn_full, d_squared, V_unused);
+  arma::uword dim = AA_NxN.n_rows;
+  arma::uword k = std::min(ncp + 1, dim);
+  arma::vec eigvals;
+  arma::mat eigvecs;
+  bool success;
 
-  arma::vec d_full = arma::sqrt(arma::clamp(d_squared, 0.0, arma::datum::inf));
+  if (partial)
+  {
+    success = partial_eig_sym(eigvals, eigvecs, AA_NxN, k);
+    if (!success)
+    {
+      Rcpp::stop("`partial_eig_sym` failed to converge");
+    }
+  }
+  else
+  {
+    success = arma::eig_sym(eigvals, eigvecs, AA_NxN, "dc");
+    if (!success)
+    {
+      Rcpp::stop("`arma::eig_sym` failed to converge");
+    }
+    // take largest k (already ascending -> tail + reverse)
+    eigvals = eigvals.tail(k);
+    eigvecs = eigvecs.tail_cols(k);
+    eigvals = arma::reverse(eigvals);
+    eigvecs = arma::fliplr(eigvecs);
+  }
 
-  arma::uword vs_len = std::min(cols, rows - 1);
-  vs = d_full.subvec(0, vs_len - 1);
+  // trace of the cross-product (needed for sigma2 estimate)
+  trace_val = arma::trace(AA_NxN);
 
-  arma::mat Vn = Vn_full.cols(0, ncp - 1);
-  arma::vec d = d_full.subvec(0, ncp - 1);
+  // singular values from eigenvalues (clamp negatives from numerical noise)
+  vs_top = arma::sqrt(arma::clamp(eigvals, 0.0, arma::datum::inf));
 
-  arma::vec d_inv = arma::zeros<arma::vec>(ncp);
+  // extract top ncp eigenvectors and corresponding singular values
+  arma::mat Vn = eigvecs.head_cols(ncp);
+  arma::vec d = vs_top.head(ncp);
+
+  // safe reciprocal of singular values
+  arma::vec d_inv(ncp, arma::fill::zeros);
   for (arma::uword i = 0; i < ncp; i++)
   {
     if (d(i) > tol)
@@ -83,39 +77,22 @@ void fastSVD_triplet(const arma::mat &A, const arma::rowvec &row_w, arma::uword 
     }
   }
 
-  arma::mat Vp;
-  if (!tall)
+  // recover the other factor: U = X * V * D^{-1}  or  V = X' * U * D^{-1}
+  if (tall)
   {
-    Vp = X.t() * (Vn * arma::diagmat(d_inv));
-  }
-  else
-  {
-    Vp = X * (Vn * arma::diagmat(d_inv));
-  }
-
-  if (!tall)
-  {
-    U = Vn;
-    V = Vp;
-  }
-  else
-  {
-    U = Vp;
+    // AA_NxN was X'X (cols x cols), eigvecs are right singular vectors
+    U = X_work * (Vn.each_row() % d_inv.t());
     V = Vn;
   }
-
-  // sign flip based on colSums(V)
-  arma::rowvec col_sums = arma::sum(V, 0);
-  for (arma::uword i = 0; i < ncp; i++)
+  else
   {
-    if (col_sums(i) < 0)
-    {
-      U.col(i) *= -1.0;
-      V.col(i) *= -1.0;
-    }
+    // AA_NxN was XX' (rows x rows), eigvecs are left singular vectors
+    V = X_work.t() * (Vn.each_row() % d_inv.t());
+    U = Vn;
   }
 
-  U.each_col() /= sqrt_row_w.t();
+  // undo row weighting on U: U = diag(1/sqrt_row_w) * U
+  U.each_col() %= inv_sqrt_row_w;
 }
 
 // [[Rcpp::export]]
@@ -130,10 +107,13 @@ Rcpp::List pca_imp_internal_cpp(
     arma::uword maxiter,
     arma::uword miniter,
     const arma::rowvec &row_w,
-    double coeff_ridge)
+    double coeff_ridge,
+    bool partial)
 {
-  double nrX = X.n_rows;
-  double ncX = X.n_cols;
+  arma::uword nrX = X.n_rows;
+  arma::uword ncX = X.n_cols;
+  double nrX_d = static_cast<double>(nrX);
+  double ncX_d = static_cast<double>(ncX);
   arma::uword nb_iter = 1;
   double old = arma::datum::inf;
   double objective = 0.0;
@@ -165,11 +145,31 @@ Rcpp::List pca_imp_internal_cpp(
   arma::mat fittedX = Xhat;
   arma::mat U;
   arma::mat V;
-  arma::vec vs;
-  double min_dim = std::min(ncX, nrX - 1);
+  arma::vec vs_top;
+  double trace_val;
+  double min_dim = std::min(ncX_d, nrX_d - 1.0);
   double sigma2 = 0.0;
-  arma::vec lambda_shrinked;
-  // double total_w = arma::sum(row_w); Guaranteed to be 1 in the R wrapper
+  arma::vec lambda_shrinked(ncp);
+
+  // pre-allocate loop temporaries
+  arma::mat U_weighted(nrX, ncp);
+  arma::mat U_lambda(nrX, ncp);
+  arma::mat diff(nrX, ncX);
+
+  // compute once, reuse every iteration
+  arma::colvec sqrt_row_w = arma::sqrt(row_w.t());
+  arma::colvec inv_sqrt_row_w = 1.0 / sqrt_row_w;
+
+  // scratch buffers for the SVD routine
+  arma::mat X_work(nrX, ncX);
+  bool tall = (nrX >= ncX);
+  arma::uword small_dim = tall ? ncX : nrX;
+  arma::mat AA_NxN(small_dim, small_dim);
+
+  // pre-compute constants for sigma2
+  double denom_sigma = (nrX_d - 1.0) * ncX_d - (nrX_d - 1.0) * ncp - ncX_d * ncp + static_cast<double>(ncp * ncp);
+  double scale_factor = (nrX_d * ncX_d) / min_dim;
+
   while (nb_iter > 0)
   {
     // update and unstandardize Xhat
@@ -179,55 +179,52 @@ Rcpp::List pca_imp_internal_cpp(
       Xhat.each_row() %= et;
     }
     Xhat.each_row() += mean_p;
-    // re standardize Xhat
-    // mean_p = (row_w * Xhat) / total_w;
+    // re-standardize Xhat
     mean_p = (row_w * Xhat);
     Xhat.each_row() -= mean_p;
-    // et = arma::sqrt((row_w * (Xhat % Xhat)) / total_w);
     et = arma::sqrt(row_w * (Xhat % Xhat));
     if (scale)
     {
       Xhat.each_row() /= et;
     }
 
-    fastSVD_triplet(Xhat, row_w, ncp, vs, U, V);
-    // sigma2 calculation
+    fastSVD_triplet(Xhat, sqrt_row_w, inv_sqrt_row_w, ncp, tall,
+                    vs_top, trace_val, U, V, X_work, AA_NxN, partial);
+
+    // sigma2 via trace identity: sum(vs_tail^2) = trace(AA) - sum(vs_head^2)
     sigma2 = 0.0;
     if (regularized)
     {
-      arma::vec vs_tail = vs.subvec(ncp, vs.n_elem - 1);
-      arma::vec vs_tail_sq = vs_tail % vs_tail;
-      double denom_sigma = (nrX - 1) * ncX - (nrX - 1) * ncp - ncX * ncp + ncp * ncp;
-      double scale_factor = (nrX * ncX) / min_dim;
-      sigma2 = scale_factor * arma::sum(vs_tail_sq) / denom_sigma;
-      sigma2 = std::min(sigma2 * coeff_ridge, vs(ncp) * vs(ncp));
+      double sum_top_sq = 0.0;
+      for (arma::uword i = 0; i < ncp; i++)
+      {
+        sum_top_sq += vs_top(i) * vs_top(i);
+      }
+      double sum_tail_sq = trace_val - sum_top_sq;
+      sigma2 = scale_factor * sum_tail_sq / denom_sigma;
+      sigma2 = std::min(sigma2 * coeff_ridge, vs_top(ncp) * vs_top(ncp));
     }
-    // lambda_shrinked calculation
-    arma::vec vs_head = vs.subvec(0, ncp - 1);
-    lambda_shrinked = (vs_head % vs_head - sigma2) / vs_head;
 
-    // fittedX calculation
-    // fittedX <- tcrossprod(t(t(U[,1:ncp] * row.w) * lambda.shrinked), V[,1:ncp])
-    // U[,1:ncp] * row.w: multiply each row by corresponding weight
-    arma::mat U_ncp = U.head_cols(ncp);
-    arma::mat U_weighted = U_ncp.each_col() % row_w.t();
-    // t(t(...) * lambda.shrinked) sweep * results by corresponding lambda
-    arma::mat U_lambda = U_weighted.each_row() % lambda_shrinked.t();
-    // tcrossprod with V[,1:ncp]
-    arma::mat V_ncp = V.head_cols(ncp);
-    fittedX = U_lambda * V_ncp.t();
-    // divide by row.w
+    // lambda_shrinked calculation
+    for (arma::uword i = 0; i < ncp; i++)
+    {
+      lambda_shrinked(i) = (vs_top(i) * vs_top(i) - sigma2) / vs_top(i);
+    }
+
+    // fittedX = tcrossprod(t(t(U * row.w) * lambda.shrinked), V) / row.w
+    U_weighted = U;
+    U_weighted.each_col() %= row_w.t();
+    U_lambda = U_weighted;
+    U_lambda.each_row() %= lambda_shrinked.t();
+    fittedX = U_lambda * V.t();
     fittedX.each_col() /= row_w.t();
 
-    // now we calculate objective
-    arma::mat diff = Xhat - fittedX;
+    // objective on observed entries
+    diff = Xhat - fittedX;
     diff.elem(missing).zeros();
-    // sum(diff^2 * row.w) - each row weighted by row_w
     objective = arma::dot(row_w, arma::sum(diff % diff, 1));
 
-    // Check convergence
-    // if old is Inf, then set criterion to 1 which will not trigger convergence, then just
-    // calculate criterion as usual
+    // check convergence
     double criterion = (old > 0.0 && !std::isinf(old)) ? std::abs(1.0 - objective / old) : 1.0;
     old = objective;
     nb_iter++;
@@ -245,6 +242,7 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::warning("Stopped after " + std::to_string(maxiter) + " iterations");
     }
   }
+
   if (scale)
   {
     Xhat.each_row() %= et;
@@ -256,13 +254,12 @@ Rcpp::List pca_imp_internal_cpp(
   }
   fittedX.each_row() += mean_p;
 
-  // calculate MSE on observed values which is just the MSE between fittedX and X
+  // MSE on observed values
   arma::mat diff_obs = fittedX - X;
-  diff_obs.elem(missing).zeros(); // ignore missing positions
+  diff_obs.elem(missing).zeros();
   double n_observed = static_cast<double>(X.n_elem - missing.n_elem);
   double mse = arma::accu(diff_obs % diff_obs) / n_observed;
 
-  // only extract imputed values instead of returning the double full matrix
   arma::vec imputed_vals = Xhat.elem(missing);
 
   return Rcpp::List::create(

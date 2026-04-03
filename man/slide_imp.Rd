@@ -72,7 +72,7 @@ using column means (default = \code{TRUE}).}
 
 \item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
 greater than \code{0}, pairwise distances between columns with missing values
-are precomputed and cached, which is faster for moderate-sized data but
+are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
 Set to \code{0} to disable caching and trade speed for lower memory usage on
 very wide data.}

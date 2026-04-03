@@ -61,14 +61,14 @@ using column means (default = \code{TRUE}).}
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
-\item{tree}{Logical flag. \code{FALSE} (default) = brute-force K-NN. \code{TRUE} = use mlpack BallTree.}
+\item{tree}{Logical. \code{FALSE} (default) = brute-force K-NN. \code{TRUE} = use mlpack BallTree.}
 
 \item{cores}{Controls the number of cores to parallelize over for K-NN imputation with OpenMP only.
 To setup parallelization for K-NN without OpenMP and PCA imputation, use \code{mirai::daemons()}.}
 
 \item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
 greater than \code{0}, pairwise distances between columns with missing values
-are precomputed and cached, which is faster for moderate-sized data but
+are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
 Set to \code{0} to disable caching and trade speed for lower memory usage on
 very wide data.}

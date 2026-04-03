@@ -31,7 +31,7 @@ imputation with \code{ncp} principal components. Cannot be used together with
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
 
-\item{min_group_size}{Integer (default 0). Minimum number of features per
+\item{min_group_size}{Integer (default = \code{0}). Minimum number of features per
 group. If a group has fewer features, additional features are randomly
 sampled from remaining columns to meet this threshold.}
 

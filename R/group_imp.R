@@ -422,9 +422,13 @@ group_imp <- function(
       sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
       imputed <- do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))
       obj[, feat_splits[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
-      if (.progress) cli::cli_progress_update(id = pb)
+      if (.progress) {
+        cli::cli_progress_update(id = pb)
+      }
     }
-    if (.progress) cli::cli_progress_done(id = pb)
+    if (.progress) {
+      cli::cli_progress_done(id = pb)
+    }
   }
 
   class(obj) <- c("ImputedMatrix", class(obj))
@@ -448,7 +452,7 @@ group_imp <- function(
 #' @param ncp Integer or `NULL`. If specified, prepares parameters for PCA
 #' imputation with `ncp` principal components. Cannot be used together with
 #' `k`.
-#' @param min_group_size Integer (default 0). Minimum number of features per
+#' @param min_group_size Integer (default = `0`). Minimum number of features per
 #' group. If a group has fewer features, additional features are randomly
 #' sampled from remaining columns to meet this threshold.
 #' @param seed Numeric or `NULL`. Random seed for reproducibility when sampling
