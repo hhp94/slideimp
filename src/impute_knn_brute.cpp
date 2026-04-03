@@ -14,60 +14,138 @@ struct StrictLowerTriangularMatrix
 {
   size_t n;
   std::vector<double> data;
+  std::vector<size_t> row_offsets;
 
   explicit StrictLowerTriangularMatrix(size_t size)
-      : n(size), data(size * (size - 1) / 2, 0.0)
+      : n(size),
+        data(size * (size - 1) / 2, 0.0),
+        row_offsets(size + 1, 0)
   {
     if (size == 0)
+    {
       throw std::invalid_argument("Size must be at least 1");
+    }
+    // precompute once: row_offsets[r] = r*(r-1)/2. Eliminate calculations in hot path
+    for (size_t r = 1; r <= size; ++r)
+    {
+      row_offsets[r] = row_offsets[r - 1] + (r - 1);
+    }
   }
 
   double &operator()(size_t i, size_t j) noexcept
   {
-    return data[i * (i - 1) / 2 + j];
+    return data[row_offsets[i] + j];
   }
 
   const double &operator()(size_t i, size_t j) const noexcept
   {
-    return data[i * (i - 1) / 2 + j];
+    return data[row_offsets[i] + j];
   }
 };
 
 // ======================== TEMPLATING README (Part 1) =========================
-// We use a non-type template parameter `Method` (0 = Euclidean, 1 = Manhattan)
-// so the compiler can generate two completely separate functions at compile time.
-// This eliminates the runtime `switch` / `if` that would otherwise sit inside
-// the hottest loop (distance_vector). The specializations below are what actually
-// call the correct distance routine.
+// We use non-type template parameters so the compiler generates separate
+// functions at compile time, eliminating runtime branching in the hot path:
+//  - int Method :  0 = Euclidean, 1 = Manhattan
+//  - bool Bound :  when true, every GRAIN rows we check whether the partial
+//                  distance already exceeds the current worst neighbor.
+//                  If so we return Inf immediately, skipping remaining rows.
+//                  When false, the original SIMD-friendly loop is emitted.
+// =============================================================================
 
-// These are functions that are called in group 1 and 2
-template <int Method>
+constexpr arma::uword GRAIN = 16; // best for hundreds to thousands of rows
+
+// =============================================================================
+// calc_distance_raw — called for Groups 1 & 2 (both target and other have missing)
+// =============================================================================
+// Bound math (conservative but correct):
+//   final_dist >= partial_dist (all terms non-negative)
+//   final_n_valid <= partial_n_valid + remaining_rows
+//   => final_dist / final_n_valid >= partial_dist / (partial_n_valid + remaining)
+//   So if partial_dist > worst_dist * (partial_n_valid + remaining), prune.
+// =============================================================================
+template <int Method, bool Bound>
 inline double calc_distance_raw(
     const double *__restrict__ target_ptr,
     const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
     const double *__restrict__ other_nmiss,
-    const arma::uword n_rows)
+    const arma::uword n_rows,
+    // default is infinity so lambdas can be written more cleanly
+    const double worst_dist = std::numeric_limits<double>::infinity())
 {
   double dist = 0.0;
   double n_valid = 0.0;
+
+  if constexpr (!Bound)
+  {
+    // unbounded, full vectorization
 #if defined(_OPENMP)
 #pragma omp simd reduction(+ : dist, n_valid)
 #endif
-  for (arma::uword r = 0; r < n_rows; ++r)
+    for (arma::uword r = 0; r < n_rows; ++r)
+    {
+      double valid = target_nmiss[r] * other_nmiss[r];
+      double diff = target_ptr[r] - other_ptr[r];
+      if constexpr (Method == 0)
+      {
+        dist += valid * diff * diff;
+      }
+      else
+      {
+        dist += valid * std::abs(diff);
+      }
+      n_valid += valid;
+    }
+  }
+  else
   {
-    double valid = target_nmiss[r] * other_nmiss[r];
-    double diff = target_ptr[r] - other_ptr[r];
-    if constexpr (Method == 0)
+    // bounded, precompute chunk count and check bound between chunks
+    const arma::uword n_full = n_rows / GRAIN;
+    arma::uword r = 0;
+    for (arma::uword chunk = 0; chunk < n_full; ++chunk)
     {
-      dist += valid * diff * diff;
+#if defined(_OPENMP)
+#pragma omp simd reduction(+ : dist, n_valid)
+#endif
+      for (arma::uword i = 0; i < GRAIN; ++i)
+      {
+        arma::uword rr = r + i;
+        double valid = target_nmiss[rr] * other_nmiss[rr];
+        double diff = target_ptr[rr] - other_ptr[rr];
+        if constexpr (Method == 0)
+        {
+          dist += valid * diff * diff;
+        }
+        else
+        {
+          dist += valid * std::abs(diff);
+        }
+        n_valid += valid;
+      }
+      r += GRAIN;
+      // loose bound: partial_dist > worst * (n_valid_so_far + remaining_rows).
+      // i.e., we assume all remaining rows are valid
+      if (dist > worst_dist * (n_valid + static_cast<double>(n_rows - r)))
+      {
+        return arma::datum::inf;
+      }
     }
-    // Add other distances here
-    else
+    // remainder rows
+    for (; r < n_rows; ++r)
     {
-      dist += valid * std::abs(diff);
+      double valid = target_nmiss[r] * other_nmiss[r];
+      double diff = target_ptr[r] - other_ptr[r];
+      if constexpr (Method == 0)
+      {
+        dist += valid * diff * diff;
+      }
+      else
+      {
+        dist += valid * std::abs(diff);
+      }
+      n_valid += valid;
     }
-    n_valid += valid;
   }
   if (n_valid == 0.0)
   {
@@ -83,35 +161,91 @@ inline double calc_distance(
     arma::uword idx1,
     arma::uword idx2)
 {
-  return calc_distance_raw<Method>(
+  return calc_distance_raw<Method, false>(
       obj.colptr(idx1), nmiss.colptr(idx1),
       obj.colptr(idx2), nmiss.colptr(idx2),
       obj.n_rows);
 }
 
-// This is an optimized kernel called in group 3 only since all other_nmiss is 1
-template <int Method>
+// =============================================================================
+// calc_distance_raw_complete — called for Group 3 (other side fully observed)
+// =============================================================================
+// Bound math (exact):
+//   n_valid is known upfront (precomputed target_n_valid).
+//   final_dist >= partial_dist, so:
+//   if partial_dist > worst_dist * n_valid, then final_dist/n_valid > worst_dist.
+// =============================================================================
+template <int Method, bool Bound>
 inline double calc_distance_raw_complete(
     const double *__restrict__ target_ptr,
     const double *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
     const arma::uword n_rows,
-    const double n_valid)
+    const double n_valid,
+    const double worst_dist = std::numeric_limits<double>::infinity())
 {
   double dist = 0.0;
+
+  if constexpr (!Bound)
+  {
+    // unbounded path
 #if defined(_OPENMP)
 #pragma omp simd reduction(+ : dist)
 #endif
-  for (arma::uword r = 0; r < n_rows; ++r)
-  {
-    double diff = target_ptr[r] - other_ptr[r];
-    if constexpr (Method == 0)
+    for (arma::uword r = 0; r < n_rows; ++r)
     {
-      dist += target_nmiss[r] * diff * diff;
+      double diff = target_ptr[r] - other_ptr[r];
+      if constexpr (Method == 0)
+      {
+        dist += target_nmiss[r] * diff * diff;
+      }
+      else
+      {
+        dist += target_nmiss[r] * std::abs(diff);
+      }
     }
-    else
+  }
+  else
+  {
+    // bounded path. Updated bound with new worst_dist
+    const double unnorm_bound = worst_dist * n_valid;
+    const arma::uword n_full = n_rows / GRAIN;
+    arma::uword r = 0;
+    for (arma::uword chunk = 0; chunk < n_full; ++chunk)
     {
-      dist += target_nmiss[r] * std::abs(diff);
+#if defined(_OPENMP)
+#pragma omp simd reduction(+ : dist)
+#endif
+      for (arma::uword i = 0; i < GRAIN; ++i)
+      {
+        arma::uword rr = r + i;
+        double diff = target_ptr[rr] - other_ptr[rr];
+        if constexpr (Method == 0)
+        {
+          dist += target_nmiss[rr] * diff * diff;
+        }
+        else
+        {
+          dist += target_nmiss[rr] * std::abs(diff);
+        }
+      }
+      r += GRAIN;
+      if (dist > unnorm_bound)
+      {
+        return arma::datum::inf;
+      }
+    }
+    for (; r < n_rows; ++r)
+    {
+      double diff = target_ptr[r] - other_ptr[r];
+      if constexpr (Method == 0)
+      {
+        dist += target_nmiss[r] * diff * diff;
+      }
+      else
+      {
+        dist += target_nmiss[r] * std::abs(diff);
+      }
     }
   }
   return dist / n_valid;
@@ -127,6 +261,8 @@ struct NeighborInfo
   NeighborInfo(double d, arma::uword i) : distance(d), index(i) {}
 };
 
+// fill phase: we just need any k neighbors — no ordering yet.
+// emplace_back is the absolute fastest way to collect them.
 inline void insert_before_k(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
 {
   top_k.emplace_back(dist, idx);
@@ -148,24 +284,16 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
 }
 
 // =============================================================================
-// Unified distance_vector
+// Unified distance_vector. Meat of the algorithm, called once per imputed column
 //   Group 1a: grp_impute[0 .. index-1]       (cached)
 //   Group 1b: grp_impute[index+1 .. end]     (cached)
 //   Group 2:  grp_miss_no_imp                (on-the-fly)
-//   Group 3:  grp_complete                   (on-the-fly, optimized calc_distance_)
+//   Group 3:  grp_complete                   (on-the-fly, optimized kernel)
 // =============================================================================
 // ======================== TEMPLATING README (Part 2) =========================
-// This function is templated on TWO non-type parameters:
-//   1. int Method -> chooses Euclidean or Manhattan at compile time
-//   2. bool UseCache -> decides whether to read from the cache or compute on-the-fly
-//
-// Because both are known at compile time, the compiler can:
-//   * inline the correct distance function (no virtual call, no branch)
-//   * completely eliminate the `if (UseCache)` test inside the hot lambdas
-//   * generate two completely separate code paths (cached vs. non-cached)
-//
-// The `constexpr if` below is the key: when UseCache = false the whole
-// cache-lookup branch is compiled away.
+// This function is templated on two non-type parameters:
+//   1. int Method  -> chooses Euclidean or Manhattan at compile time
+//   2. bool UseCache -> decides whether to read from the cache or compute
 // =============================================================================
 template <int Method, bool UseCache>
 std::vector<NeighborInfo> distance_vector(
@@ -176,18 +304,19 @@ std::vector<NeighborInfo> distance_vector(
     const arma::uvec &grp_miss_no_imp,
     const arma::uvec &grp_complete,
     const arma::uword k,
+    const arma::vec &n_valid_vec,
     const StrictLowerTriangularMatrix *cache_ptr = nullptr)
 {
   const arma::uword n_rows = obj.n_rows;
   const arma::uword target_col = grp_impute(index);
   const double *target_ptr = obj.colptr(target_col);
   const double *target_nmiss_ptr = nmiss.colptr(target_col);
-  const double target_n_valid = arma::accu(nmiss.col(target_col));
+  const double target_n_valid = n_valid_vec(index);
 
   std::vector<NeighborInfo> top_k;
-  top_k.reserve(k);
-  arma::uword remaining = k;
+  top_k.reserve(UseCache ? std::max(k, grp_impute.n_elem - 1) : k);
 
+  // ---- fill phase lambdas (Bound=false) ----
   // Group 1: other grp_impute columns (cached when UseCache)
   auto impute_dist_before = [&](arma::uword p) -> double
   {
@@ -197,13 +326,12 @@ std::vector<NeighborInfo> distance_vector(
     }
     else
     {
-      return calc_distance_raw<Method>(
+      return calc_distance_raw<Method, false>(
           target_ptr, target_nmiss_ptr,
           obj.colptr(grp_impute(p)), nmiss.colptr(grp_impute(p)),
           n_rows);
     }
   };
-
   auto impute_dist_after = [&](arma::uword p) -> double
   {
     if constexpr (UseCache)
@@ -212,84 +340,198 @@ std::vector<NeighborInfo> distance_vector(
     }
     else
     {
-      return calc_distance_raw<Method>(
+      return calc_distance_raw<Method, false>(
           target_ptr, target_nmiss_ptr,
           obj.colptr(grp_impute(p)), nmiss.colptr(grp_impute(p)),
           n_rows);
     }
   };
-
   // Group 2: grp_miss_no_imp (on-the-fly)
   auto miss_no_imp_dist = [&](arma::uword p) -> double
   {
-    return calc_distance_raw<Method>(
+    return calc_distance_raw<Method, false>(
         target_ptr, target_nmiss_ptr,
         obj.colptr(grp_miss_no_imp(p)), nmiss.colptr(grp_miss_no_imp(p)),
         n_rows);
   };
-
-  // Group 3: grp_complete (on-the-fly, optimized calc_distance_)
+  // Group 3: grp_complete (on-the-fly, optimized kernel)
   auto complete_dist = [&](arma::uword p) -> double
   {
-    return calc_distance_raw_complete<Method>(
+    return calc_distance_raw_complete<Method, false>(
         target_ptr, target_nmiss_ptr,
         obj.colptr(grp_complete(p)),
         n_rows, target_n_valid);
   };
 
-  // ---- Group 1a: impute columns before self, fill ----
+  // ---- replacement phase lambdas (Bound=true) ----
+  // Group 1 bounded: only used in !UseCache replacement path
+  auto impute_dist_before_bounded = [&](arma::uword p, double worst) -> double
+  {
+    return calc_distance_raw<Method, true>(
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(grp_impute(p)), nmiss.colptr(grp_impute(p)),
+        n_rows, worst);
+  };
+  auto impute_dist_after_bounded = [&](arma::uword p, double worst) -> double
+  {
+    return calc_distance_raw<Method, true>(
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(grp_impute(p)), nmiss.colptr(grp_impute(p)),
+        n_rows, worst);
+  };
+  // Group 2 bounded
+  auto miss_no_imp_dist_bounded = [&](arma::uword p, double worst) -> double
+  {
+    return calc_distance_raw<Method, true>(
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(grp_miss_no_imp(p)), nmiss.colptr(grp_miss_no_imp(p)),
+        n_rows, worst);
+  };
+  // Group 3 bounded
+  auto complete_dist_bounded = [&](arma::uword p, double worst) -> double
+  {
+    return calc_distance_raw_complete<Method, true>(
+        target_ptr, target_nmiss_ptr,
+        obj.colptr(grp_complete(p)),
+        n_rows, target_n_valid, worst);
+  };
+
   arma::uword i = 0;
-  for (; i < index && remaining > 0; ++i)
-  {
-    insert_before_k(top_k, impute_dist_before(i), grp_impute(i));
-    --remaining;
-  }
-  // ---- Group 1b: impute columns after self, fill ----
   arma::uword j = index + 1;
-  for (; j < grp_impute.n_elem && remaining > 0; ++j)
-  {
-    insert_before_k(top_k, impute_dist_after(j), grp_impute(j));
-    --remaining;
-  }
-  // ---- Group 2: miss_no_imp, fill ----
   arma::uword m = 0;
-  for (; m < grp_miss_no_imp.n_elem && remaining > 0; ++m)
-  {
-    insert_before_k(top_k, miss_no_imp_dist(m), grp_miss_no_imp(m));
-    --remaining;
-  }
-  // ---- Group 3: complete, fill ----
   arma::uword c = 0;
-  for (; c < grp_complete.n_elem && remaining > 0; ++c)
+
+  // ==========================================================================
+  // Fill phase: collect first k neighbors (Bound=false).
+  //  UseCache:  Scan ALL Group 1 (free), keep best k via nth_element,
+  //             then top up from Group 3 -> Group 2 if needed.
+  //  !UseCache: Group 3 (fastest kernel) -> Group 1 -> Group 2
+  // ==========================================================================
+  if constexpr (UseCache)
   {
-    insert_before_k(top_k, complete_dist(c), grp_complete(c));
-    --remaining;
+    // scan ALL Group 1 — every distance is a free cache lookup.
+    // selecting the best k seeds a much tighter bound for replacement.
+    // ---- Group 1a: impute columns before self (cached, free) ----
+    for (; i < index; ++i)
+    {
+      insert_before_k(top_k, impute_dist_before(i), grp_impute(i));
+    }
+    // ---- Group 1b: impute columns after self (cached, free) ----
+    for (; j < grp_impute.n_elem; ++j)
+    {
+      insert_before_k(top_k, impute_dist_after(j), grp_impute(j));
+    }
+    // keep only the best k via partial sort
+    if (top_k.size() > k)
+    {
+      std::nth_element(top_k.begin(), top_k.begin() + k, top_k.end(),
+                       [](const NeighborInfo &a, const NeighborInfo &b)
+                       { return a.distance < b.distance; });
+      top_k.erase(top_k.begin() + k, top_k.end());
+    }
+    // else if Group 1 alone didn't fill k, top up from Group 3 then Group 2
+    if (top_k.size() < k)
+    {
+      // ---- Group 3: complete (fast kernel) ----
+      for (; c < grp_complete.n_elem && top_k.size() < k; ++c)
+      {
+        insert_before_k(top_k, complete_dist(c), grp_complete(c));
+      }
+      // ---- Group 2: miss_no_imp (most expensive) ----
+      for (; m < grp_miss_no_imp.n_elem && top_k.size() < k; ++m)
+      {
+        insert_before_k(top_k, miss_no_imp_dist(m), grp_miss_no_imp(m));
+      }
+    }
+  }
+  else
+  {
+    // ---- Group 3: complete (fastest kernel) ----
+    for (; c < grp_complete.n_elem && top_k.size() < k; ++c)
+    {
+      insert_before_k(top_k, complete_dist(c), grp_complete(c));
+    }
+    // ---- Group 1a: impute columns before self ----
+    for (; i < index && top_k.size() < k; ++i)
+    {
+      insert_before_k(top_k, impute_dist_before(i), grp_impute(i));
+    }
+    // ---- Group 1b: impute columns after self ----
+    for (; j < grp_impute.n_elem && top_k.size() < k; ++j)
+    {
+      insert_before_k(top_k, impute_dist_after(j), grp_impute(j));
+    }
+    // ---- Group 2: miss_no_imp (most expensive) ----
+    for (; m < grp_miss_no_imp.n_elem && top_k.size() < k; ++m)
+    {
+      insert_before_k(top_k, miss_no_imp_dist(m), grp_miss_no_imp(m));
+    }
   }
 
-  // just fill up the distances and sort the top_k once between replacement
+  // sort once between fill and replacement phases.
   std::sort(top_k.begin(), top_k.end(),
             [](const NeighborInfo &a, const NeighborInfo &b)
             { return a.distance < b.distance; });
 
-  // ---- Group 1a: impute columns before self, replacement ----
-  for (; i < index; ++i)
+  // ==========================================================================
+  // Replacement phase — order chosen to tighten the bound fastest.
+  //  UseCache:  Group 1 fully exhausted in fill -> Group 3 -> Group 2
+  //  !UseCache: Group 3 (fastest, exact bound) -> Group 1 -> Group 2
+  // ==========================================================================
+  if constexpr (UseCache)
   {
-    insert_if_better_than_worst(top_k, impute_dist_before(i), grp_impute(i));
+    // Group 1 already fully consumed in fill phase — go straight to Group 3.
+    // ---- Group 3: complete (fast kernel, exact bound) ----
+    for (; c < grp_complete.n_elem; ++c)
+    {
+      insert_if_better_than_worst(
+          top_k,
+          complete_dist_bounded(c, top_k.back().distance),
+          grp_complete(c));
+    }
+    // ---- Group 2: miss_no_imp (most expensive, loosest bound) ----
+    for (; m < grp_miss_no_imp.n_elem; ++m)
+    {
+      insert_if_better_than_worst(
+          top_k,
+          miss_no_imp_dist_bounded(m, top_k.back().distance),
+          grp_miss_no_imp(m));
+    }
   }
-  // ---- Group 1b: impute columns after self, replacement ----
-  for (; j < grp_impute.n_elem; ++j)
+  else
   {
-    insert_if_better_than_worst(top_k, impute_dist_after(j), grp_impute(j));
-  }
-  // ---- Group 2: miss_no_imp, replacement ----
-  for (; m < grp_miss_no_imp.n_elem; ++m)
-  {
-    insert_if_better_than_worst(top_k, miss_no_imp_dist(m), grp_miss_no_imp(m));
-  }
-  // ---- Group 3: complete — replacement ----
-  for (; c < grp_complete.n_elem; ++c)
-  {
-    insert_if_better_than_worst(top_k, complete_dist(c), grp_complete(c));
+    // ---- Group 3: complete (fastest kernel, exact bound -> tighten first) ----
+    for (; c < grp_complete.n_elem; ++c)
+    {
+      insert_if_better_than_worst(
+          top_k,
+          complete_dist_bounded(c, top_k.back().distance),
+          grp_complete(c));
+    }
+    // ---- Group 1a: impute before self ----
+    for (; i < index; ++i)
+    {
+      insert_if_better_than_worst(
+          top_k,
+          impute_dist_before_bounded(i, top_k.back().distance),
+          grp_impute(i));
+    }
+    // ---- Group 1b: impute after self ----
+    for (; j < grp_impute.n_elem; ++j)
+    {
+      insert_if_better_than_worst(
+          top_k,
+          impute_dist_after_bounded(j, top_k.back().distance),
+          grp_impute(j));
+    }
+    // ---- Group 2: miss_no_imp (most expensive, loosest bound) ----
+    for (; m < grp_miss_no_imp.n_elem; ++m)
+    {
+      insert_if_better_than_worst(
+          top_k,
+          miss_no_imp_dist_bounded(m, top_k.back().distance),
+          grp_miss_no_imp(m));
+    }
   }
   return top_k;
 }
@@ -312,6 +554,13 @@ void impute_knn_brute_impl(
     int cores,
     const StrictLowerTriangularMatrix *cache_ptr)
 {
+  // vectorized n_valid for all impute columns instead of doing in distance_vector
+  arma::vec n_valid_vec(grp_impute.n_elem);
+  for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
+  {
+    n_valid_vec(i) = arma::accu(nmiss.col(grp_impute(i)));
+  }
+
 #ifdef _OPENMP
   omp_set_num_threads(cores);
 #pragma omp parallel for
@@ -319,7 +568,8 @@ void impute_knn_brute_impl(
   for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
   {
     std::vector<NeighborInfo> top_k = distance_vector<Method, UseCache>(
-        obj, nmiss, i, grp_impute, grp_miss_no_imp, grp_complete, k, cache_ptr);
+        obj, nmiss, i, grp_impute, grp_miss_no_imp, grp_complete, k,
+        n_valid_vec, cache_ptr);
 
     arma::uword n_neighbors = top_k.size();
     if (n_neighbors == 0)
@@ -335,10 +585,11 @@ void impute_knn_brute_impl(
       weights(j) = 1.0 / std::pow(top_k[j].distance + epsilon, dist_pow);
     }
 
-    impute_column_values(result, obj, nmiss,
-                         col_offsets(i), grp_impute(i),
-                         nn_columns, weights,
-                         rows_to_impute_vec[i]);
+    impute_column_values(
+        result, obj, nmiss,
+        col_offsets(i), grp_impute(i),
+        nn_columns, weights,
+        rows_to_impute_vec[i]);
   }
 }
 

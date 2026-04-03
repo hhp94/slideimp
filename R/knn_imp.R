@@ -132,12 +132,12 @@ knn_imp <- function(
     stop("Col(s) with all missing detected. Remove before proceed")
   }
 
-  # Partition into eligible and non-eligible columns
+  # columns with more missing than colmax are not included at all
   eligible <- miss_rate < colmax
   pre_imp_cols <- obj[, eligible, drop = FALSE]
   pre_imp_miss <- miss[, eligible, drop = FALSE]
 
-  # Column groups (1-based local indices into pre_imp_cols)
+  # column groups (1-based local indices into pre_imp_cols)
   orig_indices <- which(eligible)
   local_cmiss <- cmiss[eligible]
   local_has_miss <- which(local_cmiss > 0L)
