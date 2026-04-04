@@ -69,7 +69,7 @@ void fastSVD_triplet(const arma::mat &Xhat,
 
   // safe reciprocal of singular values
   arma::vec d_inv(ncp, arma::fill::zeros);
-  for (arma::uword i = 0; i < ncp; i++)
+  for (arma::uword i = 0; i < ncp; ++i)
   {
     if (d(i) > tol)
     {
@@ -93,6 +93,78 @@ void fastSVD_triplet(const arma::mat &Xhat,
 
   // undo row weighting on U: U = diag(1/sqrt_row_w) * U
   U.each_col() %= inv_sqrt_row_w;
+}
+
+// ---------------------------------------------------------------------------
+// template to eliminate the scale branch so inner loops auto-vectorize in the
+// while hot loop
+// ---------------------------------------------------------------------------
+template <bool Scale>
+void restandardize(arma::mat &Xhat,
+                   arma::rowvec &mean_p,
+                   arma::rowvec &et,
+                   const double *wptr,
+                   arma::uword nrX,
+                   arma::uword ncX)
+{
+  double *xptr = Xhat.memptr();
+  for (arma::uword j = 0; j < ncX; ++j)
+  {
+    double *col = xptr + j * nrX;
+    const double mj = mean_p(j);
+    double ej;
+    if constexpr (Scale)
+    {
+      ej = et(j);
+    }
+    else
+    {
+      ej = 1.0;
+    }
+    // pass 1: unstandardize, accumulate weighted mean
+    double new_mean = 0.0;
+    double sum_sq = 0.0;
+    for (arma::uword i = 0; i < nrX; ++i)
+    {
+      double val;
+      if constexpr (Scale)
+      {
+        val = col[i] * ej + mj;
+      }
+      else
+      {
+        val = col[i] + mj;
+      }
+      col[i] = val;
+      double w = wptr[i];
+      new_mean += w * val;
+      if constexpr (Scale)
+      {
+        sum_sq += w * val * val;
+      }
+    }
+    // pass 2: re-center (+ re-scale)
+    if constexpr (Scale)
+    {
+      double var = sum_sq - new_mean * new_mean;
+      double new_et = std::sqrt(std::max(0.0, var));
+      new_et = std::max(new_et, 0.0);
+      const double inv_et = 1.0 / new_et;
+      for (arma::uword i = 0; i < nrX; ++i)
+      {
+        col[i] = (col[i] - new_mean) * inv_et;
+      }
+      et(j) = new_et;
+    }
+    else
+    {
+      for (arma::uword i = 0; i < nrX; ++i)
+      {
+        col[i] -= new_mean;
+      }
+    }
+    mean_p(j) = new_mean;
+  }
 }
 
 // [[Rcpp::export]]
@@ -143,24 +215,24 @@ Rcpp::List pca_imp_internal_cpp(
   }
 
   arma::mat fittedX = Xhat;
-  arma::mat U;
-  arma::mat V;
+  arma::mat U(nrX, ncp, arma::fill::zeros);
+  arma::mat V(ncX, ncp, arma::fill::zeros);
   arma::vec vs_top;
   double trace_val;
   double min_dim = std::min(ncX_d, nrX_d - 1.0);
   double sigma2 = 0.0;
   arma::vec lambda_shrinked(ncp);
 
-  // pre-allocate loop temporaries
-  arma::mat U_weighted(nrX, ncp);
-  arma::mat U_lambda(nrX, ncp);
+  // pre-allocate loop temporary
   arma::mat diff(nrX, ncX);
 
   // compute once, reuse every iteration
   arma::colvec sqrt_row_w = arma::sqrt(row_w.t());
   arma::colvec inv_sqrt_row_w = 1.0 / sqrt_row_w;
+  arma::colvec row_w_col = row_w.t();
+  const double *wptr = row_w_col.memptr();
 
-  // scratch buffers for the SVD routine
+  // buffers for the SVD routine
   arma::mat X_work(nrX, ncX);
   bool tall = (nrX >= ncX);
   arma::uword small_dim = tall ? ncX : nrX;
@@ -172,67 +244,49 @@ Rcpp::List pca_imp_internal_cpp(
 
   while (nb_iter > 0)
   {
-    // update and unstandardize Xhat
+    // update Xhat
     Xhat.elem(missing) = fittedX.elem(missing);
     if (scale)
     {
-      Xhat.each_row() %= et;
+      restandardize<true>(Xhat, mean_p, et, wptr, nrX, ncX);
     }
-    Xhat.each_row() += mean_p;
-    // re-standardize Xhat
-    mean_p = (row_w * Xhat);
-    Xhat.each_row() -= mean_p;
-    et = arma::sqrt(row_w * (Xhat % Xhat));
-    if (scale)
+    else
     {
-      Xhat.each_row() /= et;
+      restandardize<false>(Xhat, mean_p, et, wptr, nrX, ncX);
     }
-
+    // SVD
     fastSVD_triplet(Xhat, sqrt_row_w, inv_sqrt_row_w, ncp, tall,
                     vs_top, trace_val, U, V, X_work, AA_NxN, partial);
-
-    // sigma2 via trace identity: sum(vs_tail^2) = trace(AA) - sum(vs_head^2)
+    // sigma2 via trace identity
     sigma2 = 0.0;
     if (regularized)
     {
-      double sum_top_sq = 0.0;
-      for (arma::uword i = 0; i < ncp; i++)
-      {
-        sum_top_sq += vs_top(i) * vs_top(i);
-      }
+      double sum_top_sq = arma::dot(vs_top.head(ncp), vs_top.head(ncp));
       double sum_tail_sq = trace_val - sum_top_sq;
       sigma2 = scale_factor * sum_tail_sq / denom_sigma;
       sigma2 = std::min(sigma2 * coeff_ridge, vs_top(ncp) * vs_top(ncp));
     }
 
-    // lambda_shrinked calculation
-    for (arma::uword i = 0; i < ncp; i++)
-    {
-      lambda_shrinked(i) = (vs_top(i) * vs_top(i) - sigma2) / vs_top(i);
-    }
+    // shrinkage: lambda = (d^2 - sigma2)
+    arma::vec vs_head = vs_top.head(ncp);
+    lambda_shrinked = (vs_head % vs_head - sigma2) /
+                      arma::clamp(vs_head, 1e-15, arma::datum::inf);
 
-    // fittedX = tcrossprod(t(t(U * row.w) * lambda.shrinked), V) / row.w
-    U_weighted = U;
-    U_weighted.each_col() %= row_w.t();
-    U_lambda = U_weighted;
-    U_lambda.each_row() %= lambda_shrinked.t();
-    fittedX = U_lambda * V.t();
-    fittedX.each_col() /= row_w.t();
+    // fitted reconstruction (U is overwritten next iteration)
+    U.each_row() %= lambda_shrinked.t();
+    fittedX = U * V.t();
 
-    // objective on observed entries
+    // objective on observed entries (contiguous mask, no scatter)
     diff = Xhat - fittedX;
-    diff.elem(missing).zeros();
-    objective = arma::dot(row_w, arma::sum(diff % diff, 1));
+    diff %= not_miss;
+    objective = arma::dot(row_w_col, arma::sum(diff % diff, 1));
 
-    // check convergence
+    // convergence
     double criterion = (old > 0.0 && !std::isinf(old)) ? std::abs(1.0 - objective / old) : 1.0;
     old = objective;
-    nb_iter++;
-    if ((criterion < threshold) && (nb_iter > miniter))
-    {
-      nb_iter = 0;
-    }
-    if ((objective < threshold) && (nb_iter > miniter))
+    ++nb_iter;
+
+    if (criterion < threshold && nb_iter > miniter)
     {
       nb_iter = 0;
     }
@@ -243,6 +297,7 @@ Rcpp::List pca_imp_internal_cpp(
     }
   }
 
+  // final unstandardize
   if (scale)
   {
     Xhat.each_row() %= et;
@@ -255,10 +310,10 @@ Rcpp::List pca_imp_internal_cpp(
   fittedX.each_row() += mean_p;
 
   // MSE on observed values
-  arma::mat diff_obs = fittedX - X;
-  diff_obs.elem(missing).zeros();
+  diff = fittedX - X;
+  diff %= not_miss;
   double n_observed = static_cast<double>(X.n_elem - missing.n_elem);
-  double mse = arma::accu(diff_obs % diff_obs) / n_observed;
+  double mse = arma::accu(diff % diff) / n_observed;
 
   arma::vec imputed_vals = Xhat.elem(missing);
 

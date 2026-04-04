@@ -50,7 +50,7 @@ Weights are normalized to sum to 1.}
 \item{miniter}{integer, minimum number of iteration for the algorithm}
 
 \item{partial}{boolean. Use a partial eigen solver? Set to \code{FALSE} when \code{ncp} is
-very large may save runtime (Default = \code{TRUE}).}
+very large may run faster (Default = \code{TRUE}).}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
