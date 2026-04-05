@@ -19,13 +19,12 @@
 #'  - `"n_miss"`: rows with more missing values receive lower weight.
 #'
 #' Weights are normalized to sum to 1.
+#'
 #' @param threshold the threshold for assessing convergence
-#' @param seed integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization
+#' @param seed random number generator seed
 #' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
 #' @param maxiter integer, maximum number of iteration for the algorithm
 #' @param miniter integer, minimum number of iteration for the algorithm
-#' @param partial boolean. Use a partial eigen solver? Set to `FALSE` when `ncp` is
-#' very large may run faster (Default = `TRUE`).
 #'
 #' @inherit knn_imp return
 #'
@@ -49,19 +48,17 @@
 pca_imp <- function(
   obj, ncp = 2, scale = TRUE, method = c("regularized", "EM"),
   coeff.ridge = 1, row.w = NULL, threshold = 1e-6, seed = NULL,
-  nb.init = 1, maxiter = 1000, miniter = 5, partial = TRUE
+  nb.init = 1, maxiter = 1000, miniter = 5
 ) {
   #### Main program
-  checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
   if (!anyNA(obj)) {
     return(obj)
   }
-  cn <- colnames(obj)
+  checkmate::assert_int(ncp, lower = 1L, upper = min(nrow(obj) - 2L, ncol(obj) - 1L))
   method <- match.arg(method)
   checkmate::assert_flag(scale, .var.name = "scale")
-  checkmate::assert_int(ncp, lower = 1, upper = min(ncol(obj), nrow(obj) - 1), .var.name = "ncp")
   checkmate::assert_number(coeff.ridge, lower = 0, .var.name = "coeff.ridge")
-  checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
   checkmate::assert(
     checkmate::check_numeric(
       row.w,
@@ -76,9 +73,12 @@ pca_imp <- function(
   )
   checkmate::assert_number(threshold, lower = 0, .var.name = "threshold")
   checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
+  checkmate::assert_int(seed, null.ok = TRUE, lower = 0, .var.name = "seed")
+  if (!is.null(seed) && nb.init > 1L && seed > 2147483647L / (nb.init - 1L)) {
+    stop("`seed` too large")
+  }
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
-  checkmate::assert_flag(partial, null.ok = FALSE, .var.name = "partial")
   obj_vars <- col_vars(obj)
   if (any(obj_vars < .Machine$double.eps | is.na(obj_vars))) {
     stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
@@ -103,7 +103,7 @@ pca_imp <- function(
   obj[miss] <- 0
   for (i in seq_len(nb.init)) {
     if (!is.null(seed)) {
-      set.seed(seed * (i - 1))
+      set.seed(seed * (i - 1L)) # exactly as missMDA does
     }
     res.impute <- pca_imp_internal_cpp(
       X = obj,
@@ -116,8 +116,7 @@ pca_imp <- function(
       maxiter = maxiter,
       miniter = miniter,
       row_w = row.w,
-      coeff_ridge = coeff.ridge,
-      partial = partial
+      coeff_ridge = coeff.ridge
     )
     cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {

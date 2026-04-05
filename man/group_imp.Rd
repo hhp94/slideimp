@@ -92,7 +92,7 @@ very wide data.}
 
 Weights are normalized to sum to 1.}
 
-\item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
+\item{seed}{random number generator seed}
 
 \item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
 

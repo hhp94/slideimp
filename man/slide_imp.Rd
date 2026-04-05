@@ -85,7 +85,7 @@ very wide data.}
 
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
-\item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
+\item{seed}{random number generator seed}
 
 \item{row.w}{Row weights. Can be one of:
 \itemize{

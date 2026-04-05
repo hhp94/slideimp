@@ -15,8 +15,7 @@ pca_imp(
   seed = NULL,
   nb.init = 1,
   maxiter = 1000,
-  miniter = 5,
-  partial = TRUE
+  miniter = 5
 )
 }
 \arguments{
@@ -41,16 +40,13 @@ Weights are normalized to sum to 1.}
 
 \item{threshold}{the threshold for assessing convergence}
 
-\item{seed}{integer, by default seed = NULL implies that missing values are initially imputed by the mean of each variable. Other values leads to a random initialization}
+\item{seed}{random number generator seed}
 
 \item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
 
 \item{maxiter}{integer, maximum number of iteration for the algorithm}
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
-
-\item{partial}{boolean. Use a partial eigen solver? Set to \code{FALSE} when \code{ncp} is
-very large may run faster (Default = \code{TRUE}).}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.

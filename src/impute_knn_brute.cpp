@@ -314,7 +314,14 @@ std::vector<NeighborInfo> distance_vector(
   const double target_n_valid = n_valid_vec(index);
 
   std::vector<NeighborInfo> top_k;
-  top_k.reserve(UseCache ? std::max(k, grp_impute.n_elem - 1) : k);
+  if constexpr (UseCache)
+  {
+    top_k.reserve(std::max(k, grp_impute.n_elem - 1));
+  }
+  else
+  {
+    top_k.reserve(k);
+  }
 
   // ---- fill phase lambdas (Bound=false) ----
   // Group 1: other grp_impute columns (cached when UseCache)
