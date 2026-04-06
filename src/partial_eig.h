@@ -37,44 +37,37 @@ inline constexpr double SYRK_BETA = 0.0;
 // ---------------------------------------------------------------------------
 struct GramWorkspace
 {
-    // shared: the n x n Gram matrix C, upper triangle only
-    int n = 0;
-    int ldc = 0; // == n
-    int nr = 0;  // rows of A (== lda_A)
-    int nc = 0;  // cols of A
-
-    // dsyrk: C := A A^T (trans='N') or A^T A (trans='T'), upper triangle
+    // dsyrk:
     char trans = 'N';
-    int contract = 0; // contraction dim
-    int lda_A = 0;    // leading dim of A (always its row count)
-
+    arma::blas_int nr = 0;  // rows of input A
+    arma::blas_int nc = 0;  // cols of input A
+    arma::blas_int n = 0;   // == ldc, order of C
+    arma::blas_int k = 0;   // contraction dim
+    arma::blas_int lda = 0; // leading dim of A (its row count)
+    arma::blas_int ldc = 0; // == n
     // dsyevr: top-k eigenpairs of C
-    int topk = 0;
-    int il = 0;
-    int iu = 0;
-    int lwork = 0;
-    int liwork = 0;
+    arma::blas_int topk = 0;
+    arma::blas_int il = 0;
+    arma::blas_int iu = 0;
+    arma::blas_int lwork = 0;
+    arma::blas_int liwork = 0;
     std::vector<double> work;
     std::vector<int> iwork;
     std::vector<int> isuppz;
 
-    // nrows_A, ncols_A: dims of the input matrix A (e.g. Xhat).
-    // tall=false -> C = A A^T (n = nrows_A)
-    // tall=true -> C = A^T A (n = ncols_A)
-    // topk_request: number of top eigenpairs needed (e.g. ncp + 1)
     bool init(arma::uword nrows_A, arma::uword ncols_A, bool tall,
               arma::uword topk_request)
     {
-        nr = static_cast<int>(nrows_A);
-        nc = static_cast<int>(ncols_A);
+        nr = static_cast<arma::blas_int>(nrows_A);
+        nc = static_cast<arma::blas_int>(ncols_A);
 
         trans = tall ? 'T' : 'N';
         n = tall ? nc : nr;
-        contract = tall ? nr : nc;
-        lda_A = nr;
+        k = tall ? nr : nc;
+        lda = nr;
         ldc = n;
 
-        topk = static_cast<int>(topk_request);
+        topk = static_cast<arma::blas_int>(topk_request);
         il = n - topk + 1;
         iu = n;
 
@@ -134,13 +127,9 @@ struct GramWorkspace
 inline void syrk_upper(const arma::mat &A, arma::mat &C,
                        const GramWorkspace &ws)
 {
-    arma::blas_int n_i = ws.n;
-    arma::blas_int k_i = ws.contract;
-    arma::blas_int lda = ws.lda_A;
-    arma::blas_int ldc = ws.ldc;
-    arma::dsyrk_(&PEIG_UPLO, &ws.trans, &n_i, &k_i,
-                 &SYRK_ALPHA, A.memptr(), &lda,
-                 &SYRK_BETA, C.memptr(), &ldc,
+    arma::dsyrk_(&PEIG_UPLO, &ws.trans, &ws.n, &ws.k,
+                 &SYRK_ALPHA, A.memptr(), &ws.lda,
+                 &SYRK_BETA, C.memptr(), &ws.ldc,
                  1, 1);
 }
 
@@ -152,7 +141,7 @@ inline bool partial_eig_sym(arma::vec &eigvals,
                             arma::mat &A,
                             GramWorkspace &ws)
 {
-    if (static_cast<arma::uword>(ws.n) != A.n_rows)
+    if (static_cast<arma::uword>(ws.n) != A.n_rows || A.n_rows != A.n_cols)
     {
         return false;
     }

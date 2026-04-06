@@ -251,6 +251,69 @@ void restandardize(arma::mat &Xhat,
   }
 }
 
+// ---------------------------------------------------------------------------
+// eliminate the scale branch for the post processing, which takes a suprising
+// amount of time when the data is large and there's many missing values
+// ---------------------------------------------------------------------------
+template <bool Scale>
+static inline void finalize_impute(
+    const arma::mat &X, const arma::mat &Xhat, const arma::mat &fittedX,
+    const arma::umat &miss, const arma::rowvec &et, const arma::rowvec &mean_p,
+    arma::vec &imputed_vals, double &sse_out)
+{
+  const arma::uword nrX = X.n_rows;
+  const arma::uword ncX = X.n_cols;
+  const double *xp = X.memptr();
+  const double *xhp = Xhat.memptr();
+  const double *fp = fittedX.memptr();
+  const arma::uword *mp = miss.memptr();
+  const double *mnp = mean_p.memptr();
+  const double *etp = Scale ? et.memptr() : nullptr;
+  double *ivp = imputed_vals.memptr();
+  arma::uword iv_idx = 0;
+  double sse = 0.0;
+
+  for (arma::uword j = 0; j < ncX; ++j)
+  {
+    const double mj = mnp[j];
+    const arma::uword off = j * nrX;
+    if constexpr (Scale)
+    {
+      const double ej = etp[j];
+      for (arma::uword i = 0; i < nrX; ++i)
+      {
+        const arma::uword k = off + i;
+        if (mp[k])
+        {
+          ivp[iv_idx++] = xhp[k] * ej + mj;
+        }
+        else
+        {
+          const double d = fp[k] * ej + mj - xp[k];
+          sse += d * d;
+        }
+      }
+    }
+    else
+    {
+      for (arma::uword i = 0; i < nrX; ++i)
+      {
+        const arma::uword k = off + i;
+        if (mp[k])
+        {
+          ivp[iv_idx++] = xhp[k] + mj;
+        }
+        else
+        {
+          const double d = fp[k] + mj - xp[k];
+          sse += d * d;
+        }
+      }
+    }
+  }
+  sse_out = sse;
+}
+
 // [[Rcpp::export]]
 Rcpp::List pca_imp_internal_cpp(
     const arma::mat &X,
@@ -330,8 +393,8 @@ Rcpp::List pca_imp_internal_cpp(
   const double min_dim = std::min(ncX_d, nrX_d - 1.0);
   const double denom_sigma = (ncX_d - ncp_d) * (nrX_d - 1.0 - ncp_d);
   const double scale_factor = (nrX_d * ncX_d) / min_dim;
-  // Rcpp::timer("pca_imp_gram");
-  // Rcpp::timer::ScopedTimer scpdtmr(timer, "pca_imp_internal_cpp_total"); // measure total time
+  // Rcpp::Timer timer("pca_imp_gram");
+  // Rcpp::Timer::ScopedTimer scpdtmr(timer, "pca_imp_internal_cpp_total"); // measure total time
   for (arma::uword nb_iter = 1;; ++nb_iter)
   {
     Xhat.elem(missing) = fittedX.elem(missing);
@@ -389,7 +452,8 @@ Rcpp::List pca_imp_internal_cpp(
                                  : 1.0;
     old = objective;
 
-    if (criterion < threshold && nb_iter > miniter) {
+    if (criterion < threshold && nb_iter > miniter)
+    {
       break;
     }
     if (nb_iter > maxiter)
@@ -400,24 +464,17 @@ Rcpp::List pca_imp_internal_cpp(
   }
   // timer.tic("postprocessing");
   // final unstandardize
+  arma::vec imputed_vals(missing.n_elem);
+  double sse = 0.0;
   if (scale)
   {
-    Xhat.each_row() %= et;
+    finalize_impute<true>(X, Xhat, fittedX, miss, et, mean_p, imputed_vals, sse);
   }
-  Xhat.each_row() += mean_p;
-  if (scale)
+  else
   {
-    fittedX.each_row() %= et;
+    finalize_impute<false>(X, Xhat, fittedX, miss, et, mean_p, imputed_vals, sse);
   }
-  fittedX.each_row() += mean_p;
-
-  // MSE on observed values
-  diff = fittedX - X;
-  diff %= not_miss;
-  const double n_observed = static_cast<double>(X.n_elem - missing.n_elem);
-  const double mse = arma::accu(diff % diff) / n_observed;
-
-  const arma::vec imputed_vals = Xhat.elem(missing);
+  const double mse = sse / static_cast<double>(X.n_elem - missing.n_elem);
   // timer.toc("postprocessing");
 
   return Rcpp::List::create(
