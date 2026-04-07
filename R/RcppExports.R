@@ -21,15 +21,15 @@ impute_knn_mlpack <- function(obj, nmiss, k, grp_impute, method, dist_pow, cores
     .Call(`_slideimp_impute_knn_mlpack`, obj, nmiss, k, grp_impute, method, dist_pow, cores)
 }
 
-has_openmp <- function() {
-    .Call(`_slideimp_has_openmp`)
-}
-
 col_min_max <- function(mat, min = 0L) {
     .Call(`_slideimp_col_min_max`, mat, min)
 }
 
 col_vars_internal <- function(mat, cores = 1L) {
     .Call(`_slideimp_col_vars_internal`, mat, cores)
+}
+
+has_openmp <- function() {
+    .Call(`_slideimp_has_openmp`)
 }
 

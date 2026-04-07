@@ -96,16 +96,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// has_openmp
-bool has_openmp();
-RcppExport SEXP _slideimp_has_openmp() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(has_openmp());
-    return rcpp_result_gen;
-END_RCPP
-}
 // col_min_max
 arma::rowvec col_min_max(const arma::mat& mat, const int min);
 RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP, SEXP minSEXP) {
@@ -130,6 +120,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// has_openmp
+bool has_openmp();
+RcppExport SEXP _slideimp_has_openmp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(has_openmp());
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 11},
@@ -137,9 +137,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 10},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 7},
-    {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
+    {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},
     {NULL, NULL, 0}
 };
 
