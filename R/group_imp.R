@@ -8,16 +8,14 @@ group_indices <- function(g, feat_splits, aux_splits, group_features) {
   )
 }
 
-process_group_params <- function(g, base_params, group, is_knn_mode, has_parameters) {
+process_group_params <- function(g, base_params, group, is_knn_mode) {
   group_params <- base_params
   if (is_knn_mode) {
     group_params$subset <- group$features[[g]]
   }
-  if (has_parameters && !is.null(group$parameters[[g]])) {
-    group_specific <- group$parameters[[g]]
-    group_specific[["cores"]] <- NULL
-    group_params[names(group_specific)] <- group_specific
-  }
+  group_specific <- group$parameters[[g]]
+  group_specific[["cores"]] <- NULL
+  group_params[names(group_specific)] <- group_specific
   group_params
 }
 
@@ -38,34 +36,38 @@ normalize_list_column <- function(x) {
 #' @inheritParams pca_imp
 #' @inheritParams slide_imp
 #' @param group A data.frame/[tibble::tibble()] describing how features should be grouped for
-#'   imputation. Accepts two formats:
+#' imputation. Accepts two formats:
 #'
-#'   **Long format**:
-#'   - **group**: A column identifying which group each feature belongs to
-#'   - **features**: A character column of individual feature names
+#' **Long format**:
+#' - **group**: A column identifying which group each feature belongs to
+#' - **features**: A character column of individual feature names
 #'
-#'   **List-column format** (preferably created by [group_features()]):
-#'   - **features**: A list-column of character vectors of feature column names
-#'     to impute
-#'   - **aux**: (Optional) A list-column of character vectors of auxiliary column
-#'     names used for imputation but not imputed themselves
-#'   - **parameters**: (Optional) A list-column of group-specific parameter lists
+#' **List-column format** (preferably created by [group_features()]):
+#' - **features**: A list-column of character vectors of feature column names
+#' to impute
+#' - **aux**: (Optional) A list-column of character vectors of auxiliary column
+#' names used for imputation but not imputed themselves
+#' - **parameters**: (Optional) A list-column of group-specific parameter lists
 #'
-#' @param cores Controls the number of cores to parallelize over for K-NN imputation with OpenMP only.
-#' To setup parallelization for K-NN without OpenMP and PCA imputation, use `mirai::daemons()`.
-#' @param .progress Show imputation progress (default = FALSE)
+#' @param method For K-NN imputation: distance metric to use (`"euclidean"` or `"manhattan"`).
+#' For PCA imputation: regularization imputation algorithm (`"regularized"` or `"EM"`).
+#' @param cores The number of cores to parallelize over for K-NN imputation and small parts of
+#' PCA imputation with OpenMP only. To setup parallelization for K-NN without OpenMP and PCA
+#' imputation, use `mirai::daemons()`.
+#'
+#' @param .progress Show imputation progress (default = `TRUE`)
 #'
 #' @details
 #' This function performs K-NN or PCA imputation on groups of features independently,
-#' which significantly reduce imputation time for large datasets.
+#' which significantly reduces imputation time for large datasets.
 #'
 #' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA imputation.
 #' If `k` and `ncp` are both `NULL`, then the group-wise parameters column i.e., `group$parameters`
-#' must be specified and must contains either `k` or `ncp` for all groups of group-wise parameters.
+#' must be specified and must contain either `k` or `ncp` for all groups of group-wise parameters.
 #'
 #' Strategies for grouping may include:
 #' - Breaking down search space by chromosomes
-#' - Grouping features with their flanking values/neighbors (e.g., 1000 bp down/up stream of a CpG)
+#' - Grouping features with their flanking values/neighbors (e.g., 5000 bp down/up stream of a CpG)
 #' - Using clusters identified by column clustering techniques
 #'
 #' Only features in each group will be imputed, using the search space defined as the
@@ -77,75 +79,31 @@ normalize_list_column <- function(x) {
 #' @export
 #'
 #' @seealso [group_features()]
-#'
-#' @examples
-#' # Generate example data with missing values
-#' set.seed(1234)
-#' to_test <- sim_mat(
-#'   m = 20,
-#'   n = 50,
-#'   perc_NA = 0.3,
-#'   perc_col_NA = 1,
-#'   nchr = 2
-#' )
-#' # t() to put features in columns
-#' obj <- t(to_test$input)
-#' head(to_test$group_feature) # which group each feature belongs to
-#'
-#' # Long format API: pass a data.frame with 'group' and 'features' columns.
-#' long_fmt <- to_test$group_feature
-#' head(long_fmt)
-#' knn_long <- group_imp(obj, group = long_fmt, k = 5, cores = 2)
-#' knn_long
-#'
-#' # List-column format API: Use group_features() to create the group tibble.
-#' # By setting `k = 5` in group_features(), we are doing K-NN imputation in group_imp().
-#' # To make use of the `subset` argument in knn_imp(), we specify subset in group_features().
-#' # For demonstration of different group-wise parameters we set `k = 10` for the second group.
-#'
-#' subset_features <- sample(to_test$group_feature$features, size = 10)
-#' head(subset_features)
-#' knn_df <- group_features(obj, to_test$group_feature, k = 5, subset = subset_features)
-#' knn_df
-#' knn_df$parameters[[2]]$k <- 10
-#' knn_df$parameters
-#'
-#' # Run grouped imputation. `k` for K-NN has been specified in `knn_df`.
-#' knn_grouped <- group_imp(obj, group = knn_df, cores = 2)
-#' knn_grouped # only features in subset are imputed
-#' @examplesIf requireNamespace("carrier", quietly = TRUE)
-#' # Specify `ncp` for PCA directly in the group_imp() function (instead of in
-#' # group_features()). We run in parallel with `mirai::daemons(2)`.
-#' mirai::daemons(2) # Set up 2 cores for parallelization
-#' pca_df <- group_features(obj, to_test$group_feature)
-#' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
-#' mirai::daemons(0)
-#' pca_grouped
-#'
 group_imp <- function(
   obj,
   group,
-  # KNN-specific parameters
+  # key parameters
   k = NULL,
+  ncp = NULL,
+  # common to both KNN and PCA
+  method = NULL,
+  cores = 1,
+  .progress = TRUE,
+  # KNN specific params
   colmax = NULL,
-  knn_method = NULL,
   post_imp = NULL,
   dist_pow = NULL,
   tree = NULL,
-  cores = 1,
   max_cache = NULL,
-  # PCA-specific parameters
-  ncp = NULL,
+  # PCA specific parameters
   scale = NULL,
-  pca_method = NULL,
   coeff.ridge = NULL,
   threshold = NULL,
   row.w = NULL,
   seed = NULL,
   nb.init = NULL,
   maxiter = NULL,
-  miniter = NULL,
-  .progress = TRUE
+  miniter = NULL
 ) {
   # pre-conditioning  ----
   checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
@@ -196,70 +154,96 @@ group_imp <- function(
   }
   aux_only <- purrr::map2(group$aux, group$features, setdiff)
   aux_lengths <- lengths(aux_only)
-  ## k, ncp, and group$parameters logic ----
-  global_k <- !is.null(k)
-  global_ncp <- !is.null(ncp)
-  if (global_k && global_ncp) {
+  ## Add global parameters into group$parameters
+  ## Global parameters (if provided) override any duplicated group-wise entries.
+  if (!is.null(k) && !is.null(ncp)) {
     stop("Cannot specify both 'k' and 'ncp' as global parameters")
   }
-  has_parameters <- "parameters" %in% names(group)
-  use_global <- global_k || global_ncp
-  if (use_global) {
-    imp_method <- if (global_k) "knn" else "pca"
-    if (use_global && has_parameters) {
-      stop("Cannot specify both global 'k'/'ncp' and group$parameters. Please use one or the other")
-    }
+  global_params <- list(
+    k = k, method = method, colmax = colmax, post_imp = post_imp,
+    dist_pow = dist_pow, tree = tree, max_cache = max_cache,
+    ncp = ncp, scale = scale, coeff.ridge = coeff.ridge,
+    threshold = threshold, row.w = row.w, seed = seed,
+    nb.init = nb.init, maxiter = maxiter, miniter = miniter
+  )
+  global_params <- global_params[!vapply(global_params, is.null, logical(1))]
+
+  if (!"parameters" %in% names(group)) {
+    group$parameters <- vector("list", nrow(group))
+  }
+  checkmate::assert_list(group$parameters, types = c("list", "null"), .var.name = "group$parameters")
+
+  # Merge: start with group-wise, then global overrides duplicates.
+  # Also clear k when ncp is set globally (and vice versa) to avoid mixed methods.
+  group$parameters <- lapply(group$parameters, function(p) {
+    if (is.null(p)) p <- list()
+    p <- as.list(p)
+    if (!is.null(k)) p[["ncp"]] <- NULL
+    if (!is.null(ncp)) p[["k"]] <- NULL
+    p[names(global_params)] <- global_params
+    p[["cores"]] <- NULL
+    p
+  })
+
+  # Validate each group has exactly one of k or ncp, and all groups agree
+  has_k <- vapply(group$parameters, \(p) "k" %in% names(p), logical(1))
+  has_ncp <- vapply(group$parameters, \(p) "ncp" %in% names(p), logical(1))
+  both <- has_k & has_ncp
+  neither <- !has_k & !has_ncp
+  if (any(both)) {
+    stop(sprintf("Group(s) %s have both 'k' and 'ncp' in parameters", paste(which(both), collapse = ", ")))
+  }
+  if (any(neither)) {
+    stop(sprintf(
+      "Group(s) %s have neither 'k' nor 'ncp'. Specify global 'k'/'ncp' or set them in group$parameters.",
+      paste(which(neither), collapse = ", ")
+    ))
+  }
+  if (any(has_k) && any(has_ncp)) {
+    stop("Inconsistent imputation methods across groups; all groups must use either k (KNN) or ncp (PCA)")
+  }
+  imp_method <- if (all(has_k)) "knn" else "pca"
+  valid_methods <- if (imp_method == "knn") {
+    c("euclidean", "manhattan")
   } else {
-    if (!has_parameters) {
-      stop("Must specify either global 'k' for K-NN imputation, 'ncp' for PCA imputation, or provide group$parameters")
-    }
-    checkmate::assert_list(group$parameters, types = c("list", "null"), min.len = 1, .var.name = "group$parameters")
-    has_k <- vapply(group$parameters, \(p) "k" %in% names(p), logical(1))
-    has_ncp <- vapply(group$parameters, \(p) "ncp" %in% names(p), logical(1))
-    both <- has_k & has_ncp
-    neither <- !has_k & !has_ncp
-    if (any(both)) {
-      stop(sprintf("Group(s) %s have both 'k' and 'ncp' in parameters", paste(which(both), collapse = ", ")))
-    }
-    if (any(neither)) {
-      stop(sprintf("Group(s) %s have neither 'k' nor 'ncp' in parameters", paste(which(neither), collapse = ", ")))
-    }
-    if (any(has_k) && any(has_ncp)) {
-      stop("Inconsistent imputation methods across groups; all group-wise parameters must specify either just k for KNN imputation or ncp for PCA imputation")
-    }
-    imp_method <- if (all(has_k)) "knn" else "pca"
-    if (imp_method == "knn") {
-      allowed_params <- c(
-        "k", "method", "colmax", "cores", "post_imp", "dist_pow", "tree",
-        "max_cache"
-      )
-      required_param <- "k"
-    } else {
-      allowed_params <- c(
-        "ncp", "scale", "method", "coeff.ridge", "row.w",
-        "threshold", "seed", "nb.init", "maxiter", "miniter"
-      )
-      required_param <- "ncp"
-    }
-    all_param_names <- unique(unlist(lapply(group$parameters, names)))
-    unknown_params <- setdiff(all_param_names, allowed_params)
-    if (length(unknown_params) > 0) {
-      stop(
-        "Unknown parameters in group$parameters for ", imp_method, " method: ",
-        paste(unknown_params, collapse = ", ")
-      )
-    }
+    c("regularized", "EM")
+  }
+  bad_method <- vapply(group$parameters, function(p) {
+    !is.null(p$method) && !(p$method %in% valid_methods)
+  }, logical(1))
+  if (any(bad_method)) {
+    stop(sprintf(
+      "Invalid `method` for %s in group(s) %s. Must be one of: %s",
+      toupper(imp_method),
+      paste(which(bad_method), collapse = ", "),
+      paste(valid_methods, collapse = ", ")
+    ))
+  }
+  if (imp_method == "knn") {
+    allowed_params <- c("k", "method", "colmax", "post_imp", "dist_pow", "tree", "max_cache")
+    required_param <- "k"
+  } else {
+    allowed_params <- c(
+      "ncp", "scale", "method", "coeff.ridge", "row.w",
+      "threshold", "seed", "nb.init", "maxiter", "miniter"
+    )
+    required_param <- "ncp"
+  }
+  allowed_params <- c("cores", allowed_params)
+  all_param_names <- unique(unlist(lapply(group$parameters, names)))
+  unknown_params <- setdiff(all_param_names, allowed_params)
+  if (length(unknown_params) > 0) {
+    stop(
+      "Unknown parameters for ", imp_method, " method: ",
+      paste(unknown_params, collapse = ", ")
+    )
   }
   message(sprintf(
-    "Imputing %d group(s) using %s with %s parameters.",
-    nrow(group), toupper(imp_method), if (use_global) "global" else "group-wise"
+    "Imputing %d group(s) using %s.",
+    nrow(group), toupper(imp_method)
   ))
   group_size <- feat_lengths + aux_lengths
-  if (has_parameters) {
-    param_values <- vapply(group$parameters, function(p) p[[required_param]], numeric(1))
-  } else {
-    param_values <- rep(if (imp_method == "knn") k else ncp, length(group_size))
-  }
+  param_values <- vapply(group$parameters, function(p) p[[required_param]], numeric(1))
   if (imp_method == "knn") {
     invalid_groups <- which(param_values >= group_size | param_values < 1)
   } else {
@@ -284,7 +268,7 @@ group_imp <- function(
   }
   iter <- seq_len(nrow(group))
 
-  # Column-index lookups for each group ----
+  # Column-index lookups for each group
   # Step 1: Map feature names to column positions in `obj`, in one batch.
   # Instead of looping per-group with match(), we unlist everything,
   # do a single fmatch(), then split the result back by group.
@@ -299,7 +283,7 @@ group_imp <- function(
   } else {
     aux_splits <- vector("list", nrow(group))
   }
-  # Step 4: Assemble per-group index bundles.
+  # Step 4: Assemble per-group index list
   # Each element contains:
   # - col_idx: combined column positions (features first, then aux)
   # used to subset obj into a sub-matrix for imputation
@@ -315,13 +299,13 @@ group_imp <- function(
     group_features = group$features
   )
 
-  # parallel logic ----
+  # parallel logic
   is_knn_mode <- imp_method == "knn"
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
 
-  if (cores > 1 & is_knn_mode) {
+  if (cores > 1) {
     if (!has_openmp()) {
-      message("OpenMP not available. KNN will run single-threaded.")
+      message("OpenMP not available. Imputation will run single-threaded.")
       cores <- 1
     } else if (parallelize) {
       message(
@@ -332,47 +316,23 @@ group_imp <- function(
       cores <- 1
     }
   }
-  if (cores > 1 & !is_knn_mode) {
-    message(
-      sprintf(
-        "cores = %d but is ignored for PCA imputation. Call `mirai::daemons(%d)` to set up parallelization.",
-        cores,
-        cores
-      )
-    )
-  }
 
-  # group level parameters ----
-  if (imp_method == "knn") {
-    base_params <- list(
-      k = k, colmax = colmax, method = knn_method,
-      cores = cores, post_imp = post_imp,
-      dist_pow = dist_pow, tree = tree
-    )
-  } else {
-    base_params <- list(
-      ncp = ncp, scale = scale, method = pca_method,
-      coeff.ridge = coeff.ridge, threshold = threshold,
-      seed = seed, row.w = row.w, nb.init = nb.init,
-      maxiter = maxiter, miniter = miniter
-    )
-  }
-  # Strip NULLs
-  base_params <- base_params[!vapply(base_params, is.null, logical(1))]
+  # All imputation parameters now live in group$parameters (globals were
+  # folded in upfront). base_params only carries cores.
+  base_params <- list(cores = cores)
 
   params <- lapply(
     iter,
     process_group_params,
     base_params = base_params,
     group = group,
-    is_knn_mode = is_knn_mode,
-    has_parameters = has_parameters
+    is_knn_mode = is_knn_mode
   )
 
-  # imputation ----
+  # imputation
   imp_fn <- if (is_knn_mode) knn_imp else pca_imp
 
-  if (parallelize || (is_knn_mode && cores > 1)) {
+  if (parallelize || cores > 1) {
     message("Running Mode: parallel...")
   } else {
     message("Running Mode: sequential...")
