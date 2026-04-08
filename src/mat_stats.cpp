@@ -23,15 +23,9 @@ arma::rowvec col_min_max(const arma::mat &mat, const int min = 0)
 arma::rowvec col_vars_internal(const arma::mat &mat, const arma::uword cores = 1)
 {
   arma::rowvec result(mat.n_cols);
-
 #ifdef _OPENMP
-  omp_set_num_threads(cores);
+#pragma omp parallel for num_threads(cores) schedule(static)
 #endif
-
-#ifdef _OPENMP
-#pragma omp parallel for
-#endif
-
   for (arma::uword i = 0; i < mat.n_cols; ++i)
   {
     arma::vec col = mat.col(i);

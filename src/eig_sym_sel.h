@@ -6,6 +6,8 @@
 #include <vector>
 #include "loc_timer.h"
 
+constexpr double PCA_TOL = 1e-15;
+
 extern "C"
 {
   void dsyevr_(const char *jobz, const char *range, const char *uplo,
@@ -137,10 +139,10 @@ inline void syrk_upper(const arma::mat &A, arma::mat &C,
 // ---------------------------------------------------------------------------
 // top-k symmetric eigendecomposition via LAPACK dsyevr
 // ---------------------------------------------------------------------------
-inline bool partial_eig_sym(arma::vec &eigvals,
-                            arma::mat &eigvecs,
-                            arma::mat &A,
-                            GramWorkspace &ws)
+inline bool eig_sym_sel(arma::vec &eigvals,
+                        arma::mat &eigvecs,
+                        arma::mat &A,
+                        GramWorkspace &ws)
 {
   if (static_cast<arma::uword>(ws.n) != A.n_rows || A.n_rows != A.n_cols)
   {
@@ -171,16 +173,11 @@ inline bool partial_eig_sym(arma::vec &eigvals,
   // dsyevr returns ascending order; flip to descending in place.
   {
     double *ev = eigvals.memptr();
-    for (int i = 0, j = ws.topk - 1; i < j; ++i, --j)
-    {
-      std::swap(ev[i], ev[j]);
-    }
-  }
-  {
     double *Z = eigvecs.memptr();
     const std::ptrdiff_t n_stride = ws.n;
     for (int i = 0, j = ws.topk - 1; i < j; ++i, --j)
     {
+      std::swap(ev[i], ev[j]);
       std::swap_ranges(Z + static_cast<std::ptrdiff_t>(i) * n_stride,
                        Z + static_cast<std::ptrdiff_t>(i + 1) * n_stride,
                        Z + static_cast<std::ptrdiff_t>(j) * n_stride);
@@ -189,8 +186,6 @@ inline bool partial_eig_sym(arma::vec &eigvals,
 
   return true;
 }
-
-constexpr double PCA_TOL = 1e-15;
 
 // helpers to address the heavy overhead in svd copy creating functions like %=
 static inline void scale_cols_inplace(double *M, const double *s,
@@ -259,7 +254,7 @@ inline void SVD_triplet(const arma::mat &Xhat,
   const arma::uword nr = static_cast<arma::uword>(gram_ws.nr);
   const arma::uword nc = static_cast<arma::uword>(gram_ws.nc);
 
-    LOC_TIC(timer, "form_gram");
+  LOC_TIC(timer, "form_gram");
   if (tall)
   {
     X_work.set_size(nr, nc);
@@ -286,9 +281,9 @@ inline void SVD_triplet(const arma::mat &Xhat,
   trace_val = arma::trace(AA_NxN);
 
   LOC_TIC(timer, "eig");
-  if (!partial_eig_sym(eigvals, eigvecs, AA_NxN, gram_ws))
+  if (!eig_sym_sel(eigvals, eigvecs, AA_NxN, gram_ws))
   {
-    Rcpp::stop("`partial_eig_sym` failed to converge");
+    Rcpp::stop("`eig_sym_sel` failed to converge");
   }
   LOC_TOC(timer, "eig");
 

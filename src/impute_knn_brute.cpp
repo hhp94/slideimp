@@ -569,8 +569,7 @@ void impute_knn_brute_impl(
   }
 
 #ifdef _OPENMP
-  omp_set_num_threads(cores);
-#pragma omp parallel for
+#pragma omp parallel for num_threads(cores) schedule(dynamic)
 #endif
   for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
   {
@@ -631,8 +630,7 @@ void dispatch_cache(
     StrictLowerTriangularMatrix cache(grp_impute.n_elem);
 
 #ifdef _OPENMP
-    omp_set_num_threads(cores);
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for num_threads(cores) schedule(dynamic)
 #endif
     for (arma::uword row = 1; row < grp_impute.n_elem; ++row)
     {

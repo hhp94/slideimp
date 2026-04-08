@@ -1,45 +1,44 @@
 #include "eig_sym_sel.h"
 #include "loc_timer.h"
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
 
 // ---------------------------------------------------------------------------
-// eliminate the scale branch so inner loops auto-vectorize in the while hot loop
+// eliminate the scale branch so inner loops auto-vectorize in the while hot
+// loop.
 // ---------------------------------------------------------------------------
 template <bool Scale>
-void restandardize(arma::mat &Xhat,
-                   arma::rowvec &mean_p,
-                   arma::rowvec &et,
-                   const double *wptr,
-                   const arma::uword nrX,
-                   const arma::uvec &miss_cols,
-                   const arma::uvec &miss_rows_flat,
-                   const arma::uvec &miss_rows_offsets,
-                   const double *obs_sum,
-                   const double *obs_sumsq)
+void impute_restandardize(arma::mat &Xhat,
+                          const arma::mat &fittedX,
+                          arma::rowvec &mean_p,
+                          arma::rowvec &et,
+                          const double *wptr,
+                          const arma::uword nrX,
+                          const arma::uvec &miss_cols,
+                          const arma::uvec &miss_rows_flat,
+                          const arma::uvec &miss_rows_offsets,
+                          const double *obs_sum,
+                          const double *obs_sumsq,
+                          const int cores)
 {
   double *xptr = Xhat.memptr();
+  const double *fptr = fittedX.memptr();
   const arma::uword n_mc = miss_cols.n_elem;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(static)
+#endif
   for (arma::uword cidx = 0; cidx < n_mc; ++cidx)
   {
     const arma::uword j = miss_cols[cidx];
-    double *col = xptr + j * nrX;
-    const double mj = mean_p(j);
-    const double ej = Scale ? et(j) : 1.0;
-    // pass 1: unstandardize entire column
-    if constexpr (Scale)
-    {
-      for (arma::uword i = 0; i < nrX; ++i)
-      {
-        col[i] = col[i] * ej + mj;
-      }
-    }
-    else
-    {
-      for (arma::uword i = 0; i < nrX; ++i)
-      {
-        col[i] += mj;
-      }
-    }
-    // gather: accumulate only over missing rows
+    const arma::uword off = j * nrX;
+    double *col = xptr + off;
+    const double *fcol = fptr + off;
+
+    const double old_mu = mean_p(j);
+    const double old_et = Scale ? et(j) : 1.0;
+    // gather: write fitted values into Xhat at missing rows and accumulate their
+    // unstandardized contributions.
     const arma::uword beg = miss_rows_offsets[cidx];
     const arma::uword end = miss_rows_offsets[cidx + 1];
     double imp_sum = 0.0;
@@ -47,102 +46,52 @@ void restandardize(arma::mat &Xhat,
     for (arma::uword p = beg; p < end; ++p)
     {
       const arma::uword i = miss_rows_flat[p];
-      const double v = col[i];
+      const double v_std = fcol[i];
+      col[i] = v_std;
       const double w = wptr[i];
-      imp_sum += w * v;
       if constexpr (Scale)
       {
+        const double v = v_std * old_et + old_mu;
+        imp_sum += w * v;
         imp_sumsq += w * v * v;
       }
+      else
+      {
+        const double v = v_std + old_mu;
+        imp_sum += w * v;
+      }
     }
-    const double new_mean = obs_sum[j] + imp_sum;
-    // pass 2: re-standardize
+
+    const double new_mu = obs_sum[j] + imp_sum;
+
     if constexpr (Scale)
     {
-      const double new_var = obs_sumsq[j] + imp_sumsq - new_mean * new_mean;
+      const double new_var = obs_sumsq[j] + imp_sumsq - new_mu * new_mu;
       const double new_et = std::sqrt(std::max(0.0, new_var));
-      const double inv_et = 1.0 / std::max(new_et, PCA_TOL);
+      const double inv_new = 1.0 / std::max(new_et, PCA_TOL);
+      const double a = old_et * inv_new;
+      const double b = (old_mu - new_mu) * inv_new;
       for (arma::uword i = 0; i < nrX; ++i)
       {
-        col[i] = (col[i] - new_mean) * inv_et;
+        col[i] = col[i] * a + b;
       }
       et(j) = new_et;
     }
     else
     {
-      for (arma::uword i = 0; i < nrX; ++i)
-        col[i] -= new_mean;
-    }
-    mean_p(j) = new_mean;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// eliminate the scale branch for the post processing, which takes a suprising
-// amount of time when the data is large and there's many missing values
-// ---------------------------------------------------------------------------
-template <bool Scale>
-static inline void finalize_impute(
-    const arma::mat &X, const arma::mat &Xhat, const arma::mat &fittedX,
-    const arma::umat &miss, const arma::rowvec &et, const arma::rowvec &mean_p,
-    arma::vec &imputed_vals, double &sse_out)
-{
-  const arma::uword nrX = X.n_rows;
-  const arma::uword ncX = X.n_cols;
-  const double *xp = X.memptr();
-  const double *xhp = Xhat.memptr();
-  const double *fp = fittedX.memptr();
-  const arma::uword *mp = miss.memptr();
-  const double *mnp = mean_p.memptr();
-  const double *etp = Scale ? et.memptr() : nullptr;
-  double *ivp = imputed_vals.memptr();
-  arma::uword iv_idx = 0;
-  double sse = 0.0;
-
-  for (arma::uword j = 0; j < ncX; ++j)
-  {
-    const double mj = mnp[j];
-    const arma::uword off = j * nrX;
-    if constexpr (Scale)
-    {
-      const double ej = etp[j];
+      const double b = old_mu - new_mu;
       for (arma::uword i = 0; i < nrX; ++i)
       {
-        const arma::uword k = off + i;
-        if (mp[k])
-        {
-          ivp[iv_idx++] = xhp[k] * ej + mj;
-        }
-        else
-        {
-          const double d = fp[k] * ej + mj - xp[k];
-          sse += d * d;
-        }
+        col[i] += b;
       }
     }
-    else
-    {
-      for (arma::uword i = 0; i < nrX; ++i)
-      {
-        const arma::uword k = off + i;
-        if (mp[k])
-        {
-          ivp[iv_idx++] = xhp[k] + mj;
-        }
-        else
-        {
-          const double d = fp[k] + mj - xp[k];
-          sse += d * d;
-        }
-      }
-    }
+    mean_p(j) = new_mu;
   }
-  sse_out = sse;
 }
 
 // [[Rcpp::export]]
 Rcpp::List pca_imp_internal_cpp(
-    const arma::mat &X,
+    arma::mat X,
     const arma::umat &miss,
     const arma::uword ncp,
     const bool scale,
@@ -151,25 +100,28 @@ Rcpp::List pca_imp_internal_cpp(
     const arma::uword init,
     const arma::uword maxiter,
     const arma::uword miniter,
-    const arma::rowvec &row_w,
-    const double coeff_ridge)
+    arma::rowvec row_w,
+    const double coeff_ridge,
+    const int cores = 1)
 {
   LOC_TIMER_OBJ(pca_imp_gram);
   LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
 
   const arma::uword nrX = X.n_rows;
   const arma::uword ncX = X.n_cols;
-  const arma::uword ntot = nrX * ncX;
   const double nrX_d = static_cast<double>(nrX);
   const double ncX_d = static_cast<double>(ncX);
   double old = arma::datum::inf;
-  double objective = 0.0;
   const arma::uvec missing = arma::find(miss);
+  X.elem(missing).zeros();
+  row_w /= arma::accu(row_w);
 
   const arma::mat not_miss = arma::conv_to<arma::mat>::from(1 - miss);
   const arma::rowvec denom = row_w * not_miss;
   const arma::rowvec weighted_sum = row_w * X;
   const arma::rowvec sum_sq = row_w * (X % X);
+  const double *wsptr = weighted_sum.memptr(); // neded for restandardization
+  const double *ssptr = sum_sq.memptr();
   arma::rowvec mean_p = weighted_sum / denom;
   arma::rowvec et = arma::sqrt(sum_sq / denom - mean_p % mean_p);
 
@@ -243,73 +195,49 @@ Rcpp::List pca_imp_internal_cpp(
   // doesn't change so we can just calculate it once. Columns with zero missing
   // entries are skipped entirely in restandardize
   const arma::urowvec col_nmiss_row = arma::sum(miss, 0);
-  arma::uvec miss_cols_idx;
-  {
-    std::vector<arma::uword> tmp;
-    tmp.reserve(ncX);
-    for (arma::uword j = 0; j < ncX; ++j)
-    {
-      if (col_nmiss_row[j] > 0)
-      {
-        tmp.push_back(j);
-      }
-    }
-    miss_cols_idx = arma::uvec(tmp);
-  }
+  arma::uvec miss_cols_idx = arma::find(col_nmiss_row > 0);
   const arma::uword n_mc = miss_cols_idx.n_elem;
-  arma::uvec miss_rows_offsets(n_mc + 1);
-  miss_rows_offsets[0] = 0;
-  for (arma::uword c = 0; c < n_mc; ++c) {
-    miss_rows_offsets[c + 1] = miss_rows_offsets[c] + col_nmiss_row[miss_cols_idx[c]];
-  }
+  arma::uvec miss_rows_offsets(n_mc + 1, arma::fill::zeros);
+  miss_rows_offsets.tail(n_mc) = arma::cumsum(col_nmiss_row.elem(miss_cols_idx));
   arma::uvec miss_rows_flat(miss_rows_offsets[n_mc]);
-  arma::vec obs_sum_vec(ncX, arma::fill::zeros);
-  arma::vec obs_sumsq_vec(ncX, arma::fill::zeros);
+  const arma::uword *mp = miss.memptr();
   {
-    const double *xp_init = X.memptr();
-    const arma::uword *mp_init = miss.memptr();
     for (arma::uword cidx = 0; cidx < n_mc; ++cidx)
     {
       const arma::uword j = miss_cols_idx[cidx];
       const arma::uword off = j * nrX;
       arma::uword p = miss_rows_offsets[cidx];
-      double os = 0.0, oss = 0.0;
       for (arma::uword i = 0; i < nrX; ++i)
       {
-        if (mp_init[off + i])
-        {
+        if (mp[off + i])
           miss_rows_flat[p++] = i;
-        }
-        else
-        {
-          const double w = wptr[i];
-          const double x = xp_init[off + i];
-          os += w * x;
-          oss += w * x * x;
-        }
       }
-      obs_sum_vec[j] = os;
-      obs_sumsq_vec[j] = oss;
     }
   }
-  const double *obs_sum_ptr = obs_sum_vec.memptr();
-  const double *obs_sumsq_ptr = obs_sumsq_vec.memptr();
+  arma::uvec col_iv_offsets(ncX + 1, arma::fill::zeros);
+  for (arma::uword j = 0; j < ncX; ++j)
+  {
+    col_iv_offsets[j + 1] = col_iv_offsets[j] + col_nmiss_row[j];
+  }
+  // objective loop
+  double objective = 0.0;
+  arma::vec col_obj(ncX);
+  double *cop = col_obj.memptr();
   // hot while loop
   for (arma::uword nb_iter = 1;; ++nb_iter)
   {
     LOC_TIC(pca_imp_gram, "restandardize");
-    Xhat.elem(missing) = fittedX.elem(missing);
     if (scale)
     {
-      restandardize<true>(Xhat, mean_p, et, wptr, nrX,
-                          miss_cols_idx, miss_rows_flat, miss_rows_offsets,
-                          obs_sum_ptr, obs_sumsq_ptr);
+      impute_restandardize<true>(Xhat, fittedX, mean_p, et, wptr, nrX,
+                                 miss_cols_idx, miss_rows_flat, miss_rows_offsets,
+                                 wsptr, ssptr, cores);
     }
     else
     {
-      restandardize<false>(Xhat, mean_p, et, wptr, nrX,
-                           miss_cols_idx, miss_rows_flat, miss_rows_offsets,
-                           obs_sum_ptr, obs_sumsq_ptr);
+      impute_restandardize<false>(Xhat, fittedX, mean_p, et, wptr, nrX,
+                                  miss_cols_idx, miss_rows_flat, miss_rows_offsets,
+                                  wsptr, ssptr, cores);
     }
     LOC_TOC(pca_imp_gram, "restandardize");
 
@@ -333,47 +261,74 @@ Rcpp::List pca_imp_internal_cpp(
                       arma::clamp(vs_h, PCA_TOL, arma::datum::inf);
     LOC_TOC(pca_imp_gram, "post_svd");
 
-    LOC_TIC(pca_imp_gram, "reconstruct+objective");
+    LOC_TIC(pca_imp_gram, "reconstruct");
     scale_cols_inplace(U.memptr(), lambda_shrinked.memptr(), U.n_rows, ncp);
     fittedX = U * V.t();
+    LOC_TOC(pca_imp_gram, "reconstruct");
+    LOC_TIC(pca_imp_gram, "objective");
     {
-      double acc = 0.0;
-      for (arma::uword idx = 0; idx < ntot; ++idx)
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(static)
+#endif
+      for (arma::uword j = 0; j < ncX; ++j)
       {
-        const double d = xhp[idx] - fxp[idx];
-        acc += wmp[idx] * d * d;
+        const arma::uword off = j * nrX;
+        const double *xh = xhp + off;
+        const double *fx = fxp + off;
+        const double *wm = wmp + off;
+        double s = 0.0;
+        for (arma::uword i = 0; i < nrX; ++i)
+        {
+          const double d = xh[i] - fx[i];
+          s += wm[i] * d * d;
+        }
+        cop[j] = s;
       }
-      objective = acc;
+      objective = arma::accu(col_obj);
     }
-    LOC_TOC(pca_imp_gram, "reconstruct+objective");
+    LOC_TOC(pca_imp_gram, "objective");
 
     // convergence
-    const double criterion = (old > 0.0 && !std::isinf(old))
-                                 ? std::abs(1.0 - objective / old)
-                                 : 1.0;
+    const double criterion = std::isinf(old) ? 1.0 : std::abs(1.0 - objective / old);
     old = objective;
 
-    if (criterion < threshold && nb_iter > miniter)
+    if (criterion < threshold && nb_iter >= miniter)
     {
       break;
     }
-    if (nb_iter > maxiter)
+    if (nb_iter >= maxiter)
     {
       Rcpp::warning("Stopped after " + std::to_string(maxiter) + " iterations");
       break;
     }
   }
   LOC_TIC(pca_imp_gram, "postprocessing");
-  // final unstandardize
   arma::vec imputed_vals(missing.n_elem);
+  double *ivp = imputed_vals.memptr();
+  const double *xp = X.memptr();
   double sse = 0.0;
-  if (scale)
+#ifdef _OPENMP
+#pragma omp parallel for reduction(+ : sse) num_threads(cores) schedule(static)
+#endif
+  for (arma::uword j = 0; j < ncX; ++j)
   {
-    finalize_impute<true>(X, Xhat, fittedX, miss, et, mean_p, imputed_vals, sse);
-  }
-  else
-  {
-    finalize_impute<false>(X, Xhat, fittedX, miss, et, mean_p, imputed_vals, sse);
+    const double mj = mean_p[j];
+    const double ej = scale ? et[j] : 1.0;
+    const arma::uword off = j * nrX;
+    arma::uword iv_idx = col_iv_offsets[j];
+    for (arma::uword i = 0; i < nrX; ++i)
+    {
+      const arma::uword kk = off + i;
+      if (mp[kk])
+      {
+        ivp[iv_idx++] = xhp[kk] * ej + mj;
+      }
+      else
+      {
+        const double d = fxp[kk] * ej + mj - xp[kk];
+        sse += d * d;
+      }
+    }
   }
   const double mse = sse / static_cast<double>(X.n_elem - missing.n_elem);
   LOC_TOC(pca_imp_gram, "postprocessing");

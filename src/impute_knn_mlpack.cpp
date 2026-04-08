@@ -16,10 +16,6 @@ arma::mat impute_knn_mlpack(
     const double dist_pow,        // controls distance penalty for weighted average
     const int cores = 1)          // number of cores for parallel processing
 {
-#ifdef _OPENMP
-  omp_set_num_threads(cores);
-#endif
-
   arma::uvec col_offsets;
   std::vector<arma::uvec> rows_to_impute_vec;
   arma::mat result = initialize_result_matrix(nmiss, grp_impute, col_offsets, rows_to_impute_vec);
@@ -53,7 +49,7 @@ arma::mat impute_knn_mlpack(
 
   // Main imputation loop
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp parallel for num_threads(cores)
 #endif
   for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
   {
