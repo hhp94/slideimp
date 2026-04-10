@@ -36,12 +36,12 @@ imputation. Accepts two formats:
 \strong{Long format}:
 \itemize{
 \item \strong{group}: A column identifying which group each feature belongs to
-\item \strong{features}: A character column of individual feature names
+\item \strong{feature}: A character column of individual feature names
 }
 
 \strong{List-column format} (preferably created by \code{\link[=group_features]{group_features()}}):
 \itemize{
-\item \strong{features}: A list-column of character vectors of feature column names
+\item \strong{feature}: A list-column of character vectors of feature column names
 to impute
 \item \strong{aux}: (Optional) A list-column of character vectors of auxiliary column
 names used for imputation but not imputed themselves
@@ -55,9 +55,9 @@ names used for imputation but not imputed themselves
 \item{method}{For K-NN imputation: distance metric to use (\code{"euclidean"} or \code{"manhattan"}).
 For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
 
-\item{cores}{The number of cores to parallelize over for K-NN imputation and small parts of
-PCA imputation with OpenMP only. To setup parallelization for K-NN without OpenMP and PCA
-imputation, use \code{mirai::daemons()}.}
+\item{cores}{The number of cores to parallelize over for K-NN imputation only.
+To setup parallelization for K-NN without OpenMP and PCA imputation, use
+\code{mirai::daemons()}.}
 
 \item{.progress}{Show imputation progress (default = \code{TRUE})}
 

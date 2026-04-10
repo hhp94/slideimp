@@ -122,9 +122,15 @@ knn_imp <- function(
       stop("`subset` contains characters but `obj` doesn't have column names")
     }
     matched_indices <- match(subset, colnames(obj), nomatch = NA)
+    if (anyNA(matched_indices)) {
+      message("Feature(s) in `subset` not found in `colnames(obj)` and is dropped")
+    }
     subset <- matched_indices[!is.na(matched_indices)]
   }
-
+  if (length(subset) == 0) {
+    message("No features in subset detected. No imputation was performed.")
+    return(obj)
+  }
   miss <- is.na(obj)
   cmiss <- colSums(miss)
   miss_rate <- cmiss / nrow(obj)
@@ -204,7 +210,7 @@ knn_imp <- function(
     obj[cbind(i_vec, subset[jj_vec])] <- sub_means[jj_vec]
   }
 
-  class(obj) <- c("ImputedMatrix", class(obj))
+  class(obj) <- c("SlideImpImputedMatrix", class(obj))
   attr(obj, "imp_method") <- "knn"
   return(obj)
 }

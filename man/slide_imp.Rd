@@ -12,22 +12,22 @@ slide_imp(
   flank = FALSE,
   min_window_n,
   subset = NULL,
+  dry_run = FALSE,
   k = NULL,
   colmax = 0.9,
-  knn_method = c("euclidean", "manhattan"),
   cores = 1,
   post_imp = FALSE,
   dist_pow = 0,
   max_cache = 4,
   ncp = NULL,
   scale = TRUE,
-  pca_method = c("regularized", "EM"),
   coeff.ridge = 1,
   seed = NULL,
   row.w = NULL,
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  method = NULL,
   .progress = TRUE
 )
 }
@@ -56,11 +56,16 @@ be smaller than \code{min_window_n}.}
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
 
+\item{dry_run}{Logical. If \code{TRUE}, skip imputation and return a
+\code{\link[tibble:tibble]{tibble::tibble()}} of the windows that \emph{would} be used (after all dropping
+rules). \code{k}/\code{ncp} are not required in this mode. Columns: \code{start}, \code{end},
+\code{window_n}, plus \code{subset_local} (list-column of local subset indices) when
+\code{flank = FALSE}, or \code{target} and \code{subset_local} when \code{flank = TRUE}.
+Default = \code{FALSE}.}
+
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
 \item{colmax}{A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.}
-
-\item{knn_method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
 
 \item{cores}{Number of cores to parallelize over.}
 
@@ -81,8 +86,6 @@ very wide data.}
 
 \item{scale}{boolean. By default TRUE leading to a same weight for each variable}
 
-\item{pca_method}{"regularized" by default or "EM".}
-
 \item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
 
 \item{seed}{random number generator seed}
@@ -102,10 +105,16 @@ Weights are normalized to sum to 1.}
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
 
+\item{method}{For K-NN imputation: distance metric to use (\code{"euclidean"} or \code{"manhattan"}).
+For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
+
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
+By default, a numeric matrix of the same dimensions as \code{obj} with
+missing values imputed. If \code{dry_run = TRUE}, instead returns a
+\code{\link[tibble:tibble]{tibble::tibble()}} of the windows that would be used (after all dropping
+rules), without performing imputation.
 }
 \description{
 Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise. This
@@ -133,8 +142,19 @@ Specify \code{k} and related arguments to use K-NN, \code{ncp} and related argum
 # Generate sample data with missing values with 20 samples and 100 columns
 # where the column order is sorted (i.e., by genomic position)
 set.seed(1234)
-beta_matrix <- t(sim_mat(100, 20)$input)
+beta_matrix <- sim_mat(20, 100)$input
 location <- 1:100
+
+# It's very useful to first perform a dry run to examine the calculated windows
+windows_statistics <- slide_imp(
+  beta_matrix,
+  location = location,
+  window_size = 50,
+  overlap_size = 10,
+  min_window_n = 10,
+  dry_run = TRUE
+)
+windows_statistics
 
 # Sliding Window K-NN imputation by specifying `k` (sliding windows)
 imputed_knn <- slide_imp(

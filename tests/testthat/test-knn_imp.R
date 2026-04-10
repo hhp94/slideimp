@@ -1,6 +1,6 @@
 test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing location correctly", {
   set.seed(1234)
-  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
+  to_test <- sim_mat(20, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   miss <- is.na(to_test)
   cmiss <- colSums(miss)
   miss_rate <- cmiss / nrow(to_test)
@@ -82,7 +82,7 @@ test_that("`knn_imp` cache and non cache path is the same", {
 
 test_that("`knn_imp` tree and brute is the same for few missing values", {
   set.seed(1234)
-  to_test <- t(sim_mat(m = 1000, n = 20, perc_NA = 0, perc_col_NA = 0)$input)
+  to_test <- sim_mat(20, n = 1000, perc_total_na = 0, perc_col_na = 0)$input
   to_test[1, 1] <- NA
   to_test[2, 2] <- NA
 
@@ -114,89 +114,11 @@ test_that("Exactly replicate `impute.knn`", {
   #
   # # Verify that the results from knn_imp match exactly with impute.knn
   # expect_equal(r1[, ], r2[, ])
-  #
-  # # Test to see if the post_imp strategy would replicate the results completely
-  # # Set seed for reproducibility in simulation
-  # set.seed(1234)
-  #
-  # # Generate a simulated matrix with missing values (500 rows, 30 columns, 50% NA, 80% columns with NA)
-  # to_test <- t(sim_mat(n = 500, m = 30, perc_NA = 0.5, perc_col_NA = 0.8)$input)
-  #
-  # # Pre-compute row means before imputation (ignoring NAs)
-  # pre_impute <- rowMeans(to_test, na.rm = TRUE)
-  #
-  # # Impute using knn_imp without post-imputation step; expect some NAs to remain
-  # r1.1 <- knn_imp(to_test, k = 5, method = "euclidean", post_imp = FALSE)
-  # expect_true(anyNA(r1.1))
-  #
-  # # impute.knn uses the pre-imputation row means to impute the data.
-  # # After knn_imp, we row impute the data with pre-calculated row_means
-  # # Identify indices of remaining NAs
-  # indices <- which(is.na(r1.1), arr.ind = TRUE)
-  #
-  # # Fill remaining NAs with pre-computed row means
-  # r1.1[indices] <- pre_impute[indices[, 1]]
-  #
-  # # Verify no NAs remain after manual post-imputation
-  # expect_true(!anyNA(r1.1))
-  #
-  # # Perform imputation using impute.knn on the transposed simulated data
-  # r2.1 <- t(
-  #   impute.knn(
-  #     t(to_test),
-  #     k = 5,
-  #     maxp = ncol(to_test)
-  #   )$data
-  # )
-  #
-  # # Verify that the manually post-imputed knn_imp matches impute.knn
-  # expect_equal(r1.1[, ], r2.1[, ])
-  #
-  # # Test subset. strategy is to use subset, then impute.knn on the same data
-  # # and pull out the same subset then compare the two matrices
-  # # Set seed for reproducibility in subset selection
-  # set.seed(2345)
-  #
-  # # Generate another simulated matrix (100 rows, 200 columns, 10% NA, all columns with NA)
-  # to_test_subset <- t(sim_mat(n = 100, m = 200, perc_NA = 0.1, perc_col_NA = 1)$input)
-  #
-  # # Randomly select 10 subset columns
-  # subset_cols <- sample(colnames(to_test_subset), size = 10)
-  #
-  # # Verify that the subset has NAs before imputation
-  # expect_true(anyNA(to_test_subset[, subset_cols]))
-  #
-  # # Impute only the subset columns using knn_imp without post_imp
-  # r1_subset <- knn_imp(
-  #   to_test_subset,
-  #   k = 10,
-  #   method = "euclidean",
-  #   post_imp = FALSE,
-  #   subset = subset_cols
-  # )[, subset_cols]
-  #
-  # # Verify no NAs remain in the imputed subset
-  # expect_true(!anyNA(r1_subset))
-  #
-  # # Perform full imputation using impute.knn and extract the subset
-  # r2_subset <- t(
-  #   impute.knn(
-  #     t(to_test_subset),
-  #     k = 10,
-  #     maxp = ncol(to_test_subset)
-  #   )$data
-  # )[, subset_cols]
-  #
-  # # Verify no NAs in the extracted subset from full imputation
-  # expect_true(!anyNA(r2_subset))
-  #
-  # # Verify that the subset imputation matches the extracted subset from full imputation
-  # expect_equal(r1_subset, r2_subset)
 })
 
 test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   set.seed(1234)
-  to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
+  to_test <- sim_mat(20, 50, perc_total_na = 0.2, perc_col_na = 1)$input
   # Impute just 3 columns
   ## Check subset using numeric index
   r1 <- knn_imp(to_test, k = 3, post_imp = FALSE, subset = c(1, 3, 5))
@@ -207,7 +129,7 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
     to_test,
     k = 3,
     post_imp = FALSE,
-    subset = paste0("feat", c(1, 3, 5))
+    subset = paste0("feature", c(1, 3, 5))
   )
   expect_equal(r1, r2)
 
@@ -226,14 +148,14 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
     to_test_post,
     k = 3,
     post_imp = TRUE,
-    subset = paste0("feat", c(1, 3, 5))
+    subset = paste0("feature", c(1, 3, 5))
   )
   expect_equal(r3, r4)
 })
 
 test_that("Behavior with extreme missing columns and rows", {
   set.seed(1234)
-  to_test <- t(sim_mat(m = 20, n = 20, perc_NA = 0.2, perc_col_NA = 1)$input)
+  to_test <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
   # row 1 is all NA
   to_test[1, ] <- NA
   expect_no_error(knn_imp(to_test, k = 3, post_imp = FALSE))

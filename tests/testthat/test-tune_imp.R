@@ -15,7 +15,7 @@ test_that("tune_imp works", {
     k = c(5, 10),
     overlap_size = c(10, 10),
     min_window_n = 20,
-    knn_method = "euclidean",
+    method = "euclidean",
     post_imp = FALSE
   )
   set.seed(1234)
@@ -147,7 +147,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     window_size = 100,
     k = 5,
     overlap_size = 10,
-    knn_method = "euclidean",
+    method = "euclidean",
     min_window_n = 10,
     post_imp = FALSE
   )

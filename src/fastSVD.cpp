@@ -19,15 +19,12 @@ void impute_restandardize(arma::mat &Xhat,
                           const arma::uvec &miss_rows_flat,
                           const arma::uvec &miss_rows_offsets,
                           const double *obs_sum,
-                          const double *obs_sumsq,
-                          const int cores)
+                          const double *obs_sumsq)
 {
   double *xptr = Xhat.memptr();
   const double *fptr = fittedX.memptr();
   const arma::uword n_mc = miss_cols.n_elem;
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(static)
-#endif
+
   for (arma::uword cidx = 0; cidx < n_mc; ++cidx)
   {
     const arma::uword j = miss_cols[cidx];
@@ -101,8 +98,7 @@ Rcpp::List pca_imp_internal_cpp(
     const arma::uword maxiter,
     const arma::uword miniter,
     arma::rowvec row_w,
-    const double coeff_ridge,
-    const int cores = 1)
+    const double coeff_ridge)
 {
   LOC_TIMER_OBJ(pca_imp_gram);
   LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
@@ -231,13 +227,13 @@ Rcpp::List pca_imp_internal_cpp(
     {
       impute_restandardize<true>(Xhat, fittedX, mean_p, et, wptr, nrX,
                                  miss_cols_idx, miss_rows_flat, miss_rows_offsets,
-                                 wsptr, ssptr, cores);
+                                 wsptr, ssptr);
     }
     else
     {
       impute_restandardize<false>(Xhat, fittedX, mean_p, et, wptr, nrX,
                                   miss_cols_idx, miss_rows_flat, miss_rows_offsets,
-                                  wsptr, ssptr, cores);
+                                  wsptr, ssptr);
     }
     LOC_TOC(pca_imp_gram, "restandardize");
 
@@ -267,9 +263,6 @@ Rcpp::List pca_imp_internal_cpp(
     LOC_TOC(pca_imp_gram, "reconstruct");
     LOC_TIC(pca_imp_gram, "objective");
     {
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(static)
-#endif
       for (arma::uword j = 0; j < ncX; ++j)
       {
         const arma::uword off = j * nrX;
@@ -307,9 +300,6 @@ Rcpp::List pca_imp_internal_cpp(
   double *ivp = imputed_vals.memptr();
   const double *xp = X.memptr();
   double sse = 0.0;
-#ifdef _OPENMP
-#pragma omp parallel for reduction(+ : sse) num_threads(cores) schedule(static)
-#endif
   for (arma::uword j = 0; j < ncX; ++j)
   {
     const double mj = mean_p[j];

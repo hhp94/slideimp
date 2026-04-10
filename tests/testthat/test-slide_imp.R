@@ -2,14 +2,7 @@ test_that("`slide_imp` knn mode works", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## knn_imp, which we test correctness elsewhere
-  to_test <- t(
-    sim_mat(
-      n = 280,
-      m = 100,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(100, 280, 0.5, perc_col_na = 1)$input
   # Init
   counts <- matrix(
     0,
@@ -93,14 +86,7 @@ test_that("`slide_imp` subset works", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## knn_imp, which we test correctness elsewhere
-  to_test <- t(
-    sim_mat(
-      n = 50,
-      m = 10,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   subset <- c(1, 6, 10, 50)
   # Init
   counts <- matrix(
@@ -169,14 +155,7 @@ test_that("`slide_imp` edge case no overlap", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## knn_imp, which we test correctness elsewhere
-  to_test <- t(
-    sim_mat(
-      n = 300,
-      m = 100,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(100, 300, perc_total_na = 0.5, perc_col_na = 1)$input
   # Init
   counts <- matrix(
     0,
@@ -235,14 +214,7 @@ test_that("`slide_imp` pca mode works", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## pca_imp, which we test correctness elsewhere
-  to_test <- t(
-    sim_mat(
-      n = 280,
-      m = 100,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(100, 280, perc_total_na = 0.5, perc_col_na = 1)$input
   # Init
   counts <- matrix(
     0,
@@ -297,14 +269,7 @@ test_that("`slide_imp` pca mode works", {
 
 test_that("`slide_imp` errors on zero-variance features in PCA mode", {
   set.seed(1234)
-  to_test <- t(
-    sim_mat(
-      n = 200,
-      m = 10,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(10, 200, perc_total_na = 0.5, perc_col_na = 1)$input
   to_test[, 1] <- 1
   location <- 1:ncol(to_test)
   expect_error(
@@ -323,14 +288,7 @@ test_that("`slide_imp` errors on zero-variance features in PCA mode", {
 
 test_that("`slide_imp` flank works with knn", {
   set.seed(1234)
-  to_test <- t(
-    sim_mat(
-      n = 50,
-      m = 10,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   location <- 1:ncol(to_test)
   subset <- c(5, 25, 45)
   window_size <- 20
@@ -379,16 +337,123 @@ test_that("`slide_imp` flank works with knn", {
   )
 })
 
+test_that("`slide_imp` KNN skips windows not covering any subset features", {
+  set.seed(1234)
+  to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input
+  subset <- c(1, 6, 45, 50)
+  counts <- matrix(
+    0,
+    nrow = nrow(to_test),
+    ncol = ncol(to_test),
+    dimnames = dimnames(to_test)
+  )
+  final_imputed <- counts
+  # Window 1: 1 to 20 — covers subset cols 1, 6
+  window_cols <- 1:20
+  local_subset <- which(window_cols %in% subset)
+  final_imputed[, window_cols] <- final_imputed[, window_cols] +
+    knn_imp(
+      obj = to_test[, window_cols],
+      k = 3,
+      colmax = 0.9,
+      post_imp = TRUE,
+      subset = local_subset
+    )
+  counts[, window_cols] <- counts[, window_cols] + 1
+  # Window 2: 16 to 35 — no subset features, SKIPPED
+  # Window 3: 31 to 50 — covers subset cols 45, 50
+  window_cols <- 31:50
+  local_subset <- which(window_cols %in% subset)
+  final_imputed[, window_cols] <- final_imputed[, window_cols] +
+    knn_imp(
+      obj = to_test[, window_cols],
+      k = 3,
+      colmax = 0.9,
+      post_imp = TRUE,
+      subset = local_subset
+    )
+  counts[, window_cols] <- counts[, window_cols] + 1
+  # Average overlaps, restore originals where uncovered
+  for (j in which(colSums(counts) > 1)) {
+    final_imputed[, j] <- final_imputed[, j] / counts[, j]
+  }
+  uncovered <- which(colSums(counts) == 0)
+  final_imputed[, uncovered] <- to_test[, uncovered]
+  location <- 1:ncol(to_test)
+  expect_equal(
+    slide_imp(
+      to_test,
+      location = location,
+      window_size = 20,
+      overlap_size = 5,
+      k = 3,
+      min_window_n = 10,
+      colmax = 0.9,
+      post_imp = TRUE,
+      subset = subset
+    )[, ],
+    final_imputed[, ]
+  )
+})
+
+test_that("`slide_imp` PCA skips windows not covering any subset features", {
+  set.seed(1234)
+  to_test <- sim_mat(100, 50, perc_total_na = 0.5, perc_col_na = 1)$input
+  subset <- c(1, 6, 45, 50)
+  counts <- matrix(
+    0,
+    nrow = nrow(to_test),
+    ncol = ncol(to_test),
+    dimnames = dimnames(to_test)
+  )
+  final_imputed <- counts
+  # Window 1: 1 to 20 — covers subset cols 1, 6
+  window_cols <- 1:20
+  final_imputed[, window_cols] <- final_imputed[, window_cols] +
+    pca_imp(
+      obj = to_test[, window_cols],
+      ncp = 2,
+      scale = TRUE,
+      seed = 1
+    )
+  counts[, window_cols] <- counts[, window_cols] + 1
+  # Window 2: 16 to 35 — no subset features, SKIPPED
+  # Window 3: 31 to 50 — covers subset cols 45, 50
+  window_cols <- 31:50
+  final_imputed[, window_cols] <- final_imputed[, window_cols] +
+    pca_imp(
+      obj = to_test[, window_cols],
+      ncp = 2,
+      scale = TRUE,
+      seed = 1
+    )
+  counts[, window_cols] <- counts[, window_cols] + 1
+  # Average overlaps, restore originals where uncovered
+  for (j in which(colSums(counts) > 1)) {
+    final_imputed[, j] <- final_imputed[, j] / counts[, j]
+  }
+  uncovered <- which(colSums(counts) == 0)
+  final_imputed[, uncovered] <- to_test[, uncovered]
+  location <- 1:ncol(to_test)
+  expect_equal(
+    slide_imp(
+      to_test,
+      location = location,
+      window_size = 20,
+      overlap_size = 5,
+      ncp = 2,
+      min_window_n = 10,
+      scale = TRUE,
+      seed = 1,
+      subset = subset
+    )[, ],
+    final_imputed[, ]
+  )
+})
+
 test_that("`slide_imp` flank works with pca", {
   set.seed(1234)
-  to_test <- t(
-    sim_mat(
-      n = 50,
-      m = 10,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   location <- 1:ncol(to_test)
   subset <- c(5, 25, 45)
   window_size <- 20
@@ -434,89 +499,5 @@ test_that("`slide_imp` flank works with pca", {
       .progress = FALSE
     )[, ],
     result
-  )
-})
-
-test_that("`compute_windows` returns expected structure", {
-  result <- compute_windows(1:100, window_size = 50, overlap_size = 10)
-  expect_s3_class(result, "tbl_df")
-  expect_named(result, c("start", "end", "window_n", "keep"))
-  expect_true(all(result$window_n == (result$end - result$start + 1L)))
-})
-
-test_that("`compute_windows` flags small windows with `min_window_n`", {
-  result <- compute_windows(1:100, window_size = 50, overlap_size = 10, min_window_n = 60)
-  expect_true(all(result$keep == (result$window_n >= 60)))
-  expect_true(any(!result$keep))
-})
-
-test_that("`compute_windows` produces more windows with overlap", {
-  no_overlap <- compute_windows(1:100, window_size = 50, overlap_size = 0)
-  with_overlap <- compute_windows(1:100, window_size = 50, overlap_size = 25)
-  expect_gte(nrow(with_overlap), nrow(no_overlap))
-})
-
-test_that("`compute_windows` rejects invalid inputs", {
-  expect_error(compute_windows(1:100, window_size = 50, overlap_size = 50))
-  expect_error(compute_windows(1:100, window_size = -1))
-  expect_error(compute_windows(c(3, 1, 2), window_size = 50))
-})
-
-test_that("`compute_windows` returns correct windows for known input", {
-  result <- compute_windows(1:10, window_size = 5, overlap_size = 0)
-  expect_equal(result$start, c(1L, 6L))
-  expect_equal(result$end, c(5L, 10L))
-})
-
-test_that("`compute_windows` flank returns expected structure", {
-  result <- compute_windows(
-    1:50,
-    window_size = 10,
-    subset = c(5, 25, 45),
-    flank = TRUE
-  )
-  expect_s3_class(result, "tbl_df")
-  expect_named(result, c("start", "end", "target", "subset_local", "window_n", "keep"))
-  expect_equal(nrow(result), 3L)
-  expect_true(all(result$window_n == (result$end - result$start + 1L)))
-})
-
-test_that("`compute_windows` flank produces correct windows for known input", {
-  # location = 1:50, window_size = 10, subset = c(5, 25, 45)
-  # center=5:  [1, 15]  -> local idx 5
-  # center=25: [15, 35] -> local idx 11
-  # center=45: [35, 50] -> local idx 11
-  result <- compute_windows(
-    1:50,
-    window_size = 10,
-    subset = c(5, 25, 45),
-    flank = TRUE
-  )
-  expect_equal(result$start, c(1L, 15L, 35L))
-  expect_equal(result$end, c(15L, 35L, 50L))
-  expect_equal(result$target, c(5L, 25L, 45L))
-  expect_equal(result$subset_local, c(5L, 11L, 11L))
-})
-
-test_that("`compute_windows` flank flags small windows with `min_window_n`", {
-  # Use a small window_size so edge targets produce small windows
-  # location = 1:20, subset = c(1, 10, 20), window_size = 3
-  # center=1:  [1, 4]  -> n=4
-  # center=10: [7, 13] -> n=7
-  # center=20: [17, 20] -> n=4
-  result <- compute_windows(
-    1:20,
-    window_size = 3,
-    subset = c(1, 10, 20),
-    flank = TRUE,
-    min_window_n = 5
-  )
-  expect_equal(result$keep, c(FALSE, TRUE, FALSE))
-})
-
-test_that("`compute_windows` flank requires subset", {
-  expect_error(
-    compute_windows(1:50, window_size = 10, flank = TRUE),
-    "subset"
   )
 })

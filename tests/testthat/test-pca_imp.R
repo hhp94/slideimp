@@ -1,8 +1,8 @@
 test_that("same results as imputePCA", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
-  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
-
+  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  expect_true(anyNA(to_test))
   # expected orientation (wide)
   r1 <- missMDA::imputePCA(to_test, ncp = 2, nb.init = 10, seed = 1234)
   set.seed(1234)
@@ -37,7 +37,8 @@ test_that("same results as imputePCA", {
 test_that("same results as imputePCA, scale = FALSE", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
-  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
+  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  expect_true(anyNA(to_test))
 
   # expected orientation (wide)
   r1 <- missMDA::imputePCA(to_test, ncp = 2, nb.init = 10, seed = 1234, scale = FALSE)
@@ -72,7 +73,7 @@ test_that("same results as imputePCA, scale = FALSE", {
 
 test_that("Behavior with extreme missing columns and rows", {
   set.seed(1234)
-  to_test <- t(sim_mat(m = 20, n = 50, perc_NA = 0.2, perc_col_NA = 1)$input)
+  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
   to_test[1, ] <- NA
   expect_no_error(pca_imp(to_test, ncp = 2, seed = 1234))
   to_test[, 1] <- NA
@@ -82,7 +83,7 @@ test_that("Behavior with extreme missing columns and rows", {
 test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
-  to_test <- t(sim_mat(n = 50, m = 20, perc_NA = 0.5, perc_col_NA = 1)$input)
+  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
 
   # compute expected weights manually
   miss <- is.na(to_test)
@@ -121,5 +122,6 @@ test_that("row.w rejects invalid strings", {
   colnames(mat) <- paste0("col", 1:10)
   mat[1, 1] <- NA
 
-  expect_error(pca_imp(mat, ncp = 2, row.w = "invalid"))
+  expect_error(pca_imp(mat, ncp = 2, row.w = "invalid"), regexp = "row.w")
+  expect_error(pca_imp(mat, ncp = 2, row.w = c(67, 69)), regexp = "row.w")
 })

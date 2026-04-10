@@ -1,89 +1,116 @@
-#' Simulate Methylation Beta Values with Metadata
+#' Simulate Matrix with Metadata
 #'
 #' @description
-#' This function generates a matrix of random normal data, scaled between 0 and 1
-#' per column. It also creates corresponding data frames for feature and sample
-#' metadata and can optionally introduce `NA` values into a specified proportion
-#' of rows.
+#' Generates a matrix of random normal data then optionally scale to between 0
+#' and 1 between columns. It also creates corresponding data frames for feature
+#' (column) and sample (row) metadata and can optionally introduce `NA` values
+#' into a specified proportion of rows. A correlation between columns `rho`
+#' (before scaling) can be added.
 #'
-#' @param n An integer specifying the number of rows (features). Default is `100`.
-#' @param m An integer specifying the number of columns (samples). Default is `100`.
-#' @param nchr An integer for the number of chromosome groups to assign to features (e.g., `nchr = 22` for human autosomes). Default is `2`.
-#' @param ngrp An integer for the number of groups to assign to samples. Default is `1`.
-#' @param perc_NA A numeric value between 0 and 1 indicating the proportion of values to set to `NA` within each selected row. Default is `0.5`.
-#' @param perc_col_NA A numeric value between 0 and 1 indicating the proportion of rows to select for `NA` introduction. Default is `0.5`.
-#' @param beta If TRUE (default) then simulate beta values by scaling the values between 0 and 1.
+#' @param n An integer specifying the number of rows (samples). Default is `100`.
+#' @param p An integer specifying the number of columns (features). Default is `100`.
+#' @param rho Columns correlation before scaling. Default is `0.5`.
+#' @param n_col_groups An integer for the number of groups to assign to features/columns. Default is `2`.
+#' @param n_row_groups An integer for the number of groups to assign to samples/rows. Default is `1`.
+#' @param perc_total_na Proportion of all cells to set to NA. Default is `0.1`.
+#' @param perc_col_na Proportion of columns across which those NAs are spread. Default is `0.5`.
+#' @param beta If TRUE (default) scale values between 0 and 1 column wise.
 #'
-#' @returns A `list` with the following elements:
-#'
-#' * `input`: The simulated `n` x `m` numeric matrix with values between 0 and 1.
-#' * `group_feature`: A `data.frame` with feature IDs and their assigned chromosome group.
-#' * `group_sample`: A `data.frame` with sample IDs and their assigned group.
+#' @return An object of class `SlideImpSimMat` which is a list with `input`,
+#'   `col_group`, and `row_group`.
 #'
 #' @export
 #'
 #' @examples
 #' set.seed(123)
-#' sim_data <- sim_mat(n = 50, m = 10)
-#'
-#' # Metadata of each features
-#' sim_data$group_feature[1:5, ]
-#' sim_data$group_sample[1:5, ]
-#'
-#' # View the first few rows and columns of the matrix
-#' sim_data$input[1:5, 1:5]
-#'
-#' # Generate a dataset with no missing values
-#' sim_data_complete <- sim_mat(n = 50, m = 10, perc_NA = 0, perc_col_NA = 0)
-#' sum(is.na(sim_data_complete$input))
+#' sim_data <- sim_mat(n = 50, p = 10, rho = 0.5)
+#' sim_data
 sim_mat <- function(
   n = 100,
-  m = 100,
-  nchr = 2,
-  ngrp = 1,
-  perc_NA = 0.5,
-  perc_col_NA = 0.5,
+  p = 100,
+  rho = 0.5,
+  n_col_groups = 2,
+  n_row_groups = 1,
+  perc_total_na = 0.1,
+  perc_col_na = 0.5,
   beta = TRUE
 ) {
   checkmate::assert_int(n, lower = 2)
-  checkmate::assert_int(m, lower = 2)
-  checkmate::assert_int(nchr, lower = 1, upper = 25)
-  checkmate::assert_number(perc_NA, lower = 0, upper = 1)
-  checkmate::assert_number(perc_col_NA, lower = 0, upper = 1)
+  checkmate::assert_int(p, lower = 2)
+  checkmate::assert_number(rho, lower = 0, upper = 1 - .Machine$double.eps^2)
+  checkmate::assert_int(n_col_groups, lower = 1, upper = p)
+  checkmate::assert_int(n_row_groups, lower = 1, upper = n)
+  checkmate::assert_number(perc_total_na, lower = 0, upper = 1)
+  checkmate::assert_number(perc_col_na, lower = 0, upper = 1)
   checkmate::assert_flag(beta)
-  # Create and scale the matrix to between 0 and 1 per column
-  d_length <- n * m
-  d <- matrix(stats::rnorm(d_length), nrow = n, ncol = m)
+
+  # correlated columns: var = rho + (1 - rho) = 1, cor = rho
+  if (rho > 0) {
+    common <- stats::rnorm(n) * sqrt(rho)
+    Z <- matrix(stats::rnorm(n * p), n, p) * sqrt(1 - rho)
+    d <- common %*% matrix(1, 1, p) + Z
+  } else {
+    d <- matrix(stats::rnorm(n * p), n, p)
+  }
+
+  # per-column [0,1] rescale
   if (beta) {
-    mins <- col_min_max(d, 0)[1, ]
-    maxs <- col_min_max(d, 1)[1, ]
+    mins <- apply(d, 2, min, na.rm = TRUE)
+    maxs <- apply(d, 2, max, na.rm = TRUE)
     ranges <- maxs - mins
+    ranges[ranges == 0] <- 1
     d <- sweep(d, 2, mins, "-")
     d <- sweep(d, 2, ranges, "/")
   }
-  # Generate realistic feature and sample names
-  feature <- seq_len(n)
-  chr <- sample(paste0("chr", seq_len(nchr)), size = n, replace = TRUE)
-  group_feature <- data.frame(features = paste0("feat", feature), group = chr)
-  colnames(d) <- paste0("s", seq_len(m))
-  grp <- sample(paste0("grp", seq_len(ngrp)), size = m, replace = TRUE)
-  group_sample <- data.frame(sample_id = colnames(d), group = grp)
-  rownames(d) <- group_feature$features
 
-  # Introduce missing values in selected features (rows)
-  feature_miss_size <- floor(perc_col_NA * n)
-  na_size <- floor(perc_NA * m)
+  # metadata - columns/features
+  col_groups <- sample(
+    paste0("group", seq_len(n_col_groups)),
+    size = p,
+    replace = (n_col_groups < p)
+  )
+  col_group <- data.frame(
+    feature = paste0("feature", seq_len(p)),
+    group = col_groups
+  )
 
-  if (feature_miss_size > 0 && na_size > 0) {
-    feature_miss <- sample.int(n, size = feature_miss_size)
-    col_idx <- c(replicate(feature_miss_size, sample.int(m, na_size)))
-    row_idx <- rep(feature_miss, each = na_size)
+  # metadata - rows/samples
+  colnames(d) <- col_group$feature
+  rownames(d) <- paste0("sample", seq_len(n))
+
+  row_groups <- sample(
+    paste0("group", seq_len(n_row_groups)),
+    size = n,
+    replace = (n_row_groups < n)
+  )
+
+  row_group <- data.frame(
+    sample = rownames(d),
+    group = row_groups
+  )
+
+  # inject NAs
+  n_total_na <- ceiling(perc_total_na * length(d))
+  n_cols_na <- max(1, floor(perc_col_na * p))
+  if (n_total_na > 0) {
+    cols_na <- sample.int(p, n_cols_na)
+    per_col <- floor(n_total_na / n_cols_na)
+    remainder <- n_total_na - per_col * n_cols_na
+    counts <- rep(per_col, n_cols_na) + c(rep(1, remainder), rep(0, n_cols_na - remainder))
+    counts <- pmin(counts, n)
+    row_idx <- unlist(lapply(counts, function(k) sample.int(n, k)))
+    col_idx <- rep(cols_na, times = counts)
     d[cbind(row_idx, col_idx)] <- NA
   }
 
-  return(list(
-    input = d,
-    group_feature = group_feature,
-    group_sample = group_sample
-  ))
+  structure(
+    list(
+      input = d,
+      col_group = col_group,
+      row_group = row_group,
+      n_col_groups = n_col_groups,
+      n_row_groups = n_row_groups
+    ),
+    class = "SlideImpSimMat"
+  )
 }

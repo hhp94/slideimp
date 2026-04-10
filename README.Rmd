@@ -23,12 +23,13 @@ knitr::opts_chunk$set(
 
 **Core functions**
 
-* `knn_imp()`: Full-matrix K-NN imputation with multi-core parallelization, [`{mlpack}`](https://mlpack.org/) KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).
-* `pca_imp()`: Optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrices.
 * `slide_imp()`: Sliding window K-NN or PCA imputation for extremely high-dimensional numeric matrices with ordered features (i.e., by genomic position).
 * `group_imp()`: Parallelizable group-wise (e.g., by chromosomes or column clusters) K-NN or PCA imputation with optional auxiliary features and group-wise parameters.
-  * `group_features()`: `group_imp()`'s helper function to create groups based on a mapping data.frame (i.e., Illumina manifests). See [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) on GitHub for tools to process common Illumina manifests.
+  * (Basic): `group_imp()` requires a `data.frame` (or `tibble`) for the `group` argument. This data frame must contains a `feature` column (character strings of feature names) and a `group` column (defining the group).
+  * (Advanced): `group_features()`: `group_imp()`'s helper function to create groups based on a mapping data.frame (i.e., Illumina manifests). See [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) on GitHub for tools to process common Illumina manifests.
 * `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.
+* `knn_imp()`: Full-matrix K-NN imputation with multi-core parallelization, [`{mlpack}`](https://mlpack.org/) KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).
+* `pca_imp()`: Optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrices.
 
 ## Installation
 
@@ -49,23 +50,24 @@ Let's simulate some DNA methylation (DNAm) microarray data from 2 chromosomes. A
 
 ```{r}
 library(slideimp)
-# Simulate data from 2 chromosomes
+# Simulate data from 2 chromosomes. 20 samples, 50 CpGs
 set.seed(1234)
-sim_obj <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1, nchr = 2)
-# Here we see that variables are stored in rows
-sim_obj$input[1:5, 1:5]
+sim_obj <- sim_mat(n = 20, p = 50, perc_total_na = 0.3, perc_col_na = 1, n_col_groups = 2)
 
-# So we t() to put the variables in columns
-obj <- t(sim_obj$input)
+sim_obj
+
+# Extract the $input attribute
+obj <- sim_obj$input
 ```
 
-We can optionally estimate the prediction accuracy of different methods and tune hyperparameters prior to imputation with `tune_imp()`.
+We can estimate the prediction accuracy of different methods and tune hyperparameters prior to imputation with `tune_imp()`.
 
 For custom functions (`.f` argument), the `parameters` data.frame must include the columns corresponding to the arguments passed to the custom function. The custom function must accept `obj` as the first argument and return a matrix with the same dimensions as `obj`.
 
 We tune the results using 2 repeats (`rep = 2`) for illustration (increase in actual analyses).
 
 ```{r}
+# Our parameters grid contains 2 values: k = 5 and 20.
 knn_params <- tibble::tibble(k = c(5, 20))
 # Parallelization with OpenMP is controlled by `cores` only for knn or slideimp knn with OpenMP only.
 tune_knn <- tune_imp(obj, parameters = knn_params, .f = "knn_imp", cores = 2, rep = 2)
@@ -75,7 +77,7 @@ compute_metrics(tune_knn)
 For K-NN without OpenMP, PCA, and custom functions, setup parallelization with `mirai::daemons()`.
 ```{r, eval = F}
 mirai::daemons(2) # 2 Cores
-# Note, for PCA and custom functions, cores is controlled by the `mirai::daemons()`
+# Note, for PCA and custom functions, cores is controlled by `mirai::daemons()`
 # and the `cores` argument is ignored.
 
 # PCA imputation.
@@ -84,7 +86,7 @@ tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", rep = 2)
 
 # The parameters have `mean` and `sd` columns.
 custom_params <- tibble::tibble(mean = 1, sd = 0)
-# This function impute data with rnorm values of different `mean` and `sd`.
+# This function imputes data with rnorm values of different `mean` and `sd`.
 custom_function <- function(obj, mean, sd) {
   missing <- is.na(obj)
   obj[missing] <- rnorm(sum(missing), mean = mean, sd = sd)
@@ -97,32 +99,25 @@ mirai::daemons(0) # Close daemons
 
 Then, preferably perform imputation by group with `group_imp()` if the variables can be meaningfully grouped (e.g., by chromosomes).
 
-- `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation.
-- `group_imp()` requires a `group` tibble, *preferably* created with `group_features()`, with three list-columns:
-  - `features`: **required** - a list-column where each element is a character vector of variable names to be imputed together.
-  - `aux`: **optional** - auxiliary variables to include in each group.
-  - `parameters`: **optional** - group-specific imputation parameters.
-- In this example, we have data from 2 chromosomes so the `group` tibble should have **two rows** (one per chromosome), with the corresponding variables listed in the `features` column for each row.
+- `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation. For the basic API, use a data.frame that contain a `feature` column (character strings of feature names) and a `group` column (defining the group). 
 
 PCA-based imputation with `group_imp()` can be parallelized using the `{mirai}` package, similar to how parallelization is done with `tune_imp()`.
 
 ```{r, eval = F}
-# Use the `group_features()` helper function
-group_df <- group_features(obj, sim_obj$group_feature)
-group_df
+head(sim_obj$col_group)
 
-# We choose K-NN imputation, k = 5, from the `tune_imp` results.
-knn_group_results <- group_imp(obj, group = group_df, k = 5, cores = 2)
+# We picked k = 5 (use parameters with lowest errors in actual analyses)
+knn_group_results <- group_imp(obj, group = sim_obj$col_group, k = 5, cores = 2)
 
 # Similar to `tune_imp`, parallelization is controlled by `mirai::daemons()`
 mirai::daemons(2)
-knn_group_results <- group_imp(obj, group = group_df, ncp = 3)
+knn_group_results <- group_imp(obj, group = sim_obj$col_group, ncp = 3)
 mirai::daemons(0)
 ```
 
 Alternatively, full matrix imputation can be performed using `knn_imp()` or `pca_imp()`.
 
-```{r}
+```{r, eval = FALSE}
 full_knn_results <- knn_imp(obj = obj, k = 5)
 full_pca_results <- pca_imp(obj = obj, ncp = 5)
 ```
@@ -131,7 +126,8 @@ full_pca_results <- pca_imp(obj = obj, ncp = 5)
 Sliding window imputation can be performed using `slide_imp()`. **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e. run `slide_imp()` separately on each chromosome) before imputation. See the package vignette for more details.
 
 ```{r}
-chr1_beta <- t(sim_mat(m = 10, n = 2000, perc_NA = 0.3, perc_col_NA = 1, nchr = 1)$input)
+# Simulate some data
+chr1_beta <- sim_mat(n = 10, p = 2000, perc_total_na = 0.3, perc_col_na = 1, n_col_groups = 1)$input
 dim(chr1_beta)
 chr1_beta[1:5, 1:5]
 ```
@@ -142,24 +138,29 @@ chr1_beta[1:5, 1:5]
 * `window_size`: **required** - width of each sliding window (same unit as `location`).
 * `overlap_size`: **optional** - overlap width between consecutive windows (same units as `location`). Must be strictly less than `window_size`.
 * `min_window_n`: **required** - minimum number of columns a window must contain to be imputed. Windows smaller than this are dropped. Must be greater than `k` (for KNN) or `ncp` (for PCA).
+* `dry_run`: **optional** - return just the calculated windows to examine which windows are included.
 * `k`: **required** - *(specifying KNN imputation)* Number of nearest neighbors to use inside each window.
 * `ncp`: **required** - *(specifying PCA imputation)* Number of principal components to retain. Use this instead of `k` when performing sliding-window PCA imputation.
+* `subset`: **optional** - impute just a subset of features (i.e., just clock CpGs).
+* `flank`: **optional** - to build flanking windows of `window_size` around features provided in `subset`.
 
-Use the function `compute_windows()` to examine the windows calculated by `slide_imp()` before imputation.
+First, let's perform a dry run to examine the windows that will be imputed by `slide_imp`.
 
 ```{r}
 location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromosome
 
-# Examine the windows calculated by `slide_imp()`
-windows <- compute_windows(
-  location,
+slide_imp(
+  obj = chr1_beta,
+  location = location,
   window_size = 50,
   overlap_size = 5,
-  min_window_n = 11
+  min_window_n = 11, # must be > k = 10
+  dry_run = TRUE
 )
-windows
+```
 
-# Then do the imputation
+Then, we can perform the imputation using the given parameters.
+```{r}
 slide_imp(
   obj = chr1_beta,
   location = location,

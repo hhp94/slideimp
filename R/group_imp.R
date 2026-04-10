@@ -11,7 +11,7 @@ group_indices <- function(g, feat_splits, aux_splits, group_features) {
 process_group_params <- function(g, base_params, group, is_knn_mode) {
   group_params <- base_params
   if (is_knn_mode) {
-    group_params$subset <- group$features[[g]]
+    group_params$subset <- group$feature[[g]]
   }
   group_specific <- group$parameters[[g]]
   group_specific[["cores"]] <- NULL
@@ -32,28 +32,26 @@ normalize_list_column <- function(x) {
 #' K-NN or PCA imputation by groups, such as chromosomes, flanking columns, or clusters
 #' identified by column clustering techniques.
 #'
+#' @inheritParams slide_imp
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
-#' @inheritParams slide_imp
 #' @param group A data.frame/[tibble::tibble()] describing how features should be grouped for
 #' imputation. Accepts two formats:
 #'
 #' **Long format**:
 #' - **group**: A column identifying which group each feature belongs to
-#' - **features**: A character column of individual feature names
+#' - **feature**: A character column of individual feature names
 #'
 #' **List-column format** (preferably created by [group_features()]):
-#' - **features**: A list-column of character vectors of feature column names
+#' - **feature**: A list-column of character vectors of feature column names
 #' to impute
 #' - **aux**: (Optional) A list-column of character vectors of auxiliary column
 #' names used for imputation but not imputed themselves
 #' - **parameters**: (Optional) A list-column of group-specific parameter lists
 #'
-#' @param method For K-NN imputation: distance metric to use (`"euclidean"` or `"manhattan"`).
-#' For PCA imputation: regularization imputation algorithm (`"regularized"` or `"EM"`).
-#' @param cores The number of cores to parallelize over for K-NN imputation and small parts of
-#' PCA imputation with OpenMP only. To setup parallelization for K-NN without OpenMP and PCA
-#' imputation, use `mirai::daemons()`.
+#' @param cores The number of cores to parallelize over for K-NN imputation only.
+#' To setup parallelization for K-NN without OpenMP and PCA imputation, use
+#' `mirai::daemons()`.
 #'
 #' @param .progress Show imputation progress (default = `TRUE`)
 #'
@@ -105,41 +103,42 @@ group_imp <- function(
   maxiter = NULL,
   miniter = NULL
 ) {
+  feature <- NULL
   # pre-conditioning  ----
   checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
-  checkmate::assert_names(colnames(group), must.include = c("features"), .var.name = "group")
+  checkmate::assert_names(colnames(group), must.include = c("feature"), .var.name = "group")
   if (!tibble::is_tibble(group)) {
     group <- tibble::as_tibble(group)
   }
-  if ("group" %in% names(group) && inherits(group$features, "character")) {
+  if ("group" %in% names(group) && inherits(group$feature, "character")) {
     stopifnot("NA is not allowed in group$group" = !anyNA(group$group))
-    checkmate::assert_character(group$features, any.missing = FALSE, .var.name = "group$features")
+    checkmate::assert_character(group$feature, any.missing = FALSE, .var.name = "group$feature")
     if (is.numeric(group$group) && !checkmate::test_integerish(group$group)) {
       warning(
         "Non-integer numeric 'group$group' values detected. ",
         "`group_imp` reserves the name `group` in the `group` parameter ",
-        "to group the features in the `features` column. ",
+        "to group the features in the `feature` column. ",
         "Did you mean to use integer or character labels for `group$group`?"
       )
     }
-    group <- collapse::fsummarize(collapse::fgroup_by(group, group), features = list(features))
+    group <- collapse::fsummarize(collapse::fgroup_by(group, group), feature = list(feature))
     group$group <- NULL
-  } else if (inherits(group$features, "character")) {
+  } else if (inherits(group$feature, "character")) {
     stop(
-      "`group` has a character 'features' column but no 'group' column. ",
-      "Either add a 'group' column to define groups, or use list-columns (see ?group_features)."
+      "`group` has a character 'feature' column but no 'group' column. ",
+      "Either add a 'group' column to define groups, or use list-columns (see ?group_feature)."
     )
   }
-  checkmate::assert_list(group$features,
+  checkmate::assert_list(group$feature,
     types = "character", min.len = 1,
-    .var.name = "group$features"
+    .var.name = "group$feature"
   )
-  group$features <- lapply(group$features, normalize_list_column)
-  feat_lengths <- lengths(group$features)
+  group$feature <- lapply(group$feature, normalize_list_column)
+  feat_lengths <- lengths(group$feature)
   if (any(feat_lengths == 0L)) {
     stop(
-      sprintf("Group(s) %s have no features.", paste(which(feat_lengths == 0L), collapse = ", "))
+      sprintf("Group(s) %s have no feature.", paste(which(feat_lengths == 0L), collapse = ", "))
     )
   }
   if ("aux" %in% names(group)) {
@@ -152,7 +151,7 @@ group_imp <- function(
   } else {
     group$aux <- list(character(0))
   }
-  aux_only <- purrr::map2(group$aux, group$features, setdiff)
+  aux_only <- purrr::map2(group$aux, group$feature, setdiff)
   aux_lengths <- lengths(aux_only)
   ## Add global parameters into group$parameters
   ## Global parameters (if provided) override any duplicated group-wise entries.
@@ -220,7 +219,10 @@ group_imp <- function(
     ))
   }
   if (imp_method == "knn") {
-    allowed_params <- c("k", "method", "colmax", "post_imp", "dist_pow", "tree", "max_cache")
+    allowed_params <- c(
+      "cores", "k", "method", "colmax", "post_imp",
+      "dist_pow", "tree", "max_cache"
+    )
     required_param <- "k"
   } else {
     allowed_params <- c(
@@ -229,7 +231,6 @@ group_imp <- function(
     )
     required_param <- "ncp"
   }
-  allowed_params <- c("cores", allowed_params)
   all_param_names <- unique(unlist(lapply(group$parameters, names)))
   unknown_params <- setdiff(all_param_names, allowed_params)
   if (length(unknown_params) > 0) {
@@ -258,7 +259,7 @@ group_imp <- function(
   }
   cn <- colnames(obj)
   # `all_feats` doesn't have to cover all cn. Uncovered columns are un-imputed
-  all_feats <- unlist(group$features)
+  all_feats <- unlist(group$feature)
   all_aux <- unlist(group$aux)
   if (!all(unique(c(all_feats, all_aux)) %in% cn)) {
     stop("Some features or aux columns not found in `obj` column names")
@@ -296,30 +297,47 @@ group_imp <- function(
     group_indices,
     feat_splits = feat_splits,
     aux_splits = aux_splits,
-    group_features = group$features
+    group_features = group$feature
   )
 
-  # parallel logic
-  is_knn_mode <- imp_method == "knn"
+  # parallelism resolution logic
+  # 1. `cores`: OpenMP threads passed to knn_imp (always 1 for PCA)
+  # 2. `parallelize`: whether mirai daemons drive group-level parallelism
+  # Rules:
+  # - PCA ignores `cores` entirely (BLAS handles intra-call threading).
+  # - KNN uses `cores` for OpenMP, but defers to mirai if both are set.
+  # - Under mirai + PCA on threaded-BLAS systems, workers must pin BLAS to 1
+  # thread to avoid N_workers x N_blas_threads oversubscription.
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+  is_knn_mode <- imp_method == "knn"
 
-  if (cores > 1) {
-    if (!has_openmp()) {
-      message("OpenMP not available. Imputation will run single-threaded.")
-      cores <- 1
-    } else if (parallelize) {
-      message(
-        "Both `cores > 1` and `mirai::daemons()` detected. ",
-        "Setting `cores = 1` to avoid nested parallelism. ",
-        "Parallelization will be handled by `mirai`."
+  if (is_knn_mode) {
+    if (cores > 1) {
+      if (!has_openmp()) {
+        message("OpenMP not available. Imputation will run single-threaded.")
+        cores <- 1
+      } else if (parallelize) {
+        message(
+          "Both `cores > 1` and `mirai::daemons()` detected. ",
+          "Setting `cores = 1` to avoid nested parallelism. ",
+          "Parallelization will be handled by `mirai`."
+        )
+        cores <- 1
+      }
+    }
+  } else {
+    # PCA: cores is meaningless, BLAS does the intra-call threading
+    if (cores > 1) {
+      warning(
+        "`cores` is ignored for PCA imputation; parallelism comes from threaded ",
+        "BLAS or mirai daemons across groups. Setting `cores = 1`."
       )
       cores <- 1
     }
   }
 
-  # All imputation parameters now live in group$parameters (globals were
-  # folded in upfront). base_params only carries cores.
-  base_params <- list(cores = cores)
+  # base_params only carries cores, and only for KNN.
+  base_params <- if (is_knn_mode) list(cores = cores) else list()
 
   params <- lapply(
     iter,
@@ -332,10 +350,12 @@ group_imp <- function(
   # imputation
   imp_fn <- if (is_knn_mode) knn_imp else pca_imp
 
-  if (parallelize || cores > 1) {
-    message("Running Mode: parallel...")
+  if (parallelize) {
+    message("Running Mode: parallel (mirai across groups)...")
+  } else if (is_knn_mode && cores > 1) {
+    message("Running Mode: parallel (OpenMP within groups)...")
   } else {
-    message("Running Mode: sequential...")
+    message("Running Mode: sequential (note: PCA may still use threaded BLAS).")
   }
 
   if (parallelize) {
@@ -360,6 +380,8 @@ group_imp <- function(
 
     crated_fn <- purrr::in_parallel(
       function(i) {
+        RhpcBLASctl::blas_set_num_threads(1)
+        RhpcBLASctl::omp_set_num_threads(1)
         src <- bigmemory::attach.big.matrix(big_obj_desc)
         dst <- bigmemory::attach.big.matrix(big_out_desc)
         sub_mat <- src[, indices[[i]]$col_idx, drop = FALSE]
@@ -391,7 +413,7 @@ group_imp <- function(
     }
   }
 
-  class(obj) <- c("ImputedMatrix", class(obj))
+  class(obj) <- c("SlideImpImputedMatrix", class(obj))
   attr(obj, "imp_method") <- imp_method
   return(obj)
 }
@@ -404,9 +426,9 @@ group_imp <- function(
 #' and can pad groups to meet a minimum size.
 #'
 #' @inheritParams knn_imp
-#' @param features_df A data.frame with exactly two columns: `features` and
+#' @param features_df A data.frame with exactly two columns: `feature` and
 #' `group`. Maps feature identifiers to their respective groups. No missing
-#' values or duplicate `features` values are allowed.
+#' values or duplicate `feature` values are allowed.
 #' @param k Integer or `NULL`. If specified, prepares parameters for K-NN
 #' imputation with `k` neighbors. Cannot be used together with `ncp`.
 #' @param ncp Integer or `NULL`. If specified, prepares parameters for PCA
@@ -420,7 +442,7 @@ group_imp <- function(
 #'
 #' @return A `tibble::tibble()` with columns:
 #'
-#' - **features**: A list-column containing character vectors of feature column
+#' - **feature**: A list-column containing character vectors of feature column
 #' names to impute
 #' - **aux**: A list-column containing character vectors of auxiliary
 #' column names used for imputation but not imputed themselves. Omitted if all
@@ -429,10 +451,10 @@ group_imp <- function(
 #' or `ncp` are specified
 #'
 #' @examples
-#' sim_obj <- sim_mat(perc_col_NA = 1)
+#' sim_obj <- sim_mat(perc_col_na = 1)
 #'
-#' obj <- t(sim_obj$input)
-#' obj_meta <- sim_obj$group_feature
+#' obj <- sim_obj$input
+#' obj_meta <- sim_obj$col_group
 #'
 #' # group `obj` based on the metadata
 #' head(obj_meta)
@@ -442,7 +464,7 @@ group_imp <- function(
 #' group_df <- group_features(
 #'   obj,
 #'   obj_meta,
-#'   subset = sample(obj_meta$features, size = 10),
+#'   subset = sample(obj_meta$feature, size = 10),
 #'   k = 10
 #' )
 #' group_df
@@ -482,12 +504,12 @@ group_features <- function(
   )
   checkmate::assert_subset(
     colnames(features_df),
-    c("features", "group"),
+    c("feature", "group"),
     .var.name = "features_df"
   )
   stopifnot(
-    "`features_df$features` cannot contain duplicated values" =
-      anyDuplicated(features_df$features) == 0L
+    "`features_df$feature` cannot contain duplicated values" =
+      anyDuplicated(features_df$feature) == 0L
   )
   if (!is.null(k) && !is.null(ncp)) {
     stop("Specify either `k` for K-NN imputation or `ncp` for PCA imputation or neither, not both")
@@ -522,21 +544,21 @@ group_features <- function(
   }
 
   # cn_df is used for joining
-  cn_df <- data.frame(features = cn)
+  cn_df <- data.frame(feature = cn)
   if (!is.null(subset)) {
     # If there are subset, move all non subsets to `aux`
     cn_df$subset <- as.logical(
-      collapse::fmatch(cn_df$features, subset, nomatch = 0)
+      collapse::fmatch(cn_df$feature, subset, nomatch = 0)
     )
   } else {
-    # else everything is in features
+    # else everything is in feature
     cn_df$subset <- TRUE
   }
 
   matched <- collapse::join(
     cn_df,
     features_df,
-    on = "features",
+    on = "feature",
     how = "left",
     verbose = FALSE
   )
@@ -544,32 +566,32 @@ group_features <- function(
     stop("`colnames(obj)` matched with no group in `features_df$group`")
   }
 
-  # `features` list-column, to be imputed
-  features <- collapse::fsubset(matched, subset)
-  features <- tibble::tibble(
-    features = collapse::gsplit(features$features, features$group, use.g.names = TRUE),
-    group = names(features)
+  # `feature` list-column, to be imputed
+  feature <- collapse::fsubset(matched, subset)
+  feature <- tibble::tibble(
+    feature = collapse::gsplit(feature$feature, feature$group, use.g.names = TRUE),
+    group = names(feature)
   )
 
   # `aux` list=column, first part is to handle the subset function
   aux <- collapse::fsubset(matched, !subset)
   aux <- tibble::tibble(
-    aux = collapse::gsplit(aux$features, aux$group, use.g.names = TRUE),
+    aux = collapse::gsplit(aux$feature, aux$group, use.g.names = TRUE),
     group = names(aux)
   )
 
   # combine
-  group <- collapse::join(features, aux, on = "group", how = "left", verbose = FALSE)
-  group$length <- lengths(group$features) + lengths(group$aux)
+  group <- collapse::join(feature, aux, on = "group", how = "left", verbose = FALSE)
+  group$length <- lengths(group$feature) + lengths(group$aux)
 
   # pad groups to `min_group_size` if needed
   if (min_group_size > 0) {
     group$need <- pmax(min_group_size - group$length, 0)
-    group$min_group_size <- purrr::map2(group$features, group$need, \(x, y) {
+    group$min_group_size <- purrr::map2(group$feature, group$need, \(x, y) {
       if (y == 0) {
         return(NULL)
       }
-      pool <- setdiff(matched$features, x)
+      pool <- setdiff(matched$feature, x)
       if (length(pool) < y) {
         stop("`min_group_size` is too large")
       }
@@ -577,7 +599,7 @@ group_features <- function(
     })
     group$aux <- purrr::map2(group$aux, group$min_group_size, \(x, y) c(x, y))
     group[, c("need", "min_group_size")] <- NULL
-    group$length <- lengths(group$features) + lengths(group$aux)
+    group$length <- lengths(group$feature) + lengths(group$aux)
   }
 
   # add group specific `parameters` list column

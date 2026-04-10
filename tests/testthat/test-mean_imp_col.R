@@ -1,13 +1,6 @@
 test_that("`mean_imp_col` works", {
   set.seed(4321)
-  to_test <- t(
-    sim_mat(
-      n = 20,
-      m = 10,
-      perc_NA = 0.5,
-      perc_col_NA = 1
-    )$input
-  )
+  to_test <- sim_mat(10, 20, perc_total_na = 0.5, perc_col_na = 1)$input
   c_manual <- to_test
   r_manual <- to_test
   na_indices <- which(is.na(to_test), arr.ind = TRUE)

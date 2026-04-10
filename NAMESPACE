@@ -2,10 +2,10 @@
 
 S3method(compute_metrics,TuneImp)
 S3method(compute_metrics,data.frame)
-S3method(print,ImputedMatrix)
+S3method(print,SlideImpImputedMatrix)
+S3method(print,SlideImpSimMat)
 export(col_vars)
 export(compute_metrics)
-export(compute_windows)
 export(group_features)
 export(group_imp)
 export(inject_na)

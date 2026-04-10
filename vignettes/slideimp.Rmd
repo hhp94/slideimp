@@ -81,21 +81,28 @@ Here, we simulate data where only a subset of CpGs are needed for imputation.
 
 ```{r}
 # 500 features, 50 samples, 2 chromosomes
-sim_obj <- sim_mat(n = 500, m = 50, nchr = 2)
+sim_obj <- sim_mat(n = 50, p = 500, n_col_groups = 2)
 # sim_mat returns matrix with features in rows, so we use t() to put features in columns
-obj <- t(sim_obj$input)
+obj <- sim_obj$input
 # `group_feature` contains metadata for the simulated data
-head(sim_obj$group_feature)
+head(sim_obj$col_group)
 n_needed <- 100
 # Randomly select CpGs that are needed for clock calculation
 subset_cpgs <- sample(colnames(obj), size = n_needed)
 ```
 
+- `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation.
+- `group_imp()` requires a `group` tibble, *preferably* created with `group_features()`, with three list-columns:
+  - `features`: **required** - a list-column where each element is a character vector of variable names to be imputed together.
+  - `aux`: **optional** - auxiliary variables to include in each group.
+  - `parameters`: **optional** - group-specific imputation parameters.
+- In this example, we have data from 2 chromosomes so the `group` tibble should have **two rows** (one per chromosome), with the corresponding variables listed in the `features` column for each row.
+
 We define the `features` list-column as a list of character vectors containing features to be imputed. Elements of the `features` list-column are subsets of the `subset_cpgs` character vector. These CpGs belong to either `chr1` or `chr2`, so we split them into two groups, resulting in two rows of the `group_df` tibble. The `aux` list-column now contains the remaining CpGs from either `chr1` or `chr2` that are not imputed themselves but are used to increase the accuracy of imputing the CpGs in the `features` list-column.
 
 ```{r}
 # Construct the group data.frame with one row per group (i.e., chromosome)
-group_df <- group_features(obj, sim_obj$group_feature, subset = subset_cpgs)
+group_df <- group_features(obj, sim_obj$col_group, subset = subset_cpgs)
 group_df
 ```
 

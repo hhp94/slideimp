@@ -58,7 +58,7 @@ matrix where variables are stored in the columns.
 library(slideimp)
 # Simulate data from 2 chromosomes
 set.seed(1234)
-sim_obj <- sim_mat(m = 20, n = 50, perc_NA = 0.3, perc_col_NA = 1, nchr = 2)
+sim_obj <- sim_mat(m = 20, n = 50, perc_total_na = 0.3, perc_col_na = 1, nchr = 2)
 # Here we see that variables are stored in rows
 sim_obj$input[1:5, 1:5]
 #>              s1        s2        s3        s4        s5
@@ -152,7 +152,7 @@ PCA-based imputation with `group_imp()` can be parallelized using the
 
 ``` r
 # Use the `group_features()` helper function
-group_df <- group_features(obj, sim_obj$group_feature)
+group_df <- group_features(obj, sim_obj$col_group)
 group_df
 
 # We choose K-NN imputation, k = 5, from the `tune_imp` results.
@@ -180,7 +180,7 @@ Sliding window imputation can be performed using `slide_imp()`.
 imputation. See the package vignette for more details.
 
 ``` r
-chr1_beta <- t(sim_mat(m = 10, n = 2000, perc_NA = 0.3, perc_col_NA = 1, nchr = 1)$input)
+chr1_beta <- t(sim_mat(m = 10, n = 2000, perc_total_na = 0.3, perc_col_na = 1, nchr = 1)$input)
 dim(chr1_beta)
 #> [1]   10 2000
 chr1_beta[1:5, 1:5]
@@ -251,7 +251,7 @@ slide_imp(
   cores = 2,
   .progress = FALSE
 )
-#> ImputedMatrix (KNN)
+#> SlideImpImputedMatrix (KNN)
 #> Dimensions: 10 x 2000
 #> 
 #>        feat1     feat2     feat3     feat4     feat5

@@ -25,8 +25,6 @@
 #' @param nb.init integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation
 #' @param maxiter integer, maximum number of iteration for the algorithm
 #' @param miniter integer, minimum number of iteration for the algorithm
-#' @param cores Number of cores to parallelize over. Only helps in small parts
-#' of the algorithm.
 #'
 #' @inherit knn_imp return
 #'
@@ -50,7 +48,7 @@
 pca_imp <- function(
   obj, ncp = 2, scale = TRUE, method = c("regularized", "EM"),
   coeff.ridge = 1, row.w = NULL, threshold = 1e-6, seed = NULL,
-  nb.init = 1, maxiter = 1000, miniter = 5, cores = 1
+  nb.init = 1, maxiter = 1000, miniter = 5
 ) {
   #### Main program
   checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
@@ -70,7 +68,7 @@ pca_imp <- function(
       lower = 1e-10
     ),
     checkmate::check_choice(row.w, choices = "n_miss"),
-    null.ok = TRUE,
+    checkmate::check_null(row.w),
     .var.name = "row.w"
   )
   checkmate::assert_number(threshold, lower = 0, .var.name = "threshold")
@@ -81,7 +79,6 @@ pca_imp <- function(
   }
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
-  checkmate::assert_int(cores, lower = 1, .var.name = "cores")
 
   obj_vars <- col_vars(obj)
   if (any(obj_vars < .Machine$double.eps | is.na(obj_vars))) {
@@ -120,8 +117,7 @@ pca_imp <- function(
       maxiter = maxiter,
       miniter = miniter,
       row_w = row.w,
-      coeff_ridge = coeff.ridge,
-      cores = cores
+      coeff_ridge = coeff.ridge
     )
     cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {
@@ -132,7 +128,7 @@ pca_imp <- function(
   # apply best imputation
   obj[miss] <- best_imputed
 
-  class(obj) <- c("ImputedMatrix", class(obj))
+  class(obj) <- c("SlideImpImputedMatrix", class(obj))
   attr(obj, "imp_method") <- "pca"
   return(obj)
 }

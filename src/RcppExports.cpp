@@ -13,8 +13,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // pca_imp_internal_cpp
-Rcpp::List pca_imp_internal_cpp(arma::mat X, const arma::umat& miss, const arma::uword ncp, const bool scale, const bool regularized, const double threshold, const arma::uword init, const arma::uword maxiter, const arma::uword miniter, arma::rowvec row_w, const double coeff_ridge, const int cores);
-RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP XSEXP, SEXP missSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP, SEXP coresSEXP) {
+Rcpp::List pca_imp_internal_cpp(arma::mat X, const arma::umat& miss, const arma::uword ncp, const bool scale, const bool regularized, const double threshold, const arma::uword init, const arma::uword maxiter, const arma::uword miniter, arma::rowvec row_w, const double coeff_ridge);
+RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP XSEXP, SEXP missSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -29,8 +29,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::uword >::type miniter(miniterSEXP);
     Rcpp::traits::input_parameter< arma::rowvec >::type row_w(row_wSEXP);
     Rcpp::traits::input_parameter< const double >::type coeff_ridge(coeff_ridgeSEXP);
-    Rcpp::traits::input_parameter< const int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(X, miss, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge, cores));
+    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(X, miss, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -133,7 +132,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 12},
+    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 11},
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 10},

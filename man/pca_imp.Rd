@@ -15,8 +15,7 @@ pca_imp(
   seed = NULL,
   nb.init = 1,
   maxiter = 1000,
-  miniter = 5,
-  cores = 1
+  miniter = 5
 )
 }
 \arguments{
@@ -48,9 +47,6 @@ Weights are normalized to sum to 1.}
 \item{maxiter}{integer, maximum number of iteration for the algorithm}
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
-
-\item{cores}{Number of cores to parallelize over. Only helps in small parts
-of the algorithm.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.

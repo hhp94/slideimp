@@ -2,59 +2,49 @@
 % Please edit documentation in R/sim_mat.R
 \name{sim_mat}
 \alias{sim_mat}
-\title{Simulate Methylation Beta Values with Metadata}
+\title{Simulate Matrix with Metadata}
 \usage{
 sim_mat(
   n = 100,
-  m = 100,
-  nchr = 2,
-  ngrp = 1,
-  perc_NA = 0.5,
-  perc_col_NA = 0.5,
+  p = 100,
+  rho = 0.5,
+  n_col_groups = 2,
+  n_row_groups = 1,
+  perc_total_na = 0.1,
+  perc_col_na = 0.5,
   beta = TRUE
 )
 }
 \arguments{
-\item{n}{An integer specifying the number of rows (features). Default is \code{100}.}
+\item{n}{An integer specifying the number of rows (samples). Default is \code{100}.}
 
-\item{m}{An integer specifying the number of columns (samples). Default is \code{100}.}
+\item{p}{An integer specifying the number of columns (features). Default is \code{100}.}
 
-\item{nchr}{An integer for the number of chromosome groups to assign to features (e.g., \code{nchr = 22} for human autosomes). Default is \code{2}.}
+\item{rho}{Columns correlation before scaling. Default is \code{0.5}.}
 
-\item{ngrp}{An integer for the number of groups to assign to samples. Default is \code{1}.}
+\item{n_col_groups}{An integer for the number of groups to assign to features/columns. Default is \code{2}.}
 
-\item{perc_NA}{A numeric value between 0 and 1 indicating the proportion of values to set to \code{NA} within each selected row. Default is \code{0.5}.}
+\item{n_row_groups}{An integer for the number of groups to assign to samples/rows. Default is \code{1}.}
 
-\item{perc_col_NA}{A numeric value between 0 and 1 indicating the proportion of rows to select for \code{NA} introduction. Default is \code{0.5}.}
+\item{perc_total_na}{Proportion of all cells to set to NA. Default is \code{0.1}.}
 
-\item{beta}{If TRUE (default) then simulate beta values by scaling the values between 0 and 1.}
+\item{perc_col_na}{Proportion of columns across which those NAs are spread. Default is \code{0.5}.}
+
+\item{beta}{If TRUE (default) scale values between 0 and 1 column wise.}
 }
 \value{
-A \code{list} with the following elements:
-\itemize{
-\item \code{input}: The simulated \code{n} x \code{m} numeric matrix with values between 0 and 1.
-\item \code{group_feature}: A \code{data.frame} with feature IDs and their assigned chromosome group.
-\item \code{group_sample}: A \code{data.frame} with sample IDs and their assigned group.
-}
+An object of class \code{SlideImpSimMat} which is a list with \code{input},
+\code{col_group}, and \code{row_group}.
 }
 \description{
-This function generates a matrix of random normal data, scaled between 0 and 1
-per column. It also creates corresponding data frames for feature and sample
-metadata and can optionally introduce \code{NA} values into a specified proportion
-of rows.
+Generates a matrix of random normal data then optionally scale to between 0
+and 1 between columns. It also creates corresponding data frames for feature
+(column) and sample (row) metadata and can optionally introduce \code{NA} values
+into a specified proportion of rows. A correlation between columns \code{rho}
+(before scaling) can be added.
 }
 \examples{
 set.seed(123)
-sim_data <- sim_mat(n = 50, m = 10)
-
-# Metadata of each features
-sim_data$group_feature[1:5, ]
-sim_data$group_sample[1:5, ]
-
-# View the first few rows and columns of the matrix
-sim_data$input[1:5, 1:5]
-
-# Generate a dataset with no missing values
-sim_data_complete <- sim_mat(n = 50, m = 10, perc_NA = 0, perc_col_NA = 0)
-sum(is.na(sim_data_complete$input))
+sim_data <- sim_mat(n = 50, p = 10, rho = 0.5)
+sim_data
 }

@@ -17,9 +17,9 @@ group_features(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{features_df}{A data.frame with exactly two columns: \code{features} and
+\item{features_df}{A data.frame with exactly two columns: \code{feature} and
 \code{group}. Maps feature identifiers to their respective groups. No missing
-values or duplicate \code{features} values are allowed.}
+values or duplicate \code{feature} values are allowed.}
 
 \item{k}{Integer or \code{NULL}. If specified, prepares parameters for K-NN
 imputation with \code{k} neighbors. Cannot be used together with \code{ncp}.}
@@ -41,7 +41,7 @@ for \code{min_group_size} padding.}
 \value{
 A \code{tibble::tibble()} with columns:
 \itemize{
-\item \strong{features}: A list-column containing character vectors of feature column
+\item \strong{feature}: A list-column containing character vectors of feature column
 names to impute
 \item \strong{aux}: A list-column containing character vectors of auxiliary
 column names used for imputation but not imputed themselves. Omitted if all
@@ -57,10 +57,10 @@ organizes features into groups, handles imputation of only a subset of features,
 and can pad groups to meet a minimum size.
 }
 \examples{
-sim_obj <- sim_mat(perc_col_NA = 1)
+sim_obj <- sim_mat(perc_col_na = 1)
 
-obj <- t(sim_obj$input)
-obj_meta <- sim_obj$group_feature
+obj <- sim_obj$input
+obj_meta <- sim_obj$col_group
 
 # group `obj` based on the metadata
 head(obj_meta)
@@ -70,7 +70,7 @@ head(obj_meta)
 group_df <- group_features(
   obj,
   obj_meta,
-  subset = sample(obj_meta$features, size = 10),
+  subset = sample(obj_meta$feature, size = 10),
   k = 10
 )
 group_df
