@@ -39,7 +39,7 @@ sampled from remaining columns to meet this threshold.}
 for \code{min_group_size} padding.}
 }
 \value{
-A \code{tibble::tibble()} with columns:
+A \code{data.frame} of class \code{slideimp_tbl} with columns:
 \itemize{
 \item \strong{feature}: A list-column containing character vectors of feature column
 names to impute

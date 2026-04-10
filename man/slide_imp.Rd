@@ -57,7 +57,7 @@ be smaller than \code{min_window_n}.}
 indices specifying which columns to impute.}
 
 \item{dry_run}{Logical. If \code{TRUE}, skip imputation and return a
-\code{\link[tibble:tibble]{tibble::tibble()}} of the windows that \emph{would} be used (after all dropping
+\code{slideimp_tbl} object of the windows that \emph{would} be used (after all dropping
 rules). \code{k}/\code{ncp} are not required in this mode. Columns: \code{start}, \code{end},
 \code{window_n}, plus \code{subset_local} (list-column of local subset indices) when
 \code{flank = FALSE}, or \code{target} and \code{subset_local} when \code{flank = TRUE}.
@@ -113,7 +113,7 @@ For PCA imputation: regularization imputation algorithm (\code{"regularized"} or
 \value{
 By default, a numeric matrix of the same dimensions as \code{obj} with
 missing values imputed. If \code{dry_run = TRUE}, instead returns a
-\code{\link[tibble:tibble]{tibble::tibble()}} of the windows that would be used (after all dropping
+\code{slideimp_tbl} object of the windows that would be used (after all dropping
 rules), without performing imputation.
 }
 \description{

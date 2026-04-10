@@ -51,7 +51,7 @@ find_overlap_regions <- function(start, end) {
 #' @param method For K-NN imputation: distance metric to use (`"euclidean"` or `"manhattan"`).
 #' For PCA imputation: regularization imputation algorithm (`"regularized"` or `"EM"`).
 #' @param dry_run Logical. If `TRUE`, skip imputation and return a
-#' [tibble::tibble()] of the windows that *would* be used (after all dropping
+#' `slideimp_tbl` object of the windows that *would* be used (after all dropping
 #' rules). `k`/`ncp` are not required in this mode. Columns: `start`, `end`,
 #' `window_n`, plus `subset_local` (list-column of local subset indices) when
 #' `flank = FALSE`, or `target` and `subset_local` when `flank = TRUE`.
@@ -77,7 +77,7 @@ find_overlap_regions <- function(start, end) {
 #'
 #' @returns By default, a numeric matrix of the same dimensions as `obj` with
 #' missing values imputed. If `dry_run = TRUE`, instead returns a
-#' [tibble::tibble()] of the windows that would be used (after all dropping
+#' `slideimp_tbl` object of the windows that would be used (after all dropping
 #' rules), without performing imputation.
 #'
 #' @examples
@@ -322,22 +322,17 @@ slide_imp <- function(
 
   # early return: window statistics only ----
   if (dry_run) {
+    out <- data.frame(
+      start = start,
+      end = end,
+      window_n = end - start + 1L
+    )
     if (flank) {
-      return(tibble::tibble(
-        start = start,
-        end = end,
-        target = target_cols,
-        subset_local = unlist(subset_list),
-        window_n = end - start + 1L
-      ))
-    } else {
-      return(tibble::tibble(
-        start = start,
-        end = end,
-        window_n = end - start + 1L,
-        subset_local = subset_list
-      ))
+      out$target <- target_cols
     }
+    out$subset_local <- subset_list
+    class(out) <- c("slideimp_tbl", "data.frame")
+    return(out)
   }
 
   # Sliding Imputation ----
@@ -451,7 +446,7 @@ slide_imp <- function(
     }
   }
 
-  class(result) <- c("SlideImpImputedMatrix", class(result))
+  class(result) <- c("slideimp_results", class(result))
   attr(result, "imp_method") <- imp_method
   return(result)
 }

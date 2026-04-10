@@ -22,7 +22,7 @@ tune_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{parameters}{A \code{\link[tibble:tibble]{tibble::tibble()}}/data.frame specifying parameter combinations to tune, where each column
+\item{parameters}{A data.frame specifying parameter combinations to tune, where each column
 represents a parameter accepted by \code{.f} (excluding \code{obj}). List columns are supported
 for complex parameters. Duplicate rows are automatically removed. \code{NULL} would be equal to tune the
 function with default parameters.}
@@ -61,8 +61,8 @@ position of each column (e.g., genomic coordinates). Used to define
 sliding windows.}
 }
 \value{
-A \code{tibble::tibble()} with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),
-\code{rep} (repetition index), and \code{result} (a nested tibble containing \code{truth} and \code{estimate}
+A data.frame with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),
+\code{rep} (repetition index), and \code{result} (a nested data.frame containing \code{truth} and \code{estimate}
 columns for true and imputed values, respectively).
 }
 \description{

@@ -33,7 +33,7 @@ sim_mat(
 \item{beta}{If TRUE (default) scale values between 0 and 1 column wise.}
 }
 \value{
-An object of class \code{SlideImpSimMat} which is a list with \code{input},
+An object of class \code{slideimp_sim} which is a list with \code{input},
 \code{col_group}, and \code{row_group}.
 }
 \description{

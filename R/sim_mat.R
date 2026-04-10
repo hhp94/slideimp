@@ -16,7 +16,7 @@
 #' @param perc_col_na Proportion of columns across which those NAs are spread. Default is `0.5`.
 #' @param beta If TRUE (default) scale values between 0 and 1 column wise.
 #'
-#' @return An object of class `SlideImpSimMat` which is a list with `input`,
+#' @return An object of class `slideimp_sim` which is a list with `input`,
 #'   `col_group`, and `row_group`.
 #'
 #' @export
@@ -111,6 +111,6 @@ sim_mat <- function(
       n_col_groups = n_col_groups,
       n_row_groups = n_row_groups
     ),
-    class = "SlideImpSimMat"
+    class = "slideimp_sim"
   )
 }

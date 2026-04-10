@@ -26,17 +26,15 @@ Depends:
     R (>= 4.1.0)
 Imports:
     bigmemory,
+    carrier,
     checkmate,
     cli,
     collapse,
     mirai,
-    purrr,
     Rcpp,
     RhpcBLASctl,
-    stats,
-    tibble
+    stats
 Suggests:
-    carrier,
     knitr,
     missMDA,
     rlang,

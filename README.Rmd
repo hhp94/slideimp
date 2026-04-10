@@ -23,10 +23,10 @@ knitr::opts_chunk$set(
 
 **Core functions**
 
-* `slide_imp()`: Sliding window K-NN or PCA imputation for extremely high-dimensional numeric matrices with ordered features (i.e., by genomic position).
 * `group_imp()`: Parallelizable group-wise (e.g., by chromosomes or column clusters) K-NN or PCA imputation with optional auxiliary features and group-wise parameters.
-  * (Basic): `group_imp()` requires a `data.frame` (or `tibble`) for the `group` argument. This data frame must contains a `feature` column (character strings of feature names) and a `group` column (defining the group).
+  * (Basic): `group_imp()` requires a `data.frame` for the `group` argument. This `data.frame` must contains a `feature` column (character strings of feature names) and a `group` column (defining the group).
   * (Advanced): `group_features()`: `group_imp()`'s helper function to create groups based on a mapping data.frame (i.e., Illumina manifests). See [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) on GitHub for tools to process common Illumina manifests.
+* `slide_imp()`: Sliding window K-NN or PCA imputation for extremely high-dimensional numeric matrices (WGBS/EM-seq) with ordered features (i.e., by genomic position).
 * `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.
 * `knn_imp()`: Full-matrix K-NN imputation with multi-core parallelization, [`{mlpack}`](https://mlpack.org/) KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).
 * `pca_imp()`: Optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrices.
@@ -60,39 +60,26 @@ sim_obj
 obj <- sim_obj$input
 ```
 
-We can estimate the prediction accuracy of different methods and tune hyperparameters prior to imputation with `tune_imp()`.
-
-For custom functions (`.f` argument), the `parameters` data.frame must include the columns corresponding to the arguments passed to the custom function. The custom function must accept `obj` as the first argument and return a matrix with the same dimensions as `obj`.
-
-We tune the results using 2 repeats (`rep = 2`) for illustration (increase in actual analyses).
+We can estimate the prediction accuracy of different methods and tune hyperparameters prior to imputation with `tune_imp()`. For example tune the results using 2 repeats (`rep = 2`) for illustration (increase in actual analyses).
 
 ```{r}
 # Our parameters grid contains 2 values: k = 5 and 20.
-knn_params <- tibble::tibble(k = c(5, 20))
+knn_params <- data.frame(k = c(5, 20))
 # Parallelization with OpenMP is controlled by `cores` only for knn or slideimp knn with OpenMP only.
 tune_knn <- tune_imp(obj, parameters = knn_params, .f = "knn_imp", cores = 2, rep = 2)
 compute_metrics(tune_knn)
 ```
 
-For K-NN without OpenMP, PCA, and custom functions, setup parallelization with `mirai::daemons()`.
+For K-NN without OpenMP, PCA, and custom functions (see vignette), setup parallelization with `mirai::daemons()`.
+
 ```{r, eval = F}
 mirai::daemons(2) # 2 Cores
 # Note, for PCA and custom functions, cores is controlled by `mirai::daemons()`
 # and the `cores` argument is ignored.
 
 # PCA imputation.
-pca_params <- tibble::tibble(ncp = c(1, 5))
+pca_params <- data.frame(ncp = c(1, 5))
 tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", rep = 2)
-
-# The parameters have `mean` and `sd` columns.
-custom_params <- tibble::tibble(mean = 1, sd = 0)
-# This function imputes data with rnorm values of different `mean` and `sd`.
-custom_function <- function(obj, mean, sd) {
-  missing <- is.na(obj)
-  obj[missing] <- rnorm(sum(missing), mean = mean, sd = sd)
-  return(obj)
-}
-tune_custom <- tune_imp(obj, parameters = custom_params, .f = custom_function, rep = 2)
 
 mirai::daemons(0) # Close daemons
 ```
@@ -104,8 +91,6 @@ Then, preferably perform imputation by group with `group_imp()` if the variables
 PCA-based imputation with `group_imp()` can be parallelized using the `{mirai}` package, similar to how parallelization is done with `tune_imp()`.
 
 ```{r, eval = F}
-head(sim_obj$col_group)
-
 # We picked k = 5 (use parameters with lowest errors in actual analyses)
 knn_group_results <- group_imp(obj, group = sim_obj$col_group, k = 5, cores = 2)
 
@@ -123,7 +108,7 @@ full_pca_results <- pca_imp(obj = obj, ncp = 5)
 ```
 
 ## Sliding Window Imputation
-Sliding window imputation can be performed using `slide_imp()`. **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e. run `slide_imp()` separately on each chromosome) before imputation. See the package vignette for more details.
+Sliding window imputation can be performed using `slide_imp()`. **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e. run `slide_imp()` separately on each chromosome) before imputation. See the package vignette for more details. This function is **not** for Illumina DNAm microarrays, see `group_imp()`.
 
 ```{r}
 # Simulate some data

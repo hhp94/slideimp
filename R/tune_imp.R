@@ -181,7 +181,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
 #' @param check_sd Check if after NA injections zero variance columns are created or not.
 #' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default to 1000).
-#' @param parameters A [tibble::tibble()]/data.frame specifying parameter combinations to tune, where each column
+#' @param parameters A data.frame specifying parameter combinations to tune, where each column
 #' represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
 #' for complex parameters. Duplicate rows are automatically removed. `NULL` would be equal to tune the
 #' function with default parameters.
@@ -198,8 +198,8 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation with OpenMP only.
 #' To setup parallelization for K-NN without OpenMP, PCA, and sliding window PCA imputation, use `mirai::daemons()`.
 #'
-#' @return A `tibble::tibble()` with columns from `parameters`, plus `param_set` (unique parameter set ID),
-#' `rep` (repetition index), and `result` (a nested tibble containing `truth` and `estimate`
+#' @return A data.frame with columns from `parameters`, plus `param_set` (unique parameter set ID),
+#' `rep` (repetition index), and `result` (a nested data.frame containing `truth` and `estimate`
 #' columns for true and imputed values, respectively).
 #'
 #' @examples
@@ -280,7 +280,7 @@ tune_imp <- function(
   # if parameters is NULL, create a 1-row placeholder
   if (is.null(parameters)) {
     parameters_is_null <- TRUE
-    parameters <- tibble::tibble(.placeholder = TRUE)
+    parameters <- data.frame(.placeholder = TRUE)
   } else {
     parameters_is_null <- FALSE
     checkmate::assert_data_frame(
@@ -377,7 +377,7 @@ tune_imp <- function(
     if (length(unique(elem_lengths)) != 1) {
       stop("All elements in `rep` list must have the same length")
     }
-    purrr::walk(seq_along(rep), \(i) {
+    for (i in seq_along(rep)) {
       checkmate::assert_integerish(
         rep[[i]],
         lower = 1,
@@ -388,13 +388,12 @@ tune_imp <- function(
         null.ok = FALSE,
         .var.name = sprintf("rep[[%d]]", i)
       )
-    })
+    }
     rep_is_list <- TRUE
     n_reps <- length(rep)
   } else {
     stop("`rep` must be either a positive integer or a list of NA location vectors")
   }
-  checkmate::assert_count(max_iter, positive = TRUE, .var.name = "max_iter")
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(check_sd, .var.name = "check_sd")
   checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
@@ -403,12 +402,23 @@ tune_imp <- function(
 
   .rowid <- seq_len(nrow(parameters))
 
-  indices <- tibble::as_tibble(expand.grid(
+  indices <- expand.grid(
     param_set = .rowid,
     rep = seq_len(n_reps)
-  ))
+  )
 
   message("Step 1/2: Injecting NA")
+
+  # parallelization
+  is_knn_mode <- {
+    (is.character(.f) && .f == "knn_imp") ||
+      (is.character(.f) && .f == "slide_imp" && "k" %in% names(parameters))
+  }
+  if (is.character(.f)) {
+    if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
+      check_sd <- TRUE
+    }
+  }
 
   # Generate or use NA injection locations
   if (rep_is_list) {
@@ -429,20 +439,9 @@ tune_imp <- function(
       simplify = FALSE
     )
   }
-  # parallelization
-  is_knn_mode <- {
-    (is.character(.f) && .f == "knn_imp") ||
-      (is.character(.f) && .f == "slide_imp" && "k" %in% names(parameters))
-  }
-
-  if (is.character(.f)) {
-    if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
-      check_sd <- TRUE
-    }
-  }
 
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
-  if (cores > 1 & is_knn_mode) {
+  if (cores > 1 && is_knn_mode) {
     if (!has_openmp()) {
       message("OpenMP not available. KNN will run single-threaded.")
       cores <- 1
@@ -454,9 +453,9 @@ tune_imp <- function(
       )
       cores <- 1
     }
-    parameters$cores <- cores
   }
-  if (cores > 1 & !is_knn_mode) {
+
+  if (!parallelize && cores > 1 && !is_knn_mode) {
     message(
       sprintf(
         "cores = %d but is ignored for non-KNN imputation. Call `mirai::daemons(%d)` to set up parallelization.",
@@ -466,41 +465,17 @@ tune_imp <- function(
     )
   }
 
-  if (parallelize) {
-    fn <- purrr::in_parallel
-  } else {
-    fn <- function(x, ...) {
-      x
-    }
-  }
-
-  if (parallelize || is_knn_mode && cores > 1) {
+  if (parallelize || (is_knn_mode && cores > 1)) {
     message("Running Mode: parallel...")
   } else {
     message("Running Mode: sequential...")
   }
 
-  # Create the crated function based on the type of imputation
-  # Determine the target function and validation requirements
-  if (is.character(.f)) {
-    if (.f == "slide_imp") {
-      target_function <- slide_imp
-      validate_output <- FALSE
-    } else if (.f == "knn_imp") {
-      target_function <- knn_imp
-      validate_output <- FALSE
-    } else if (.f == "pca_imp") {
-      target_function <- pca_imp
-      validate_output <- FALSE
-    }
-  } else {
-    target_function <- .f
-    validate_output <- TRUE
-  }
-
   # Build extra fixed args for slide_imp (location is not a tuning parameter)
   is_slide <- is.character(.f) && .f == "slide_imp"
-  fixed_args <- if (is_slide) list(location = location) else list()
+  fixed_args <- list()
+  if (is_slide) fixed_args$location <- location
+  if (is_knn_mode) fixed_args$cores <- cores
 
   # Parameter list
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
@@ -518,72 +493,149 @@ tune_imp <- function(
     })
     row_list
   })
-  # create a single unified crated function
-  crated_fn <- fn(
-    function(i) {
-      tryCatch(
-        {
-          # Create matrix with injected NAs
-          pre <- obj
-          na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
-          pre[na_positions] <- NA
-          # Get true values
-          truth_vec <- obj[na_positions]
-          # Get parameters for this iteration
-          param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
-          # Run imputation function (include fixed_args for slide_imp)
-          imputed_result <- do.call(
-            target_function,
-            args = c(list(obj = pre), fixed_args, param_vec)
-          )
-          # validate result if it's a custom function
-          if (validate_output) {
-            checkmate::assert_matrix(
-              imputed_result,
-              mode = "numeric",
-              nrows = nr,
-              ncols = nc,
-              null.ok = FALSE,
-              .var.name = "imputed_result"
-            )
-            checkmate::assert_true(sum(is.infinite(imputed_result)) == 0, .var.name = "imputed_result")
-          }
-          estimate_vec <- imputed_result[na_positions]
-          tibble::tibble(truth = truth_vec, estimate = estimate_vec)
-        },
-        error = function(e) {
-          message(e)
-          tibble::tibble(truth = numeric(), estimate = numeric())
-        }
-      )
-    },
-    target_function = target_function,
-    validate_output = validate_output,
-    obj = obj,
-    na_loc = na_loc,
-    indices = indices,
-    nr = nr,
-    nc = nc,
-    parameters_list = parameters_list,
-    fixed_args = fixed_args
-  )
+
+  # validate the output of custom function once and convert character .f to function
+  if (is.character(.f)) {
+    impute_f <- switch(.f,
+      slide_imp = slide_imp,
+      knn_imp   = knn_imp,
+      pca_imp   = pca_imp
+    )
+  } else {
+    # custom function: probe once on the main process to validate output shape
+    impute_f <- .f
+    pre <- obj
+    na_positions <- na_loc[[1]]
+    pre[na_positions] <- NA
+    param_vec <- parameters_list[[1]]
+    probe_result <- do.call(
+      impute_f,
+      c(list(obj = pre), fixed_args, param_vec)
+    )
+    tryCatch(
+      {
+        checkmate::assert_matrix(
+          probe_result,
+          mode = "numeric",
+          nrows = nr, ncols = nc, null.ok = FALSE,
+          .var.name = "imputed_result"
+        )
+        checkmate::assert_true(
+          sum(is.infinite(probe_result)) == 0,
+          .var.name = "imputed_result"
+        )
+      },
+      error = function(e) {
+        stop(
+          "Custom `.f` must accept `obj` as its first argument and return a ",
+          "numeric matrix with the same dimensions as `obj` and no Inf values.",
+          call. = FALSE
+        )
+      }
+    )
+  }
 
   message("Step 2/2: Tuning\n")
 
-  # execute the mapping with the crated function
-  result_list <- purrr::map(seq_len(nrow(indices)), crated_fn, .progress = .progress)
+  iter <- seq_len(nrow(indices))
+
+  if (parallelize) {
+    # crated function only needed for parallel branch
+    crated_fn <- carrier::crate(
+      function(i) {
+        # pin BLAS/OMP threads inside each worker. Doesn't modify user's BLAS.
+        RhpcBLASctl::blas_set_num_threads(1)
+        RhpcBLASctl::omp_set_num_threads(1)
+        tryCatch(
+          {
+            pre <- obj
+            na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
+            pre[na_positions] <- NA
+            truth_vec <- obj[na_positions]
+            param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
+            imputed_result <- do.call(
+              impute_f,
+              args = c(list(obj = pre), fixed_args, param_vec)
+            )
+            estimate_vec <- imputed_result[na_positions]
+            data.frame(truth = truth_vec, estimate = estimate_vec)
+          },
+          error = function(e) {
+            out <- data.frame(truth = numeric(), estimate = numeric())
+            attr(out, "error") <- conditionMessage(e)
+            out
+          }
+        )
+      },
+      impute_f = impute_f,
+      obj = obj,
+      na_loc = na_loc,
+      indices = indices,
+      nr = nr,
+      nc = nc,
+      parameters_list = parameters_list,
+      fixed_args = fixed_args
+    )
+    result_list <- mirai::mirai_map(iter, crated_fn)[.progress = .progress]
+  } else {
+    # sequential: plain closure, no crate, no BLAS pinning
+    run_one <- function(i) {
+      tryCatch(
+        {
+          pre <- obj
+          na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
+          pre[na_positions] <- NA
+          truth_vec <- obj[na_positions]
+          param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
+          imputed_result <- do.call(
+            impute_f,
+            args = c(list(obj = pre), fixed_args, param_vec)
+          )
+          estimate_vec <- imputed_result[na_positions]
+          data.frame(truth = truth_vec, estimate = estimate_vec)
+        },
+        error = function(e) {
+          out <- data.frame(truth = numeric(), estimate = numeric())
+          attr(out, "error") <- conditionMessage(e)
+          out
+        }
+      )
+    }
+    if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
+    result_list <- lapply(iter, function(i) {
+      out <- run_one(i)
+      if (.progress) cli::cli_progress_update(id = pb)
+      out
+    })
+    if (.progress) cli::cli_progress_done(id = pb)
+  }
+
   # combine parameters with results
-  result_df <- tibble::as_tibble(cbind(
+  error_vec <- vapply(result_list, function(x) {
+    e <- attr(x, "error")
+    if (is.null(e)) {
+      NA_character_
+    } else {
+      e
+    }
+  }, character(1))
+  result_df <- cbind(
     parameters[indices$param_set, , drop = FALSE],
     indices,
-    tibble::tibble(result = result_list)
-  ))
+    data.frame(result = I(result_list), error = error_vec)
+  )
+
+  if (any(!is.na(result_df$error))) {
+    warning("Some tuning iterations failed. Check the 'error' column in the output.",
+      call. = FALSE
+    )
+  }
 
   if (parameters_is_null) {
     result_df$.placeholder <- NULL
   }
 
-  class(result_df) <- c("TuneImp", class(result_df))
+  class(result_df) <- c("slideimp_tune", "slideimp_tbl", "data.frame")
   return(result_df)
 }
 
@@ -635,7 +687,7 @@ calc_all_metrics <- function(x, metric_fns) {
     numeric(1)
   )
 
-  tibble::tibble(
+  data.frame(
     .metric = names(metric_fns),
     .estimator = "standard",
     .estimate = estimates
@@ -648,12 +700,12 @@ calc_all_metrics <- function(x, metric_fns) {
 #'
 #' For alternative or faster metrics, see the `{yardstick}` package.
 #'
-#' @param results A tibble from [tune_imp()] containing a `result` column
-#' with tibbles that have `truth` and `estimate` columns.
+#' @param results A slideimp_tune object from [tune_imp()] containing a `result` column
+#' with data.frames that have `truth` and `estimate` columns.
 #' @param metrics A character vector of metric names to compute. Defaults
 #' to `c("mae", "rmse")`. Also available: `"mape"`, `"bias"`, `"rsq"`, and `"rsq_trad"`.
 #'
-#' @return A tibble with the original parameters and unnested metrics
+#' @return A data.frame with the original parameters and un-nested metrics
 #' (`.metric`, `.estimator`, `.estimate`).
 #'
 #' @examples
@@ -684,11 +736,11 @@ compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
     !all(c("truth", "estimate") %in% names(first_result))) {
     stop("Each element of 'result' must be a data.frame with 'truth' and 'estimate' columns.")
   }
-  compute_metrics.TuneImp(results, metrics = metrics)
+  compute_metrics.slideimp_tune(results, metrics = metrics)
 }
 
 #' @export
-compute_metrics.TuneImp <- function(results, metrics = c("mae", "rmse")) {
+compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   checkmate::assert_character(metrics, unique = TRUE)
 
   .metrics_list <- list(
@@ -728,5 +780,5 @@ compute_metrics.TuneImp <- function(results, metrics = c("mae", "rmse")) {
     cbind(row_data, metric_df)
   }))
 
-  tibble::as_tibble(out)
+  as.data.frame(out)
 }

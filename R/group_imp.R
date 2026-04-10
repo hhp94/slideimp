@@ -35,7 +35,7 @@ normalize_list_column <- function(x) {
 #' @inheritParams slide_imp
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
-#' @param group A data.frame/[tibble::tibble()] describing how features should be grouped for
+#' @param group A data.frame describing how features should be grouped for
 #' imputation. Accepts two formats:
 #'
 #' **Long format**:
@@ -77,6 +77,42 @@ normalize_list_column <- function(x) {
 #' @export
 #'
 #' @seealso [group_features()]
+#'
+#' @examples
+#'
+#' # Generate example data with missing values
+#' set.seed(1234)
+#' to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
+#' obj <- to_test$input
+#' group <- to_test$col_group
+#' head(group) # which group each feature belongs to
+#'
+#' # We can pass the group data.frame to group_imp()
+#' results <- group_imp(obj, group = group, k = 2)
+#'
+#' # For more advanced uses, use group_features() to create the group data.frame.
+#' # By setting `k = 5` in group_features(), we are doing K-NN imputation in group_imp().
+#' # To make use of the `subset` argument in knn_imp(), we specify subset in group_features().
+#' # For demonstration of different group-wise parameters we set `k = 10` for the
+#' # second group.
+#' subset_features <- sample(to_test$col_group$feature, size = 10)
+#' head(subset_features)
+#' knn_df <- group_features(obj, to_test$col_group, k = 5, subset = subset_features)
+#' knn_df
+#' knn_df$parameters[[2]]$k <- 10
+#' knn_df$parameters
+#'
+#' # Run grouped imputation. `k` for K-NN has been specified in `knn_df`.
+#' knn_grouped <- group_imp(obj, group = knn_df, cores = 2)
+#' knn_grouped # only features in subset are imputed
+#' @examplesIf requireNamespace("carrier", quietly = TRUE)
+#' # Specify `ncp` for PCA directly in the group_imp() function (instead of in
+#' # group_features()). We run in parallel with `mirai::daemons(2)`.
+#' mirai::daemons(2) # Set up 2 cores for parallelization
+#' pca_df <- group_features(obj, group)
+#' pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
+#' mirai::daemons(0)
+#' pca_grouped
 group_imp <- function(
   obj,
   group,
@@ -108,9 +144,6 @@ group_imp <- function(
   checkmate::assert_matrix(obj, mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj")
   checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
   checkmate::assert_names(colnames(group), must.include = c("feature"), .var.name = "group")
-  if (!tibble::is_tibble(group)) {
-    group <- tibble::as_tibble(group)
-  }
   if ("group" %in% names(group) && inherits(group$feature, "character")) {
     stopifnot("NA is not allowed in group$group" = !anyNA(group$group))
     checkmate::assert_character(group$feature, any.missing = FALSE, .var.name = "group$feature")
@@ -151,7 +184,7 @@ group_imp <- function(
   } else {
     group$aux <- list(character(0))
   }
-  aux_only <- purrr::map2(group$aux, group$feature, setdiff)
+  aux_only <- Map(setdiff, group$aux, group$feature)
   aux_lengths <- lengths(aux_only)
   ## Add global parameters into group$parameters
   ## Global parameters (if provided) override any duplicated group-wise entries.
@@ -258,6 +291,7 @@ group_imp <- function(
     ))
   }
   cn <- colnames(obj)
+
   # `all_feats` doesn't have to cover all cn. Uncovered columns are un-imputed
   all_feats <- unlist(group$feature)
   all_aux <- unlist(group$aux)
@@ -361,7 +395,7 @@ group_imp <- function(
   if (parallelize) {
     # overall scheme: convert the beta matrix to a big.matrix. Also, create a
     # nrow(obj)*imputed features upfront called big_out. This is so that we don't have to
-    # accumulate object in the purrr loop. The purrr loop will just write the
+    # accumulate object in the for loop. The for loop will just write the
     # imputed CpGs to the big_out matrix in parallel. No race conds will be there
     # because we already enforced uniqueness of `group$features`. This means that
     # we have to map the incontiguous group$features index into contiguous
@@ -371,15 +405,16 @@ group_imp <- function(
       (feat_cumsum[i] + 1L):feat_cumsum[i + 1L]
     })
 
-    big_obj <- bigmemory::as.big.matrix(obj)
+    big_obj <- bigmemory::as.big.matrix(obj, shared = TRUE)
     big_obj_desc <- bigmemory::describe(big_obj)
     big_out <- bigmemory::big.matrix(
-      nrow = nrow(obj), ncol = length(all_feats_pos), type = "double"
+      nrow = nrow(obj), ncol = length(all_feats_pos), type = "double", shared = TRUE
     )
     big_out_desc <- bigmemory::describe(big_out)
 
-    crated_fn <- purrr::in_parallel(
+    crated_fn <- carrier::crate(
       function(i) {
+        # pin BLAS inside workers Doesn't modify user's BLAS.
         RhpcBLASctl::blas_set_num_threads(1)
         RhpcBLASctl::omp_set_num_threads(1)
         src <- bigmemory::attach.big.matrix(big_obj_desc)
@@ -396,7 +431,8 @@ group_imp <- function(
       params = params,
       out_ranges = out_ranges
     )
-    purrr::walk(iter, crated_fn, .progress = .progress)
+    m <- mirai::mirai_map(iter, crated_fn)
+    m[.progress = .progress]
     obj[, all_feats_pos] <- big_out[, ]
   } else {
     if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
@@ -413,7 +449,7 @@ group_imp <- function(
     }
   }
 
-  class(obj) <- c("SlideImpImputedMatrix", class(obj))
+  class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- imp_method
   return(obj)
 }
@@ -440,7 +476,7 @@ group_imp <- function(
 #' @param seed Numeric or `NULL`. Random seed for reproducibility when sampling
 #' for `min_group_size` padding.
 #'
-#' @return A `tibble::tibble()` with columns:
+#' @return A `data.frame` of class `slideimp_tbl` with columns:
 #'
 #' - **feature**: A list-column containing character vectors of feature column
 #' names to impute
@@ -449,6 +485,8 @@ group_imp <- function(
 #' elements are `NULL`
 #' - **parameters**: A list-column containing group-specific parameters if `k`
 #' or `ncp` are specified
+#'
+#' @seealso [group_imp()]
 #'
 #' @examples
 #' sim_obj <- sim_mat(perc_col_na = 1)
@@ -471,8 +509,6 @@ group_imp <- function(
 #'
 #' imputed_obj <- group_imp(obj, group_df)
 #' imputed_obj
-#'
-#' @seealso [group_imp()]
 #'
 #' @export
 group_features <- function(
@@ -568,17 +604,15 @@ group_features <- function(
 
   # `feature` list-column, to be imputed
   feature <- collapse::fsubset(matched, subset)
-  feature <- tibble::tibble(
-    feature = collapse::gsplit(feature$feature, feature$group, use.g.names = TRUE),
-    group = names(feature)
-  )
+  feature_list <- collapse::gsplit(feature$feature, feature$group, use.g.names = TRUE)
+  feature <- data.frame(group = names(feature_list))
+  feature$feature <- unname(feature_list)
 
-  # `aux` list=column, first part is to handle the subset function
+  # `aux` list-column, first part is to handle the subset function
   aux <- collapse::fsubset(matched, !subset)
-  aux <- tibble::tibble(
-    aux = collapse::gsplit(aux$feature, aux$group, use.g.names = TRUE),
-    group = names(aux)
-  )
+  aux_list <- collapse::gsplit(aux$feature, aux$group, use.g.names = TRUE)
+  aux <- data.frame(group = names(aux_list))
+  aux$aux <- unname(aux_list)
 
   # combine
   group <- collapse::join(feature, aux, on = "group", how = "left", verbose = FALSE)
@@ -587,7 +621,7 @@ group_features <- function(
   # pad groups to `min_group_size` if needed
   if (min_group_size > 0) {
     group$need <- pmax(min_group_size - group$length, 0)
-    group$min_group_size <- purrr::map2(group$feature, group$need, \(x, y) {
+    group$min_group_size <- Map(function(x, y) {
       if (y == 0) {
         return(NULL)
       }
@@ -596,8 +630,8 @@ group_features <- function(
         stop("`min_group_size` is too large")
       }
       sample(pool, size = y)
-    })
-    group$aux <- purrr::map2(group$aux, group$min_group_size, \(x, y) c(x, y))
+    }, group$feature, group$need)
+    group$aux <- Map(c, group$aux, group$min_group_size)
     group[, c("need", "min_group_size")] <- NULL
     group$length <- lengths(group$feature) + lengths(group$aux)
   }
@@ -606,12 +640,12 @@ group_features <- function(
   if (!is.null(k)) {
     group$parameters <- lapply(
       group$length,
-      \(x) tibble::tibble(k = min(x - 1, k))
+      \(x) data.frame(k = min(x - 1, k))
     )
   } else if (!is.null(ncp)) {
     group$parameters <- lapply(
       group$length,
-      \(x) tibble::tibble(ncp = min(ncol(obj), x - 1, ncp))
+      \(x) data.frame(ncp = min(nrow(obj) - 2L, x - 1L, ncp))
     )
   }
   # do nothing if null k and ncp
@@ -628,5 +662,6 @@ group_features <- function(
     }
   }
 
+  class(group) <- c("slideimp_tbl", "data.frame")
   return(group)
 }

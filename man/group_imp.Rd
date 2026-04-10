@@ -30,7 +30,7 @@ group_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{group}{A data.frame/\code{\link[tibble:tibble]{tibble::tibble()}} describing how features should be grouped for
+\item{group}{A data.frame describing how features should be grouped for
 imputation. Accepts two formats:
 
 \strong{Long format}:
@@ -126,6 +126,43 @@ Strategies for grouping may include:
 Only features in each group will be imputed, using the search space defined as the
 union of the features and optional aux columns of that group. Columns that are in
 aux or in the object but not in any features will be left unchanged.
+}
+\examples{
+
+# Generate example data with missing values
+set.seed(1234)
+to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
+obj <- to_test$input
+group <- to_test$col_group
+head(group) # which group each feature belongs to
+
+# We can pass the group data.frame to group_imp()
+results <- group_imp(obj, group = group, k = 2)
+
+# For more advanced uses, use group_features() to create the group data.frame.
+# By setting `k = 5` in group_features(), we are doing K-NN imputation in group_imp().
+# To make use of the `subset` argument in knn_imp(), we specify subset in group_features().
+# For demonstration of different group-wise parameters we set `k = 10` for the
+# second group.
+subset_features <- sample(to_test$col_group$feature, size = 10)
+head(subset_features)
+knn_df <- group_features(obj, to_test$col_group, k = 5, subset = subset_features)
+knn_df
+knn_df$parameters[[2]]$k <- 10
+knn_df$parameters
+
+# Run grouped imputation. `k` for K-NN has been specified in `knn_df`.
+knn_grouped <- group_imp(obj, group = knn_df, cores = 2)
+knn_grouped # only features in subset are imputed
+\dontshow{if (requireNamespace("carrier", quietly = TRUE)) withAutoprint(\{ # examplesIf}
+# Specify `ncp` for PCA directly in the group_imp() function (instead of in
+# group_features()). We run in parallel with `mirai::daemons(2)`.
+mirai::daemons(2) # Set up 2 cores for parallelization
+pca_df <- group_features(obj, group)
+pca_grouped <- group_imp(obj, group = pca_df, ncp = 2)
+mirai::daemons(0)
+pca_grouped
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 \code{\link[=group_features]{group_features()}}

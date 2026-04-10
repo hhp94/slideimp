@@ -210,7 +210,7 @@ knn_imp <- function(
     obj[cbind(i_vec, subset[jj_vec])] <- sub_means[jj_vec]
   }
 
-  class(obj) <- c("SlideImpImputedMatrix", class(obj))
+  class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- "knn"
   return(obj)
 }

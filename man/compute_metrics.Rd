@@ -7,14 +7,14 @@
 compute_metrics(results, metrics = c("mae", "rmse"))
 }
 \arguments{
-\item{results}{A tibble from \code{\link[=tune_imp]{tune_imp()}} containing a \code{result} column
-with tibbles that have \code{truth} and \code{estimate} columns.}
+\item{results}{A slideimp_tune object from \code{\link[=tune_imp]{tune_imp()}} containing a \code{result} column
+with data.frames that have \code{truth} and \code{estimate} columns.}
 
 \item{metrics}{A character vector of metric names to compute. Defaults
 to \code{c("mae", "rmse")}. Also available: \code{"mape"}, \code{"bias"}, \code{"rsq"}, and \code{"rsq_trad"}.}
 }
 \value{
-A tibble with the original parameters and unnested metrics
+A data.frame with the original parameters and un-nested metrics
 (\code{.metric}, \code{.estimator}, \code{.estimate}).
 }
 \description{

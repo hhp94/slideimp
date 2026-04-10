@@ -334,13 +334,13 @@ test_that("tune_imp handles mixed linear and 2D positions in list", {
   }
 })
 
-test_that("compute_metrics works with TuneImp, data.frame, and tibble objects", {
+test_that("compute_metrics works with slideimp_tune and data.frame", {
   set.seed(123)
   obj <- matrix(1:100, nrow = 10, ncol = 10)
 
   simple_imp <- function(obj, mu) {
     miss <- is.na(obj)
-    obj[miss] <- rnorm(n = sum(miss), mean = mu)
+    obj[miss] <- stats::rnorm(n = sum(miss), mean = mu)
     return(obj)
   }
 
@@ -353,9 +353,9 @@ test_that("compute_metrics works with TuneImp, data.frame, and tibble objects", 
     .f = simple_imp
   )
 
-  # TuneImp object
+  # slideimp_tune object
   out_tune <- compute_metrics(result_tune)
-  expect_s3_class(out_tune, "tbl_df")
+  expect_s3_class(out_tune, "data.frame")
   expect_true(all(c(".metric", ".estimator", ".estimate", "n", "n_miss") %in% names(out_tune)))
   expect_equal(sort(unique(out_tune$.metric)), c("mae", "rmse"))
 
@@ -363,15 +363,8 @@ test_that("compute_metrics works with TuneImp, data.frame, and tibble objects", 
   result_df <- as.data.frame(result_tune)
   class(result_df) <- "data.frame"
   out_df <- compute_metrics(result_df)
-  expect_s3_class(out_df, "tbl_df")
+  expect_s3_class(out_df, "data.frame")
   expect_equal(out_df$.estimate, out_tune$.estimate)
-
-  # Tibble (inherits from data.frame, so dispatch hits data.frame method)
-  result_tbl <- tibble::as_tibble(result_tune)
-  class(result_tbl) <- c("tbl_df", "tbl", "data.frame")
-  out_tbl <- compute_metrics(result_tbl)
-  expect_s3_class(out_tbl, "tbl_df")
-  expect_equal(out_tbl$.estimate, out_tune$.estimate)
 })
 
 test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
@@ -449,12 +442,12 @@ test_that("tune_imp works with custom function and list-column parameters", {
   }
 
   # parameters with a list column: each row holds a different weight vector
-  custom_par <- tibble::tibble(
-    weights = list(
+  custom_par <- data.frame(
+    weights = I(list(
       rep(1, 20),
       rep(0.5, 20),
       seq(0.1, 2, length.out = 20)
-    )
+    ))
   )
 
   expect_no_error({

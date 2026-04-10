@@ -128,7 +128,7 @@ pca_imp <- function(
   # apply best imputation
   obj[miss] <- best_imputed
 
-  class(obj) <- c("SlideImpImputedMatrix", class(obj))
+  class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- "pca"
   return(obj)
 }
