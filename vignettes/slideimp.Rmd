@@ -75,7 +75,7 @@ c("knn" = rmse_knn, "pca" = rmse_pca)
 ```
 
 ## Subset and grouped K-NN and PCA imputation
-Some DNA methylation analyses only focus on epigenetic clocks, which require only a subset of CpGs to be imputed. The `knn_imp()` function takes advantage of this to significantly reduce run time. To impute only specific CpGs for K-NN imputation and make use of grouped imputation we can use the `group_features()` function.
+Some DNA methylation analyses only focus on epigenetic clocks, which require only a subset of CpGs to be imputed. The `knn_imp()` function takes advantage of this to significantly reduce run time. To impute only specific CpGs for K-NN imputation and make use of grouped imputation we can use the `prep_groups()` function.
 
 Here, we simulate data where only a subset of CpGs are needed for imputation.
 
@@ -92,7 +92,7 @@ subset_cpgs <- sample(colnames(obj), size = n_needed)
 ```
 
 - `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation.
-- `group_imp()` requires a `group` tibble, *preferably* created with `group_features()`, with three list-columns:
+- `group_imp()` requires a `group` tibble, *preferably* created with `prep_groups()`, with three list-columns:
   - `features`: **required** - a list-column where each element is a character vector of variable names to be imputed together.
   - `aux`: **optional** - auxiliary variables to include in each group.
   - `parameters`: **optional** - group-specific imputation parameters.
@@ -102,11 +102,11 @@ We define the `features` list-column as a list of character vectors containing f
 
 ```{r}
 # Construct the group data.frame with one row per group (i.e., chromosome)
-group_df <- group_features(obj, sim_obj$col_group, subset = subset_cpgs)
+group_df <- prep_groups(colnames(obj), sim_obj$col_group, subset = subset_cpgs)
 group_df
 ```
 
-For demonstration purposes, we use the `parameters` column to add group-specific parameters. This can be useful if hyperparameters are tuned separately for each group, though this is typically not necessary. When `k` or `ncp` is too large for some groups, we can use the `parameters` column to specify group-specific `k` or `ncp` values. `k` and `ncp` can also be specified in `group_features()`.
+For demonstration purposes, we use the `parameters` column to add group-specific parameters. This can be useful if hyperparameters are tuned separately for each group, though this is typically not necessary. When `k` or `ncp` is too large for some groups, we can use the `parameters` column to specify group-specific `k` or `ncp` values. `k` and `ncp` can also be specified in `prep_groups()`.
 ```{r}
 pca_group <- group_df
 # For PCA imputation, we use ncp = 5 for the first group and ncp = 10 for the second group
@@ -136,13 +136,13 @@ We simulate the output of the `{methylKit}` package. **Note:** WGBS/EM-seq data 
 sample_names <- paste0("S", 1:10)
 positions <- 500
 
-methyl <- tibble::tibble(
+methyl <- data.frame(
   chr = "chr1",
   start = seq_len(positions),
-  end = start,
   strand = "+"
 )
-
+methyl$end <- methyl$start
+  
 set.seed(1234)
 for (i in seq_along(sample_names)) {
   methyl[[paste0("numCs", i)]] <- sample.int(100, size = positions, replace = TRUE)
@@ -180,7 +180,7 @@ location[1:5]
 This example dataset is small, but in actual analyses with millions of CpGs, we can tune the K-NN or PCA imputation on just the first tens of thousands of CpGs. Here, we perform K-NN imputation by specifying `k`, a window size (`window_size`) of 100 (base pairs), and a 10-bp overlap (`overlap_size`) between windows. We need to specify the minimum number of CpGs in a group that will be imputed `min_window_n`. Groups with size below `min_window_n` is not imputed.
 ```{r}
 # For example, we are tuning `k` value here.
-slide_knn_params <- tibble::tibble(
+slide_knn_params <- data.frame(
   k = c(10, 20),
   window_size = 100,
   overlap_size = 10,

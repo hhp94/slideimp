@@ -231,12 +231,13 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' compute_metrics(results_fixed)
 #'
 #' # Custom imputation function example, with 2 cores parallelization with `mirai::daemons()`
+#' # Note that the functions have to be in package::function form. See `?carrier::crate`.
 #' custom_imp <- function(obj, mean = 0, sd = 1) {
 #'   na_pos <- is.na(obj)
-#'   obj[na_pos] <- rnorm(sum(na_pos), mean = mean, sd = sd)
+#'   obj[na_pos] <- stats::rnorm(sum(na_pos), mean = mean, sd = sd)
 #'   obj
 #' }
-#' @examplesIf requireNamespace("carrier", quietly = TRUE)
+#'
 #' mirai::daemons(2) # Setup 2 cores for parallelization
 #' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 #' results_custom <- tune_imp(

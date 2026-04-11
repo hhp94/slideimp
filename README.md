@@ -20,7 +20,7 @@ of missing values in high-dimensional numeric matrices.
     argument. This `data.frame` must contains a `feature` column
     (character strings of feature names) and a `group` column (defining
     the group).
-  - (Advanced): `group_features()`: `group_imp()`’s helper function to
+  - (Advanced): `prep_groups()`: `group_imp()`’s helper function to
     create groups based on a mapping data.frame (i.e., Illumina
     manifests). See
     [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) on
@@ -148,14 +148,11 @@ variables can be meaningfully grouped (e.g., by chromosomes).
   For the basic API, use a data.frame that contain a `feature` column
   (character strings of feature names) and a `group` column (defining
   the group).
-
-PCA-based imputation with `group_imp()` can be parallelized using the
-`{mirai}` package, similar to how parallelization is done with
-`tune_imp()`.
+- PCA-based imputation with `group_imp()` can be parallelized using the
+  `{mirai}` package, similar to how parallelization is done with
+  `tune_imp()`.
 
 ``` r
-head(sim_obj$col_group)
-
 # We picked k = 5 (use parameters with lowest errors in actual analyses)
 knn_group_results <- group_imp(obj, group = sim_obj$col_group, k = 5, cores = 2)
 

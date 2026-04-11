@@ -203,7 +203,7 @@ test_that("duplicate feature across groups throws error", {
   obj <- to_test$input
   expect_error(
     group_imp(obj, group = group_df, k = 3),
-    "Same features can't be in more than 1 groups"
+    "appear in more than one group"
   )
 })
 
@@ -214,10 +214,19 @@ test_that("grouped imputation works without aux columns, knn", {
   group_2 <- subset(to_test$col_group, group == "group2")$feature
 
   # no aux columns, only feature
-  group_df <- data.frame(feature = I(list(group_1[1:5], group_2[6:10])))
-
+  group_df <- data.frame(
+    feature = I(list(group_1[1:5], group_2[6:10]))
+  )
   obj <- to_test$input
-  expect_no_error(grouped_results <- group_imp(obj, group = group_df, k = 3))
+
+  expect_warning(
+    grouped_results <- group_imp(
+      obj,
+      group = group_df,
+      k = 3,
+      allow_unmapped = TRUE
+    )
+  )
 
   # Build expected results: start with original and update only imputed columns
   sub1 <- knn_imp(obj[, group_1[1:5]], k = 3)
@@ -271,9 +280,17 @@ test_that("grouped imputation works without aux columns, pca", {
   group_df <- data.frame(
     feature = I(list(group_1[1:5], group_2[6:10]))
   )
-
   obj <- to_test$input
-  expect_no_error(grouped_results <- group_imp(obj, group = group_df, ncp = 2, seed = 1234))
+
+  expect_warning(
+    grouped_results <- group_imp(
+      obj,
+      group = group_df,
+      ncp = 2,
+      seed = 1234,
+      allow_unmapped = TRUE
+    )
+  )
 
   # Build expected results: start with original and update only imputed columns
   sub1 <- pca_imp(obj[, group_1[1:5]], ncp = 2, seed = 1234)
@@ -327,14 +344,16 @@ test_that("group-specific parameters work correctly in parallel, pca", {
 })
 
 # group_feature ----
-test_that("group_features returns correct structure without k/ncp", {
+test_that("prep_groups returns correct structure without k/ncp", {
   obj <- matrix(rnorm(2 * 5), nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
   features_df <- data.frame(
     feature = c("a", "b", "c", "d"),
     group = c("g1", "g1", "g2", "g2")
   )
 
-  result <- group_features(obj, features_df)
+  expect_warning(
+    result <- prep_groups(colnames(obj), features_df, allow_unmapped = TRUE)
+  )
 
   expect_true(inherits(result, "slideimp_tbl"))
   expect_true("group" %in% names(result))
@@ -342,14 +361,16 @@ test_that("group_features returns correct structure without k/ncp", {
   expect_equal(sort(result$group), c("g1", "g2"))
 })
 
-test_that("group_features handles subset correctly", {
+test_that("prep_groups handles subset correctly", {
   obj <- matrix(rnorm(2 * 6), nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e", "f")))
   features_df <- data.frame(
     feature = c("a", "b", "c", "d", "e", "f"),
     group = c("g1", "g1", "g1", "g2", "g2", "g2")
   )
 
-  result <- group_features(obj, features_df, subset = c("a", "b", "d", "e"))
+  result <- prep_groups(
+    colnames(obj), features_df, subset = c("a", "b", "d", "e")
+    )
 
   expect_true("aux" %in% names(result))
 
@@ -365,7 +386,7 @@ test_that("group_features handles subset correctly", {
   expect_equal(g2_row$aux[[1]], "f")
 })
 
-test_that("group_features errors when no subset element found", {
+test_that("prep_groups errors when no subset element found", {
   obj <- matrix(rnorm(2 * 3), nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c")))
   features_df <- data.frame(
     feature = c("a", "b", "c"),
@@ -373,31 +394,12 @@ test_that("group_features errors when no subset element found", {
   )
 
   expect_error(
-    suppressWarnings(group_features(obj, features_df, subset = c("x", "y", "z"))),
-    "No element"
+    suppressWarnings(prep_groups(colnames(obj), features_df, subset = c("x", "y", "z"))),
+    "x, y, z"
   )
 })
 
-test_that("group_features adds parameters column with k", {
-  obj <- matrix(rnorm(2 * 5), nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
-  features_df <- data.frame(
-    feature = c("a", "b", "c", "d", "e"),
-    group = c("g1", "g1", "g1", "g2", "g2")
-  )
-
-  result <- group_features(obj, features_df, k = 3)
-
-  expect_true("parameters" %in% names(result))
-
-  g1_row <- result[result$group == "g1", ]
-  g2_row <- result[result$group == "g2", ]
-
-  # k is capped at group_size - 1
-  expect_equal(g1_row$parameters[[1]]$k, 2) # 3 features, so k = min(2, 5) = 2
-  expect_equal(g2_row$parameters[[1]]$k, 1) # 2 features, so k = min(1, 5) = 1
-})
-
-test_that("group_features pads groups to min_group_size", {
+test_that("prep_groups pads groups to min_group_size", {
   n <- 2
   p <- 6
   obj <- matrix(rnorm(n * p), nrow = n)
@@ -409,7 +411,15 @@ test_that("group_features pads groups to min_group_size", {
     group = c("g1", "g1", "g2")
   )
 
-  result <- group_features(obj, features_df, min_group_size = 4, seed = 123)
+  expect_warning(
+    result <- prep_groups(
+      colnames(obj),
+      features_df,
+      min_group_size = 4,
+      seed = 123,
+      allow_unmapped = TRUE
+    )
+  )
   expect_true("aux" %in% names(result))
   g1_row <- result[result$group == "g1", ]
   g2_row <- result[result$group == "g2", ]
@@ -419,7 +429,7 @@ test_that("group_features pads groups to min_group_size", {
   expect_equal(length(g2_row$feature[[1]]) + length(g2_row$aux[[1]]), 4)
 })
 
-test_that("group_features errors when min_group_size too large", {
+test_that("prep_groups errors when min_group_size too large", {
   n <- 2
   p <- 3
   obj <- matrix(rnorm(n * p), nrow = n)
@@ -432,12 +442,12 @@ test_that("group_features errors when min_group_size too large", {
   )
 
   expect_error(
-    group_features(obj, features_df, min_group_size = 100),
+    prep_groups(colnames(obj), features_df, min_group_size = 100),
     "too large"
   )
 })
 
-test_that("group_features errors when no colnames match features_df", {
+test_that("prep_groups errors when no colnames match features_df", {
   n <- 2
   p <- 3
   obj <- matrix(rnorm(n * p), nrow = n)
@@ -450,7 +460,7 @@ test_that("group_features errors when no colnames match features_df", {
   )
 
   expect_error(
-    group_features(obj, features_df),
-    "matched with no group"
+    prep_groups(colnames(obj), features_df),
+    "a, b, c"
   )
 })

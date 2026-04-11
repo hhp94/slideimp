@@ -25,7 +25,7 @@ knitr::opts_chunk$set(
 
 * `group_imp()`: Parallelizable group-wise (e.g., by chromosomes or column clusters) K-NN or PCA imputation with optional auxiliary features and group-wise parameters.
   * (Basic): `group_imp()` requires a `data.frame` for the `group` argument. This `data.frame` must contains a `feature` column (character strings of feature names) and a `group` column (defining the group).
-  * (Advanced): `group_features()`: `group_imp()`'s helper function to create groups based on a mapping data.frame (i.e., Illumina manifests). See [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) on GitHub for tools to process common Illumina manifests.
+  * (Advanced): `prep_groups()`: `group_imp()`'s helper function to create groups based on a mapping data.frame (i.e., Illumina manifests). See [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) on GitHub for tools to process common Illumina manifests.
 * `slide_imp()`: Sliding window K-NN or PCA imputation for extremely high-dimensional numeric matrices (WGBS/EM-seq) with ordered features (i.e., by genomic position).
 * `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.
 * `knn_imp()`: Full-matrix K-NN imputation with multi-core parallelization, [`{mlpack}`](https://mlpack.org/) KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).
@@ -87,8 +87,7 @@ mirai::daemons(0) # Close daemons
 Then, preferably perform imputation by group with `group_imp()` if the variables can be meaningfully grouped (e.g., by chromosomes).
 
 - `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation. For the basic API, use a data.frame that contain a `feature` column (character strings of feature names) and a `group` column (defining the group). 
-
-PCA-based imputation with `group_imp()` can be parallelized using the `{mirai}` package, similar to how parallelization is done with `tune_imp()`.
+- PCA-based imputation with `group_imp()` can be parallelized using the `{mirai}` package, similar to how parallelization is done with `tune_imp()`.
 
 ```{r, eval = F}
 # We picked k = 5 (use parameters with lowest errors in actual analyses)
