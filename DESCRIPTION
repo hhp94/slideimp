@@ -32,9 +32,9 @@ Imports:
     collapse,
     mirai,
     Rcpp,
-    RhpcBLASctl,
     stats
 Suggests:
+    RhpcBLASctl,
     knitr,
     missMDA,
     rlang,

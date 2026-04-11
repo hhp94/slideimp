@@ -27,7 +27,8 @@ group_imp(
   seed = NULL,
   nb.init = NULL,
   maxiter = NULL,
-  miniter = NULL
+  miniter = NULL,
+  pin_blas = FALSE
 )
 }
 \arguments{
@@ -58,7 +59,7 @@ in at least one group's \code{feature} list. Features in a group but not in
 \code{subset} are demoted to auxiliary columns for that group. Groups left
 with zero features after demotion are dropped with a message.}
 
-\item{allow_unmapped}{Logical. If \code{FALSE} (default), every column in
+\item{allow_unmapped}{Logical. If \code{FALSE}, every column in
 \code{colnames(obj)} \emph{must} appear in at least one group's \code{feature} or \code{aux}.
 If \code{TRUE}, columns that have no group assignment are left completely
 untouched (neither imputed nor used as auxiliary columns) and a warning
@@ -120,6 +121,9 @@ for \code{min_group_size} and passed to \code{\link[=pca_imp]{pca_imp()}}.}
 \item{maxiter}{integer, maximum number of iteration for the algorithm}
 
 \item{miniter}{integer, minimum number of iteration for the algorithm}
+
+\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS thread to 1 to help
+with parallel performance on systems linked with multi-threaded BLAS.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.

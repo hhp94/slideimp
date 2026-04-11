@@ -16,7 +16,8 @@ tune_imp(
   max_iter = 1000,
   .progress = TRUE,
   cores = 1,
-  location = NULL
+  location = NULL,
+  pin_blas = FALSE
 )
 }
 \arguments{
@@ -59,6 +60,9 @@ To setup parallelization for K-NN without OpenMP, PCA, and sliding window PCA im
 \item{location}{A sorted numeric vector of length \code{ncol(obj)} giving the
 position of each column (e.g., genomic coordinates). Used to define
 sliding windows.}
+
+\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS thread to 1 to help
+with parallel performance on systems linked with multi-threaded BLAS.}
 }
 \value{
 A data.frame with columns from \code{parameters}, plus \code{param_set} (unique parameter set ID),

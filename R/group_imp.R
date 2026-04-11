@@ -2,6 +2,19 @@ fmt_trunc <- function(x, n = 5) {
   paste(paste(x[seq_len(min(n, length(x)))], collapse = ", "), "... (see ?prep_groups)")
 }
 
+check_pin_blas <- function(pin_blas) {
+  has_pkg <- requireNamespace("RhpcBLASctl", quietly = TRUE)
+  if (pin_blas && !has_pkg) {
+    stop(
+      "`pin_blas = TRUE` requires 'RhpcBLASctl'.\n",
+      "Install it with: install.packages('RhpcBLASctl')"
+    )
+  }
+  if (!pin_blas && has_pkg && RhpcBLASctl::blas_get_num_procs() > 1L) {
+    message("Tip: set `pin_blas = TRUE` may improve parallel performance.")
+  }
+}
+
 group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
   f_idx <- feat_splits[[g]]
   col_idx <- c(f_idx, aux_splits[[g]])
@@ -33,9 +46,10 @@ group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
 #' Groups left with zero features after pruning are dropped with a message.
 #'
 #' @return A `data.frame` of class `slideimp_tbl` with columns:
-#' - **feature**: A list-column of character vectors of feature names
-#' - **aux**: A list-column of auxiliary column names
-#' - **parameters**: A list-column of parameter lists
+#' - `group`: A character vector of original group label if provided (not used)
+#' - `feature`: A list-column of character vectors of feature names
+#' - `aux`: A list-column of auxiliary column names
+#' - `parameters`: A list-column of parameter lists
 #'
 #' @seealso [group_imp()]
 #'
@@ -71,7 +85,7 @@ prep_groups <- function(
   group,
   subset = NULL,
   min_group_size = 0,
-  allow_unmapped = FALSE,
+  allow_unmapped = TRUE,
   seed = NULL
 ) {
   feature <- NULL
@@ -166,21 +180,19 @@ prep_groups <- function(
   not_in_B <- setdiff(A, B)
   if (length(not_in_B) > 0) {
     if (!allow_unmapped) {
-      stop(
-        "These column(s) in `obj` have no group assignment: ",
-        fmt_trunc(not_in_B),
-        "\nIf you are sure `group` is correct ",
-        "and want to leave these columns untouched, set ",
-        "`allow_unmapped = TRUE`."
-      )
+      stop(paste0(
+        "The following column(s) in `obj` have no matching entry in `group`: ",
+        fmt_trunc(not_in_B), ".\n",
+        "Run setdiff(colnames(obj), group$feature) to examine the unmapped probes.\n",
+        "If you are sure `group` is correct and want to leave these columns untouched, ",
+        "set `allow_unmapped = TRUE`."
+      ))
     } else {
-      warning(
-        length(not_in_B),
-        " column(s) in `obj` have no group assignment ",
-        "and will be left completely untouched: ",
-        fmt_trunc(not_in_B),
-        "."
-      )
+      message(paste0(
+        length(not_in_B), " column(s) in `obj` have no matching entry in `group` ",
+        "and will be left untouched: ",
+        fmt_trunc(not_in_B), "."
+      ))
     }
   }
 
@@ -309,7 +321,7 @@ prep_groups <- function(
 #' `subset` are demoted to auxiliary columns for that group. Groups left
 #' with zero features after demotion are dropped with a message.
 #'
-#' @param allow_unmapped Logical. If `FALSE` (default), every column in
+#' @param allow_unmapped Logical. If `FALSE`, every column in
 #' `colnames(obj)` *must* appear in at least one group's `feature` or `aux`.
 #' If `TRUE`, columns that have no group assignment are left completely
 #' untouched (neither imputed nor used as auxiliary columns) and a warning
@@ -325,6 +337,9 @@ prep_groups <- function(
 #' @param .progress Show imputation progress (default = `TRUE`).
 #' @param seed Numeric or `NULL`. Random seed for reproducibility when padding
 #' for `min_group_size` and passed to [pca_imp()].
+#'
+#' @param pin_blas Logical. If `TRUE`, pin BLAS thread to 1 to help
+#' with parallel performance on systems linked with multi-threaded BLAS.
 #'
 #' @details
 #' This function performs K-NN or PCA imputation on groups of features
@@ -387,6 +402,7 @@ group_imp <- function(
   k = NULL,
   ncp = NULL,
   method = NULL,
+  # K-NN arguments
   cores = 1,
   .progress = TRUE,
   min_group_size = NULL,
@@ -395,6 +411,7 @@ group_imp <- function(
   dist_pow = NULL,
   tree = NULL,
   max_cache = NULL,
+  # PCA arguments
   scale = NULL,
   coeff.ridge = NULL,
   threshold = NULL,
@@ -402,13 +419,15 @@ group_imp <- function(
   seed = NULL,
   nb.init = NULL,
   maxiter = NULL,
-  miniter = NULL
+  miniter = NULL,
+  pin_blas = FALSE
 ) {
   checkmate::assert_matrix(
     obj,
     mode = "numeric", col.names = "unique",
     null.ok = FALSE, .var.name = "obj"
   )
+  checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
   cn <- colnames(obj)
 
   # Step 1: Build canonical groups via prep_groups() ----
@@ -605,6 +624,8 @@ group_imp <- function(
       (feat_cumsum[i] + 1L):feat_cumsum[i + 1L]
     })
 
+    check_pin_blas(pin_blas)
+
     big_obj <- bigmemory::as.big.matrix(obj, shared = TRUE)
     big_obj_desc <- bigmemory::describe(big_obj)
     big_out <- bigmemory::big.matrix(
@@ -622,8 +643,10 @@ group_imp <- function(
 
     crated_fn <- carrier::crate(
       function(i) {
-        RhpcBLASctl::blas_set_num_threads(1)
-        RhpcBLASctl::omp_set_num_threads(1)
+        if (pin_blas) {
+          RhpcBLASctl::blas_set_num_threads(1)
+          RhpcBLASctl::omp_set_num_threads(1)
+        }
         src <- bigmemory::attach.big.matrix(big_obj_desc)
         dst <- bigmemory::attach.big.matrix(big_out_desc)
         sub_mat <- src[, indices[[i]]$col_idx, drop = FALSE]
@@ -636,6 +659,7 @@ group_imp <- function(
       imp_fn = imp_fn,
       indices = indices,
       params = params,
+      pin_blas = pin_blas,
       out_ranges = out_ranges
     )
     m <- mirai::mirai_map(iter, crated_fn)

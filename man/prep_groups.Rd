@@ -9,7 +9,7 @@ prep_groups(
   group,
   subset = NULL,
   min_group_size = 0,
-  allow_unmapped = FALSE,
+  allow_unmapped = TRUE,
   seed = NULL
 )
 }
@@ -46,7 +46,7 @@ with zero features after demotion are dropped with a message.}
 (features + aux) per group. Groups smaller than this are padded with
 randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}} internally.}
 
-\item{allow_unmapped}{Logical. If \code{FALSE} (default), every column in
+\item{allow_unmapped}{Logical. If \code{FALSE}, every column in
 \code{colnames(obj)} \emph{must} appear in at least one group's \code{feature} or \code{aux}.
 If \code{TRUE}, columns that have no group assignment are left completely
 untouched (neither imputed nor used as auxiliary columns) and a warning
@@ -58,9 +58,10 @@ for \code{min_group_size} and passed to \code{\link[=pca_imp]{pca_imp()}}.}
 \value{
 A \code{data.frame} of class \code{slideimp_tbl} with columns:
 \itemize{
-\item \strong{feature}: A list-column of character vectors of feature names
-\item \strong{aux}: A list-column of auxiliary column names
-\item \strong{parameters}: A list-column of parameter lists
+\item \code{group}: A character vector of original group label if provided (not used)
+\item \code{feature}: A list-column of character vectors of feature names
+\item \code{aux}: A list-column of auxiliary column names
+\item \code{parameters}: A list-column of parameter lists
 }
 }
 \description{

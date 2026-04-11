@@ -219,13 +219,11 @@ test_that("grouped imputation works without aux columns, knn", {
   )
   obj <- to_test$input
 
-  expect_warning(
-    grouped_results <- group_imp(
-      obj,
-      group = group_df,
-      k = 3,
-      allow_unmapped = TRUE
-    )
+  grouped_results <- group_imp(
+    obj,
+    group = group_df,
+    k = 3,
+    allow_unmapped = TRUE
   )
 
   # Build expected results: start with original and update only imputed columns
@@ -282,14 +280,12 @@ test_that("grouped imputation works without aux columns, pca", {
   )
   obj <- to_test$input
 
-  expect_warning(
-    grouped_results <- group_imp(
-      obj,
-      group = group_df,
-      ncp = 2,
-      seed = 1234,
-      allow_unmapped = TRUE
-    )
+  grouped_results <- group_imp(
+    obj,
+    group = group_df,
+    ncp = 2,
+    seed = 1234,
+    allow_unmapped = TRUE
   )
 
   # Build expected results: start with original and update only imputed columns
@@ -351,10 +347,7 @@ test_that("prep_groups returns correct structure without k/ncp", {
     group = c("g1", "g1", "g2", "g2")
   )
 
-  expect_warning(
-    result <- prep_groups(colnames(obj), features_df, allow_unmapped = TRUE)
-  )
-
+  result <- prep_groups(colnames(obj), features_df, allow_unmapped = TRUE)
   expect_true(inherits(result, "slideimp_tbl"))
   expect_true("group" %in% names(result))
   expect_true("feature" %in% names(result))
@@ -369,8 +362,9 @@ test_that("prep_groups handles subset correctly", {
   )
 
   result <- prep_groups(
-    colnames(obj), features_df, subset = c("a", "b", "d", "e")
-    )
+    colnames(obj), features_df,
+    subset = c("a", "b", "d", "e")
+  )
 
   expect_true("aux" %in% names(result))
 
@@ -411,14 +405,12 @@ test_that("prep_groups pads groups to min_group_size", {
     group = c("g1", "g1", "g2")
   )
 
-  expect_warning(
-    result <- prep_groups(
-      colnames(obj),
-      features_df,
-      min_group_size = 4,
-      seed = 123,
-      allow_unmapped = TRUE
-    )
+  result <- prep_groups(
+    colnames(obj),
+    features_df,
+    min_group_size = 4,
+    seed = 123,
+    allow_unmapped = TRUE
   )
   expect_true("aux" %in% names(result))
   g1_row <- result[result$group == "g1", ]
@@ -461,6 +453,6 @@ test_that("prep_groups errors when no colnames match features_df", {
 
   expect_error(
     prep_groups(colnames(obj), features_df),
-    "a, b, c"
+    "No groups remain after pruning"
   )
 })

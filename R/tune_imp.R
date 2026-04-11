@@ -176,6 +176,7 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' Tuning results can be evaluated using the `{yardstick}` package or [compute_metrics()].
 #'
 #' @inheritParams slide_imp
+#' @inheritParams group_imp
 #' @param num_na The number of missing values used to estimate prediction quality.
 #' @param rowmax Number between 0 to 1. NA injection cannot create rows with more missing % than this number.
 #' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
@@ -263,7 +264,8 @@ tune_imp <- function(
   max_iter = 1000,
   .progress = TRUE,
   cores = 1,
-  location = NULL
+  location = NULL,
+  pin_blas = FALSE
 ) {
   # pre-conditioning
   checkmate::assert_matrix(
@@ -295,6 +297,7 @@ tune_imp <- function(
     )
     parameters <- unique(parameters)
   }
+  checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
 
   # validate .f
   if (is.character(.f)) {
@@ -541,12 +544,15 @@ tune_imp <- function(
   iter <- seq_len(nrow(indices))
 
   if (parallelize) {
+    check_pin_blas(pin_blas)
     # crated function only needed for parallel branch
     crated_fn <- carrier::crate(
       function(i) {
-        # pin BLAS/OMP threads inside each worker. Doesn't modify user's BLAS.
-        RhpcBLASctl::blas_set_num_threads(1)
-        RhpcBLASctl::omp_set_num_threads(1)
+        if (pin_blas) {
+          # pin BLAS/OMP threads inside each worker. Doesn't modify user's BLAS.
+          RhpcBLASctl::blas_set_num_threads(1)
+          RhpcBLASctl::omp_set_num_threads(1)
+        }
         tryCatch(
           {
             pre <- obj
@@ -575,12 +581,13 @@ tune_imp <- function(
       nr = nr,
       nc = nc,
       parameters_list = parameters_list,
-      fixed_args = fixed_args
+      fixed_args = fixed_args,
+      pin_blas = pin_blas
     )
     result_list <- mirai::mirai_map(iter, crated_fn)[.progress = .progress]
   } else {
     # sequential: plain closure, no crate, no BLAS pinning
-    run_one <- function(i) {
+    run_sequential <- function(i) {
       tryCatch(
         {
           pre <- obj
@@ -604,7 +611,7 @@ tune_imp <- function(
     }
     if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
     result_list <- lapply(iter, function(i) {
-      out <- run_one(i)
+      out <- run_sequential(i)
       if (.progress) cli::cli_progress_update(id = pb)
       out
     })

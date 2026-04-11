@@ -142,7 +142,7 @@ methyl <- data.frame(
   strand = "+"
 )
 methyl$end <- methyl$start
-  
+
 set.seed(1234)
 for (i in seq_along(sample_names)) {
   methyl[[paste0("numCs", i)]] <- sample.int(100, size = positions, replace = TRUE)
