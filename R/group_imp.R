@@ -1,20 +1,169 @@
+#' Format Truncated Output for Messages
+#'
+#' Helper function to format a vector as a comma-separated string, truncating
+#' it to a maximum number of elements to keep warning and error messages readable.
+#' Appends a hint pointing the user to the `prep_groups` documentation.
+#'
+#' @param x A character to format.
+#' @param n Integer scalar. The maximum number of elements to display. Default is `5`.
+#'
+#' @return A length-1 character string.
+#'
+#' @noRd
+#' @keywords internal
 fmt_trunc <- function(x, n = 5) {
-  paste(paste(x[seq_len(min(n, length(x)))], collapse = ", "), "... (see ?prep_groups)")
+  n <- min(n, length(x))
+  truncated <- x[seq_len(n)]
+  suffix <- if (length(x) > n) ", ..." else ""
+  paste0(paste(truncated, collapse = ", "), suffix, " (see ?prep_groups)")
 }
 
+#' Remove Features from Auxiliary Columns
+#'
+#' Performs a fast, grouped set-difference using `collapse`. For each group
+#' (element) in the lists, it removes any values in `aux` that are already
+#' present in the corresponding `feat` element.
+#'
+#' @param aux A list of character vectors representing auxiliary column names per group.
+#' @param feat A list of character vectors representing feature column names per group,
+#'   must be the same length as `aux`.
+#' @param iter Levels to be used with [collapse::gsplit()]
+#' @return A list of character vectors of the same length as `aux`, with `feat`
+#'   elements removed.
+#'
+#' @noRd
+#' @keywords internal
+remove_feat_from_aux <- function(aux, feat, iter) {
+  aux_lens <- lengths(aux)
+  if (sum(aux_lens) == 0L) {
+    return(aux)
+  }
+
+  aux_flat <- unlist(aux, use.names = FALSE)
+  aux_gid <- rep.int(iter, aux_lens)
+
+  feat_lens <- lengths(feat)
+  feat_flat <- unlist(feat, use.names = FALSE)
+  feat_gid <- rep.int(iter, feat_lens)
+
+  keep <- is.na(collapse::fmatch(list(aux_gid, aux_flat), list(feat_gid, feat_flat)))
+  gid_f <- factor(aux_gid[keep], levels = iter)
+  out <- collapse::gsplit(aux_flat[keep], gid_f)
+  names(out) <- NULL
+  out
+}
+
+#' Prune List Elements to a Global Reference Set
+#'
+#' Helper function to filter elements within a list of vectors, keeping only
+#' those present in a reference character vector `A`.
+#'
+#' @param lst A list of character vectors (e.g., group features or auxiliary columns) to prune.
+#' @param A Character vector to prune from.
+#' @param iter Levels to be used with [collapse::gsplit()]
+#'
+#' @return A list of character vectors the same length as `lst`, keeping only
+#'   elements that exist in `A`.
+#'
+#' @noRd
+#' @keywords internal
+prune_to_A <- function(lst, A, iter) {
+  lens <- lengths(lst)
+  if (sum(lens) == 0L) {
+    return(lst)
+  }
+  flat <- unlist(lst, use.names = FALSE)
+  keep <- !is.na(collapse::fmatch(flat, A))
+  gid <- factor(rep.int(iter, lens), levels = iter)
+  out <- collapse::gsplit(flat[keep], gid[keep])
+  names(out) <- NULL
+  out
+}
+
+#' Check and Validate BLAS Thread Pinning
+#'
+#' Verifies that the `RhpcBLASctl` package is installed if BLAS pinning is
+#' explicitly requested (`pin_blas = TRUE`). If pinning is not requested but
+#' multiple BLAS threads are detected, it emits a helpful tip suggesting
+#' pinning for better parallel performance.
+#'
+#' @param pin_blas Logical scalar. Whether BLAS thread pinning is requested.
+#'
+#' @return `NULL` invisibly. Called for its side effects (messages or errors).
+#'
+#' @noRd
+#' @keywords internal
 check_pin_blas <- function(pin_blas) {
   has_pkg <- requireNamespace("RhpcBLASctl", quietly = TRUE)
   if (pin_blas && !has_pkg) {
-    stop(
-      "`pin_blas = TRUE` requires 'RhpcBLASctl'.\n",
-      "Install it with: install.packages('RhpcBLASctl')"
-    )
+    cli::cli_abort(c(
+      "{.code pin_blas = TRUE} requires the {.pkg RhpcBLASctl} package.",
+      "i" = "Install it with {.code install.packages(\"RhpcBLASctl\")}"
+    ))
   }
   if (!pin_blas && has_pkg && RhpcBLASctl::blas_get_num_procs() > 1L) {
     message("Tip: set `pin_blas = TRUE` may improve parallel performance.")
   }
 }
 
+#' Get Cleaned Illumina Manifests
+#'
+#' Downloads pre-cleaned Illumina manifests via the `slideimp.extra`
+#' package for use with [group_imp()].
+#'
+#' @param group Character. Name of the requested manifest.
+#'
+#' @return A data.frame containing the cleaned Illumina manifest for
+#' the requested array type.
+#'
+#' @seealso [group_imp()]
+#'
+#' @noRd
+#' @keywords internal
+slideimp_extra_manifests <- function(group = NULL) {
+  if (!requireNamespace("slideimp.extra", quietly = TRUE)) {
+    cli::cli_abort(c(
+      "The {.pkg slideimp.extra} package is required for this functionality.",
+      "i" = "Install it with:",
+      ">" = "install.packages('slideimp.extra', repos = c('https://hhp94.r-universe.dev', getOption('repos')))"
+    ))
+  }
+  checkmate::assert_choice(group, choices = slideimp.extra::slideimp_arrays)
+  deduped <- group %in% c("EPICv2_deduped", "MSA_deduped")
+  if (deduped) {
+    group <- switch(group, EPICv2_deduped = "EPICv2", MSA_deduped = "MSA")
+  }
+  return(slideimp.extra::ilmn_manifest(chip = group, deduped = deduped))
+}
+
+#' Compute Column Index Mappings for a Single Group
+#'
+#' Maps a group's feature and auxiliary column positions (relative to the
+#' original matrix) into the structures needed by the imputation loop:
+#' local feature indices within the submatrix, the combined column index
+#' for submatrix extraction, and the feature names.
+#'
+#' @param g Integer scalar. The group index (position in `feat_splits` /
+#'   `aux_splits` / `prep_groups`).
+#' @param feat_splits A list of integer vectors, one per group, giving each
+#'   group's feature column positions in the original matrix.
+#' @param aux_splits A list of integer vectors (or `NULL`s), one per group,
+#'   giving each group's auxiliary column positions in the original matrix.
+#' @param prep_groups A list of character vectors, one per group, containing
+#'   the feature names (i.e., `group$feature` from the prepped table).
+#'
+#' @return A named list with three elements:
+#'
+#' * `features_idx_local`: Integer vector of feature positions within the
+#'   extracted submatrix (`1:n_features`), used to slice imputed columns
+#'   back out of the result.
+#' * `col_idx`: Integer vector of all column positions (features then aux)
+#'   in the original matrix, used to extract the submatrix via
+#'   `obj[, col_idx]`.
+#' * `features_names`: Character vector of feature names for this group.
+#'
+#' @noRd
+#' @keywords internal
 group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
   f_idx <- feat_splits[[g]]
   col_idx <- c(f_idx, aux_splits[[g]])
@@ -95,8 +244,12 @@ prep_groups <- function(
     min.len = 1, unique = TRUE,
     any.missing = FALSE, .var.name = "obj_cn"
   )
-  checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
-  group <- unique(group)
+  if (is.character(group)) {
+    group <- slideimp_extra_manifests(group)
+  } else {
+    checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
+    group <- unique(group)
+  }
   checkmate::assert_names(
     colnames(group),
     must.include = "feature", .var.name = "group"
@@ -130,11 +283,11 @@ prep_groups <- function(
     )
     # group$group <- NULL
   } else if (inherits(group$feature, "character")) {
-    stop(
-      "`group` has a character 'feature' column but no 'group' column. ",
-      "Either add a 'group' column to define groups, or use list-columns ",
-      "(see ?prep_groups)."
-    )
+    cli::cli_abort(c(
+      "{.arg group} has a character {.field feature} column but no {.field group} column.",
+      "i" = "Either add a {.field group} column to define groups, or use list-columns.",
+      "i" = "See {.help prep_groups} for details."
+    ))
   }
 
   checkmate::assert_list(
@@ -180,12 +333,10 @@ prep_groups <- function(
   not_in_B <- setdiff(A, B)
   if (length(not_in_B) > 0) {
     if (!allow_unmapped) {
-      stop(paste0(
-        "The following column(s) in `obj` have no matching entry in `group`: ",
-        fmt_trunc(not_in_B), ".\n",
-        "Run setdiff(colnames(obj), group$feature) to examine the unmapped probes.\n",
-        "If you are sure `group` is correct and want to leave these columns untouched, ",
-        "set `allow_unmapped = TRUE`."
+      cli::cli_abort(c(
+        "{length(not_in_B)} column{?s} in {.arg obj} {?has/have} no matching entry in {.arg group}: {fmt_trunc(not_in_B)}",
+        "i" = "Run {.code setdiff(colnames(obj), group$feature)} to examine the unmapped probes.",
+        "i" = "If you are sure {.arg group} is correct and want to leave these columns untouched, set {.code allow_unmapped = TRUE}."
       ))
     } else {
       message(paste0(
@@ -199,16 +350,17 @@ prep_groups <- function(
   # Features must not appear in more than one group
   if (anyDuplicated(all_feats) > 0) {
     dups <- unique(all_feats[duplicated(all_feats)])
-    stop(
-      "Features appear in more than one group: ",
-      fmt_trunc(dups)
-    )
+    cli::cli_abort(c(
+      "Features appear in more than one group:",
+      "x" = "{fmt_trunc(dups)}"
+    ))
   }
 
   # Prune B \ A (QC-dropped probes not in obj)
-  group$feature <- lapply(group$feature, intersect, A)
-  group$aux <- lapply(group$aux, intersect, A)
-  group$aux <- Map(setdiff, group$aux, group$feature)
+  iter <- seq_len(nrow(group))
+  group$feature <- prune_to_A(group$feature, A = A, iter = iter)
+  group$aux <- prune_to_A(group$aux, A = A, iter = iter)
+  group$aux <- remove_feat_from_aux(group$aux, group$feature, iter = iter)
 
   # Step 3: Prune empty groups ----
   empty <- lengths(group$feature) == 0L
@@ -221,26 +373,29 @@ prep_groups <- function(
     rownames(group) <- NULL
   }
   if (nrow(group) == 0) {
-    stop("No groups remain after pruning. Check that group features match obj column names.")
+    cli::cli_abort(c(
+      "No groups remain after pruning.",
+      "i" = "Check that {.code group$feature} matches {.code colnames(obj)}."
+    ))
   }
 
   # Step 3b: Apply subset, demote non-subset features to aux ----
   if (!is.null(subset)) {
     bad_cols <- setdiff(subset, A)
     if (length(bad_cols) > 0) {
-      stop(
-        "subset contains columns not in obj_cn: ",
-        fmt_trunc(bad_cols)
-      )
+      cli::cli_abort(c(
+        "{cli::qty(length(bad_cols))}{.arg subset} contains column{?s} not in {.arg obj_cn}:",
+        "x" = "{fmt_trunc(bad_cols)}"
+      ))
     }
     all_feats_now <- unlist(group$feature)
     bad_feats <- setdiff(subset, all_feats_now)
     if (length(bad_feats) > 0) {
-      stop(
-        "subset contains features not assigned to any group: ",
-        fmt_trunc(bad_feats),
-        ". Add them to a group or remove from subset."
-      )
+      cli::cli_abort(c(
+        "{cli::qty(length(bad_feats))}{.arg subset} contains feature{?s} not assigned to any group:",
+        "x" = "{fmt_trunc(bad_feats)}",
+        "i" = "Add them to a group or remove them from {.arg subset}."
+      ))
     }
     # Features in subset stay; the rest are demoted to aux
     for (i in seq_len(nrow(group))) {
@@ -251,7 +406,7 @@ prep_groups <- function(
     }
     keep <- lengths(group$feature) > 0L
     if (!any(keep)) {
-      stop("No groups have features to impute after applying subset.")
+      cli::cli_abort("No groups have features to impute after applying {.arg subset}.")
     }
     if (any(!keep)) {
       message(
@@ -277,7 +432,10 @@ prep_groups <- function(
         }
         pool <- setdiff(A, c(feat, aux))
         if (length(pool) < n) {
-          stop("`min_group_size` is too large; not enough columns to pad.")
+          cli::cli_abort(c(
+            "{.arg min_group_size} is too large.",
+            "x" = "Not enough columns available to pad."
+          ))
         }
         c(aux, sample(pool, size = n))
       }, group$feature, group$aux, need)
@@ -300,20 +458,20 @@ prep_groups <- function(
 #' @inheritParams slide_imp
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
-#' @param group A data.frame describing how features should be grouped for
-#' imputation. Accepts two formats:
+#' @param group Specification of how features should be grouped for imputation.
+#' Accepts three formats:
 #'
-#'  **Long format**:
-#'    - `group`: A column identifying which group each feature belongs to
-#'    - `feature`: A character column of individual feature names
-#'
-#'  **List-column format** (e.g., output of [prep_groups()]):
-#'    - `feature`: A list-column of character vectors of feature column names
-#'    to impute
-#'    - `aux`: (Optional) A list-column of character vectors of auxiliary
-#'    column names used for imputation but not imputed themselves
-#'    - `parameters`: (Optional) A list-column of group-specific parameter
-#'    lists. Group-level values take priority; global arguments fill gaps.
+#'  * `character`: (Requires the `slideimp.extra` package). A single string
+#' naming a supported Illumina platform (i.e., `"EPICv2"`, `"EPICv2_deduped"`). The manifest
+#' is fetched automatically. Install via: `install.packages('slideimp.extra', repos = c('https://hhp94.r-universe.dev', getOption('repos')))`.
+#' See supported platform with `slideimp.extra::slideimp_arrays`.
+#'  * `data.frame` (Long format):
+#'    - `group`: Column identifying the group for each feature.
+#'    - `feature`: Character column of individual feature names.
+#'  * `data.frame` (List-column format, e.g., from [prep_groups()]):
+#'    - `feature`: List-column of character vectors to impute.
+#'    - `aux`: (Optional) List-column of auxiliary names used for context.
+#'    - `parameters`: (Optional) List-column of group-specific parameter lists.
 #'
 #' @param subset Character vector of feature names to impute (default `NULL`
 #' means impute all features). Must be a subset of `obj_cn` and must appear
@@ -429,6 +587,9 @@ group_imp <- function(
   )
   checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
   cn <- colnames(obj)
+  rn <- rownames(obj)
+  # obj_attrs <- attributes(obj)
+  attributes(obj) <- list(dim = dim(obj))
 
   # Step 1: Build canonical groups via prep_groups() ----
   # After this call, group$feature, group$aux, and group$parameters are all
@@ -442,10 +603,12 @@ group_imp <- function(
     min_group_size = if (is.null(min_group_size)) 0L else min_group_size,
     seed = seed
   )
+  feat_lengths <- lengths(group$feature)
+  aux_lengths <- lengths(group$aux)
 
   # Step 2: Resolve parameters ----
   if (!is.null(k) && !is.null(ncp)) {
-    stop("Cannot specify both 'k' and 'ncp' as global parameters.")
+    cli::cli_abort("Cannot specify both {.arg k} and {.arg ncp} as global parameters.")
   }
 
   # Global fills gaps (group-wise wins)
@@ -470,19 +633,24 @@ group_imp <- function(
   has_ncp <- vapply(group$parameters, \(p) "ncp" %in% names(p), logical(1))
 
   if (any(has_k & has_ncp)) {
-    stop(sprintf(
-      "Group(s) %s have both 'k' and 'ncp' in parameters.",
-      paste(which(has_k & has_ncp), collapse = ", ")
+    bad <- which(has_k & has_ncp)
+    cli::cli_abort(c(
+      "{cli::qty(length(bad))}Group{?s} {fmt_trunc(bad)} {cli::qty(length(bad))}{?has/have} both {.arg k} and {.arg ncp} in parameters.",
+      "i" = "Specify only one imputation method per group."
     ))
   }
   if (any(!has_k & !has_ncp)) {
-    stop(sprintf(
-      "Group(s) %s have neither 'k' nor 'ncp'. Specify global 'k'/'ncp' or set them in group$parameters.",
-      paste(which(!has_k & !has_ncp), collapse = ", ")
+    bad <- which(!has_k & !has_ncp)
+    cli::cli_abort(c(
+      "{cli::qty(length(bad))}Group{?s} {fmt_trunc(bad)} {cli::qty(length(bad))}{?has/have} neither {.arg k} nor {.arg ncp}.",
+      "i" = "Specify global {.arg k}/{.arg ncp} or set them in {.code group$parameters}."
     ))
   }
   if (any(has_k) && any(has_ncp)) {
-    stop("Inconsistent imputation methods across groups; all groups must use either k (KNN) or ncp (PCA).")
+    cli::cli_abort(c(
+      "Inconsistent imputation methods across groups.",
+      "i" = "All groups must use either {.arg k} (KNN) or {.arg ncp} (PCA)."
+    ))
   }
 
   imp_method <- if (all(has_k)) "knn" else "pca"
@@ -494,11 +662,10 @@ group_imp <- function(
     !is.null(p$method) && !(p$method %in% valid_methods)
   }, logical(1))
   if (any(bad_method)) {
-    stop(sprintf(
-      "Invalid `method` for %s in group(s) %s. Must be one of: %s",
-      toupper(imp_method),
-      paste(which(bad_method), collapse = ", "),
-      paste(valid_methods, collapse = ", ")
+    bad <- which(bad_method)
+    cli::cli_abort(c(
+      "{cli::qty(length(bad))}Invalid {.arg method} for {toupper(imp_method)} in group{?s} {fmt_trunc(bad)}.",
+      "i" = "Must be one of: {.val {valid_methods}}."
     ))
   }
 
@@ -514,15 +681,13 @@ group_imp <- function(
   all_param_names <- unique(unlist(lapply(group$parameters, names)))
   unknown_params <- setdiff(all_param_names, allowed_params)
   if (length(unknown_params) > 0) {
-    stop(
-      "Unknown parameters for ", imp_method, " method: ",
-      paste(unknown_params, collapse = ", ")
-    )
+    cli::cli_abort(c(
+      "{cli::qty(length(unknown_params))}Unknown parameter{?s} for {imp_method} method:",
+      "x" = "{fmt_trunc(unknown_params, 10)}"
+    ))
   }
 
   # Cap per-group k/ncp
-  feat_lengths <- lengths(group$feature)
-  aux_lengths <- lengths(group$aux)
   group_size <- feat_lengths + aux_lengths
   required_param <- if (is_knn_mode) "k" else "ncp"
 
@@ -541,9 +706,9 @@ group_imp <- function(
       p[[required_param]] <- cap
     }
     if (p[[required_param]] < 1L) {
-      stop(sprintf(
-        "Group %d: %s must be >= 1 after capping (group size = %d).",
-        i, required_param, group_size[i]
+      cli::cli_abort(c(
+        "Group {i}: {.arg {required_param}} must be {.code >= 1} after capping.",
+        "x" = "Group size = {group_size[i]}."
       ))
     }
     group$parameters[[i]] <- p
@@ -554,16 +719,17 @@ group_imp <- function(
   # Step 3: Imputation loop ----
   # Column-index lookups
   iter <- seq_len(nrow(group))
+
   all_feats_vec <- unlist(group$feature)
   all_feats_pos <- collapse::fmatch(all_feats_vec, cn)
-  feat_splits <- collapse::gsplit(all_feats_pos, rep(iter, feat_lengths))
+  gid_feat <- factor(rep.int(iter, feat_lengths), levels = iter)
+  feat_splits <- collapse::gsplit(all_feats_pos, gid_feat)
+  names(feat_splits) <- NULL
 
-  if (any(aux_lengths > 0)) {
-    all_aux_pos <- collapse::fmatch(unlist(group$aux), cn)
-    aux_splits <- collapse::gsplit(all_aux_pos, rep(iter, aux_lengths))
-  } else {
-    aux_splits <- vector("list", nrow(group))
-  }
+  all_aux_pos <- collapse::fmatch(unlist(group$aux), cn)
+  gid_aux <- factor(rep.int(iter, aux_lengths), levels = iter)
+  aux_splits <- collapse::gsplit(all_aux_pos, gid_aux)
+  names(aux_splits) <- NULL
 
   indices <- lapply(
     iter, group_indices,
@@ -602,7 +768,7 @@ group_imp <- function(
     p <- group$parameters[[i]]
     if (is_knn_mode) {
       p$cores <- cores
-      p$subset <- group$feature[[i]]
+      p$subset <- indices[[i]]$features_idx_local
     }
     p
   })
@@ -676,6 +842,8 @@ group_imp <- function(
     if (.progress) cli::cli_progress_done(id = pb)
   }
 
+  colnames(obj) <- cn
+  rownames(obj) <- rn
   class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- imp_method
   return(obj)

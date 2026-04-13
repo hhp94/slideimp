@@ -9,3 +9,7 @@ load_all1 <- function(recompile = c("eig_sym_sel.h", "fastSVD.cpp")) {
   }
   withr::with_envvar(c(PKG_CPPFLAGS = "-DLOC_TIMER"), devtools::load_all())
 }
+
+scratch <- function() {
+  file.edit("dev/scratch.R")
+}

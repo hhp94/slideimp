@@ -157,7 +157,7 @@ Rcpp::List pca_imp_internal_cpp(
   // constants for SVD path
   const bool tall = (nrX >= ncX);
   const arma::uword k = ncp + 1; // clamped in R
-  // loop-carried buffers. Note: no need to size upfront since armadillo sizes
+  // loop-carried buffers. Note: no need to size up front since armadillo sizes
   // them during the first iteration and subsequence iterations are no op
   arma::mat U, V, X_work, AA_NxN, Vn, eigvecs;
   arma::vec vs_top, d_inv, eigvals, lambda_shrinked;

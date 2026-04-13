@@ -2,7 +2,7 @@
 This is a resubmission. In this version I have:
 
 * Omitted the single quotes around imputePCA() in my DESCRIPTION
-* Removed the .Rd file of the internal only function inject_na() as well as the examples
+* Removed the .Rd file of the internal only function sample_na_loc() as well as the examples
 
 Other than the changes above that directly address the comments, I have also:
 

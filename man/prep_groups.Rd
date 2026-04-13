@@ -17,23 +17,24 @@ prep_groups(
 \item{obj_cn}{Character vector of column names from the data matrix
 (i.e., \code{colnames(obj)}). Every element must appear in the \code{group$feature}.}
 
-\item{group}{A data.frame describing how features should be grouped for
-imputation. Accepts two formats:
-
-\strong{Long format}:
+\item{group}{Specification of how features should be grouped for imputation.
+Accepts three formats:
 \itemize{
-\item \code{group}: A column identifying which group each feature belongs to
-\item \code{feature}: A character column of individual feature names
+\item \code{character}: (Requires the \code{slideimp.extra} package). A single string
+naming a supported Illumina platform (i.e., \code{"EPICv2"}, \code{"EPICv2_deduped"}). The manifest
+is fetched automatically. Install via: \code{install.packages('slideimp.extra', repos = c('https://hhp94.r-universe.dev', getOption('repos')))}.
+See supported platform with \code{slideimp.extra::slideimp_arrays}.
+\item \code{data.frame} (Long format):
+\itemize{
+\item \code{group}: Column identifying the group for each feature.
+\item \code{feature}: Character column of individual feature names.
 }
-
-\strong{List-column format} (e.g., output of \code{\link[=prep_groups]{prep_groups()}}):
+\item \code{data.frame} (List-column format, e.g., from \code{\link[=prep_groups]{prep_groups()}}):
 \itemize{
-\item \code{feature}: A list-column of character vectors of feature column names
-to impute
-\item \code{aux}: (Optional) A list-column of character vectors of auxiliary
-column names used for imputation but not imputed themselves
-\item \code{parameters}: (Optional) A list-column of group-specific parameter
-lists. Group-level values take priority; global arguments fill gaps.
+\item \code{feature}: List-column of character vectors to impute.
+\item \code{aux}: (Optional) List-column of auxiliary names used for context.
+\item \code{parameters}: (Optional) List-column of group-specific parameter lists.
+}
 }}
 
 \item{subset}{Character vector of feature names to impute (default \code{NULL}

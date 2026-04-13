@@ -171,7 +171,7 @@ inline double calc_distance(
 // calc_distance_raw_complete — called for Group 3 (other side fully observed)
 // =============================================================================
 // Bound math (exact):
-//   n_valid is known upfront (precomputed target_n_valid).
+//   n_valid is known up front (precomputed target_n_valid).
 //   final_dist >= partial_dist, so:
 //   if partial_dist > worst_dist * n_valid, then final_dist/n_valid > worst_dist.
 // =============================================================================

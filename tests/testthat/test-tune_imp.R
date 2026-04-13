@@ -31,7 +31,7 @@ test_that("tune_imp works", {
       slide_imp_par,
       .f = "slide_imp",
       location = location,
-      rep = 1,
+      n_reps = 1,
       num_na = 200
     )
   })
@@ -43,7 +43,7 @@ test_that("tune_imp works", {
         obj,
         .f = "slide_imp",
         location = location,
-        rep = 1,
+        n_reps = 1,
         num_na = 200
       )
     },
@@ -69,7 +69,7 @@ test_that("tune_imp works", {
     post_imp = TRUE
   )
   expect_no_error({
-    knn_imp_res <- tune_imp(obj, knn_imp_par, .f = "knn_imp", rep = 1, num_na = 100)
+    knn_imp_res <- tune_imp(obj, knn_imp_par, .f = "knn_imp", n_reps = 1, num_na = 100)
   })
 
   expect_true(
@@ -87,7 +87,7 @@ test_that("tune_imp works", {
   # Check `pca_imp`
   pca_imp_par <- data.frame(ncp = 2, miniter = 2)
   expect_no_error({
-    pca_imp_res <- tune_imp(obj, pca_imp_par, .f = "pca_imp", rep = 1, num_na = 100)
+    pca_imp_res <- tune_imp(obj, pca_imp_par, .f = "pca_imp", n_reps = 1, num_na = 100)
   })
 
   expect_true(
@@ -114,7 +114,7 @@ test_that("tune_imp works", {
     value = c(0, 1)
   )
   expect_no_error({
-    custom_imp_res <- tune_imp(obj, custom_par, rep = 1, num_na = 100, .f = custom_fun)
+    custom_imp_res <- tune_imp(obj, custom_par, n_reps = 1, num_na = 100, .f = custom_fun)
   })
 
   expect_true(
@@ -126,7 +126,7 @@ test_that("tune_imp works", {
   )
 })
 
-test_that("tune_imp works when rep is a list of NA locations", {
+test_that("tune_imp works when n_reps is a list of NA locations", {
   data(khanmiss1)
 
   # Create a complete matrix (no NAs) for testing
@@ -159,7 +159,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
       obj,
       slide_imp_par,
       .f = "slide_imp",
-      rep = na_loc_list, # Using list instead of integer
+      na_loc = na_loc_list, # Using list instead of integer
     )
   })
 
@@ -190,7 +190,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
       obj,
       knn_imp_par,
       .f = "knn_imp",
-      rep = na_loc_list
+      na_loc = na_loc_list
     )
   })
 
@@ -216,7 +216,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
     custom_res <- tune_imp(
       obj,
       custom_par,
-      rep = na_loc_list,
+      na_loc = na_loc_list,
       .f = custom_fun
     )
   })
@@ -244,7 +244,7 @@ test_that("tune_imp works when rep is a list of NA locations", {
       location = location,
       slide_imp_par,
       .f = "slide_imp",
-      rep = varied_na_locs
+      na_loc = varied_na_locs
     )
   })
 
@@ -275,7 +275,7 @@ test_that("tune_imp correctly uses provided NA locations from list", {
   result <- tune_imp(
     obj,
     params,
-    rep = na_locations,
+    na_loc = na_locations,
     .f = simple_imp
   )
 
@@ -316,7 +316,7 @@ test_that("tune_imp handles mixed linear and 2D positions in list", {
   result <- tune_imp(
     obj,
     params,
-    rep = na_locations_mixed,
+    na_loc = na_locations_mixed,
     .f = simple_imp
   )
 
@@ -348,7 +348,7 @@ test_that("compute_metrics works with slideimp_tune and data.frame", {
   result_tune <- tune_imp(
     obj,
     params,
-    rep = 2,
+    n_reps = 2,
     num_na = 10,
     .f = simple_imp
   )
@@ -381,7 +381,7 @@ test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
   result <- tune_imp(
     obj,
     params,
-    rep = 2,
+    n_reps = 2,
     num_na = 10,
     .f = simple_imp
   )
@@ -401,18 +401,18 @@ test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
   )
 
   # Rep 1: 10 rows, 2 missing
-  rows_rep1 <- out_na[out_na$rep == 1, ]
+  rows_rep1 <- out_na[out_na$rep_id == 1, ]
   expect_true(all(rows_rep1$n == 10))
   expect_true(all(rows_rep1$n_miss == 2))
 
   # Rep 2: 10 rows, 3 missing
-  rows_rep2 <- out_na[out_na$rep == 2, ]
+  rows_rep2 <- out_na[out_na$rep_id == 2, ]
   expect_true(all(rows_rep2$n == 10))
   expect_true(all(rows_rep2$n_miss == 3))
 
   # n and n_miss are consistent across metrics within the same rep
-  for (r in unique(out_na$rep)) {
-    subset <- out_na[out_na$rep == r, ]
+  for (r in unique(out_na$rep_id)) {
+    subset <- out_na[out_na$rep_id == r, ]
     expect_length(unique(subset$n), 1)
     expect_length(unique(subset$n_miss), 1)
   }
@@ -455,7 +455,7 @@ test_that("tune_imp works with custom function and list-column parameters", {
       obj,
       custom_par,
       .f = weighted_fill,
-      rep = 2,
+      n_reps = 2,
       num_na = 30
     )
   })
@@ -490,7 +490,7 @@ test_that("tune_imp works with custom function and NULL parameters", {
       obj,
       parameters = NULL,
       .f = zero_fill,
-      rep = 3,
+      n_reps = 3,
       num_na = 20
     )
   })
@@ -524,7 +524,7 @@ test_that("tune_imp with NULL parameters and a function that has defaults", {
       obj,
       parameters = NULL,
       .f = fill_with_default,
-      rep = 1,
+      n_reps = 1,
       num_na = 10
     )
   })
@@ -540,10 +540,11 @@ test_that("tune_imp with NULL parameters and a function that has defaults", {
       obj,
       parameters = explicit_par,
       .f = fill_with_default,
-      rep = 1,
+      n_reps = 1,
       num_na = 10
     )
   })
 
   expect_equal(res_null$result[[1]]$estimate, res_explicit$result[[1]]$estimate)
 })
+

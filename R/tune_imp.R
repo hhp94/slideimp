@@ -1,75 +1,190 @@
-#' Inject NA Values into a Matrix
+#' Stratified Sampling of NA Locations
 #'
-#' This helper function randomly selects positions in a matrix to inject a specified number of NA values,
-#' ensuring that the injection does not exceed specified missingness thresholds for rows and columns.
-#' It attempts to find a valid set of positions within a maximum number of iterations.
+#' Randomly samples matrix positions for NA injection in a **stratified** manner
+#' (balanced by column). For each replication, it randomly selects `n_cols`
+#' columns (from all columns or the restricted `subset` if supplied) and then
+#' samples exactly `n_rows` row positions **within each** of those columns.
 #'
 #' @inheritParams slide_imp
 #' @inheritParams tune_imp
 #'
-#' @param num_na The number of missing values to inject.
-#' @param rowmax Number between 0 and 1. NA injection cannot create rows with a higher proportion of
-#'   missing values than this threshold.
-#' @param colmax Number between 0 and 1. NA injection cannot create columns with a higher proportion of
-#'   missing values than this threshold.
-#' @param check_sd Logical. If `TRUE`, also ensure that no column becomes zero-variance after injection.
-#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default `1000`).
+#' @param n_cols Integer. Number of columns to sample per replication.
+#' @param n_rows Integer. Number of rows to sample **per selected column**.
+#' @param n_reps Integer. Number of independent replications to generate.
+#' @param subset Integer or character vector (optional). Column indices (or
+#' column names) to sample from. If supplied, `n_cols` columns are randomly
+#' sampled from this pool for **each** replication (instead of from all
+#' columns). If `NULL` (default), samples from all columns.
 #'
-#' @return A vector of integer indices indicating the positions in the matrix
-#' where NAs should be injected.
+#' @return A list of length `n_reps`. Each element is an integer matrix with
+#' two columns named `"row"` and `"col"` containing the 1-based row and
+#' column indices of the positions where NAs should be injected. Each matrix
+#' has exactly `n_rows * n_cols` rows.
 #'
-#' @details
-#' The function first checks that the existing missingness in `obj` already respects the `rowmax`
-#' and `colmax` thresholds. It then repeatedly samples random positions from the currently non-NA
-#' elements and verifies that adding the new NAs would not violate the row/column missingness limits
-#' (or create zero-variance columns when `check_sd = TRUE`). Sampling continues until a valid set of
-#' positions is found or `max_iter` is reached (in which case an error is thrown).
+#' @seealso [sample_na_loc()]
 #'
 #' @examples
-#' #' set.seed(123)
-#' #'
-#' #' # Create a sample matrix (no existing NAs)
-#' #' mat <- matrix(rnorm(100), nrow = 20, ncol = 5)
-#' #'
-#' #' # Basic usage - inject 10 NAs (defaults: rowmax/colmax = 0.9, check_sd = FALSE)
-#' #' na_loc <- inject_na(mat, num_na = 10)
+#' set.seed(123)
 #'
+#' # Create a sample matrix (complete data)
+#' mat <- matrix(rnorm(1000), nrow = 100, ncol = 10)
+#'
+#' # Sample 2 columns with 15 NAs each, repeated 5 times
+#' na_locs <- sample_na_loc_stratified(mat, n_cols = 2, n_rows = 15, n_reps = 5)
+#'
+#' # Check structure
+#' length(na_locs) # 5 replications
+#' nrow(na_locs[[1]]) # 30 positions per replication
+#' table(na_locs[[1]][, "col"]) # exactly 15 per column
+#'
+#' # Example usage: inject NAs into a test matrix
+#' mat_test <- mat
+#' loc <- na_locs[[1]]
+#' mat_test[cbind(loc[, "row"], loc[, "col"])] <- NA
+#'
+#' # Using a restricted pool of columns (still randomly samples n_cols from
+#' # the pool for each replication)
+#' na_locs_fixed <- sample_na_loc_stratified(
+#'   mat,
+#'   n_cols = 2,
+#'   n_rows = 10,
+#'   n_reps = 3,
+#'   subset = c(1, 5, 8)
+#' )
 #' @export
-inject_na <- function(
+sample_na_loc_stratified <- function(obj, n_cols, n_rows, n_reps, subset = NULL) {
+  checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
+  checkmate::assert_int(n_cols, lower = 1, .var.name = "n_cols")
+  checkmate::assert_int(n_rows, lower = 1, .var.name = "n_rows")
+  checkmate::assert_int(n_reps, lower = 1, .var.name = "n_reps")
+  checkmate::assert_true(n_rows <= nrow(obj), .var.name = "n_rows <= nrow(obj)")
+
+  # resolve `subset` into an integer pool of column indices to sample from.
+  pool <- if (is.null(subset)) {
+    seq_len(ncol(obj))
+  } else if (is.character(subset)) {
+    checkmate::assert_character(subset, any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "subset")
+    if (is.null(colnames(obj))) {
+      stop("`subset` is character but `obj` has no colnames.", call. = FALSE)
+    }
+    if (!all(subset %in% colnames(obj))) {
+      missing <- setdiff(subset, colnames(obj))
+      stop("`subset` contains colnames not in `obj`: ", paste(missing, collapse = ", "), call. = FALSE)
+    }
+    match(subset, colnames(obj))
+  } else {
+    checkmate::assert_integerish(
+      subset,
+      lower = 1, upper = ncol(obj),
+      any.missing = FALSE, min.len = 1, unique = TRUE,
+      .var.name = "subset"
+    )
+    as.integer(subset)
+  }
+
+  checkmate::assert_true(n_cols <= length(pool), .var.name = "n_cols <= length(subset)")
+
+  replicate(
+    n = n_reps,
+    {
+      chosen_cols <- sample(pool, size = n_cols)
+      values <- lapply(chosen_cols, function(x) {
+        chosen_rows <- sample.int(nrow(obj), size = n_rows)
+        matrix(
+          c(chosen_rows, rep(x, n_rows)),
+          ncol = 2,
+          dimnames = list(NULL, c("row", "col"))
+        )
+      })
+      do.call(rbind, values)
+    },
+    simplify = FALSE
+  )
+}
+
+#' Sample Missing Locations
+#'
+#' This helper function randomly selects positions in a matrix to inject a
+#' specified number of NA values, ensuring that the injection does not exceed
+#' specified missingness thresholds for rows and columns. It attempts to find a
+#' valid set of positions within a maximum number of iterations.
+#'
+#' @inheritParams slide_imp
+#' @inheritParams tune_imp
+#'
+#' @param num_na The number of missing values to inject **per replication**.
+#' @param n_reps Integer. Number of independent replications (default `1`).
+#' @param rowmax Number between 0 and 1. NA injection cannot create rows with a
+#'   higher proportion of missing values than this threshold.
+#' @param colmax Number between 0 and 1. NA injection cannot create columns with
+#'   a higher proportion of missing values than this threshold.
+#' @param check_sd Logical. If `TRUE`, also ensure that no column becomes
+#'   zero-variance after injection.
+#' @param max_iter Maximum number of iterations to attempt finding valid NA
+#'   positions (default `1000`).
+#'
+#' @return A list of length `n_reps`. Each element is an integer vector of
+#' linear (1-based) indices indicating the positions in the matrix where NAs
+#' should be injected.
+#'
+#' @details
+#' The function first checks that the existing missingness in `obj` already
+#' respects the `rowmax` and `colmax` thresholds. It then repeatedly samples
+#' random positions from the currently non-NA elements and verifies that adding
+#' the new NAs would not violate the row/column missingness limits (or create
+#' zero-variance columns when `check_sd = TRUE`). Sampling continues until a
+#' valid set of positions is found or `max_iter` is reached (in which case an
+#' error is thrown).
+#'
+#' @examples
+#' set.seed(123)
+#'
+#' # Create a sample matrix (no existing NAs)
+#' mat <- matrix(rnorm(100), nrow = 20, ncol = 5)
+#'
+#' # Basic usage - inject 10 NAs (defaults: rowmax/colmax = 0.9,
+#' # check_sd = FALSE, n_reps = 1)
+#' na_locs <- sample_na_loc(mat, num_na = 10)
+#' na_indices <- na_locs[[1]]   # linear indices for the single replication
+#'
+#' # Multiple replications
+#' na_locs_multi <- sample_na_loc(mat, num_na = 15, n_reps = 3)
+#' @export
+sample_na_loc <- function(
   obj,
   num_na,
+  n_reps = 1,
   rowmax = 0.9,
   colmax = 0.9,
   check_sd = FALSE,
   max_iter = 1000
 ) {
+  # TODO: improve efficiency. The current rejection-sampling loop rebuilds
+  # na_mat_test and recomputes col/row sums on every iteration, which is
+  # wasteful for large matrices or tight thresholds. We can use rejection
+  # resampling for a much better function.
   checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
   checkmate::assert_int(num_na, lower = 1, .var.name = "num_na")
+  checkmate::assert_int(n_reps, lower = 1, .var.name = "n_reps")
   checkmate::assert_number(rowmax, lower = 0, upper = 1, .var.name = "rowmax")
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(check_sd, .var.name = "check_sd")
   checkmate::assert_int(max_iter, lower = 1, .var.name = "max_iter")
 
-  # subset the matrix to the specified features and samples
   na_mat <- !is.na(obj)
-  # check if existing NA pattern already exceeds thresholds
   max_col_miss <- floor(nrow(na_mat) * colmax)
   max_row_miss <- floor(ncol(na_mat) * rowmax)
-  # calculate current missingness
   current_col_miss <- nrow(na_mat) - colSums(na_mat)
   current_row_miss <- ncol(na_mat) - rowSums(na_mat)
-  # check if any columns already exceed the threshold
   bad_cols <- which(current_col_miss > max_col_miss)
   if (length(bad_cols) > 0) {
     stop("Some columns have missing > colmax before na injections")
   }
-  # check if any rows already exceed the threshold
   bad_rows <- which(current_row_miss > max_row_miss)
   if (length(bad_rows) > 0) {
     stop("Some rows have missing > rowmax before na injections")
   }
   not_na <- which(na_mat)
-  # ensure 'num_na' does not exceed the number of available non-NA elements
   if (num_na >= length(not_na)) {
     stop(
       sprintf(
@@ -82,60 +197,62 @@ inject_na <- function(
   }
 
   if (check_sd) {
-    # initial check for zero variance
     cvars <- col_vars(obj)
     if (any(cvars < .Machine$double.eps | is.na(cvars))) {
       stop("Zero variance columns detected before na injections")
     }
   }
 
-  # initialize variables for the while loop
-  c_miss <- TRUE
-  r_miss <- TRUE
-  sd_ok <- !check_sd # TRUE if not checking, FALSE if we need to check
+  replicate(
+    n = n_reps,
+    {
+      c_miss <- TRUE
+      r_miss <- TRUE
+      sd_ok <- !check_sd
 
-  na_loc <- NULL
-  iter <- 0
-  # inject NAs while ensuring missingness thresholds and iter are not exceeded
-  while (c_miss || r_miss || !sd_ok) {
-    iter <- iter + 1
-    if (iter > max_iter) {
-      stop(
-        "NA injection failed. Adjust 'num_na' or increase 'colmax' and 'rowmax'."
-      )
-    }
-    na_mat_test <- na_mat
-    na_loc <- sample(not_na, size = num_na)
-    na_mat_test[na_loc] <- FALSE
+      na_loc <- NULL
+      iter <- 0
+      while (c_miss || r_miss || !sd_ok) {
+        iter <- iter + 1
+        if (iter > max_iter) {
+          stop(
+            "NA injection failed. Adjust 'num_na' or increase 'colmax' and 'rowmax'."
+          )
+        }
+        na_mat_test <- na_mat
+        na_loc <- sample(not_na, size = num_na)
+        na_mat_test[na_loc] <- FALSE
 
-    # calculate the counts of missing values in columns and rows
-    col_miss_count <- nrow(na_mat_test) - colSums(na_mat_test)
-    row_miss_count <- ncol(na_mat_test) - rowSums(na_mat_test)
-    # check if any column or row exceeds the missingness thresholds
-    c_miss <- any(col_miss_count > max_col_miss)
-    r_miss <- any(row_miss_count > max_row_miss)
+        col_miss_count <- nrow(na_mat_test) - colSums(na_mat_test)
+        row_miss_count <- ncol(na_mat_test) - rowSums(na_mat_test)
+        c_miss <- any(col_miss_count > max_col_miss)
+        r_miss <- any(row_miss_count > max_row_miss)
 
-    if (check_sd) {
-      # this is the real obj, not is.na(obj)
-      obj_test <- obj
-      obj_test[na_loc] <- NA
-      cvars <- col_vars(obj_test)
-      sd_ok <- !any(cvars < .Machine$double.eps | is.na(cvars))
-    }
-  }
-  return(na_loc)
+        if (check_sd) {
+          obj_test <- obj
+          obj_test[na_loc] <- NA
+          cvars <- col_vars(obj_test)
+          sd_ok <- !any(cvars < .Machine$double.eps | is.na(cvars))
+        }
+      }
+      na_loc
+    },
+    simplify = FALSE
+  )
 }
 
 #' Convert 2D Positions to Linear Indices
 #'
-#' This function converts 2D positions (row and column indices, i.e., first and second columns)
-#' in a matrix to their corresponding linear (1D) positions.
+#' This function converts 2D positions (row and column indices, i.e., first and
+#' second columns) in a matrix to their corresponding linear (1D) positions.
 #'
-#' @param pos_2d A numeric matrix with exactly 2 columns (first for rows, second for columns)
-#' and at least 1 row. Each entry must be a positive integer within the matrix bounds.
+#' @param pos_2d A numeric matrix with exactly 2 columns (first for rows,
+#'   second for columns) and at least 1 row. Each entry must be a positive
+#'   integer within the matrix bounds.
 #' @param nrow The number of rows in the matrix.
 #' @param ncol The number of columns in the matrix.
-#' @return A numeric vector of linear positions corresponding to the input 2D positions.
+#' @return A numeric vector of linear positions corresponding to the input 2D
+#'   positions.
 #'
 #' @keywords internal
 #' @noRd
@@ -154,54 +271,157 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
   return(linear_pos)
 }
 
+#' Resolve NA locations for tune_imp
+#'
+#' If `na_loc` is NULL, generates `n_reps` random NA location vectors via
+#' `sample_na_loc()`. Otherwise normalizes the user-supplied positions into
+#' a list of linear-index integer vectors and bounds-checks them.
+#'
+#' Accepted `na_loc` shapes:
+#' - integer vector of linear positions (treated as a single rep)
+#' - 2-column integerish matrix of (row, col) pairs (treated as a single rep)
+#' - list whose elements are either of the above
+#'
+#' @keywords internal
+#' @noRd
+resolve_na_loc <- function(
+  obj,
+  na_loc,
+  n_reps,
+  num_na,
+  rowmax,
+  colmax,
+  check_sd,
+  max_iter
+) {
+  if (is.null(na_loc)) {
+    return(sample_na_loc(
+      obj = obj,
+      num_na = num_na,
+      n_reps = n_reps,
+      rowmax = rowmax,
+      colmax = colmax,
+      check_sd = check_sd,
+      max_iter = max_iter
+    ))
+  }
+
+  # wrap a single vector/matrix into a length-1 list
+  if (!is.list(na_loc)) {
+    if (is.matrix(na_loc) || is.numeric(na_loc) || is.integer(na_loc)) {
+      na_loc <- list(na_loc)
+    } else {
+      stop("`na_loc` must be a vector, a 2-col matrix, or a list of these.")
+    }
+  }
+
+  checkmate::assert_list(
+    na_loc,
+    min.len = 1,
+    types = c("matrix", "integerish"),
+    .var.name = "na_loc"
+  )
+
+  nr <- nrow(obj)
+  nc <- ncol(obj)
+  n_total <- length(obj)
+
+  na_loc <- lapply(seq_along(na_loc), function(i) {
+    elem <- na_loc[[i]]
+    if (is.matrix(elem) && ncol(elem) == 2) {
+      grid_to_linear(elem, nrow = nr, ncol = nc)
+    } else {
+      elem
+    }
+  })
+
+  elem_lengths <- vapply(na_loc, length, numeric(1))
+  if (length(unique(elem_lengths)) != 1) {
+    stop("All elements in `na_loc` must have the same length")
+  }
+  for (i in seq_along(na_loc)) {
+    checkmate::assert_integerish(
+      na_loc[[i]],
+      lower = 1,
+      upper = n_total,
+      any.missing = FALSE,
+      min.len = 1,
+      unique = TRUE,
+      null.ok = FALSE,
+      .var.name = sprintf("na_loc[[%d]]", i)
+    )
+  }
+
+  na_loc
+}
+
 #' Tune Parameters for Imputation Methods
 #'
-#' Tunes hyperparameters for imputation methods such as [slide_imp()], [knn_imp()], [pca_imp()],
-#' or user-supplied custom functions by repeated cross-validation.
+#' Tunes hyperparameters for imputation methods such as [slide_imp()], [knn_imp()],
+#' [pca_imp()], or user-supplied custom functions by repeated cross-validation.
 #'
 #' @details
-#' The function supports tuning for built-in imputation methods ("slide_imp", "knn_imp", "pca_imp")
-#' or custom functions provided via `.f`.
+#' The function supports tuning for built-in imputation methods ("slide_imp",
+#' "knn_imp", "pca_imp") or custom functions provided via `.f`.
 #'
-#' When `.f` is a character string, the columns in `parameters` are validated against the chosen
-#' method's requirements:
-#'   - `"knn_imp"`: requires `k` in `parameters`
-#'   - `"pca_imp"`: requires `ncp` in `parameters`
-#'   - `"slide_imp"`: requires `window_size` and `overlap_size`, plus exactly one of `k` or `ncp`
+#' When `.f` is a character string, the columns in `parameters` are validated
+#' against the chosen method's requirements:
+#' - `"knn_imp"`: requires `k` in `parameters`
+#' - `"pca_imp"`: requires `ncp` in `parameters`
+#' - `"slide_imp"`: requires `window_size`, `overlap_size`, and `min_window_n`,
+#' plus exactly one of `k` or `ncp`
 #'
-#' When `.f` is a custom function, the columns in `parameters` must correspond to the arguments of `.f`
-#' (excluding the `obj` argument). The custom function must accept `obj` (a numeric matrix) as its
-#' first argument and return a numeric matrix of identical dimensions.
+#' When `.f` is a custom function, the columns in `parameters` must correspond
+#' to the arguments of `.f` (excluding the `obj` argument). The custom function
+#' must accept `obj` (a numeric matrix) as its first argument and return a
+#' numeric matrix of identical dimensions.
 #'
-#' Tuning results can be evaluated using the `{yardstick}` package or [compute_metrics()].
+#' Tuning results can be evaluated using the \pkg{yardstick} package or
+#' [compute_metrics()].
 #'
 #' @inheritParams slide_imp
 #' @inheritParams group_imp
-#' @param num_na The number of missing values used to estimate prediction quality.
-#' @param rowmax Number between 0 to 1. NA injection cannot create rows with more missing % than this number.
-#' @param colmax Number between 0 to 1. NA injection cannot create cols with more missing % than this number.
-#' @param check_sd Check if after NA injections zero variance columns are created or not.
-#' @param max_iter Maximum number of iterations to attempt finding valid NA positions (default to 1000).
-#' @param parameters A data.frame specifying parameter combinations to tune, where each column
-#' represents a parameter accepted by `.f` (excluding `obj`). List columns are supported
-#' for complex parameters. Duplicate rows are automatically removed. `NULL` would be equal to tune the
-#' function with default parameters.
-#' @param rep Either an integer specifying the number of repetitions for random NA injection, or
-#' a list defining fixed NA positions for each repetition (in which case `num_na` is ignored).
-#' The list elements can be one of the following formats:
-#'   - A two-column integer matrix. The first column is the row index, the second column is the column index.
-#'   Each row is an missing value.
-#'   - A numeric vector specifying linear locations of NAs.
-#' @param .f The imputation method to tune. Either a character string (`"knn_imp"`, `"pca_imp"`,
-#' or `"slide_imp"`) specifying a built-in method, or a custom function. Custom functions must
-#' accept `obj` as the first argument, accept the arguments in `parameters`, and return a matrix
-#' with the same dimensions as `obj`.
-#' @param cores Controls the number of cores to parallelize over for K-NN and sliding window K-NN imputation with OpenMP only.
-#' To setup parallelization for K-NN without OpenMP, PCA, and sliding window PCA imputation, use `mirai::daemons()`.
 #'
-#' @return A data.frame with columns from `parameters`, plus `param_set` (unique parameter set ID),
-#' `rep` (repetition index), and `result` (a nested data.frame containing `truth` and `estimate`
-#' columns for true and imputed values, respectively).
+#' @param parameters A data.frame specifying parameter combinations to tune,
+#'   where each column represents a parameter accepted by `.f` (excluding `obj`).
+#'   List columns are supported for complex parameters. Duplicate rows are
+#'   automatically removed. `NULL` is treated as tuning the function with its
+#'   default parameters.
+#' @param n_reps Integer. Number of repetitions for random NA injection
+#'   (default `1`).
+#' @param na_loc Optional. Pre-defined missing value locations to bypass random
+#'   NA injection. Accepted formats include:
+#'   - A two-column integer matrix (row, column indices).
+#'   - A numeric vector of linear locations.
+#'   - A list where each element is one of the above formats (one per repetition).
+#' @param num_na The number of missing values used to estimate prediction
+#'   quality. Ignored if `na_loc` is provided (default `500`).
+#' @param rowmax,colmax Numbers between 0 and 1. NA injection cannot create
+#'   rows/columns with a higher proportion of missing values than these
+#'   thresholds.
+#' @param check_sd Logical. Check that no column becomes zero-variance after
+#'   NA injection (default `TRUE`).
+#' @param max_iter Maximum number of iterations to attempt finding valid NA
+#'   positions (default `1000`).
+#' @param .progress Logical. Show a progress bar during tuning (default `TRUE`).
+#' @param cores Controls the number of cores to parallelize over for K-NN and
+#'   sliding-window K-NN imputation with OpenMP. For other methods, use
+#'   `mirai::daemons()` instead.
+#' @param location Required only for `slide_imp`. Numeric vector of column
+#'   locations.
+#' @param pin_blas Logical. Pin BLAS threads to 1 during parallel tuning
+#'   (default `FALSE`).
+#' @param .f The imputation method to tune. Either a character string
+#'   (`"knn_imp"`, `"pca_imp"`, or `"slide_imp"`) or a custom function.
+#'
+#' @return A data.frame of class `c("slideimp_tune", "slideimp_tbl", "data.frame")`
+#'   containing:
+#'   - All columns from `parameters`
+#'   - `param_set`: Unique parameter set ID
+#'   - `rep`: Repetition index (from `n_reps`)
+#'   - `result`: A nested list-column of data.frames with `truth` and `estimate`
+#'     columns
+#'   - `error`: Character column with failure reason (or `NA` if successful)
 #'
 #' @examples
 #' data(khanmiss1)
@@ -211,41 +431,40 @@ grid_to_linear <- function(pos_2d, nrow, ncol) {
 #' parameters <- data.frame(k = c(5, 10))
 #'
 #' # With random NA injection
-#' results <- tune_imp(obj, parameters, .f = "knn_imp", rep = 1, num_na = 20)
+#' results <- tune_imp(obj, parameters, .f = "knn_imp", n_reps = 1, num_na = 20)
 #'
 #' # Compute metrics on results
 #' compute_metrics(results)
 #'
 #' # Tune with fixed NA positions (2 repetitions)
-#' # Positions must not be NA in the original `obj`
 #' na_positions <- list(
 #'   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2), # Rows 1-3 in column 1
-#'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2) # Rows 2-4 in column 2
+#'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)  # Rows 2-4 in column 2
 #' )
 #' results_fixed <- tune_imp(
 #'   obj,
 #'   data.frame(k = 10),
 #'   .f = "knn_imp",
-#'   rep = na_positions
+#'   na_loc = na_positions
 #' )
 #'
 #' compute_metrics(results_fixed)
 #'
-#' # Custom imputation function example, with 2 cores parallelization with `mirai::daemons()`
-#' # Note that the functions have to be in package::function form. See `?carrier::crate`.
+#' # Custom imputation function example
 #' custom_imp <- function(obj, mean = 0, sd = 1) {
 #'   na_pos <- is.na(obj)
 #'   obj[na_pos] <- stats::rnorm(sum(na_pos), mean = mean, sd = sd)
 #'   obj
 #' }
 #'
-#' mirai::daemons(2) # Setup 2 cores for parallelization
+#' # Setup 2 cores for parallelization (mirai)
+#' mirai::daemons(2)
 #' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
 #' results_custom <- tune_imp(
 #'   obj,
 #'   parameters_custom,
 #'   .f = custom_imp,
-#'   rep = 2,
+#'   n_reps = 2,
 #'   num_na = 20
 #' )
 #' mirai::daemons(0)
@@ -256,8 +475,9 @@ tune_imp <- function(
   obj,
   parameters = NULL,
   .f,
-  rep = 1,
-  num_na = 100,
+  n_reps = 1,
+  na_loc = NULL,
+  num_na = 500,
   rowmax = 0.9,
   colmax = 0.9,
   check_sd = TRUE,
@@ -280,7 +500,6 @@ tune_imp <- function(
   nc <- ncol(obj)
 
   checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
-  # if parameters is NULL, create a 1-row placeholder
   if (is.null(parameters)) {
     parameters_is_null <- TRUE
     parameters <- data.frame(.placeholder = TRUE)
@@ -307,7 +526,6 @@ tune_imp <- function(
     )
 
     if (.f == "slide_imp") {
-      # validate location argument (required for slide_imp)
       if (is.null(location)) {
         stop("`slide_imp` requires the `location` argument to be provided.")
       }
@@ -320,7 +538,6 @@ tune_imp <- function(
         null.ok = FALSE,
         .var.name = "location"
       )
-      # validate required tuning parameters
       if (!all(c("window_size", "overlap_size", "min_window_n") %in% names(parameters))) {
         stop("`slide_imp` requires `window_size`, `overlap_size`, and `min_window_n` in `parameters`.")
       }
@@ -359,44 +576,10 @@ tune_imp <- function(
     stop("`.f` must be a function or one of 'slide_imp', 'knn_imp', 'pca_imp'.")
   }
 
-  if (is.numeric(rep)) {
-    checkmate::assert_count(rep, positive = TRUE, .var.name = "rep")
+  checkmate::assert_count(n_reps, positive = TRUE, .var.name = "n_reps")
+  if (is.null(na_loc)) {
     checkmate::assert_count(num_na, positive = TRUE, null.ok = FALSE, .var.name = "num_na")
     checkmate::assert_count(max_iter, positive = TRUE, null.ok = FALSE, .var.name = "max_iter")
-    rep_is_list <- FALSE
-    n_reps <- rep
-  } else if (is.list(rep)) {
-    checkmate::assert_list(rep, min.len = 1, types = c("matrix", "integerish"), .var.name = "rep")
-    # convert any 2D positions to linear positions
-    rep <- lapply(seq_along(rep), \(i) {
-      elem <- rep[[i]]
-      if (is.matrix(elem) && ncol(elem) == 2) {
-        grid_to_linear(elem, nrow = nr, ncol = nc)
-      } else {
-        elem
-      }
-    })
-    # validate as linear positions
-    elem_lengths <- vapply(rep, length, numeric(1))
-    if (length(unique(elem_lengths)) != 1) {
-      stop("All elements in `rep` list must have the same length")
-    }
-    for (i in seq_along(rep)) {
-      checkmate::assert_integerish(
-        rep[[i]],
-        lower = 1,
-        upper = length(obj),
-        any.missing = FALSE,
-        min.len = 1,
-        unique = TRUE,
-        null.ok = FALSE,
-        .var.name = sprintf("rep[[%d]]", i)
-      )
-    }
-    rep_is_list <- TRUE
-    n_reps <- length(rep)
-  } else {
-    stop("`rep` must be either a positive integer or a list of NA location vectors")
   }
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(check_sd, .var.name = "check_sd")
@@ -404,16 +587,7 @@ tune_imp <- function(
   checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
 
-  .rowid <- seq_len(nrow(parameters))
-
-  indices <- expand.grid(
-    param_set = .rowid,
-    rep = seq_len(n_reps)
-  )
-
-  message("Step 1/2: Injecting NA")
-
-  # parallelization
+  # parallelization mode flags (need check_sd finalized before resolving na_loc)
   is_knn_mode <- {
     (is.character(.f) && .f == "knn_imp") ||
       (is.character(.f) && .f == "slide_imp" && "k" %in% names(parameters))
@@ -424,25 +598,26 @@ tune_imp <- function(
     }
   }
 
-  # Generate or use NA injection locations
-  if (rep_is_list) {
-    # Use the provided list of NA locations
-    na_loc <- rep
-  } else {
-    # Generate NA injection locations for each repetition
-    na_loc <- replicate(
-      n = n_reps,
-      inject_na(
-        obj = obj,
-        num_na = num_na,
-        rowmax = rowmax,
-        colmax = colmax,
-        check_sd = check_sd,
-        max_iter = max_iter
-      ),
-      simplify = FALSE
-    )
-  }
+  message("Step 1/2: Resolving NA locations")
+
+  na_loc <- resolve_na_loc(
+    obj = obj,
+    na_loc = na_loc,
+    n_reps = n_reps,
+    num_na = num_na,
+    rowmax = rowmax,
+    colmax = colmax,
+    check_sd = check_sd,
+    max_iter = max_iter
+  )
+  n_reps <- length(na_loc)
+
+  .rowid <- seq_len(nrow(parameters))
+
+  indices <- expand.grid(
+    param_set = .rowid,
+    rep_id = seq_len(n_reps)
+  )
 
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
   if (cores > 1 && is_knn_mode) {
@@ -475,16 +650,13 @@ tune_imp <- function(
     message("Running Mode: sequential...")
   }
 
-  # Build extra fixed args for slide_imp (location is not a tuning parameter)
   is_slide <- is.character(.f) && .f == "slide_imp"
   fixed_args <- list()
   if (is_slide) fixed_args$location <- location
   if (is_knn_mode) fixed_args$cores <- cores
 
-  # Parameter list
   parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
     row_list <- as.list(row)
-    # remove placeholder column
     if (parameters_is_null) {
       row_list$.placeholder <- NULL
     }
@@ -498,7 +670,6 @@ tune_imp <- function(
     row_list
   })
 
-  # validate the output of custom function once and convert character .f to function
   if (is.character(.f)) {
     impute_f <- switch(.f,
       slide_imp = slide_imp,
@@ -506,7 +677,6 @@ tune_imp <- function(
       pca_imp   = pca_imp
     )
   } else {
-    # custom function: probe once on the main process to validate output shape
     impute_f <- .f
     pre <- obj
     na_positions <- na_loc[[1]]
@@ -545,18 +715,16 @@ tune_imp <- function(
 
   if (parallelize) {
     check_pin_blas(pin_blas)
-    # crated function only needed for parallel branch
     crated_fn <- carrier::crate(
       function(i) {
         if (pin_blas) {
-          # pin BLAS/OMP threads inside each worker. Doesn't modify user's BLAS.
           RhpcBLASctl::blas_set_num_threads(1)
           RhpcBLASctl::omp_set_num_threads(1)
         }
         tryCatch(
           {
             pre <- obj
-            na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
+            na_positions <- na_loc[[indices[i, "rep_id", drop = TRUE]]]
             pre[na_positions] <- NA
             truth_vec <- obj[na_positions]
             param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
@@ -586,12 +754,11 @@ tune_imp <- function(
     )
     result_list <- mirai::mirai_map(iter, crated_fn)[.progress = .progress]
   } else {
-    # sequential: plain closure, no crate, no BLAS pinning
     run_sequential <- function(i) {
       tryCatch(
         {
           pre <- obj
-          na_positions <- na_loc[[indices[i, "rep", drop = TRUE]]]
+          na_positions <- na_loc[[indices[i, "rep_id", drop = TRUE]]]
           pre[na_positions] <- NA
           truth_vec <- obj[na_positions]
           param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
@@ -618,7 +785,6 @@ tune_imp <- function(
     if (.progress) cli::cli_progress_done(id = pb)
   }
 
-  # combine parameters with results
   error_vec <- vapply(result_list, function(x) {
     e <- attr(x, "error")
     if (is.null(e)) {
@@ -750,7 +916,6 @@ compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
 #' @export
 compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   checkmate::assert_character(metrics, unique = TRUE)
-
   .metrics_list <- list(
     mae = calc_mae,
     rmse = calc_rmse,
@@ -759,7 +924,6 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
     bias = calc_bias,
     rsq_trad = calc_rsq_trad
   )
-
   invalid_metrics <- setdiff(metrics, names(.metrics_list))
   if (length(invalid_metrics) > 0) {
     stop(
@@ -767,26 +931,19 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
       "Available metrics: ", paste(names(.metrics_list), collapse = ", ")
     )
   }
-
   metric_fns <- .metrics_list[metrics]
-
   # always compute n and n_miss per result element
   results$n <- vapply(results$result, nrow, integer(1))
   results$n_miss <- vapply(results$result, function(x) sum(is.na(x$estimate)), integer(1))
-  results$metrics <- lapply(
+  metrics_list <- lapply(
     results$result,
     \(x) calc_all_metrics(x, metric_fns = metric_fns)
   )
-
-  keep_cols <- setdiff(names(results), c("result", "metrics"))
-
-  out <- do.call(rbind, lapply(seq_len(nrow(results)), function(i) {
-    row_data <- results[i, keep_cols, drop = FALSE]
-    metric_df <- results$metrics[[i]]
-    row_data <- row_data[rep(1, nrow(metric_df)), , drop = FALSE]
-    rownames(row_data) <- NULL
-    cbind(row_data, metric_df)
-  }))
-
-  as.data.frame(out)
+  keep_cols <- setdiff(names(results), "result")
+  n_metrics <- vapply(metrics_list, nrow, integer(1))
+  row_data <- results[rep(seq_len(nrow(results)), n_metrics), keep_cols, drop = FALSE]
+  metric_df <- collapse::rowbind(metrics_list)
+  out <- cbind(row_data, metric_df)
+  rownames(out) <- NULL
+  out
 }

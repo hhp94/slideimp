@@ -4,7 +4,7 @@ test_that("group column + feature column API works correctly", {
   to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1, rho = 0.75)
   obj <- to_test$input
 
-  # group_feature to match the expected API
+  # prep_groups to match the expected API
   group_long <- data.frame(
     group = to_test$col_group$group,
     feature = to_test$col_group$feature
@@ -52,6 +52,33 @@ test_that("group column API collapses duplicate groups correctly", {
   )
 })
 
+test_that("group_imp() handles aux columns present in only some groups (padded)", {
+  set.seed(1234)
+  to_test <- sim_mat(n = 20, p = 50, n_col_groups = 2, perc_total_na = 0.3, perc_col_na = 1)
+  obj <- to_test$input
+  meta <- to_test$col_group
+
+  # move feature 1 into its own tiny group so padding is needed for that
+  # group only — the other groups will have zero aux columns.
+  meta[1, "group"] <- "group3"
+
+  prepped <- prep_groups(colnames(obj), group = meta, min_group_size = 10)
+
+  # sanity: exactly one group has aux, the others have none. This is the
+  # configuration that previously broke the rep(iter, aux_lengths) split.
+  aux_lens <- lengths(prepped$aux)
+  expect_true(sum(aux_lens > 0) == 1L)
+  expect_true(any(aux_lens == 0L))
+
+  # should run without "subscript out of bounds" and return a full matrix.
+  expect_no_error(
+    res <- group_imp(obj, group = prepped, k = 3)
+  )
+  expect_identical(dim(res), dim(obj))
+  expect_identical(colnames(res), colnames(obj))
+  expect_false(anyNA(res))
+})
+
 test_that("group column API accepts factor group column", {
   set.seed(1234)
   to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
@@ -85,7 +112,7 @@ test_that("group errors when feature is character without group column", {
   group_df <- data.frame(feature = c("f1", "f2"))
   expect_error(
     group_imp(obj, group = group_df, k = 2),
-    "no 'group' column"
+    "no group column"
   )
 })
 
@@ -339,7 +366,7 @@ test_that("group-specific parameters work correctly in parallel, pca", {
   )
 })
 
-# group_feature ----
+# prep_groups ----
 test_that("prep_groups returns correct structure without k/ncp", {
   obj <- matrix(rnorm(2 * 5), nrow = 2, dimnames = list(c("r1", "r2"), c("a", "b", "c", "d", "e")))
   features_df <- data.frame(
@@ -455,4 +482,17 @@ test_that("prep_groups errors when no colnames match features_df", {
     prep_groups(colnames(obj), features_df),
     "No groups remain after pruning"
   )
+})
+
+# slideimp.extra ----
+test_that("slideimp_extra_manifests works with prep_groups", {
+  skip_if_not_installed("slideimp.extra")
+  skip_on_cran()
+  slideimp.extra::set_slideimp_path("dev")
+  msa <- slideimp.extra::ilmn_manifest("MSA", deduped = TRUE, rawdir = "dev")
+  n_feat <- length(msa$feature)
+  sim_mat <- matrix(rnorm(1*n_feat), nrow = 1, dimnames = list(NULL, msa$feature))
+  expect_no_error(prep_groups(colnames(sim_mat), group = msa))
+  expect_no_error(prep_groups(colnames(sim_mat), group = "MSA_deduped"))
+  slideimp.extra::set_slideimp_path(NULL)
 })
