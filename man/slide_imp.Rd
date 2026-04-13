@@ -65,9 +65,9 @@ Default = \code{FALSE}.}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
-\item{colmax}{A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.}
+\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.}
 
-\item{cores}{Number of cores to parallelize over.}
+\item{cores}{Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.}
 
 \item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
 using column means (default = \code{TRUE}).}
@@ -79,31 +79,32 @@ using column means (default = \code{TRUE}).}
 greater than \code{0}, pairwise distances between columns with missing values
 are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
-Set to \code{0} to disable caching and trade speed for lower memory usage on
-very wide data.}
+Set to \code{0} to disable caching and trade speed for lower memory usage.}
 
-\item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
+\item{ncp}{Integer. Number of components used to predict the missing entries.}
 
-\item{scale}{boolean. By default TRUE leading to a same weight for each variable}
+\item{scale}{Logical. If \code{TRUE} (default), variables are scaled to have
+unit variance.}
 
-\item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
+\item{coeff.ridge}{Numeric. Ridge regularization coefficient (default is 1).
+Only used if \code{method = "regularized"}. Values < 1 regularize less (closer
+to EM); values > 1 regularize more (closer to mean imputation).}
 
-\item{seed}{random number generator seed}
+\item{seed}{Integer. Random number generator seed.}
 
-\item{row.w}{Row weights. Can be one of:
+\item{row.w}{Row weights (internally normalized to sum to 1). Can be one of:
 \itemize{
-\item \code{NULL} (default): all rows weighted equally.
-\item A numeric vector of length \code{nrow(obj)}: custom positive weights.
-\item \code{"n_miss"}: rows with more missing values receive lower weight.
-}
+\item \code{NULL} (default): All rows weighted equally.
+\item A numeric vector: Custom positive weights of length \code{nrow(obj)}.
+\item \code{"n_miss"}: Rows with more missing values receive lower weight.
+}}
 
-Weights are normalized to sum to 1.}
+\item{nb.init}{Integer. Number of random initializations. The first
+initialization is always mean imputation.}
 
-\item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
+\item{maxiter}{Integer. Maximum number of iterations for the algorithm.}
 
-\item{maxiter}{integer, maximum number of iteration for the algorithm}
-
-\item{miniter}{integer, minimum number of iteration for the algorithm}
+\item{miniter}{Integer. Minimum number of iterations for the algorithm.}
 
 \item{method}{For K-NN imputation: distance metric to use (\code{"euclidean"} or \code{"manhattan"}).
 For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}

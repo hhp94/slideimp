@@ -37,38 +37,38 @@ group_imp(
 \item{group}{Specification of how features should be grouped for imputation.
 Accepts three formats:
 \itemize{
-\item \code{character}: (Requires the \code{slideimp.extra} package). A single string
-naming a supported Illumina platform (i.e., \code{"EPICv2"}, \code{"EPICv2_deduped"}). The manifest
-is fetched automatically. Install via: \code{install.packages('slideimp.extra', repos = c('https://hhp94.r-universe.dev', getOption('repos')))}.
-See supported platform with \code{slideimp.extra::slideimp_arrays}.
+\item \code{character}: (Requires the \code{{slideimp.extra}} package, available on GitHub). A single string
+naming a supported Illumina platform (e.g., \code{"EPICv2"}, \code{"EPICv2_deduped"}).
+The manifest is fetched automatically. For installation instructions, see the
+package README. Supported platforms can be viewed via
+\code{slideimp.extra::slideimp_arrays}.
 \item \code{data.frame} (Long format):
 \itemize{
 \item \code{group}: Column identifying the group for each feature.
 \item \code{feature}: Character column of individual feature names.
 }
-\item \code{data.frame} (List-column format, e.g., from \code{\link[=prep_groups]{prep_groups()}}):
+\item \code{data.frame} (List-column format):
 \itemize{
-\item \code{feature}: List-column of character vectors to impute.
+\item \code{feature}: List-column of character vectors to impute (e.g., from \code{\link[=prep_groups]{prep_groups()}}).
 \item \code{aux}: (Optional) List-column of auxiliary names used for context.
 \item \code{parameters}: (Optional) List-column of group-specific parameter lists.
 }
 }}
 
 \item{subset}{Character vector of feature names to impute (default \code{NULL}
-means impute all features). Must be a subset of \code{obj_cn} and must appear
-in at least one group's \code{feature} list. Features in a group but not in
-\code{subset} are demoted to auxiliary columns for that group. Groups left
+means impute all features). Must be a subset of \code{obj_cn} (\code{colnames(obj)})
+and must appear in at least one group's \code{feature}. Features in a group
+but not in \code{subset} are demoted to auxiliary columns for that group. Groups left
 with zero features after demotion are dropped with a message.}
 
 \item{allow_unmapped}{Logical. If \code{FALSE}, every column in
-\code{colnames(obj)} \emph{must} appear in at least one group's \code{feature} or \code{aux}.
-If \code{TRUE}, columns that have no group assignment are left completely
-untouched (neither imputed nor used as auxiliary columns) and a warning
-is issued instead of an error.}
+\code{colnames(obj)} \emph{must} appear in \code{group}. If \code{TRUE}, columns that have no
+group assignment are left untouched (neither imputed nor used as auxiliary
+columns) and a message is issued instead of an error.}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
-\item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
+\item{ncp}{Integer. Number of components used to predict the missing entries.}
 
 \item{method}{For K-NN imputation: distance metric to use (\code{"euclidean"} or \code{"manhattan"}).
 For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
@@ -82,7 +82,7 @@ or mirai-based parallelism, use \code{mirai::daemons()} instead.}
 (features + aux) per group. Groups smaller than this are padded with
 randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}} internally.}
 
-\item{colmax}{A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.}
+\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.}
 
 \item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
 using column means (default = \code{TRUE}).}
@@ -90,38 +90,39 @@ using column means (default = \code{TRUE}).}
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
 
-\item{tree}{Logical. \code{FALSE} (default) = brute-force K-NN. \code{TRUE} = use mlpack BallTree.}
+\item{tree}{Logical. \code{FALSE} (default) = brute-force K-NN. \code{TRUE} = use \code{{mlpack}} BallTree.}
 
 \item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
 greater than \code{0}, pairwise distances between columns with missing values
 are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
-Set to \code{0} to disable caching and trade speed for lower memory usage on
-very wide data.}
+Set to \code{0} to disable caching and trade speed for lower memory usage.}
 
-\item{scale}{boolean. By default TRUE leading to a same weight for each variable}
+\item{scale}{Logical. If \code{TRUE} (default), variables are scaled to have
+unit variance.}
 
-\item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
+\item{coeff.ridge}{Numeric. Ridge regularization coefficient (default is 1).
+Only used if \code{method = "regularized"}. Values < 1 regularize less (closer
+to EM); values > 1 regularize more (closer to mean imputation).}
 
-\item{threshold}{the threshold for assessing convergence}
+\item{threshold}{Numeric. The threshold for assessing convergence.}
 
-\item{row.w}{Row weights. Can be one of:
+\item{row.w}{Row weights (internally normalized to sum to 1). Can be one of:
 \itemize{
-\item \code{NULL} (default): all rows weighted equally.
-\item A numeric vector of length \code{nrow(obj)}: custom positive weights.
-\item \code{"n_miss"}: rows with more missing values receive lower weight.
-}
-
-Weights are normalized to sum to 1.}
+\item \code{NULL} (default): All rows weighted equally.
+\item A numeric vector: Custom positive weights of length \code{nrow(obj)}.
+\item \code{"n_miss"}: Rows with more missing values receive lower weight.
+}}
 
 \item{seed}{Numeric or \code{NULL}. Random seed for reproducibility when padding
 for \code{min_group_size} and passed to \code{\link[=pca_imp]{pca_imp()}}.}
 
-\item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
+\item{nb.init}{Integer. Number of random initializations. The first
+initialization is always mean imputation.}
 
-\item{maxiter}{integer, maximum number of iteration for the algorithm}
+\item{maxiter}{Integer. Maximum number of iterations for the algorithm.}
 
-\item{miniter}{integer, minimum number of iteration for the algorithm}
+\item{miniter}{Integer. Minimum number of iterations for the algorithm.}
 
 \item{pin_blas}{Logical. If \code{TRUE}, pin BLAS thread to 1 to help
 with parallel performance on systems linked with multi-threaded BLAS.}
@@ -130,8 +131,8 @@ with parallel performance on systems linked with multi-threaded BLAS.}
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-K-NN or PCA imputation by groups, such as chromosomes, flanking columns,
-or clusters identified by column clustering techniques.
+Perform K-NN or PCA imputation independently on feature groups
+(e.g. by chromosomes, flanking probes, or clustering-based groups).
 }
 \details{
 This function performs K-NN or PCA imputation on groups of features
@@ -163,7 +164,7 @@ all PCA). Per-group \code{k} is capped at \code{group_size - 1} and \code{ncp} a
 set.seed(1234)
 to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
 obj <- to_test$input
-group <- to_test$col_group
+group <- to_test$col_group # metadata that maps `colnames(obj)` to groups
 head(group)
 
 # Simple grouped K-NN imputation

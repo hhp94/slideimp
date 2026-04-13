@@ -71,7 +71,7 @@ library(slideimp.extra)
 library(mirai)
 
 imputed <- group_imp(
-  obj = MSA_beta_matrix, 
+  obj = MSA_beta_matrix,
   group = "MSA", # <- this feature requires the `slideimp.extra` package
   ncp = 10 # <- change to `k` for KNN imputation
 )
@@ -105,7 +105,7 @@ group_df <- sim_obj$col_group
   - Inverse distance power (`dist_pow`) for weighted averaging: 1 or 2
 (higher values assign lower weights to more distant neighbors)
 
-* Tuning is performed on a subset of the data. We use 10 repeats of cross-validation for evaluation.
+* Tuning is performed on a subset of the data. We use 10 repeats (`n_reps = 10`) of cross-validation for evaluation. We re-impute 50 observed values (`num_na = 50`) to compute the rmse and mae. Increase both `n_reps` and `num_na` in real analyses to increase reliability of error estimates.
 * **Note:** Parallelization via the `cores` argument is only available for KNN imputation with OpenMP.
 
 ```{r}
@@ -114,7 +114,12 @@ group2_columns <- subset(group_df, group == "group2")
 group2_only <- obj[, group2_columns$feature]
 
 tune_knn <- tune_imp(
-  group2_only, parameters = knn_params, .f = "knn_imp", cores = 8, rep = 10
+  group2_only,
+  parameters = knn_params,
+  .f = "knn_imp",
+  cores = 8,
+  n_reps = 10,
+  num_na = 50
 )
 ```
 
@@ -128,12 +133,13 @@ sum_metrics <- do.call(
   aggregate(
     .estimate ~ k + dist_pow + .metric,
     data = metrics,
-    FUN = function(x)
+    FUN = function(x) {
       c(
         n = length(x),
         mean_error = mean(x),
         sd_error = sd(x)
       )
+    }
   )
 )
 
@@ -147,7 +153,7 @@ mirai::daemons(2) # 2 Cores
 
 # PCA imputation.
 pca_params <- data.frame(ncp = c(1, 5))
-tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", rep = 10)
+tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", n_reps = 10, num_na = 50)
 
 mirai::daemons(0) # Close daemons
 ```
@@ -178,6 +184,7 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
 * `slide_imp()` performs sliding window imputation. 
 * **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run `slide_imp()` separately on each chromosome) before imputation. See the package vignette for more details. 
 * This function is **not** for Illumina DNAm microarrays; see `group_imp()`.
+* See vignette for details about selecting `window_size` and `overlap_size` with `tune_imp()`.
 
 ```{r}
 # Simulate some data
@@ -206,7 +213,7 @@ location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromo
 slide_imp(
   obj = chr1_beta,
   location = location,
-  window_size = 50,
+  window_size = 50, # select with `tune_imp()`
   overlap_size = 5,
   min_window_n = 11, # must be > k = 10
   dry_run = TRUE
@@ -218,10 +225,10 @@ slide_imp(
 slide_imp(
   obj = chr1_beta,
   location = location,
-  window_size = 50,
+  window_size = 50, # select with `tune_imp()`
   overlap_size = 5,
   min_window_n = 11, # must be > k = 10
-  k = 10,
+  k = 10, # select with `tune_imp()`
   cores = 2,
   .progress = FALSE
 )

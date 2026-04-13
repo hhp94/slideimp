@@ -19,3 +19,10 @@ Invisible \code{x}
 \description{
 Print a \code{slideimp_tbl} Object
 }
+\examples{
+data(khanmiss1)
+set.seed(1234)
+results <- tune_imp(t(khanmiss1), parameters = data.frame(k = 5), .f = "knn_imp")
+class(results)
+print(results)
+}

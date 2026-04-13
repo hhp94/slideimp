@@ -9,38 +9,39 @@ prep_groups(
   group,
   subset = NULL,
   min_group_size = 0,
-  allow_unmapped = TRUE,
+  allow_unmapped = FALSE,
   seed = NULL
 )
 }
 \arguments{
 \item{obj_cn}{Character vector of column names from the data matrix
-(i.e., \code{colnames(obj)}). Every element must appear in the \code{group$feature}.}
+(e.g., \code{colnames(obj)}). Every element must appear in \code{group$feature} unless \code{allowed_unmapped = TRUE}.}
 
 \item{group}{Specification of how features should be grouped for imputation.
 Accepts three formats:
 \itemize{
-\item \code{character}: (Requires the \code{slideimp.extra} package). A single string
-naming a supported Illumina platform (i.e., \code{"EPICv2"}, \code{"EPICv2_deduped"}). The manifest
-is fetched automatically. Install via: \code{install.packages('slideimp.extra', repos = c('https://hhp94.r-universe.dev', getOption('repos')))}.
-See supported platform with \code{slideimp.extra::slideimp_arrays}.
+\item \code{character}: (Requires the \code{{slideimp.extra}} package, available on GitHub). A single string
+naming a supported Illumina platform (e.g., \code{"EPICv2"}, \code{"EPICv2_deduped"}).
+The manifest is fetched automatically. For installation instructions, see the
+package README. Supported platforms can be viewed via
+\code{slideimp.extra::slideimp_arrays}.
 \item \code{data.frame} (Long format):
 \itemize{
 \item \code{group}: Column identifying the group for each feature.
 \item \code{feature}: Character column of individual feature names.
 }
-\item \code{data.frame} (List-column format, e.g., from \code{\link[=prep_groups]{prep_groups()}}):
+\item \code{data.frame} (List-column format):
 \itemize{
-\item \code{feature}: List-column of character vectors to impute.
+\item \code{feature}: List-column of character vectors to impute (e.g., from \code{\link[=prep_groups]{prep_groups()}}).
 \item \code{aux}: (Optional) List-column of auxiliary names used for context.
 \item \code{parameters}: (Optional) List-column of group-specific parameter lists.
 }
 }}
 
 \item{subset}{Character vector of feature names to impute (default \code{NULL}
-means impute all features). Must be a subset of \code{obj_cn} and must appear
-in at least one group's \code{feature} list. Features in a group but not in
-\code{subset} are demoted to auxiliary columns for that group. Groups left
+means impute all features). Must be a subset of \code{obj_cn} (\code{colnames(obj)})
+and must appear in at least one group's \code{feature}. Features in a group
+but not in \code{subset} are demoted to auxiliary columns for that group. Groups left
 with zero features after demotion are dropped with a message.}
 
 \item{min_group_size}{Integer or \code{NULL}. Minimum number of columns
@@ -48,21 +49,20 @@ with zero features after demotion are dropped with a message.}
 randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}} internally.}
 
 \item{allow_unmapped}{Logical. If \code{FALSE}, every column in
-\code{colnames(obj)} \emph{must} appear in at least one group's \code{feature} or \code{aux}.
-If \code{TRUE}, columns that have no group assignment are left completely
-untouched (neither imputed nor used as auxiliary columns) and a warning
-is issued instead of an error.}
+\code{colnames(obj)} \emph{must} appear in \code{group}. If \code{TRUE}, columns that have no
+group assignment are left untouched (neither imputed nor used as auxiliary
+columns) and a message is issued instead of an error.}
 
 \item{seed}{Numeric or \code{NULL}. Random seed for reproducibility when padding
 for \code{min_group_size} and passed to \code{\link[=pca_imp]{pca_imp()}}.}
 }
 \value{
-A \code{data.frame} of class \code{slideimp_tbl} with columns:
+A \code{data.frame} of class \code{slideimp_tbl} containing:
 \itemize{
-\item \code{group}: A character vector of original group label if provided (not used)
-\item \code{feature}: A list-column of character vectors of feature names
-\item \code{aux}: A list-column of auxiliary column names
-\item \code{parameters}: A list-column of parameter lists
+\item \code{group}: Original group labels (if provided).
+\item \code{feature}: A list-column of character vectors (feature names).
+\item \code{aux}: A list-column of character vectors (auxiliary names).
+\item \code{parameters}: A list-column of per-group configuration lists.
 }
 }
 \description{
@@ -72,37 +72,18 @@ Converts long-format or canonical list-column input into a validated
 and optionally padding small groups.
 }
 \details{
-\strong{Set validation.} Let A = \code{obj_cn} and B = the union of all feature and
-aux names in \code{group$feature}. The function enforces \eqn{A \subseteq B}: every
-column in the matrix must appear somewhere in the manifest (\code{group}). Elements
-in B but not in A (QC-dropped probes) are silently pruned from each group.
-Groups left with zero features after pruning are dropped with a message.
+\subsection{Set Validation}{
+
+Let \eqn{A} = \code{obj_cn} and \eqn{B} = the union of all feature and auxiliary names
+in \code{group}. The function enforces \eqn{A \subseteq B}: every column in
+the matrix must appear somewhere in the manifest.
+\itemize{
+\item \verb{Pruning:} Elements in \eqn{B} but not in \eqn{A} (e.g., QC-dropped probes)
+are silently pruned from each group.
+\item \verb{Dropping:} Groups left with zero features after pruning are
+removed entirely with a diagnostic message.
 }
-\examples{
-# Simulate some data, 10 rows, 100 columns.
-sim_obj <- sim_mat(n = 10, p = 100, perc_col_na = 1)
-obj <- sim_obj$input
-obj_meta <- sim_obj$col_group
-
-# Inspect grouping structure before imputation
-prepped <- prep_groups(colnames(obj), obj_meta)
-prepped
-
-# Pad small groups to a minimum size (say 60)
-prepped_padded <- prep_groups(colnames(obj), obj_meta, min_group_size = 60)
-prepped_padded
-
-# Impute only a subset of features (others become aux)
-sub <- sample(colnames(obj), 50)
-prepped_sub <- prep_groups(colnames(obj), obj_meta, subset = sub)
-prepped_sub
-
-# Tweak per-group parameters, then pass to group_imp
-prepped$parameters <- lapply(seq_len(nrow(prepped)), \(i) list(k = 5))
-prepped$parameters[[2]]$k <- 10
-prepped$parameters
-imputed <- group_imp(obj, prepped)
-imputed
+}
 }
 \seealso{
 \code{\link[=group_imp]{group_imp()}}

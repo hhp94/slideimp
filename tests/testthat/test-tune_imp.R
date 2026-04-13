@@ -547,4 +547,3 @@ test_that("tune_imp with NULL parameters and a function that has defaults", {
 
   expect_equal(res_null$result[[1]]$estimate, res_explicit$result[[1]]$estimate)
 })
-

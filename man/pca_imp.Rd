@@ -2,7 +2,7 @@
 % Please edit documentation in R/pca_imp.R
 \name{pca_imp}
 \alias{pca_imp}
-\title{Impute dataset with PCA}
+\title{Impute Numeric Matrix with PCA Imputation}
 \usage{
 pca_imp(
   obj,
@@ -21,60 +21,61 @@ pca_imp(
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{ncp}{integer corresponding to the number of components used to to predict the missing entries}
+\item{ncp}{Integer. Number of components used to predict the missing entries.}
 
-\item{scale}{boolean. By default TRUE leading to a same weight for each variable}
+\item{scale}{Logical. If \code{TRUE} (default), variables are scaled to have
+unit variance.}
 
-\item{method}{"regularized" by default or "EM"}
+\item{method}{Character. Either \code{"regularized"} (default) or \code{"EM"}.}
 
-\item{coeff.ridge}{1 by default to perform the regularized pca_imp (imputePCA) algorithm; useful only if method="Regularized". Other regularization terms can be implemented by setting the value to less than 1 in order to regularized less (to get closer to the results of the EM method) or more than 1 to regularized more (to get closer to the results of the mean imputation)}
+\item{coeff.ridge}{Numeric. Ridge regularization coefficient (default is 1).
+Only used if \code{method = "regularized"}. Values < 1 regularize less (closer
+to EM); values > 1 regularize more (closer to mean imputation).}
 
-\item{row.w}{Row weights. Can be one of:
+\item{row.w}{Row weights (internally normalized to sum to 1). Can be one of:
 \itemize{
-\item \code{NULL} (default): all rows weighted equally.
-\item A numeric vector of length \code{nrow(obj)}: custom positive weights.
-\item \code{"n_miss"}: rows with more missing values receive lower weight.
-}
+\item \code{NULL} (default): All rows weighted equally.
+\item A numeric vector: Custom positive weights of length \code{nrow(obj)}.
+\item \code{"n_miss"}: Rows with more missing values receive lower weight.
+}}
 
-Weights are normalized to sum to 1.}
+\item{threshold}{Numeric. The threshold for assessing convergence.}
 
-\item{threshold}{the threshold for assessing convergence}
+\item{seed}{Integer. Random number generator seed.}
 
-\item{seed}{random number generator seed}
+\item{nb.init}{Integer. Number of random initializations. The first
+initialization is always mean imputation.}
 
-\item{nb.init}{integer corresponding to the number of random initializations; the first initialization is the initialization with the mean imputation}
+\item{maxiter}{Integer. Maximum number of iterations for the algorithm.}
 
-\item{maxiter}{integer, maximum number of iteration for the algorithm}
-
-\item{miniter}{integer, minimum number of iteration for the algorithm}
+\item{miniter}{Integer. Minimum number of iterations for the algorithm.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
 }
 \description{
-(From the missMDA package on CRAN) Impute the missing values of a dataset with the Principal Components Analysis model. Can be used as a preliminary step before performing a PCA on an completed dataset.
+Impute missing values in a numeric matrix using (regularized) iterative PCA.
 }
 \details{
-Impute the missing entries of a mixed data using the iterative PCA algorithm (method="EM") or the regularised iterative PCA algorithm (method="Regularized"). The (regularized) iterative PCA algorithm first consists imputing missing values with initial values such as the mean of the variable. If the argument seed is set to a specific value, a random initialization is performed: the initial values are drawn from a gaussian distribution
-with mean and standard deviation calculated from the observed values. nb.init different random initialization can be drawn. In such a situation, the solution giving the smallest objective function (the mean square error between the fitted matrix and the observed one) is kept. The second step of the (regularized) iterative PCA algorithm is to perform PCA on the completed dataset. Then, it imputes the missing values with the (regularized) reconstruction formulae of order ncp (the fitted matrix computed with ncp components for the (regularized) scores and loadings). These steps of estimation of the parameters via PCA and imputation of the missing values using the (regularized) fitted matrix are iterate until convergence. The iterative PCA algorithm is also known as the EM-PCA algorithm since it corresponds to an EM algorithm of the fixed effect model where the data are generated as a fixed structure (with a low rank representation) corrupted by noise. The number of components used in the algorithm can be found using cross-validation criteria implemented in the function estim_ncpPCA.\cr
-We advice to use the regularized version of the algorithm to avoid the overfitting problems which are very frequent when there are many missing values. In the regularized algorithm, the singular values of the PCA are shrinked.\cr
-The output of the algorithm can be used as an input of the PCA function of the FactoMineR package in order to perform PCA on an incomplete dataset.
+This algorithm is based on the original \code{missMDA::imputePCA} function and is
+optimized for tall/wide numeric matrices.
 }
 \examples{
 data("khanmiss1")
 
-# Transpose to put genes on columns. Randomly initialize missing values 5
-# times (1st time is mean).
+# Transpose to put genes on columns.
+# Randomly initialize missing values 5 times (1st time is mean).
 pca_imp(t(khanmiss1), ncp = 2, nb.init = 5)
 
 }
 \references{
-Josse, J & Husson, F. (2013). Handling missing values in exploratory multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.
+Josse, J. & Husson, F. (2013). Handling missing values in exploratory
+multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.
 
-Josse, J. and Husson, F. missMDA (2016). A Package for Handling Missing Values in Multivariate Data Analysis. Journal of Statistical Software, 70 (1), pp 1-31 \doi{doi:10.18637/jss.v070.i01}.
+Josse, J. and Husson, F. (2016). missMDA: A Package for Handling Missing
+Values in Multivariate Data Analysis. Journal of Statistical Software,
+70 (1), pp 1-31. \doi{10.18637/jss.v070.i01}
 }
 \author{
-Francois Husson \email{francois.husson@institut-agro.fr}
-
-Julie Josse \email{julie.josse@polytechnique.edu}
+Francois Husson and Julie Josse (original \code{missMDA} implementation).
 }

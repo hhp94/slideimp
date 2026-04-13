@@ -8,7 +8,7 @@
 #' @details
 #' Variances for columns with one unique value after dropping `NA` are set to `NA`.
 #'
-#' @return A named numeric vector of column variances
+#' @returns A named numeric vector of column variances
 #'
 #' @export
 #'

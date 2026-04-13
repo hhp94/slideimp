@@ -40,7 +40,7 @@ na_loc[1:3] |> lapply(head)
 ```{r}
 # This custom function imputes missing values with random normal values and takes mean and sd as params
 rnorm_imp <- function(obj, mean, sd) {
-  na <- is.na(obj) 
+  na <- is.na(obj)
   obj[na] <- rnorm(sum(na), mean = mean, sd = sd) # <- impute values with rnorm values
   return(obj) # <- return an imputed object with the same dim as obj
 }
@@ -141,7 +141,7 @@ methyl <- data.frame(
 for (i in seq_along(sample_names)) {
   methyl[[paste0("numCs", i)]] <- sample.int(100, size = n_sites, replace = TRUE)
   methyl[[paste0("numTs", i)]] <- sample.int(100, size = n_sites, replace = TRUE)
-  methyl[[paste0("coverage", i)]]  <- methyl[[paste0("numCs", i)]] + methyl[[paste0("numTs", i)]]
+  methyl[[paste0("coverage", i)]] <- methyl[[paste0("numCs", i)]] + methyl[[paste0("numTs", i)]]
 }
 
 methyl[1:5, 1:10]

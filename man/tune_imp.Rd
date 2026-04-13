@@ -10,11 +10,13 @@ tune_imp(
   .f,
   n_reps = 1,
   na_loc = NULL,
-  num_na = 500,
+  n_cols = NULL,
+  n_rows = 1,
+  num_na = NULL,
   rowmax = 0.9,
   colmax = 0.9,
-  check_sd = TRUE,
-  max_iter = 1000,
+  subset = NULL,
+  max_attempts = 10L,
   .progress = TRUE,
   cores = 1,
   location = NULL,
@@ -44,18 +46,34 @@ NA injection. Accepted formats include:
 \item A list where each element is one of the above formats (one per repetition).
 }}
 
-\item{num_na}{The number of missing values used to estimate prediction
-quality. Ignored if \code{na_loc} is provided (default \code{500}).}
+\item{n_cols}{Integer. Number of columns into which NAs are injected per
+repetition. Optional; if omitted, derived from \code{num_na} and \code{n_rows} as
+\code{ceiling(num_na / n_rows)}. If \code{num_na < n_cols}, \code{n_cols} is reduced to
+\code{num_na} so every chosen column receives at least one NA. Ignored when
+\code{na_loc} is supplied.}
+
+\item{n_rows}{Integer. Number of NAs injected per column when \code{num_na} is
+not supplied (default \code{1}). When \code{num_na} is supplied without \code{n_cols},
+\code{n_rows} acts as a hint for deriving \code{n_cols} and is otherwise unused.
+Ignored when \code{na_loc} is supplied.}
+
+\item{num_na}{Integer. Total number of missing values injected per
+repetition. NAs are distributed as evenly as possible across the chosen
+columns: each gets \code{num_na \%/\% n_cols}, and \code{num_na \%\% n_cols} randomly
+chosen columns get one extra. If omitted, \code{n_rows * n_cols} NAs are
+injected. Ignored when \code{na_loc} is supplied. At least one of \code{n_cols} or
+\code{num_na} must be supplied when \code{na_loc} is \code{NULL}.}
 
 \item{rowmax, colmax}{Numbers between 0 and 1. NA injection cannot create
 rows/columns with a higher proportion of missing values than these
 thresholds.}
 
-\item{check_sd}{Logical. Check that no column becomes zero-variance after
-NA injection (default \code{TRUE}).}
+\item{subset}{Optional integer or character vector restricting which columns
+of \code{obj} are eligible for NA injection. \code{NULL} (default) considers all
+columns.}
 
-\item{max_iter}{Maximum number of iterations to attempt finding valid NA
-positions (default \code{1000}).}
+\item{max_attempts}{Integer. Maximum number of resampling attempts per
+repetition before giving up due to row-budget exhaustion (default \code{10}).}
 
 \item{.progress}{Logical. Show a progress bar during tuning (default \code{TRUE}).}
 
@@ -122,7 +140,7 @@ compute_metrics(results)
 # Tune with fixed NA positions (2 repetitions)
 na_positions <- list(
   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2), # Rows 1-3 in column 1
-  matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)  # Rows 2-4 in column 2
+  matrix(c(2, 3, 4, 2, 2, 2), ncol = 2) # Rows 2-4 in column 2
 )
 results_fixed <- tune_imp(
   obj,

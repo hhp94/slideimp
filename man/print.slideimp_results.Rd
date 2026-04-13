@@ -4,7 +4,7 @@
 \alias{print.slideimp_results}
 \title{Print a \code{slideimp_results} Object}
 \usage{
-\method{print}{slideimp_results}(x, n = 5, p = 5, ...)
+\method{print}{slideimp_results}(x, n = 6L, p = 6L, ...)
 }
 \arguments{
 \item{x}{An \code{slideimp_results} object}
@@ -25,5 +25,6 @@ Print a \code{slideimp_results} Object
 data(khanmiss1)
 t_khanmiss1 <- t(khanmiss1)
 result <- knn_imp(t_khanmiss1, k = 5)
+class(result)
 print(result, n = 6, p = 6)
 }

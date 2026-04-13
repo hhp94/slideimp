@@ -125,13 +125,16 @@ slideimp_extra_manifests <- function(group = NULL) {
     cli::cli_abort(c(
       "The {.pkg slideimp.extra} package is required for this functionality.",
       "i" = "Install it with:",
-      ">" = "install.packages('slideimp.extra', repos = c('https://hhp94.r-universe.dev', getOption('repos')))"
+      ">" = "See the {.pkg slideimp} README or website for installation instructions."
     ))
   }
   checkmate::assert_choice(group, choices = slideimp.extra::slideimp_arrays)
   deduped <- group %in% c("EPICv2_deduped", "MSA_deduped")
   if (deduped) {
-    group <- switch(group, EPICv2_deduped = "EPICv2", MSA_deduped = "MSA")
+    group <- switch(group,
+      EPICv2_deduped = "EPICv2",
+      MSA_deduped = "MSA"
+    )
   }
   return(slideimp.extra::ilmn_manifest(chip = group, deduped = deduped))
 }
@@ -184,57 +187,33 @@ group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
 #' @inheritParams group_imp
 #'
 #' @param obj_cn Character vector of column names from the data matrix
-#' (i.e., `colnames(obj)`). Every element must appear in the `group$feature`.
+#' (e.g., `colnames(obj)`). Every element must appear in `group$feature` unless `allowed_unmapped = TRUE`.
 #'
 #' @details
+#' ### Set Validation
+#' Let \eqn{A} = `obj_cn` and \eqn{B} = the union of all feature and auxiliary names
+#' in `group`. The function enforces \eqn{A \subseteq B}: every column in
+#' the matrix must appear somewhere in the manifest.
 #'
-#' **Set validation.** Let A = `obj_cn` and B = the union of all feature and
-#' aux names in `group$feature`. The function enforces \eqn{A \subseteq B}: every
-#' column in the matrix must appear somewhere in the manifest (`group`). Elements
-#' in B but not in A (QC-dropped probes) are silently pruned from each group.
-#' Groups left with zero features after pruning are dropped with a message.
+#' * `Pruning:` Elements in \eqn{B} but not in \eqn{A} (e.g., QC-dropped probes)
+#'   are silently pruned from each group.
+#' * `Dropping:` Groups left with zero features after pruning are
+#'   removed entirely with a diagnostic message.
 #'
-#' @return A `data.frame` of class `slideimp_tbl` with columns:
-#' - `group`: A character vector of original group label if provided (not used)
-#' - `feature`: A list-column of character vectors of feature names
-#' - `aux`: A list-column of auxiliary column names
-#' - `parameters`: A list-column of parameter lists
+#' @return A `data.frame` of class `slideimp_tbl` containing:
+#' * `group`: Original group labels (if provided).
+#' * `feature`: A list-column of character vectors (feature names).
+#' * `aux`: A list-column of character vectors (auxiliary names).
+#' * `parameters`: A list-column of per-group configuration lists.
 #'
 #' @seealso [group_imp()]
-#'
 #' @export
-#'
-#' @examples
-#' # Simulate some data, 10 rows, 100 columns.
-#' sim_obj <- sim_mat(n = 10, p = 100, perc_col_na = 1)
-#' obj <- sim_obj$input
-#' obj_meta <- sim_obj$col_group
-#'
-#' # Inspect grouping structure before imputation
-#' prepped <- prep_groups(colnames(obj), obj_meta)
-#' prepped
-#'
-#' # Pad small groups to a minimum size (say 60)
-#' prepped_padded <- prep_groups(colnames(obj), obj_meta, min_group_size = 60)
-#' prepped_padded
-#'
-#' # Impute only a subset of features (others become aux)
-#' sub <- sample(colnames(obj), 50)
-#' prepped_sub <- prep_groups(colnames(obj), obj_meta, subset = sub)
-#' prepped_sub
-#'
-#' # Tweak per-group parameters, then pass to group_imp
-#' prepped$parameters <- lapply(seq_len(nrow(prepped)), \(i) list(k = 5))
-#' prepped$parameters[[2]]$k <- 10
-#' prepped$parameters
-#' imputed <- group_imp(obj, prepped)
-#' imputed
 prep_groups <- function(
   obj_cn,
   group,
   subset = NULL,
   min_group_size = 0,
-  allow_unmapped = TRUE,
+  allow_unmapped = FALSE,
   seed = NULL
 ) {
   feature <- NULL
@@ -452,8 +431,8 @@ prep_groups <- function(
 
 #' Grouped K-NN or PCA Imputation
 #'
-#' K-NN or PCA imputation by groups, such as chromosomes, flanking columns,
-#' or clusters identified by column clustering techniques.
+#' Perform K-NN or PCA imputation independently on feature groups
+#' (e.g. by chromosomes, flanking probes, or clustering-based groups).
 #'
 #' @inheritParams slide_imp
 #' @inheritParams knn_imp
@@ -461,29 +440,29 @@ prep_groups <- function(
 #' @param group Specification of how features should be grouped for imputation.
 #' Accepts three formats:
 #'
-#'  * `character`: (Requires the `slideimp.extra` package). A single string
-#' naming a supported Illumina platform (i.e., `"EPICv2"`, `"EPICv2_deduped"`). The manifest
-#' is fetched automatically. Install via: `install.packages('slideimp.extra', repos = c('https://hhp94.r-universe.dev', getOption('repos')))`.
-#' See supported platform with `slideimp.extra::slideimp_arrays`.
-#'  * `data.frame` (Long format):
-#'    - `group`: Column identifying the group for each feature.
-#'    - `feature`: Character column of individual feature names.
-#'  * `data.frame` (List-column format, e.g., from [prep_groups()]):
-#'    - `feature`: List-column of character vectors to impute.
-#'    - `aux`: (Optional) List-column of auxiliary names used for context.
-#'    - `parameters`: (Optional) List-column of group-specific parameter lists.
+#' * `character`: (Requires the `{slideimp.extra}` package, available on GitHub). A single string
+#'   naming a supported Illumina platform (e.g., `"EPICv2"`, `"EPICv2_deduped"`).
+#'   The manifest is fetched automatically. For installation instructions, see the
+#'   package README. Supported platforms can be viewed via
+#'   `slideimp.extra::slideimp_arrays`.
+#' * `data.frame` (Long format):
+#'     * `group`: Column identifying the group for each feature.
+#'     * `feature`: Character column of individual feature names.
+#' * `data.frame` (List-column format):
+#'     * `feature`: List-column of character vectors to impute (e.g., from [prep_groups()]).
+#'     * `aux`: (Optional) List-column of auxiliary names used for context.
+#'     * `parameters`: (Optional) List-column of group-specific parameter lists.
 #'
 #' @param subset Character vector of feature names to impute (default `NULL`
-#' means impute all features). Must be a subset of `obj_cn` and must appear
-#' in at least one group's `feature` list. Features in a group but not in
-#' `subset` are demoted to auxiliary columns for that group. Groups left
+#' means impute all features). Must be a subset of `obj_cn` (`colnames(obj)`)
+#' and must appear in at least one group's `feature`. Features in a group
+#' but not in `subset` are demoted to auxiliary columns for that group. Groups left
 #' with zero features after demotion are dropped with a message.
 #'
 #' @param allow_unmapped Logical. If `FALSE`, every column in
-#' `colnames(obj)` *must* appear in at least one group's `feature` or `aux`.
-#' If `TRUE`, columns that have no group assignment are left completely
-#' untouched (neither imputed nor used as auxiliary columns) and a warning
-#' is issued instead of an error.
+#' `colnames(obj)` *must* appear in `group`. If `TRUE`, columns that have no
+#' group assignment are left untouched (neither imputed nor used as auxiliary
+#' columns) and a message is issued instead of an error.
 #'
 #' @param min_group_size Integer or `NULL`. Minimum number of columns
 #' (features + aux) per group. Groups smaller than this are padded with
@@ -520,7 +499,7 @@ prep_groups <- function(
 #' - Grouping features with their flanking values/neighbors
 #' - Using clusters identified by column clustering techniques
 #'
-#' @inherit knn_imp note return
+#' @inherit knn_imp return
 #'
 #' @export
 #'
@@ -531,7 +510,7 @@ prep_groups <- function(
 #' set.seed(1234)
 #' to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
 #' obj <- to_test$input
-#' group <- to_test$col_group
+#' group <- to_test$col_group # metadata that maps `colnames(obj)` to groups
 #' head(group)
 #'
 #' # Simple grouped K-NN imputation

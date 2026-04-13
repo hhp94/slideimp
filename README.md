@@ -68,6 +68,12 @@ imputed <- group_imp(
 #> Groups 24 dropped: no features remaining after matching obj columns.
 #> Imputing 25 group(s) using PCA.
 #> Running Mode: sequential ...
+#> ■■■■■■■■ 24% | ETA: 3s■■■■■■■■■■■ 32% | ETA: 3s■■■■■■■■■■■■ 36% | ETA:
+#> 3s■■■■■■■■■■■■■■ 44% | ETA: 2s■■■■■■■■■■■■■■■■■ 52% | ETA:
+#> 2s■■■■■■■■■■■■■■■■■■■■ 64% | ETA: 1s■■■■■■■■■■■■■■■■■■■■■ 68% | ETA:
+#> 1s■■■■■■■■■■■■■■■■■■■■■■■ 72% | ETA: 1s■■■■■■■■■■■■■■■■■■■■■■■■■ 80% | ETA:
+#> 1s■■■■■■■■■■■■■■■■■■■■■■■■■■ 84% | ETA: 1s■■■■■■■■■■■■■■■■■■■■■■■■■■■ 88% |
+#> ETA: 0s■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 96% | ETA: 0s
 
 imputed
 #> slideimp_results (PCA)
@@ -125,8 +131,11 @@ group_df <- sim_obj$col_group
   - Inverse distance power (`dist_pow`) for weighted averaging: 1 or 2
     (higher values assign lower weights to more distant neighbors)
 
-- Tuning is performed on a subset of the data. We use 10 repeats of
-  cross-validation for evaluation.
+- Tuning is performed on a subset of the data. We use 10 repeats
+  (`n_reps = 10`) of cross-validation for evaluation. We re-impute 50
+  observed values (`num_na = 50`) to compute the rmse and mae. Increase
+  both `n_reps` and `num_na` in real analyses to increase reliability of
+  error estimates.
 
 - **Note:** Parallelization via the `cores` argument is only available
   for KNN imputation with OpenMP.
@@ -137,10 +146,15 @@ group2_columns <- subset(group_df, group == "group2")
 group2_only <- obj[, group2_columns$feature]
 
 tune_knn <- tune_imp(
-  group2_only, parameters = knn_params, .f = "knn_imp", cores = 8, rep = 10
+  group2_only, 
+  parameters = knn_params, 
+  .f = "knn_imp",
+  cores = 8,
+  n_reps = 10, 
+  num_na = 50
 )
 #> Tuning knn_imp
-#> Step 1/2: Injecting NA
+#> Step 1/2: Resolving NA locations
 #> Running Mode: parallel...
 #> Step 2/2: Tuning
 ```
@@ -168,14 +182,14 @@ sum_metrics <- do.call(
 
 sum_metrics[order(sum_metrics$.estimate.mean_error), ]
 #>    k dist_pow .metric .estimate.n .estimate.mean_error .estimate.sd_error
-#> 2 20        1     mae          10            0.1624504        0.010436856
-#> 4 20        2     mae          10            0.1679683        0.009893485
-#> 1  5        1     mae          10            0.1760747        0.010491048
-#> 3  5        2     mae          10            0.1800683        0.009251255
-#> 6 20        1    rmse          10            0.2051328        0.014151577
-#> 8 20        2    rmse          10            0.2120563        0.013708382
-#> 5  5        1    rmse          10            0.2232272        0.015800347
-#> 7  5        2    rmse          10            0.2286396        0.014435393
+#> 2 20        1     mae          10            0.1683682        0.014742222
+#> 4 20        2     mae          10            0.1701012        0.014242800
+#> 1  5        1     mae          10            0.1785625        0.009880483
+#> 3  5        2     mae          10            0.1793826        0.010613960
+#> 6 20        1    rmse          10            0.2118867        0.015238744
+#> 8 20        2    rmse          10            0.2142071        0.016543099
+#> 5  5        1    rmse          10            0.2254604        0.014201582
+#> 7  5        2    rmse          10            0.2276002        0.015763659
 ```
 
 - For K-NN without OpenMP, PCA imputation, and custom functions (see
@@ -186,7 +200,7 @@ mirai::daemons(2) # 2 Cores
 
 # PCA imputation.
 pca_params <- data.frame(ncp = c(1, 5))
-tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", rep = 10)
+tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", n_reps = 10, num_na = 50)
 
 mirai::daemons(0) # Close daemons
 ```
@@ -237,6 +251,8 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
   imputation. See the package vignette for more details.
 - This function is **not** for Illumina DNAm microarrays; see
   `group_imp()`.
+- See vignette for details about selecting `window_size` and
+  `overlap_size` with `tune_imp()`.
 
 ``` r
 # Simulate some data
@@ -244,12 +260,12 @@ chr1_beta <- sim_mat(n = 10, p = 2000)$input
 dim(chr1_beta)
 #> [1]   10 2000
 chr1_beta[1:5, 1:5]
-#>           feature1   feature2  feature3   feature4  feature5
-#> sample1 0.06797223 0.10504434 0.0000000 0.10077209 0.5287504
-#> sample2 0.16343139 0.45014960 0.4949551 0.74900253 0.8789273
-#> sample3 0.46574257 0.11069455 0.6765054 0.05114002 0.4973116
-#> sample4 0.00000000 0.00000000 0.4752559 0.16670520 0.6048822
-#> sample5 0.49734202 0.04334601 0.1546884 0.94341347        NA
+#>          feature1  feature2   feature3  feature4  feature5
+#> sample1 0.9576430 0.7944341 0.40901984 0.4564480 0.8357753
+#> sample2 0.6494956 0.4165532 0.81858230 0.4793420 0.6643708
+#> sample3 0.7788898 0.2802319 0.80798958 0.2400064        NA
+#> sample4 0.6988071 0.7172346 0.00000000 0.9538911        NA
+#> sample5 0.9487678 0.0000000 0.05034028 0.8895193 0.0000000
 ```
 
 - `slide_imp()` parameters:
@@ -286,7 +302,7 @@ location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromo
 slide_imp(
   obj = chr1_beta,
   location = location,
-  window_size = 50,
+  window_size = 50, # select with `tune_imp()`
   overlap_size = 5,
   min_window_n = 11, # must be > k = 10
   dry_run = TRUE
@@ -312,22 +328,22 @@ slide_imp(
 slide_imp(
   obj = chr1_beta,
   location = location,
-  window_size = 50,
+  window_size = 50, # select with `tune_imp()`
   overlap_size = 5,
   min_window_n = 11, # must be > k = 10
-  k = 10,
+  k = 10, # select with `tune_imp()`
   cores = 2,
   .progress = FALSE
 )
 #> slideimp_results (KNN)
 #> Dimensions: 10 x 2000
 #> 
-#>           feature1   feature2  feature3   feature4  feature5
-#> sample1 0.06797223 0.10504434 0.0000000 0.10077209 0.5287504
-#> sample2 0.16343139 0.45014960 0.4949551 0.74900253 0.8789273
-#> sample3 0.46574257 0.11069455 0.6765054 0.05114002 0.4973116
-#> sample4 0.00000000 0.00000000 0.4752559 0.16670520 0.6048822
-#> sample5 0.49734202 0.04334601 0.1546884 0.94341347 0.5001846
+#>          feature1  feature2   feature3  feature4  feature5
+#> sample1 0.9576430 0.7944341 0.40901984 0.4564480 0.8357753
+#> sample2 0.6494956 0.4165532 0.81858230 0.4793420 0.6643708
+#> sample3 0.7788898 0.2802319 0.80798958 0.2400064 0.4659048
+#> sample4 0.6988071 0.7172346 0.00000000 0.9538911 0.4616835
+#> sample5 0.9487678 0.0000000 0.05034028 0.8895193 0.0000000
 #> 
 #> # Showing [1:5, 1:5] of full matrix
 ```

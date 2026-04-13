@@ -491,7 +491,7 @@ test_that("slideimp_extra_manifests works with prep_groups", {
   slideimp.extra::set_slideimp_path("dev")
   msa <- slideimp.extra::ilmn_manifest("MSA", deduped = TRUE, rawdir = "dev")
   n_feat <- length(msa$feature)
-  sim_mat <- matrix(rnorm(1*n_feat), nrow = 1, dimnames = list(NULL, msa$feature))
+  sim_mat <- matrix(rnorm(1 * n_feat), nrow = 1, dimnames = list(NULL, msa$feature))
   expect_no_error(prep_groups(colnames(sim_mat), group = msa))
   expect_no_error(prep_groups(colnames(sim_mat), group = "MSA_deduped"))
   slideimp.extra::set_slideimp_path(NULL)

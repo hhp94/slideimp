@@ -19,11 +19,10 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 
 #' K-Nearest Neighbor Imputation for Numeric Matrices
 #'
-#' @description
-#' Imputes missing values in numeric matrices using full k-nearest neighbor imputation.
+#' Imputes missing values in a numeric matrix using k-nearest neighbors (KNN).
 #'
 #' @details
-#' This function performs **column-wise** nearest neighbor imputation.
+#' This function performs imputation **column-wise** (using rows as observations).
 #'
 #' When `dist_pow > 0`, imputed values are computed as distance-weighted averages
 #' where weights are inverse distances raised to the power of `dist_pow`.
@@ -33,38 +32,38 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 #' This can introduce a small bias when missingness is high.
 #'
 #' @section Performance Optimization:
-#' - **`tree = TRUE`** (BallTree): Only use when imputation runtime becomes prohibitive
-#'   and missingness is low (<5% missing). Tree construction has overhead.
-#' - **`tree = FALSE`** (default, brute-force): Always safe and usually faster for
+#' - **`tree = FALSE`** (default, brute-force KNN): Always safe and usually faster for
 #'   small-to-moderate data or high-dimensional cases.
+#' - **`tree = TRUE`** (BallTree KNN): Only use when imputation runtime becomes prohibitive
+#'   and missingness is low (<5% missing). Tree construction has overhead.
 #' - **Subset imputation**: Use the `subset` parameter for efficiency when only
 #'   specific columns need imputation (e.g., epigenetic clocks CpGs).
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
 #' @param k Number of nearest neighbors for imputation. 10 is a good starting point.
-#' @param colmax A number from 0 to 1. Threshold of missing data above which K-NN imputation is skipped.
+#' @param colmax A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.
 #' @param method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
-#' @param cores Number of cores to parallelize over.
+#' @param cores Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.
 #' @param post_imp Whether to impute remaining missing values (those that failed K-NN imputation)
 #' using column means (default = `TRUE`).
 #' @param subset Character vector of column names or integer vector of column
 #' indices specifying which columns to impute.
 #' @param dist_pow The amount of penalization for further away nearest neighbors in the weighted average.
 #' `dist_pow = 0` (default) is the simple average of the nearest neighbors.
-#' @param tree Logical. `FALSE` (default) = brute-force K-NN. `TRUE` = use mlpack BallTree.
+#' @param tree Logical. `FALSE` (default) = brute-force K-NN. `TRUE` = use `{mlpack}` BallTree.
 #' @param max_cache Maximum allowed cache size in GB (default `4`). When
 #' greater than `0`, pairwise distances between columns with missing values
 #' are pre-computed and cached, which is faster for moderate-sized data but
 #' uses O(m^2) memory where m is the number of columns with missing values.
-#' Set to `0` to disable caching and trade speed for lower memory usage on
-#' very wide data.
+#' Set to `0` to disable caching and trade speed for lower memory usage.
 #'
-#' @return A numeric matrix of the same dimensions as `obj` with missing values imputed.
+#' @returns A numeric matrix of the same dimensions as `obj` with missing values imputed.
 #'
 #' @references
-#' Robert Tibshirani, Trevor Hastie, Balasubramanian Narasimhan, and Gilbert Chu (2002).
-#' Diagnosis of multiple cancer types by shrunken centroids of gene expression
-#' PNAS 99: 6567-6572. Available at www.pnas.org
+#' Troyanskaya O, Cantor M, Sherlock G, Brown P, Hastie T, Tibshirani R,
+#' Botstein D, Altman RB (2001).
+#' Missing value estimation methods for DNA microarrays.
+#' Bioinformatics 17(6): 520-525.
 #'
 #' @examples
 #' data(khanmiss1)
@@ -72,7 +71,7 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 #'
 #' # Basic K-NN imputation (khanmiss1 has genes in rows, so transpose)
 #' t_khanmiss1 <- t(khanmiss1)
-#' result <- knn_imp(t_khanmiss1, k = 5)
+#' result <- knn_imp(t_khanmiss1, k = 10)
 #' result
 #'
 #' @export

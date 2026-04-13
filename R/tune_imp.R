@@ -1,354 +1,275 @@
-#' Stratified Sampling of NA Locations
-#'
-#' Randomly samples matrix positions for NA injection in a **stratified** manner
-#' (balanced by column). For each replication, it randomly selects `n_cols`
-#' columns (from all columns or the restricted `subset` if supplied) and then
-#' samples exactly `n_rows` row positions **within each** of those columns.
-#'
-#' @inheritParams slide_imp
-#' @inheritParams tune_imp
-#'
-#' @param n_cols Integer. Number of columns to sample per replication.
-#' @param n_rows Integer. Number of rows to sample **per selected column**.
-#' @param n_reps Integer. Number of independent replications to generate.
-#' @param subset Integer or character vector (optional). Column indices (or
-#' column names) to sample from. If supplied, `n_cols` columns are randomly
-#' sampled from this pool for **each** replication (instead of from all
-#' columns). If `NULL` (default), samples from all columns.
-#'
-#' @return A list of length `n_reps`. Each element is an integer matrix with
-#' two columns named `"row"` and `"col"` containing the 1-based row and
-#' column indices of the positions where NAs should be injected. Each matrix
-#' has exactly `n_rows * n_cols` rows.
-#'
-#' @seealso [sample_na_loc()]
-#'
-#' @examples
-#' set.seed(123)
-#'
-#' # Create a sample matrix (complete data)
-#' mat <- matrix(rnorm(1000), nrow = 100, ncol = 10)
-#'
-#' # Sample 2 columns with 15 NAs each, repeated 5 times
-#' na_locs <- sample_na_loc_stratified(mat, n_cols = 2, n_rows = 15, n_reps = 5)
-#'
-#' # Check structure
-#' length(na_locs) # 5 replications
-#' nrow(na_locs[[1]]) # 30 positions per replication
-#' table(na_locs[[1]][, "col"]) # exactly 15 per column
-#'
-#' # Example usage: inject NAs into a test matrix
-#' mat_test <- mat
-#' loc <- na_locs[[1]]
-#' mat_test[cbind(loc[, "row"], loc[, "col"])] <- NA
-#'
-#' # Using a restricted pool of columns (still randomly samples n_cols from
-#' # the pool for each replication)
-#' na_locs_fixed <- sample_na_loc_stratified(
-#'   mat,
-#'   n_cols = 2,
-#'   n_rows = 10,
-#'   n_reps = 3,
-#'   subset = c(1, 5, 8)
-#' )
 #' @export
-sample_na_loc_stratified <- function(obj, n_cols, n_rows, n_reps, subset = NULL) {
+sample_na_loc_stratified <- function(
+  obj,
+  n_cols = NULL,
+  n_rows = 1L,
+  num_na = NULL,
+  n_reps = 1L,
+  rowmax = 0.9,
+  colmax = 0.9,
+  subset = NULL,
+  max_attempts = 10L
+) {
   checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
-  checkmate::assert_int(n_cols, lower = 1, .var.name = "n_cols")
-  checkmate::assert_int(n_rows, lower = 1, .var.name = "n_rows")
   checkmate::assert_int(n_reps, lower = 1, .var.name = "n_reps")
-  checkmate::assert_true(n_rows <= nrow(obj), .var.name = "n_rows <= nrow(obj)")
+  checkmate::assert_number(rowmax, lower = 0, upper = 1, .var.name = "rowmax")
+  checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
+  checkmate::assert_int(max_attempts, lower = 1, .var.name = "max_attempts")
+  checkmate::assert_int(n_rows, lower = 1, .var.name = "n_rows")
+  if (!is.null(n_cols)) checkmate::assert_int(n_cols, lower = 1, .var.name = "n_cols")
+  if (!is.null(num_na)) checkmate::assert_int(num_na, lower = 1, .var.name = "num_na")
 
-  # resolve `subset` into an integer pool of column indices to sample from.
+  # resolve (n_cols, na_per_col, max_count).
+  if (!is.null(num_na)) {
+    if (is.null(n_cols)) {
+      n_cols <- as.integer(ceiling(num_na / n_rows))
+    }
+    if (num_na < n_cols) {
+      # avoid handing some columns a count of 0.
+      n_cols <- num_na
+    }
+    base <- num_na %/% n_cols
+    extra <- num_na %% n_cols
+    na_per_col <- c(
+      rep.int(base + 1L, extra),
+      rep.int(base, n_cols - extra)
+    )
+    max_count <- base + as.integer(extra > 0L)
+  } else {
+    if (is.null(n_cols)) {
+      stop("Supply `n_cols` and/or `num_na`.", call. = FALSE)
+    }
+    na_per_col <- rep.int(as.integer(n_rows), n_cols)
+    max_count <- as.integer(n_rows)
+    num_na <- n_rows * n_cols
+  }
+  checkmate::assert_true(max_count <= nrow(obj), .var.name = "max_count <= nrow(obj)")
+
+  # resolve `subset` into an integer pool.
   pool <- if (is.null(subset)) {
     seq_len(ncol(obj))
   } else if (is.character(subset)) {
-    checkmate::assert_character(subset, any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "subset")
+    checkmate::assert_character(subset,
+      any.missing = FALSE,
+      min.len = 1, unique = TRUE, .var.name = "subset"
+    )
     if (is.null(colnames(obj))) {
       stop("`subset` is character but `obj` has no colnames.", call. = FALSE)
     }
     if (!all(subset %in% colnames(obj))) {
       missing <- setdiff(subset, colnames(obj))
-      stop("`subset` contains colnames not in `obj`: ", paste(missing, collapse = ", "), call. = FALSE)
+      stop("`subset` contains colnames not in `obj`: ",
+        paste(missing, collapse = ", "),
+        call. = FALSE
+      )
     }
     match(subset, colnames(obj))
   } else {
-    checkmate::assert_integerish(
-      subset,
+    checkmate::assert_integerish(subset,
       lower = 1, upper = ncol(obj),
-      any.missing = FALSE, min.len = 1, unique = TRUE,
-      .var.name = "subset"
+      any.missing = FALSE, min.len = 1,
+      unique = TRUE, .var.name = "subset"
     )
     as.integer(subset)
   }
 
-  checkmate::assert_true(n_cols <= length(pool), .var.name = "n_cols <= length(subset)")
+  # pre-injection state and global feasibility.
+  not_na_mat <- !is.na(obj)
+  max_col_miss <- floor(nrow(obj) * colmax)
+  max_row_miss <- floor(ncol(obj) * rowmax)
+  current_col_miss <- nrow(obj) - colSums(not_na_mat)
+  current_row_miss <- ncol(obj) - rowSums(not_na_mat)
 
-  replicate(
-    n = n_reps,
-    {
-      chosen_cols <- sample(pool, size = n_cols)
-      values <- lapply(chosen_cols, function(x) {
-        chosen_rows <- sample.int(nrow(obj), size = n_rows)
-        matrix(
-          c(chosen_rows, rep(x, n_rows)),
-          ncol = 2,
-          dimnames = list(NULL, c("row", "col"))
-        )
-      })
-      do.call(rbind, values)
-    },
-    simplify = FALSE
-  )
-}
-
-#' Sample Missing Locations
-#'
-#' This helper function randomly selects positions in a matrix to inject a
-#' specified number of NA values, ensuring that the injection does not exceed
-#' specified missingness thresholds for rows and columns. It attempts to find a
-#' valid set of positions within a maximum number of iterations.
-#'
-#' @inheritParams slide_imp
-#' @inheritParams tune_imp
-#'
-#' @param num_na The number of missing values to inject **per replication**.
-#' @param n_reps Integer. Number of independent replications (default `1`).
-#' @param rowmax Number between 0 and 1. NA injection cannot create rows with a
-#'   higher proportion of missing values than this threshold.
-#' @param colmax Number between 0 and 1. NA injection cannot create columns with
-#'   a higher proportion of missing values than this threshold.
-#' @param check_sd Logical. If `TRUE`, also ensure that no column becomes
-#'   zero-variance after injection.
-#' @param max_iter Maximum number of iterations to attempt finding valid NA
-#'   positions (default `1000`).
-#'
-#' @return A list of length `n_reps`. Each element is an integer vector of
-#' linear (1-based) indices indicating the positions in the matrix where NAs
-#' should be injected.
-#'
-#' @details
-#' The function first checks that the existing missingness in `obj` already
-#' respects the `rowmax` and `colmax` thresholds. It then repeatedly samples
-#' random positions from the currently non-NA elements and verifies that adding
-#' the new NAs would not violate the row/column missingness limits (or create
-#' zero-variance columns when `check_sd = TRUE`). Sampling continues until a
-#' valid set of positions is found or `max_iter` is reached (in which case an
-#' error is thrown).
-#'
-#' @examples
-#' set.seed(123)
-#'
-#' # Create a sample matrix (no existing NAs)
-#' mat <- matrix(rnorm(100), nrow = 20, ncol = 5)
-#'
-#' # Basic usage - inject 10 NAs (defaults: rowmax/colmax = 0.9,
-#' # check_sd = FALSE, n_reps = 1)
-#' na_locs <- sample_na_loc(mat, num_na = 10)
-#' na_indices <- na_locs[[1]]   # linear indices for the single replication
-#'
-#' # Multiple replications
-#' na_locs_multi <- sample_na_loc(mat, num_na = 15, n_reps = 3)
-#' @export
-sample_na_loc <- function(
-  obj,
-  num_na,
-  n_reps = 1,
-  rowmax = 0.9,
-  colmax = 0.9,
-  check_sd = FALSE,
-  max_iter = 1000
-) {
-  # TODO: improve efficiency. The current rejection-sampling loop rebuilds
-  # na_mat_test and recomputes col/row sums on every iteration, which is
-  # wasteful for large matrices or tight thresholds. We can use rejection
-  # resampling for a much better function.
-  checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
-  checkmate::assert_int(num_na, lower = 1, .var.name = "num_na")
-  checkmate::assert_int(n_reps, lower = 1, .var.name = "n_reps")
-  checkmate::assert_number(rowmax, lower = 0, upper = 1, .var.name = "rowmax")
-  checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
-  checkmate::assert_flag(check_sd, .var.name = "check_sd")
-  checkmate::assert_int(max_iter, lower = 1, .var.name = "max_iter")
-
-  na_mat <- !is.na(obj)
-  max_col_miss <- floor(nrow(na_mat) * colmax)
-  max_row_miss <- floor(ncol(na_mat) * rowmax)
-  current_col_miss <- nrow(na_mat) - colSums(na_mat)
-  current_row_miss <- ncol(na_mat) - rowSums(na_mat)
-  bad_cols <- which(current_col_miss > max_col_miss)
-  if (length(bad_cols) > 0) {
-    stop("Some columns have missing > colmax before na injections")
+  if (any(current_col_miss > max_col_miss)) {
+    stop("Some columns have missing > colmax before NA injection.", call. = FALSE)
   }
-  bad_rows <- which(current_row_miss > max_row_miss)
-  if (length(bad_rows) > 0) {
-    stop("Some rows have missing > rowmax before na injections")
-  }
-  not_na <- which(na_mat)
-  if (num_na >= length(not_na)) {
-    stop(
-      sprintf(
-        "'num_na' (%d) exceeds the number of available non-NA elements (%d).
-        Adjust 'num_na' or increase feature/sample group size.",
-        num_na,
-        length(not_na)
-      )
-    )
+  if (any(current_row_miss > max_row_miss)) {
+    stop("Some rows have missing > rowmax before NA injection.", call. = FALSE)
   }
 
-  if (check_sd) {
-    cvars <- col_vars(obj)
-    if (any(cvars < .Machine$double.eps | is.na(cvars))) {
-      stop("Zero variance columns detected before na injections")
-    }
+  # eligibility: enough observed values (minus the 2 protected
+  # rows we'll reserve per rep) and enough colmax budget for `max_count` NAs.
+  obs_count <- colSums(not_na_mat)
+  col_room <- max_col_miss - current_col_miss
+  cheap_ok <- (obs_count - 2L >= max_count) & (col_room >= max_count)
+  candidate_pool <- pool[cheap_ok[pool]]
+
+  if (length(candidate_pool) < n_cols) {
+    stop(sprintf(
+      "Only %d columns satisfy the capacity constraints (need %d). Reduce `num_na`/`n_rows`/`n_cols`, increase `colmax`, or expand `subset`.",
+      length(candidate_pool), n_cols
+    ), call. = FALSE)
   }
 
-  replicate(
-    n = n_reps,
-    {
-      c_miss <- TRUE
-      r_miss <- TRUE
-      sd_ok <- !check_sd
-
-      na_loc <- NULL
-      iter <- 0
-      while (c_miss || r_miss || !sd_ok) {
-        iter <- iter + 1
-        if (iter > max_iter) {
-          stop(
-            "NA injection failed. Adjust 'num_na' or increase 'colmax' and 'rowmax'."
-          )
-        }
-        na_mat_test <- na_mat
-        na_loc <- sample(not_na, size = num_na)
-        na_mat_test[na_loc] <- FALSE
-
-        col_miss_count <- nrow(na_mat_test) - colSums(na_mat_test)
-        row_miss_count <- ncol(na_mat_test) - rowSums(na_mat_test)
-        c_miss <- any(col_miss_count > max_col_miss)
-        r_miss <- any(row_miss_count > max_row_miss)
-
-        if (check_sd) {
-          obj_test <- obj
-          obj_test[na_loc] <- NA
-          cvars <- col_vars(obj_test)
-          sd_ok <- !any(cvars < .Machine$double.eps | is.na(cvars))
-        }
+  # walk a shuffled candidate pool until we collect `n_cols` columns that also
+  # have >=2 distinct observed values. Touches ~n_cols columns instead of sweeping
+  # the whole matrix, and gives different reps different column sets.
+  pick_columns <- function() {
+    shuffled <- candidate_pool[sample.int(length(candidate_pool))]
+    chosen <- vector("list", n_cols)
+    k <- 0L
+    for (j in shuffled) {
+      obs_rows <- which(not_na_mat[, j])
+      vals <- obj[obs_rows, j]
+      if (length(unique(vals)) < 2L) next
+      k <- k + 1L
+      chosen[[k]] <- list(col = j, obs_rows = obs_rows, vals = vals)
+      if (k == n_cols) {
+        return(chosen)
       }
-      na_loc
+    }
+    NULL
+  }
+
+  sample_one_rep <- function() {
+    chosen <- pick_columns()
+    if (is.null(chosen)) {
+      stop("Not enough columns with >=2 distinct observed values to fill `n_cols`.",
+        call. = FALSE
+      )
+    }
+    # shuffle per-column counts so the "+1 extra" slots land on random columns.
+    counts <- na_per_col[sample.int(n_cols)]
+    proc_order <- sample.int(n_cols)
+    row_cap <- max_row_miss - current_row_miss
+
+    out <- vector("list", n_cols)
+    for (k in proc_order) {
+      st <- chosen[[k]]
+      cnt <- counts[k]
+      if (cnt == 0L) next
+      i1 <- sample.int(length(st$obs_rows), 1L)
+      diff_idx <- which(st$vals != st$vals[i1])
+      i2 <- diff_idx[sample.int(length(diff_idx), 1L)]
+      sampleable <- st$obs_rows[-c(i1, i2)]
+
+      avail <- sampleable[row_cap[sampleable] > 0L]
+      if (length(avail) < cnt) {
+        stop(structure(
+          class = c("row_capacity_exhausted", "error", "condition"),
+          list(message = "Row capacity exhausted.", call = NULL)
+        ))
+      }
+      chosen_rows <- avail[sample.int(length(avail), cnt)]
+      row_cap[chosen_rows] <- row_cap[chosen_rows] - 1L
+      out[[k]] <- matrix(
+        c(chosen_rows, rep.int(st$col, cnt)),
+        ncol = 2,
+        dimnames = list(NULL, c("row", "col"))
+      )
+    }
+    do.call(rbind, out)
+  }
+
+  replicate(
+    n = n_reps,
+    {
+      result <- NULL
+      for (attempt in seq_len(max_attempts)) {
+        result <- tryCatch(sample_one_rep(), row_capacity_exhausted = function(e) NULL)
+        if (!is.null(result)) break
+      }
+      if (is.null(result)) {
+        stop(sprintf(
+          "Row capacity exhausted after %d attempts. Increase `rowmax`, reduce NAs, or relax constraints.",
+          max_attempts
+        ), call. = FALSE)
+      }
+      result
     },
     simplify = FALSE
   )
-}
-
-#' Convert 2D Positions to Linear Indices
-#'
-#' This function converts 2D positions (row and column indices, i.e., first and
-#' second columns) in a matrix to their corresponding linear (1D) positions.
-#'
-#' @param pos_2d A numeric matrix with exactly 2 columns (first for rows,
-#'   second for columns) and at least 1 row. Each entry must be a positive
-#'   integer within the matrix bounds.
-#' @param nrow The number of rows in the matrix.
-#' @param ncol The number of columns in the matrix.
-#' @return A numeric vector of linear positions corresponding to the input 2D
-#'   positions.
-#'
-#' @keywords internal
-#' @noRd
-grid_to_linear <- function(pos_2d, nrow, ncol) {
-  checkmate::assert_matrix(pos_2d, ncols = 2, min.rows = 1, mode = "integerish", .var.name = "pos_2d")
-  checkmate::assert_int(nrow, lower = 1, "nrow")
-  checkmate::assert_int(ncol, lower = 1, "ncol")
-
-  row <- pos_2d[, 1]
-  col <- pos_2d[, 2]
-
-  checkmate::assert_true(all(row >= 1 & row <= nrow), .var.name = "row indices")
-  checkmate::assert_true(all(col >= 1 & col <= ncol), .var.name = "column indices")
-
-  linear_pos <- (col - 1) * nrow + row
-  return(linear_pos)
 }
 
 #' Resolve NA locations for tune_imp
 #'
-#' If `na_loc` is NULL, generates `n_reps` random NA location vectors via
-#' `sample_na_loc()`. Otherwise normalizes the user-supplied positions into
-#' a list of linear-index integer vectors and bounds-checks them.
+#' If `na_loc` is NULL, generates `n_reps` random NA location matrices via
+#' `sample_na_loc_stratified()`. Otherwise normalizes the user-supplied
+#' positions into a list of 2-column (row, col) integer matrices and
+#' bounds-checks them.
 #'
 #' Accepted `na_loc` shapes:
-#' - integer vector of linear positions (treated as a single rep)
 #' - 2-column integerish matrix of (row, col) pairs (treated as a single rep)
+#' - integer vector of linear positions (treated as a single rep)
 #' - list whose elements are either of the above
 #'
-#' @keywords internal
 #' @noRd
+#' @keywords internal
 resolve_na_loc <- function(
   obj,
   na_loc,
   n_reps,
   num_na,
+  n_cols,
+  n_rows,
   rowmax,
   colmax,
-  check_sd,
-  max_iter
+  subset,
+  max_attempts
 ) {
   if (is.null(na_loc)) {
-    return(sample_na_loc(
+    return(sample_na_loc_stratified(
       obj = obj,
+      n_cols = n_cols,
+      n_rows = n_rows,
       num_na = num_na,
       n_reps = n_reps,
       rowmax = rowmax,
       colmax = colmax,
-      check_sd = check_sd,
-      max_iter = max_iter
+      subset = subset,
+      max_attempts = max_attempts
     ))
   }
 
-  # wrap a single vector/matrix into a length-1 list
   if (!is.list(na_loc)) {
-    if (is.matrix(na_loc) || is.numeric(na_loc) || is.integer(na_loc)) {
+    if (is.matrix(na_loc) || is.numeric(na_loc)) {
       na_loc <- list(na_loc)
     } else {
-      stop("`na_loc` must be a vector, a 2-col matrix, or a list of these.")
+      stop("`na_loc` must be a 2-col matrix, an integer vector, or a list of these.",
+        call. = FALSE
+      )
     }
   }
 
-  checkmate::assert_list(
-    na_loc,
-    min.len = 1,
-    types = c("matrix", "integerish"),
-    .var.name = "na_loc"
-  )
+  checkmate::assert_list(na_loc, min.len = 1, .var.name = "na_loc")
 
   nr <- nrow(obj)
   nc <- ncol(obj)
   n_total <- length(obj)
 
-  na_loc <- lapply(seq_along(na_loc), function(i) {
-    elem <- na_loc[[i]]
-    if (is.matrix(elem) && ncol(elem) == 2) {
-      grid_to_linear(elem, nrow = nr, ncol = nc)
-    } else {
-      elem
-    }
-  })
-
-  elem_lengths <- vapply(na_loc, length, numeric(1))
-  if (length(unique(elem_lengths)) != 1) {
-    stop("All elements in `na_loc` must have the same length")
-  }
   for (i in seq_along(na_loc)) {
-    checkmate::assert_integerish(
-      na_loc[[i]],
-      lower = 1,
-      upper = n_total,
-      any.missing = FALSE,
-      min.len = 1,
-      unique = TRUE,
-      null.ok = FALSE,
-      .var.name = sprintf("na_loc[[%d]]", i)
+    elem <- na_loc[[i]]
+    nm <- sprintf("na_loc[[%d]]", i)
+    if (is.matrix(elem)) {
+      checkmate::assert_matrix(
+        elem,
+        mode = "integerish", ncols = 2, min.rows = 1, .var.name = nm
+      )
+      checkmate::assert_true(
+        all(elem[, 1] >= 1 & elem[, 1] <= nr),
+        .var.name = paste0(nm, " row indices")
+      )
+      checkmate::assert_true(
+        all(elem[, 2] >= 1 & elem[, 2] <= nc),
+        .var.name = paste0(nm, " col indices")
+      )
+    } else {
+      checkmate::assert_integerish(
+        elem,
+        lower = 1, upper = n_total, any.missing = FALSE,
+        min.len = 1, unique = TRUE, .var.name = nm
+      )
+    }
+  }
+
+  elem_sizes <- vapply(
+    na_loc,
+    function(x) if (is.matrix(x)) nrow(x) else length(x),
+    numeric(1)
+  )
+  if (length(unique(elem_sizes)) != 1L) {
+    stop("All elements in `na_loc` must specify the same number of NA positions.",
+      call. = FALSE
     )
   }
 
@@ -394,15 +315,29 @@ resolve_na_loc <- function(
 #'   - A two-column integer matrix (row, column indices).
 #'   - A numeric vector of linear locations.
 #'   - A list where each element is one of the above formats (one per repetition).
-#' @param num_na The number of missing values used to estimate prediction
-#'   quality. Ignored if `na_loc` is provided (default `500`).
 #' @param rowmax,colmax Numbers between 0 and 1. NA injection cannot create
 #'   rows/columns with a higher proportion of missing values than these
 #'   thresholds.
-#' @param check_sd Logical. Check that no column becomes zero-variance after
-#'   NA injection (default `TRUE`).
-#' @param max_iter Maximum number of iterations to attempt finding valid NA
-#'   positions (default `1000`).
+#' @param n_cols Integer. Number of columns into which NAs are injected per
+#'   repetition. Optional; if omitted, derived from `num_na` and `n_rows` as
+#'   `ceiling(num_na / n_rows)`. If `num_na < n_cols`, `n_cols` is reduced to
+#'   `num_na` so every chosen column receives at least one NA. Ignored when
+#'   `na_loc` is supplied.
+#' @param n_rows Integer. Number of NAs injected per column when `num_na` is
+#'   not supplied (default `1`). When `num_na` is supplied without `n_cols`,
+#'   `n_rows` acts as a hint for deriving `n_cols` and is otherwise unused.
+#'   Ignored when `na_loc` is supplied.
+#' @param num_na Integer. Total number of missing values injected per
+#'   repetition. NAs are distributed as evenly as possible across the chosen
+#'   columns: each gets `num_na %/% n_cols`, and `num_na %% n_cols` randomly
+#'   chosen columns get one extra. If omitted, `n_rows * n_cols` NAs are
+#'   injected. Ignored when `na_loc` is supplied. At least one of `n_cols` or
+#'   `num_na` must be supplied when `na_loc` is `NULL`.
+#' @param subset Optional integer or character vector restricting which columns
+#'   of `obj` are eligible for NA injection. `NULL` (default) considers all
+#'   columns.
+#' @param max_attempts Integer. Maximum number of resampling attempts per
+#'   repetition before giving up due to row-budget exhaustion (default `10`).
 #' @param .progress Logical. Show a progress bar during tuning (default `TRUE`).
 #' @param cores Controls the number of cores to parallelize over for K-NN and
 #'   sliding-window K-NN imputation with OpenMP. For other methods, use
@@ -439,7 +374,7 @@ resolve_na_loc <- function(
 #' # Tune with fixed NA positions (2 repetitions)
 #' na_positions <- list(
 #'   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2), # Rows 1-3 in column 1
-#'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)  # Rows 2-4 in column 2
+#'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2) # Rows 2-4 in column 2
 #' )
 #' results_fixed <- tune_imp(
 #'   obj,
@@ -477,11 +412,13 @@ tune_imp <- function(
   .f,
   n_reps = 1,
   na_loc = NULL,
-  num_na = 500,
+  n_cols = NULL,
+  n_rows = 1,
+  num_na = NULL,
   rowmax = 0.9,
   colmax = 0.9,
-  check_sd = TRUE,
-  max_iter = 1000,
+  subset = NULL,
+  max_attempts = 10L,
   .progress = TRUE,
   cores = 1,
   location = NULL,
@@ -578,24 +515,29 @@ tune_imp <- function(
 
   checkmate::assert_count(n_reps, positive = TRUE, .var.name = "n_reps")
   if (is.null(na_loc)) {
-    checkmate::assert_count(num_na, positive = TRUE, null.ok = FALSE, .var.name = "num_na")
-    checkmate::assert_count(max_iter, positive = TRUE, null.ok = FALSE, .var.name = "max_iter")
+    # when na_loc = NULL we do random NA injection via `sample_na_loc_stratified()`.
+    # At least one of n_cols or num_na must be supplied (the sampler derives
+    # the missing one). n_rows and max_attempts always have sensible defaults.
+    if (is.null(n_cols) && is.null(num_na)) {
+      stop("When `na_loc` is NULL, at least one of `n_cols` or `num_na` must be supplied.",
+        call. = FALSE
+      )
+    }
+
+    checkmate::assert_count(n_cols, positive = TRUE, null.ok = TRUE, .var.name = "n_cols")
+    checkmate::assert_count(num_na, positive = TRUE, null.ok = TRUE, .var.name = "num_na")
+    checkmate::assert_count(n_rows, positive = TRUE, .var.name = "n_rows")
+    checkmate::assert_count(max_attempts, positive = TRUE, .var.name = "max_attempts")
   }
   checkmate::assert_flag(.progress, .var.name = ".progress")
-  checkmate::assert_flag(check_sd, .var.name = "check_sd")
   checkmate::assert_number(rowmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "rowmax")
   checkmate::assert_number(colmax, lower = 0, upper = 1, null.ok = FALSE, .var.name = "colmax")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
 
-  # parallelization mode flags (need check_sd finalized before resolving na_loc)
+  # parallelization mode flags
   is_knn_mode <- {
     (is.character(.f) && .f == "knn_imp") ||
       (is.character(.f) && .f == "slide_imp" && "k" %in% names(parameters))
-  }
-  if (is.character(.f)) {
-    if ((.f == "slide_imp" && "ncp" %in% names(parameters)) || .f == "pca_imp") {
-      check_sd <- TRUE
-    }
   }
 
   message("Step 1/2: Resolving NA locations")
@@ -605,10 +547,12 @@ tune_imp <- function(
     na_loc = na_loc,
     n_reps = n_reps,
     num_na = num_na,
+    n_cols = n_cols,
+    n_rows = n_rows,
     rowmax = rowmax,
     colmax = colmax,
-    check_sd = check_sd,
-    max_iter = max_iter
+    subset = subset,
+    max_attempts = max_attempts
   )
   n_reps <- length(na_loc)
 
@@ -874,8 +818,9 @@ calc_all_metrics <- function(x, metric_fns) {
 #'
 #' For alternative or faster metrics, see the `{yardstick}` package.
 #'
-#' @param results A slideimp_tune object from [tune_imp()] containing a `result` column
-#' with data.frames that have `truth` and `estimate` columns.
+#' @param results A `slideimp_tune` data.frame from [tune_imp()] containing
+#' a `result` list-column with data.frames that have `truth` and `estimate` columns.
+#'
 #' @param metrics A character vector of metric names to compute. Defaults
 #' to `c("mae", "rmse")`. Also available: `"mape"`, `"bias"`, `"rsq"`, and `"rsq_trad"`.
 #'
@@ -884,12 +829,13 @@ calc_all_metrics <- function(x, metric_fns) {
 #'
 #' @examples
 #' data(khanmiss1)
+#'
 #' set.seed(1234)
 #' results <- tune_imp(
 #'   obj = t(khanmiss1),
 #'   parameters = data.frame(k = 10),
 #'   .f = "knn_imp",
-#'   rep = 1,
+#'   n_reps = 1,
 #'   num_na = 20
 #' )
 #'
@@ -900,6 +846,7 @@ compute_metrics <- function(results, metrics = c("mae", "rmse")) {
   UseMethod("compute_metrics")
 }
 
+#' @rdname compute_metrics
 #' @export
 compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
   if (!"result" %in% names(results)) {
@@ -913,6 +860,7 @@ compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
   compute_metrics.slideimp_tune(results, metrics = metrics)
 }
 
+#' @rdname compute_metrics
 #' @export
 compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   checkmate::assert_character(metrics, unique = TRUE)
@@ -947,3 +895,34 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   rownames(out) <- NULL
   out
 }
+
+
+# #' Convert 2D Positions to Linear Indices
+# #'
+# #' This function converts 2D positions (row and column indices, i.e., first and
+# #' second columns) in a matrix to their corresponding linear (1D) positions.
+# #'
+# #' @param pos_2d A numeric matrix with exactly 2 columns (first for rows,
+# #'   second for columns) and at least 1 row. Each entry must be a positive
+# #'   integer within the matrix bounds.
+# #' @param nrow The number of rows in the matrix.
+# #' @param ncol The number of columns in the matrix.
+# #' @return A numeric vector of linear positions corresponding to the input 2D
+# #'   positions.
+# #'
+# #' @keywords internal
+# #' @noRd
+# grid_to_linear <- function(pos_2d, nrow, ncol) {
+#   checkmate::assert_matrix(pos_2d, ncols = 2, min.rows = 1, mode = "integerish", .var.name = "pos_2d")
+#   checkmate::assert_int(nrow, lower = 1, "nrow")
+#   checkmate::assert_int(ncol, lower = 1, "ncol")
+#
+#   row <- pos_2d[, 1]
+#   col <- pos_2d[, 2]
+#
+#   checkmate::assert_true(all(row >= 1 & row <= nrow), .var.name = "row indices")
+#   checkmate::assert_true(all(col >= 1 & col <= ncol), .var.name = "column indices")
+#
+#   linear_pos <- (col - 1) * nrow + row
+#   return(linear_pos)
+# }

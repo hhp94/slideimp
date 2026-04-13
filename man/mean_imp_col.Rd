@@ -20,15 +20,9 @@ in the specified columns replaced by column means.
 Imputes missing values in a matrix by replacing them with the mean of their
 respective columns.
 }
-\details{
-This function calculates the mean for each column excluding missing values and
-replaces all missing values in that column with the computed mean.
-
-The \code{subset} parameter allows for imputation of only specific columns.
-}
 \examples{
 # Create example matrix with missing values
-mat <- matrix(c(1, 2, NA, 4, 5, 6, NA, 8, 9), nrow = 3)
+mat <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9), nrow = 3)
 colnames(mat) <- c("A", "B", "C")
 mat
 

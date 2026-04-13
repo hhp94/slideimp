@@ -13,8 +13,9 @@
 #' data(khanmiss1)
 #' t_khanmiss1 <- t(khanmiss1)
 #' result <- knn_imp(t_khanmiss1, k = 5)
+#' class(result)
 #' print(result, n = 6, p = 6)
-print.slideimp_results <- function(x, n = 5, p = 5, ...) {
+print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   imp_method <- attr(x, "imp_method")
 
   # Cleaner header
@@ -45,7 +46,11 @@ print.slideimp_results <- function(x, n = 5, p = 5, ...) {
 #' @param ... Not used.
 #'
 #' @returns Invisible `x`
-#'
+#' @examples
+#' set.seed(123)
+#' sim_data <- sim_mat(n = 50, p = 10, rho = 0.5)
+#' class(sim_data)
+#' print(sim_data)
 #' @export
 print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
   cat("$col_group (", x$n_col_groups, " column groups)\n", sep = "")
@@ -80,7 +85,12 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
 #' @param ... Not used.
 #'
 #' @returns Invisible `x`
-#'
+#' @examples
+#' data(khanmiss1)
+#' set.seed(1234)
+#' results <- tune_imp(t(khanmiss1), parameters = data.frame(k = 5), .f = "knn_imp")
+#' class(results)
+#' print(results)
 #' @export
 print.slideimp_tbl <- function(x, n = NULL, ...) {
   if (is.null(n)) n <- 10L
