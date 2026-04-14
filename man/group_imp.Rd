@@ -159,6 +159,26 @@ all PCA). Per-group \code{k} is capped at \code{group_size - 1} and \code{ncp} a
 }
 }
 }
+\section{Parallelization}{
+
+Parallelization behavior depends on the imputation method:
+\itemize{
+\item \strong{KNN}: use the \code{cores} argument (if OpenMP is available).
+If \code{mirai::daemons()} are also active, \code{cores} is automatically
+set to 1 to avoid nested parallelism.
+\item \strong{PCA}: use \code{mirai::daemons()} instead of \code{cores}.
+}
+
+\strong{Linux / OpenBLAS / MKL users:} If your machine uses a multi-threaded
+BLAS (e.g., OpenBLAS or Intel MKL), set \code{pin_blas = TRUE} when tuning
+PCA imputation in parallel. Without it, BLAS threads and \code{mirai} workers
+compete for cores, which can cause slowdowns (CPU thrashing).
+
+\strong{macOS users:} OpenMP is typically unavailable on macOS unless manually
+configured. \code{cores} will fall back to 1 automatically; use
+\code{mirai::daemons()} for parallelization instead.
+}
+
 \examples{
 # Generate example data with missing values
 set.seed(1234)

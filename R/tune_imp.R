@@ -295,25 +295,6 @@ resolve_na_loc <- function(
 #' [pca_imp()], or user-supplied custom functions by repeated cross-validation. For
 #' [group_imp()], tune [knn_imp()] or [pca_imp()] on a single group.
 #'
-#' @details
-#' The function supports tuning for built-in imputation methods (`"slide_imp"`,
-#' `"knn_imp"`, `"pca_imp"`) or custom functions provided via `.f`.
-#'
-#' When `.f` is a character string, the columns in `parameters` are validated
-#' against the chosen method's requirements:
-#' - `"knn_imp"`: requires `k` in `parameters`
-#' - `"pca_imp"`: requires `ncp` in `parameters`
-#' - `"slide_imp"`: requires `window_size`, `overlap_size`, and `min_window_n`,
-#'   plus exactly one of `k` or `ncp`
-#'
-#' When `.f` is a custom function, the columns in `parameters` must correspond
-#' to the arguments of `.f` (excluding the `obj` argument). The custom function
-#' must accept `obj` (a numeric matrix) as its first argument and return a
-#' numeric matrix of identical dimensions.
-#'
-#' Tuning results can be evaluated using the `yardstick` package or
-#' [compute_metrics()].
-#'
 #' @inheritParams slide_imp
 #' @inheritParams group_imp
 #'
@@ -380,6 +361,27 @@ resolve_na_loc <- function(
 #'
 #' @param .f The imputation method to tune. Either a character string
 #'   (`"knn_imp"`, `"pca_imp"`, or `"slide_imp"`) or a custom function.
+#'
+#' @details
+#' The function supports tuning for built-in imputation methods (`"slide_imp"`,
+#' `"knn_imp"`, `"pca_imp"`) or custom functions provided via `.f`.
+#'
+#' When `.f` is a character string, the columns in `parameters` are validated
+#' against the chosen method's requirements:
+#' - `"knn_imp"`: requires `k` in `parameters`
+#' - `"pca_imp"`: requires `ncp` in `parameters`
+#' - `"slide_imp"`: requires `window_size`, `overlap_size`, and `min_window_n`,
+#'   plus exactly one of `k` or `ncp`
+#'
+#' When `.f` is a custom function, the columns in `parameters` must correspond
+#' to the arguments of `.f` (excluding the `obj` argument). The custom function
+#' must accept `obj` (a numeric matrix) as its first argument and return a
+#' numeric matrix of identical dimensions.
+#'
+#' Tuning results can be evaluated using the `yardstick` package or
+#' [compute_metrics()].
+#'
+#' @inheritSection group_imp Parallelization
 #'
 #' @return A data.frame of class `c("slideimp_tune", "slideimp_tbl", "data.frame")`
 #'   with the following columns:
@@ -576,7 +578,7 @@ tune_imp <- function(
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
   if (cores > 1 && is_knn_mode) {
     if (!has_openmp()) {
-      message("OpenMP not available. KNN will run single-threaded.")
+      message("OpenMP not available (common on macOS). KNN will run single-threaded. Use mirai::daemons() for parallelization.")
       cores <- 1
     } else if (parallelize) {
       message(

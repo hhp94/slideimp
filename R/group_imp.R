@@ -453,6 +453,23 @@ prep_groups <- function(
 #' - Grouping features with their flanking values/neighbors
 #' - Using clusters identified by column clustering techniques
 #'
+#' @section Parallelization:
+#' Parallelization behavior depends on the imputation method:
+#'
+#' - **KNN**: use the `cores` argument (if OpenMP is available).
+#'   If `mirai::daemons()` are also active, `cores` is automatically
+#'   set to 1 to avoid nested parallelism.
+#' - **PCA**: use `mirai::daemons()` instead of `cores`.
+#'
+#' **Linux / OpenBLAS / MKL users:** If your machine uses a multi-threaded
+#' BLAS (e.g., OpenBLAS or Intel MKL), set `pin_blas = TRUE` when tuning
+#' PCA imputation in parallel. Without it, BLAS threads and `mirai` workers
+#' compete for cores, which can cause slowdowns (CPU thrashing).
+#'
+#' **macOS users:** OpenMP is typically unavailable on macOS unless manually
+#' configured. `cores` will fall back to 1 automatically; use
+#' `mirai::daemons()` for parallelization instead.
+#'
 #' @inherit knn_imp return
 #'
 #' @export
@@ -677,7 +694,7 @@ group_imp <- function(
   if (is_knn_mode) {
     if (cores > 1) {
       if (!has_openmp()) {
-        message("OpenMP not available. Imputation will run single-threaded.")
+        message("OpenMP not available (common on macOS). KNN will run single-threaded. Use mirai::daemons() for parallelization.")
         cores <- 1
       } else if (parallelize) {
         message(

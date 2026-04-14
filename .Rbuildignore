@@ -11,3 +11,6 @@
 ^doc$
 ^Meta$
 ^R/utils1\.R$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$

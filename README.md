@@ -25,30 +25,33 @@ You can install the development version of `{slideimp}` with:
 pak::pkg_install("hhp94/slideimp")
 ```
 
+The optional `{slideimp.extra}` package, providing lightweight Illumina
+manifests, can be installed with:
+
+``` r
+pak::pkg_install("hhp94/slideimp.extra")
+```
+
 ## PCA or KNN imputation of Illumina DNAm microarrays
 
-- This is a simulated beta matrix from the MSA microarray. CpGs are in
-  columns.
+- This is a simulated beta matrix from the
+  [MSA](https://www.illumina.com/products/by-type/microarray-kits/infinium-methylation-screening-array.html)
+  microarray. CpGs are in columns.
 
 ``` r
 dim(MSA_beta_matrix)
 #> [1]     20 281797
-MSA_beta_matrix[1:4, 1:6]
+MSA_beta_matrix[1:4, 1:4]
 #>         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
-#> sample1       0.2249014       0.5023435       0.3835431       0.1866954
+#> sample1              NA       0.5023435       0.3835431              NA
 #> sample2       0.4907466       0.5095459       0.9025816       0.4313347
-#> sample3       0.6885036       0.7281425       0.7646753       0.4498772
+#> sample3       0.6885036              NA       0.7646753       0.4498772
 #> sample4       0.0000000       0.0000000              NA       0.0000000
-#>         cg24004665_BC11 cg12923664_BC11
-#> sample1       0.3311970      0.16674252
-#> sample2       0.5240089      0.43214772
-#> sample3       0.7462265      1.00000000
-#> sample4       0.0000000      0.02869061
 ```
 
-- Chromosome-wise imputation of Illumina microarray data can be
-  performed with a single function call (requires the Illumina manifest,
-  e.g., those provided by the
+- Chromosome-wise imputation of Illumina microarrays can be performed
+  with a single function call (requires the Illumina manifests,
+  conveniently provided by the
   [`slideimp.extra`](https://github.com/hhp94/slideimp.extra) package).
 
 - This example demonstrates PCA imputation. To use KNN imputation
@@ -62,39 +65,25 @@ library(mirai)
 imputed <- group_imp(
   obj = MSA_beta_matrix,
   group = "MSA", # <- this feature requires the `slideimp.extra` package
-  ncp = 10 # <- change to `k` for KNN imputation
+  ncp = 10, # <- change to `k` for KNN imputation
+  .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
 #> Found cleaned manifest for 'MSA'
 #> Groups 24 dropped: no features remaining after matching obj columns.
 #> Imputing 25 group(s) using PCA.
 #> Running Mode: sequential ...
-#> ■■■■■■■■ 24% | ETA: 4s■■■■■■■■■■■ 32% | ETA: 3s■■■■■■■■■■■■ 36% | ETA:
-#> 3s■■■■■■■■■■■■■ 40% | ETA: 3s■■■■■■■■■■■■■■■ 48% | ETA: 2s■■■■■■■■■■■■■■■■■ 52%
-#> | ETA: 2s■■■■■■■■■■■■■■■■■■ 56% | ETA: 2s■■■■■■■■■■■■■■■■■■■■■ 68% | ETA:
-#> 1s■■■■■■■■■■■■■■■■■■■■■■■■ 76% | ETA: 1s■■■■■■■■■■■■■■■■■■■■■■■■■ 80% | ETA:
-#> 1s■■■■■■■■■■■■■■■■■■■■■■■■■■ 84% | ETA: 1s■■■■■■■■■■■■■■■■■■■■■■■■■■■ 88% |
-#> ETA: 1s■■■■■■■■■■■■■■■■■■■■■■■■■■■■■ 92% | ETA: 0s
 
-imputed
+print(imputed, n = 4, p = 4)
 #> slideimp_results (PCA)
 #> Dimensions: 20 x 281797
 #> 
 #>         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
-#> sample1       0.2249014       0.5023435      0.38354308       0.1866954
+#> sample1       0.1517542       0.5023435      0.38354308       0.2067731
 #> sample2       0.4907466       0.5095459      0.90258164       0.4313347
-#> sample3       0.6885036       0.7281425      0.76467530       0.4498772
+#> sample3       0.6885036       0.7339375      0.76467530       0.4498772
 #> sample4       0.0000000       0.0000000      0.05230101       0.0000000
-#> sample5       0.4989017       0.5552780      0.63584824       0.5530341
-#> sample6       0.4140535       0.5768620      0.85886969       0.5511963
-#>         cg24004665_BC11 cg12923664_BC11
-#> sample1       0.3311970      0.16674252
-#> sample2       0.5240089      0.43214772
-#> sample3       0.7462265      1.00000000
-#> sample4       0.0000000      0.02869061
-#> sample5       0.5138596      0.81656118
-#> sample6       0.6429646      0.60070827
 #> 
-#> # Showing [1:6, 1:6] of full matrix
+#> # Showing [1:4, 1:4] of full matrix
 ```
 
 - Tips
@@ -196,13 +185,17 @@ sum_metrics[order(sum_metrics$.estimate.mean_error), ]
 ```
 
 - For K-NN without OpenMP, PCA imputation, and custom functions (see
-  vignette), setup parallelization with `mirai::daemons()`.
+  vignette), set up parallelization with `mirai::daemons()`.
+- **Note:** For machines with multi-threaded BLAS, turn on
+  `pin_blas = TRUE` when tuning PCA imputation in parallel to avoid
+  thrashing.
 
 ``` r
 mirai::daemons(2) # 2 Cores
 
 # PCA imputation.
 pca_params <- data.frame(ncp = c(1, 5))
+# For machines multi-threaded BLAS, turn on `pin_blas = TRUE`
 tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", n_reps = 10, num_na = 50)
 
 mirai::daemons(0) # Close daemons
@@ -230,7 +223,8 @@ knn_group_results
 ```
 
 - PCA imputation with `group_imp()` can be parallelized using the
-  `{mirai}` package, similar to `tune_imp()`.
+  `{mirai}` package, similar to `tune_imp()`. `pin_blas = TRUE` can help
+  PCA imputation on multi-threaded BLAS machines.
 
 ``` r
 # Similar to `tune_imp`, parallelization is controlled by `mirai::daemons()`
