@@ -46,31 +46,40 @@ NA injection. Accepted formats include:
 \item A list where each element is one of the above formats (one per repetition).
 }}
 
-\item{n_cols}{Integer. Number of columns into which NAs are injected per
-repetition. Optional; if omitted, derived from \code{num_na} and \code{n_rows} as
-\code{ceiling(num_na / n_rows)}. If \code{num_na < n_cols}, \code{n_cols} is reduced to
-\code{num_na} so every chosen column receives at least one NA. Ignored when
-\code{na_loc} is supplied.}
+\item{n_cols}{Integer. The number of columns to receive injected NAs per
+repetition. Ignored when \code{num_na} is supplied (in which case \code{n_cols} is
+derived as \code{as.integer(num_na \%/\% n_rows)}). Must be provided if
+\code{num_na} is \code{NULL}. Ignored when \code{na_loc} is supplied.}
 
-\item{n_rows}{Integer. Number of NAs injected per column when \code{num_na} is
-not supplied (default \code{1}). When \code{num_na} is supplied without \code{n_cols},
-\code{n_rows} acts as a hint for deriving \code{n_cols} and is otherwise unused.
-Ignored when \code{na_loc} is supplied.}
+\item{n_rows}{Integer. The target number of NAs per column (default \code{1L}).
+\itemize{
+\item When \code{num_na} is supplied: used as the base size. Most columns receive
+exactly \code{n_rows} NAs; \code{num_na \%\% n_rows} columns receive \code{n_rows + 1}.
+\item When \code{num_na} is \code{NULL}: every selected column receives exactly
+\code{n_rows} NAs.
+Ignored when \code{na_loc} is supplied.
+}}
 
-\item{num_na}{Integer. Total number of missing values injected per
-repetition. NAs are distributed as evenly as possible across the chosen
-columns: each gets \code{num_na \%/\% n_cols}, and \code{num_na \%\% n_cols} randomly
-chosen columns get one extra. If omitted, \code{n_rows * n_cols} NAs are
-injected. Ignored when \code{na_loc} is supplied. At least one of \code{n_cols} or
-\code{num_na} must be supplied when \code{na_loc} is \code{NULL}.}
+\item{num_na}{Integer. Total number of missing values to inject per
+repetition. If supplied, \code{n_cols} is computed automatically and the NAs
+are distributed as evenly as possible using \code{n_rows} as the base
+(\code{num_na} must be \verb{>= n_rows}). If omitted, exactly \code{n_cols * n_rows}
+NAs are injected. At least one of \code{n_cols} or \code{num_na} must be supplied
+when \code{na_loc} is \code{NULL}. Ignored when \code{na_loc} is supplied.}
 
 \item{rowmax, colmax}{Numbers between 0 and 1. NA injection cannot create
 rows/columns with a higher proportion of missing values than these
 thresholds.}
 
 \item{subset}{Optional integer or character vector restricting which columns
-of \code{obj} are eligible for NA injection. \code{NULL} (default) considers all
-columns.}
+of \code{obj} are eligible for NA injection.
+\itemize{
+\item If \code{NULL} (default): all columns are eligible.
+\item If character: values must exist in \code{colnames(obj)}.
+\item If integer/numeric: values must be valid 1-based column indices.
+The vector must be unique and must contain at least \code{n_cols} columns
+(or the number derived from \code{num_na}).
+}}
 
 \item{max_attempts}{Integer. Maximum number of resampling attempts per
 repetition before giving up due to row-budget exhaustion (default \code{10}).}
