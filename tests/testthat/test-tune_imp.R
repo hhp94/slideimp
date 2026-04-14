@@ -1,13 +1,273 @@
-test_that("grid_to_linear correctly converts 2D positions to linear indices", {
-  n <- 10
-  m <- 10
+# sample_na_loc ----
+test_that("returns a list of length n_reps, each a 2-col row/col matrix", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  out <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 4)
 
-  pos_2d <- matrix(c(1, 1, 1, 2, 2, 1, 10, 10), ncol = 2, byrow = TRUE)
-  pos_1d <- grid_to_linear(pos_2d, n, m)
-  sim_dat <- matrix(rnorm(n * m), ncol = n, nrow = m)
-  expect_identical(sim_dat[pos_2d], sim_dat[pos_1d])
+  expect_type(out, "list")
+  expect_length(out, 4)
+  for (rep in out) {
+    expect_equal(nrow(rep), 3 * 2)
+  }
 })
 
+# n_cols / n_rows semantics
+test_that("each rep uses exactly n_cols distinct columns, each with n_rows NAs", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  out <- sample_na_loc(m, n_cols = 4, n_rows = 3, n_reps = 5)
+  for (rep in out) {
+    tab <- table(rep[, "col"])
+    expect_length(tab, 4) # exactly n_cols distinct columns
+    expect_true(all(tab == 3)) # each with exactly n_rows NAs
+  }
+})
+
+test_that("no duplicated (row, col) pairs within a rep", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  out <- sample_na_loc(m, n_cols = 4, n_rows = 3, n_reps = 5)
+  for (rep in out) {
+    key <- paste(rep[, "row"], rep[, "col"], sep = ":")
+    expect_false(anyDuplicated(key) > 0)
+  }
+})
+
+# num_na distribution
+test_that("num_na divisible by n_rows distributes evenly", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  out <- sample_na_loc(m, num_na = 12, n_rows = 3, n_reps = 1)
+  rep <- out[[1]]
+  expect_equal(nrow(rep), 12)
+  tab <- table(rep[, "col"])
+  expect_length(tab, 4) # 12 / 3 = 4 columns
+  expect_true(all(tab == 3))
+})
+
+test_that("num_na not divisible by n_rows bumps last buckets by at least 1", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  # num_na = 13, n_rows = 3 -> n_cols = 4, na_per_col = c(4, 3, 3, 3)
+  # (remainder = 1 column gets a +1)
+  out <- sample_na_loc(m, num_na = 13, n_rows = 3, n_reps = 1)
+  rep <- out[[1]]
+  expect_equal(nrow(rep), 13)
+  tab <- sort(as.integer(table(rep[, "col"])))
+  expect_equal(tab, c(3L, 3L, 3L, 4L))
+})
+
+# na_col_subset handling
+test_that("numeric na_col_subset restricts columns to the pool", {
+  m <- sim_mat(p = 10, perc_total_na = 0)$input
+  pool <- c(2L, 4L, 6L, 8L)
+  out <- sample_na_loc(m, n_cols = 3, n_rows = 2, na_col_subset = pool, n_reps = 10)
+  used <- unique(unlist(lapply(out, function(r) r[, "col"])))
+  expect_true(all(used %in% pool))
+})
+
+test_that("character na_col_subset resolves via colnames", {
+  m <- sim_mat(p = 6, perc_total_na = 0)$input # colnames feature1 ... feature6
+  out <- sample_na_loc(m,
+    n_cols = 2, n_rows = 1,
+    na_col_subset = c("feature2", "feature5"), n_reps = 5
+  )
+  used <- unique(unlist(lapply(out, function(r) r[, "col"])))
+  expect_setequal(used, c(2L, 5L))
+})
+
+# zero-variance cols protection
+test_that("columns keep >= 2 distinct observed values after injection", {
+  m <- sim_mat(20, p = 6, perc_total_na = 0)$input
+  out <- sample_na_loc(m, n_cols = 4, n_rows = 5, n_reps = 10)
+  for (rep in out) {
+    m2 <- apply_na(m, rep)
+    touched <- unique(rep[, "col"])
+    for (j in touched) {
+      obs <- m2[, j][!is.na(m2[, j])]
+      expect_gte(length(unique(obs)), 2L)
+    }
+  }
+})
+
+test_that("columns without enough eligible rows (after keeping 2 uniques) are skipped", {
+  m <- sim_mat(20, 5, perc_total_na = 0)$input
+  # Column 3 has only 4 observed values with exactly 2 uniques.
+  # After keeping 2 (one of each), left_over = 2 < needed = 3 -> must be skipped.
+  m[1:4, 3] <- c(1, 1, 2, 2)
+  m[5:20, 3] <- NA
+
+  out <- sample_na_loc(
+    m,
+    n_cols = 4,
+    n_rows = 3,
+    na_col_subset = 1:5,
+    n_reps = 10
+  )
+
+  for (rep in out) {
+    expect_false(
+      3L %in% rep[, "col"],
+      label = "column 3 should never be selected (not enough sacrificable rows)"
+    )
+  }
+})
+
+test_that("pre-check aborts on columns with zero variance", {
+  m <- sim_mat(20, 5, perc_total_na = 0)$input
+  m[, 3] <- 7 # truly zero variance
+
+  expect_error(
+    sample_na_loc(m, n_cols = 4, n_rows = 1, na_col_subset = 1:5),
+    "Some columns already have zero"
+  )
+})
+
+test_that("aborts when requested n_cols exceeds available pool", {
+  m <- sim_mat(20, 5, perc_total_na = 0)$input
+  expect_error(
+    sample_na_loc(m, n_cols = 10, n_rows = 1, na_col_subset = 1:5),
+    "Cannot place"
+  )
+})
+
+# row / col budget enforcement
+test_that("resulting matrix respects colmax", {
+  m <- sim_mat(20, 8, perc_total_na = 0)$input
+  colmax <- 0.5
+  out <- sample_na_loc(m,
+    n_cols = 4, n_rows = 5,
+    colmax = colmax, n_reps = 10
+  )
+  cap <- floor(nrow(m) * colmax)
+  for (rep in out) {
+    m2 <- apply_na(m, rep)
+    col_miss <- colSums(is.na(m2))
+    expect_true(all(col_miss <= cap))
+  }
+})
+
+test_that("resulting matrix respects rowmax", {
+  m <- sim_mat(30, 10, perc_total_na = 0)$input
+  rowmax <- 0.4
+  out <- sample_na_loc(m,
+    n_cols = 5, n_rows = 4,
+    rowmax = rowmax, n_reps = 10
+  )
+  cap <- floor(ncol(m) * rowmax)
+  for (rep in out) {
+    m2 <- apply_na(m, rep)
+    row_miss <- rowSums(is.na(m2))
+    expect_true(all(row_miss <= cap))
+  }
+})
+
+# rep independence / reproducibility
+test_that("reps are independently sampled (not identical)", {
+  m <- sim_mat(30, 10, perc_total_na = 0)$input
+  out <- sample_na_loc(m, n_cols = 4, n_rows = 3, n_reps = 5)
+  # Hash each rep; at least 2 distinct with high probability.
+  sigs <- vapply(out, function(r) {
+    paste(r[, "row"], r[, "col"], collapse = ",")
+  }, character(1))
+  expect_gt(length(unique(sigs)), 1)
+})
+
+test_that("set.seed makes sample_na_loc reproducible", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  set.seed(42)
+  a <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 3)
+  set.seed(42)
+  b <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 3)
+  expect_identical(a, b)
+})
+
+# failure path
+test_that("aborts when budgets make sampling infeasible", {
+  # 10 rows allows n_rows=3 under the "keep >=2 values" hard bound,
+  # but colmax=0.1 -> floor(10*0.1)=1 NA per column, so needing 3 is impossible.
+  m <- sim_mat(10, 6, perc_total_na = 0)$input
+  expect_error(
+    sample_na_loc(m,
+      n_cols = 2, n_rows = 3, colmax = 0.1,
+      max_attempts = 3
+    ),
+    "Failed to sample NA locations"
+  )
+})
+
+# pre-existing NAs
+test_that("sampled positions never collide with pre-existing NAs", {
+  set.seed(1)
+  m <- sim_mat(30, 10, perc_total_na = 0)$input
+  # scatter some NAs, keeping columns healthy
+  preset <- cbind(row = c(1, 2, 3, 4, 5), col = c(1, 2, 3, 4, 5))
+  m[preset] <- NA
+
+  out <- sample_na_loc(m, n_cols = 5, n_rows = 3, n_reps = 20)
+  for (rep in out) {
+    # none of the sampled (row, col) pairs should already be NA
+    expect_true(all(!is.na(m[rep])))
+  }
+})
+
+test_that("final colmax / rowmax account for pre-existing NAs", {
+  set.seed(2)
+  m <- sim_mat(20, 8, perc_total_na = 0)$input
+  # preload column 1 with 4 NAs and row 1 with 2 NAs (avoiding overlap with col 1)
+  m[1:4, 1] <- NA
+  m[1, 3:4] <- NA
+
+  colmax <- 0.5 # cap = floor(20 * 0.5) = 10
+  rowmax <- 0.5 # cap = floor(8 * 0.5)  = 4
+
+  out <- sample_na_loc(
+    m,
+    n_cols = 4, n_rows = 3,
+    colmax = colmax, rowmax = rowmax,
+    n_reps = 20
+  )
+  col_cap <- floor(nrow(m) * colmax)
+  row_cap <- floor(ncol(m) * rowmax)
+  for (rep in out) {
+    m2 <- apply_na(m, rep)
+    expect_true(all(colSums(is.na(m2)) <= col_cap))
+    expect_true(all(rowSums(is.na(m2)) <= row_cap))
+  }
+})
+
+test_that("columns with exhausted col_room are skipped even if individually healthy", {
+  set.seed(3)
+  m <- sim_mat(20, 6, perc_total_na = 0)$input
+  colmax <- 0.5 # cap = 10
+  # column 2 already has 9 NAs -> col_room = 1, so needed = 3 can't fit
+  na_rows <- sample.int(20, 9)
+  m[na_rows, 2] <- NA
+
+  out <- sample_na_loc(
+    m,
+    n_cols = 4, n_rows = 3,
+    colmax = colmax, n_reps = 20
+  )
+  for (rep in out) {
+    expect_false(2L %in% rep[, "col"])
+  }
+})
+
+test_that("num_na with remainder > n_cols distributes via larger bumps", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  # num_na = 5, n_rows = 3 -> n_cols = 1, one column takes all 5
+  out <- sample_na_loc(m, num_na = 5, n_rows = 3, n_reps = 1)
+  rep <- out[[1]]
+  expect_equal(nrow(rep), 5)
+  tab <- as.integer(table(rep[, "col"]))
+  expect_equal(tab, 5L)
+})
+
+test_that("num_na = 11 with n_rows = 3 yields c(3, 4, 4)", {
+  m <- sim_mat(20, 10, perc_total_na = 0)$input
+  out <- sample_na_loc(m, num_na = 11, n_rows = 3, n_reps = 1)
+  rep <- out[[1]]
+  expect_equal(nrow(rep), 11)
+  expect_equal(sort(as.integer(table(rep[, "col"]))), c(3L, 4L, 4L))
+})
+
+# tune imp ----
 test_that("tune_imp works", {
   data(khanmiss1)
   slide_imp_par <- data.frame(
@@ -430,7 +690,7 @@ test_that("tune_imp works with custom function and list-column parameters", {
   set.seed(42)
   obj <- matrix(rnorm(200), nrow = 10, ncol = 20)
 
-  # Custom function that takes a vector of weights per column and fills NAs
+  # custom function that takes a vector of weights per column and fills NAs
   # with a weighted column mean
   weighted_fill <- function(obj, weights) {
     stopifnot(length(weights) == ncol(obj))
@@ -456,7 +716,7 @@ test_that("tune_imp works with custom function and list-column parameters", {
       custom_par,
       .f = weighted_fill,
       n_reps = 2,
-      num_na = 30
+      num_na = 15
     )
   })
 
@@ -491,7 +751,7 @@ test_that("tune_imp works with custom function and NULL parameters", {
       parameters = NULL,
       .f = zero_fill,
       n_reps = 3,
-      num_na = 20
+      num_na = 10
     )
   })
 
@@ -547,3 +807,20 @@ test_that("tune_imp with NULL parameters and a function that has defaults", {
 
   expect_equal(res_null$result[[1]]$estimate, res_explicit$result[[1]]$estimate)
 })
+
+# test_that("grid_to_linear correctly converts 2D positions to linear indices", {
+#   n <- 10
+#   m <- 10
+#
+#   pos_2d <- matrix(c(1, 1, 1, 2, 2, 1, 10, 10), ncol = 2, byrow = TRUE)
+#   pos_1d <- grid_to_linear(pos_2d, n, m)
+#   sim_dat <- matrix(rnorm(n * m), ncol = n, nrow = m)
+#   expect_identical(sim_dat[pos_2d], sim_dat[pos_1d])
+# })
+
+# Tests for sample_na_loc() / sample_each_rep()
+#
+# Focus: core sampling logic (shape, budgets, zero-variance protection,
+# subset handling, num_na distribution, rep independence).
+# Pre-condition validation (checkmate asserts, colmax/rowmax pre-injection
+# checks) is intentionally not covered here.

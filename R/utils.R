@@ -43,3 +43,17 @@ check_pin_blas <- function(pin_blas) {
     message("Tip: set `pin_blas = TRUE` may improve parallel performance.")
   }
 }
+
+#' Ampute NA given the output of `sample_each_rep()`
+#'
+#' @param obj Input
+#' @param loc Output of `sample_each_rep()`
+#'
+#' @return `NULL` invisibly. Called for its side effects (messages or errors).
+#'
+#' @noRd
+#' @keywords internal
+apply_na <- function(obj, loc) {
+  obj[cbind(loc[, "row"], loc[, "col"])] <- NA_real_
+  obj
+}

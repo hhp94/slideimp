@@ -73,12 +73,17 @@ find_overlap_regions <- function(start, end) {
 #'   in `subset` that exactly flanks that specific feature using the supplied
 #'   `window_size`.
 #'
-#' Specify `k` and related arguments to use K-NN, `ncp` and related arguments for PCA.
+#' Specify `k` and related arguments to use [knn_imp()], `ncp` and related
+#' arguments for [pca_imp()].
 #'
-#' @returns By default, a numeric matrix of the same dimensions as `obj` with
-#' missing values imputed. If `dry_run = TRUE`, instead returns a
-#' `slideimp_tbl` object of the windows that would be used (after all dropping
-#' rules), without performing imputation.
+#' @returns
+#' - **Default:** A numeric matrix of the same dimensions as `obj` with
+#'   missing values imputed. The result has class `c("slideimp_results", "matrix")`.
+#' - **`dry_run = TRUE`:** A `data.frame` of class `slideimp_tbl` containing:
+#'   - `start`, `end`: Column indices defining the window.
+#'   - `window_n`: Number of columns in the window.
+#'   - `subset_local`: Local indices of targeted columns within that window.
+#'   - `target`: (Only if `flank = TRUE`) The global index of the target column.
 #'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns

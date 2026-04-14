@@ -9,15 +9,20 @@
 #'
 #' @param n An integer specifying the number of rows (samples). Default is `100`.
 #' @param p An integer specifying the number of columns (features). Default is `100`.
-#' @param rho Columns correlation before scaling. Default is `0.5`.
+#' @param rho Columns correlation before scaling (compound symmetry). Default is `0.5`.
 #' @param n_col_groups An integer for the number of groups to assign to features/columns. Default is `2`.
 #' @param n_row_groups An integer for the number of groups to assign to samples/rows. Default is `1`.
 #' @param perc_total_na Proportion of all cells to set to NA. Default is `0.1`.
 #' @param perc_col_na Proportion of columns across which those NAs are spread. Default is `0.5`.
 #' @param beta If TRUE (default) scale values between 0 and 1 column wise.
 #'
-#' @return An object of class `slideimp_sim` which is a list with `input`,
-#'   `col_group`, and `row_group`.
+#' @return An object of class `slideimp_sim`. This is a list containing:
+#' * `input`: A numeric matrix of dimension \eqn{n \times p} containing
+#'   the simulated values and injected `NA`s.
+#' * `col_group`: A data frame with $p$ rows mapping each `feature`
+#'   to a `group`.
+#' * `row_group`: A data frame with $n$ rows mapping each `sample`
+#'   to a `group`.
 #'
 #' @export
 #'

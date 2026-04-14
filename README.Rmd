@@ -90,7 +90,7 @@ imputed
 ```{r}
 library(slideimp)
 set.seed(1234)
-sim_obj <- sim_mat(n = 20, p = 50, n_col_groups = 2)
+sim_obj <- sim_mat(n = 20, p = 100, n_col_groups = 2)
 
 # Extract the $input attribute
 obj <- sim_obj$input

@@ -480,7 +480,7 @@ test_that("prep_groups errors when no colnames match features_df", {
 
   expect_error(
     prep_groups(colnames(obj), features_df),
-    "No groups remain after pruning"
+    "columns in `obj` have no matching entry"
   )
 })
 

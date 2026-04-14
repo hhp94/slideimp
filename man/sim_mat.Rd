@@ -20,7 +20,7 @@ sim_mat(
 
 \item{p}{An integer specifying the number of columns (features). Default is \code{100}.}
 
-\item{rho}{Columns correlation before scaling. Default is \code{0.5}.}
+\item{rho}{Columns correlation before scaling (compound symmetry). Default is \code{0.5}.}
 
 \item{n_col_groups}{An integer for the number of groups to assign to features/columns. Default is \code{2}.}
 
@@ -33,8 +33,15 @@ sim_mat(
 \item{beta}{If TRUE (default) scale values between 0 and 1 column wise.}
 }
 \value{
-An object of class \code{slideimp_sim} which is a list with \code{input},
-\code{col_group}, and \code{row_group}.
+An object of class \code{slideimp_sim}. This is a list containing:
+\itemize{
+\item \code{input}: A numeric matrix of dimension \eqn{n \times p} containing
+the simulated values and injected \code{NA}s.
+\item \code{col_group}: A data frame with $p$ rows mapping each \code{feature}
+to a \code{group}.
+\item \code{row_group}: A data frame with $n$ rows mapping each \code{sample}
+to a \code{group}.
+}
 }
 \description{
 Generates a matrix of random normal data then optionally scale to between 0

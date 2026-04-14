@@ -1,88 +1,44 @@
-# for each rep, we are sampling such that for each col we don't:
-# * Break row room budget
-# * Break col room budget
-# * Introduce zcv columns
-# only then, after collecting n_cols, do we return a rep. The row room budget
-# is more tricky, since we are iterating column wise, we have to update
-# row room budget after each selected column. Convert to arma is straightforawrd
-sample_each_rep <- function(
-  obj, # arma::mat &obj
-  pool_idx,
-  na_per_col,
-  row_room,
-  col_room,
-  max_attempts
-) {
-  # arma seed is hooked to R's seed. So we won't have to seed in arma.
-  n_cols <- length(na_per_col) # total cols needed
-  total_na <- sum(na_per_col) # total na values needed. Needed to track 2D index
-
-  for (iter in seq_len(max_attempts)) {
-    # resetting state by reshuffling column order.
-    shuffled <- pool_idx[sample.int(length(pool_idx))]
-    attempt_row_room <- row_room
-    row_out <- integer(total_na)
-    col_out <- integer(total_na)
-    written <- 0L
-    slot <- 0L # each column occupy a "slot"
-    for (col_idx in shuffled) {
-      if (slot >= n_cols) {
-        # if we filled n_cols, then no longer need to scan the available pool
-        break
-      }
-      needed <- na_per_col[slot + 1L] # how many row NA is needed for this col
-
-      # column budget (colmax). This column don't have enough rows left for us given budget
-      if (col_room[col_idx] < needed) {
-        next
-      }
-
-      candidate <- obj[, col_idx] # slice column
-      obs_row <- which(!is.na(candidate)) # arma::find_finite(candidate)
-      # protect 2 distinct observed values so column stays non-ZV
-      uniq_vals <- unique(candidate[obs_row])
-      if (length(uniq_vals) < 2L) {
-        next
-      }
-      kept_vals <- sample(uniq_vals, size = 2L)
-      # match keep the first two sampled missing values. This brings `kept_global` back to
-      # to global row space. But we probably can find_unique() and sample the index in arma.
-      kept_global <- obs_row[match(kept_vals, candidate[obs_row])]
-      left_over <- setdiff(obs_row, kept_global)
-      # row budget (rowmax)
-      left_over <- left_over[attempt_row_room[left_over] > 0L]
-      if (length(left_over) < needed) {
-        next
-      }
-      # avoid sample() scalar trap
-      selected <- left_over[sample.int(length(left_over), needed)]
-      # commit
-      slot <- slot + 1L
-      idx <- (written + 1L):(written + needed)
-      row_out[idx] <- selected
-      col_out[idx] <- col_idx
-      written <- written + needed
-      attempt_row_room[selected] <- attempt_row_room[selected] - 1L
-    }
-
-    if (slot == n_cols) {
-      return(cbind(row = row_out, col = col_out))
-    }
-  }
-
-  cli::cli_abort("Failed to sample NA locations after {max_attempts} attempts.")
-}
-
+#' Sample Missing Value Locations with Constraints
+#'
+#' Samples indices for `NA` injection into a matrix while maintaining row/column
+#' missing value budgets and avoiding zero-variance columns.
+#'
+#' @details
+#' The function uses a greedy stochastic search valid `NA` locations. It ensures that:
+#'
+#' - Total missingness per row and column does not exceed `rowmax` and `colmax`.
+#' - At least two distinct observed values are preserved in every column to
+#'   ensure the column maintains non-zero variance.
+#'
+#' @inheritParams tune_imp
+#'
+#' @return A list of length `n_reps`. Each element is a two-column integer
+#' matrix (`row`, `col`) representing the coordinates of the sampled `NA`
+#' locations.
+#'
+#' @examples
+#' mat <- matrix(runif(100), nrow = 10)
+#'
+#' # Sample 5 `NA` across 5 columns (1 per column)
+#' locs <- sample_na_loc(mat, n_cols = 5, n_rows = 1)
+#' locs
+#'
+#' # Inject the `NA` from the first repetition
+#' mat[locs[[1]]] <- NA
+#' mat
+#'
 #' @export
-sample_na_loc_stratified <- function(obj,
-                                     n_cols = NULL,
-                                     n_rows = 1L,
-                                     num_na = NULL,
-                                     n_reps = 1L,
-                                     rowmax = 0.9,
-                                     colmax = 0.9,
-                                     subset = NULL,
-                                     max_attempts = 10L) {
+sample_na_loc <- function(
+  obj,
+  n_cols = NULL,
+  n_rows = 2L,
+  num_na = NULL,
+  n_reps = 1L,
+  rowmax = 0.9,
+  colmax = 0.9,
+  na_col_subset = NULL,
+  max_attempts = 100
+) {
   checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
   checkmate::assert_count(n_cols, positive = TRUE, null.ok = TRUE, .var.name = "n_cols")
   checkmate::assert_count(n_rows, positive = TRUE, .var.name = "n_rows")
@@ -95,60 +51,87 @@ sample_na_loc_stratified <- function(obj,
   if (is.null(n_cols) && is.null(num_na)) {
     cli::cli_abort("Either {.arg n_cols} or {.arg num_na} must be supplied.")
   }
+
   if (!is.null(num_na) && num_na < n_rows) {
-    cli::cli_abort("{.arg num_na} ({num_na}) must be >= {.arg n_rows} ({n_rows}).")
+    cli::cli_abort(
+      "{.arg num_na} ({num_na}) must be >= {.arg n_rows} ({n_rows})
+     (each selected column needs at least one NA)."
+    )
   }
 
   # resolve (n_cols, na_per_col, max_row_miss)
   if (!is.null(num_na)) {
     n_cols <- as.integer(num_na %/% n_rows)
-    na_per_col <- rep.int(as.integer(n_rows), n_cols)
     remainder <- num_na %% n_rows
-    # last `remainder` columns get a +1 bump; rev() so bumped buckets
-    # end up at the tail and are consumed last (smallest-first greedy)
-    na_per_col[seq_len(remainder)] <- na_per_col[seq_len(remainder)] + 1L
-    na_per_col <- rev(na_per_col)
+    # distribute remainder across the n_cols buckets: each gets an extra
+    # `remainder %/% n_cols`, and the first `remainder %% n_cols` get +1 more.
+    base_extra <- remainder %/% n_cols
+    leftover <- remainder %% n_cols
+    na_per_col <- rep.int(as.integer(n_rows + base_extra), n_cols)
+    if (leftover > 0L) {
+      na_per_col[seq_len(leftover)] <- na_per_col[seq_len(leftover)] + 1L
+    }
+    # sort() so bumped buckets end up at the tail and are consumed last
+    # (smallest-first greedy)
+    na_per_col <- sort(na_per_col)
   } else {
     na_per_col <- rep.int(as.integer(n_rows), n_cols)
     num_na <- n_rows * n_cols
   }
   max_row_miss <- max(na_per_col)
   # for each column, we keep 2 values, so max_row_miss can't exceed this hard bound
-  checkmate::assert_true(max_row_miss <= nrow(obj) - 2L, .var.name = "max_row_miss <= nrow(obj)")
+  max_row_miss <- max(na_per_col)
+  # for each column, we keep 2 values, so max_row_miss can't exceed this hard bound
+  if (max_row_miss > nrow(obj) - 2L) {
+    cli::cli_abort(c(
+      "Too many NAs requested per column.",
+      "x" = "Maximum of {max_row_miss} NAs per column (from {.arg n_rows} = {n_rows}),
+             but must keep at least 2 observed values per column to preserve variance.",
+      "i" = "Matrix has only {nrow(obj)} rows."
+    ))
+  }
 
-  # resolve `subset` into integer pool_idx
-  pool_idx <- if (is.null(subset)) {
+  # resolve `na_col_subset` into integer pool_idx
+  pool_idx <- if (is.null(na_col_subset)) {
     seq_len(ncol(obj))
-  } else if (is.character(subset)) {
+  } else if (is.character(na_col_subset)) {
     checkmate::assert_character(
-      subset,
-      any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "subset"
+      na_col_subset,
+      any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "na_col_subset"
     )
     if (is.null(colnames(obj))) {
-      cli::cli_abort("{.arg subset} is character but {.arg obj} has no colnames.")
+      cli::cli_abort("{.arg na_col_subset} is character but {.arg obj} has no colnames.")
     }
-    missing_cols <- setdiff(subset, colnames(obj))
+    missing_cols <- setdiff(na_col_subset, colnames(obj))
     if (length(missing_cols)) {
       cli::cli_abort(
-        "{.arg subset} contains colnames not in {.arg obj}: {fmt_trunc(missing_cols, 6)}"
+        "{.arg na_col_subset} contains colnames not in {.arg obj}: {fmt_trunc(missing_cols, 6)}"
       )
     }
-    match(subset, colnames(obj))
-  } else if (is.numeric(subset)) {
+    match(na_col_subset, colnames(obj))
+  } else if (is.numeric(na_col_subset)) {
     checkmate::assert_integerish(
-      subset,
+      na_col_subset,
       lower = 1, upper = ncol(obj),
-      any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "subset"
+      any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "na_col_subset"
     )
-    as.integer(subset)
+    as.integer(na_col_subset)
   } else {
-    cli::cli_abort("{.arg subset} must be numeric, character, or NULL.")
+    cli::cli_abort("{.arg na_col_subset} must be numeric, character, or NULL.")
   }
 
   if (n_cols > length(pool_idx)) {
-    cli::cli_abort(
-      "Cannot stratify across {n_cols} columns; {.arg subset} has only {length(pool_idx)}."
-    )
+    if (!is.null(num_na)) {
+      cli::cli_abort(c(
+        "Cannot place {num_na} NAs (requires {n_cols} columns given {.arg n_rows} = {n_rows}).",
+        "i" = "{.arg na_col_subset} provides only {length(pool_idx)} column{?s}."
+      ))
+    } else {
+      cli::cli_abort(c(
+        "Cannot stratify across {n_cols} columns.",
+        "i" = "{.arg na_col_subset} provides only {length(pool_idx)} column{?s}."
+      ))
+    }
   }
 
   # pre-injection state and global feasibility (checked across the full obj,
@@ -162,44 +145,49 @@ sample_na_loc_stratified <- function(obj,
 
   if (any(current_col_miss > max_allowed_col_miss)) {
     bad <- which(current_col_miss > max_allowed_col_miss)
-    cli::cli_abort(
-      "Columns already exceed {.arg colmax} before injection: {fmt_trunc(bad, 6)}"
-    )
+    cli::cli_abort(c(
+      "Some columns already exceed {.arg colmax} before injection.",
+      "x" = "Problematic columns: {fmt_trunc(bad, 6)}"
+    ))
   }
   if (any(current_row_miss > max_allowed_row_miss)) {
     bad <- which(current_row_miss > max_allowed_row_miss)
-    cli::cli_abort(
-      "Rows already exceed {.arg rowmax} before injection: {fmt_trunc(bad, 6)}"
-    )
+    cli::cli_abort(c(
+      "Some rows already exceed {.arg rowmax} before injection.",
+      "x" = "Problematic rows: {fmt_trunc(bad, 6)}"
+    ))
   }
   if (any(is.na(current_col_vars) | current_col_vars <= 0)) {
     bad <- which(is.na(current_col_vars) | current_col_vars <= 0)
-    cli::cli_abort(
-      "Columns already have zero variance before injection: {fmt_trunc(bad, 6)}"
-    )
+    cli::cli_abort(c(
+      "Some columns already have zero (or NA) variance before injection.",
+      "x" = "Problematic columns: {fmt_trunc(bad, 6)}",
+      "i" = "NA injection requires at least 2 distinct observed values per column."
+    ))
   }
 
   row_room <- max_allowed_row_miss - current_row_miss
   col_room <- max_allowed_col_miss - current_col_miss
 
-  replicate(
-    n_reps,
-    sample_each_rep(
+  pool_idx0 <- pool_idx - 1L
+  lapply(seq_len(n_reps), function(x) {
+    result <- sample_each_rep_cpp(
       obj = obj,
-      pool_idx = pool_idx,
+      pool_idx_in = pool_idx0,
       na_per_col = na_per_col,
       row_room = row_room,
       col_room = col_room,
       max_attempts = max_attempts
-    ),
-    simplify = FALSE
-  )
+    )
+    colnames(result) <- c("row", "col")
+    result
+  })
 }
 
 #' Resolve NA locations for tune_imp
 #'
 #' If `na_loc` is NULL, generates `n_reps` random NA location matrices via
-#' `sample_na_loc_stratified()`. Otherwise normalizes the user-supplied
+#' `sample_na_loc()`. Otherwise normalizes the user-supplied
 #' positions into a list of 2-column (row, col) integer matrices and
 #' bounds-checks them.
 #'
@@ -219,11 +207,21 @@ resolve_na_loc <- function(
   n_rows,
   rowmax,
   colmax,
-  subset,
+  na_col_subset,
   max_attempts
 ) {
+  if (is.null(na_loc) && is.null(n_cols) && is.null(num_na)) {
+    n_total <- nrow(obj) * ncol(obj)
+    pct_based <- max(as.integer(n_rows), as.integer(round(0.05 * n_total)))
+    num_na <- min(500L, pct_based)
+    pct_actual <- round(100 * num_na / n_total, 1)
+    cli::cli_inform(c(
+      "i" = "Using default {.arg num_na} = {num_na} (~{pct_actual}% of cells).",
+      " " = "Increase for more reliability or decrease if missing is dense."
+    ))
+  }
   if (is.null(na_loc)) {
-    return(sample_na_loc_stratified(
+    return(sample_na_loc(
       obj = obj,
       n_cols = n_cols,
       n_rows = n_rows,
@@ -231,7 +229,7 @@ resolve_na_loc <- function(
       n_reps = n_reps,
       rowmax = rowmax,
       colmax = colmax,
-      subset = subset,
+      na_col_subset = na_col_subset,
       max_attempts = max_attempts
     ))
   }
@@ -294,25 +292,26 @@ resolve_na_loc <- function(
 #' Tune Parameters for Imputation Methods
 #'
 #' Tunes hyperparameters for imputation methods such as [slide_imp()], [knn_imp()],
-#' [pca_imp()], or user-supplied custom functions by repeated cross-validation.
+#' [pca_imp()], or user-supplied custom functions by repeated cross-validation. For
+#' [group_imp()], tune [knn_imp()] or [pca_imp()] on a single group.
 #'
 #' @details
-#' The function supports tuning for built-in imputation methods ("slide_imp",
-#' "knn_imp", "pca_imp") or custom functions provided via `.f`.
+#' The function supports tuning for built-in imputation methods (`"slide_imp"`,
+#' `"knn_imp"`, `"pca_imp"`) or custom functions provided via `.f`.
 #'
 #' When `.f` is a character string, the columns in `parameters` are validated
 #' against the chosen method's requirements:
 #' - `"knn_imp"`: requires `k` in `parameters`
 #' - `"pca_imp"`: requires `ncp` in `parameters`
 #' - `"slide_imp"`: requires `window_size`, `overlap_size`, and `min_window_n`,
-#' plus exactly one of `k` or `ncp`
+#'   plus exactly one of `k` or `ncp`
 #'
 #' When `.f` is a custom function, the columns in `parameters` must correspond
 #' to the arguments of `.f` (excluding the `obj` argument). The custom function
 #' must accept `obj` (a numeric matrix) as its first argument and return a
 #' numeric matrix of identical dimensions.
 #'
-#' Tuning results can be evaluated using the \pkg{yardstick} package or
+#' Tuning results can be evaluated using the `yardstick` package or
 #' [compute_metrics()].
 #'
 #' @inheritParams slide_imp
@@ -328,73 +327,84 @@ resolve_na_loc <- function(
 #' @param rowmax,colmax Numbers between 0 and 1. NA injection cannot create
 #'   rows/columns with a higher proportion of missing values than these
 #'   thresholds.
-#' @param n_cols Integer. The number of columns to receive injected NAs per
+#' @param n_cols Integer. The number of columns to receive injected `NA` per
 #'   repetition. Ignored when `num_na` is supplied (in which case `n_cols` is
 #'   derived as `as.integer(num_na %/% n_rows)`). Must be provided if
-#'   `num_na` is `NULL`. Ignored when `na_loc` is supplied.
-#' @param n_rows Integer. The target number of NAs per column (default `1L`).
+#'   `num_na` is `NULL`. Ignored in [tune_imp()] when `na_loc` is supplied.
+#' @param n_rows Integer. The target number of `NA` per column (default `2L`).
 #'   - When `num_na` is supplied: used as the base size. Most columns receive
-#'     exactly `n_rows` NAs; `num_na %% n_rows` columns receive `n_rows + 1`.
+#'     exactly `n_rows` `NA`; `num_na %% n_rows` columns receive `n_rows + 1`.
+#'     If there's only one column then that column receives all the remainder.
 #'   - When `num_na` is `NULL`: every selected column receives exactly
-#'     `n_rows` NAs.
-#'   Ignored when `na_loc` is supplied.
+#'     `n_rows` `NA`.
+#'   Ignored in [tune_imp()] when `na_loc` is supplied.
+#'
 #' @param num_na Integer. Total number of missing values to inject per
-#'   repetition. If supplied, `n_cols` is computed automatically and the NAs
+#'   repetition. If supplied, `n_cols` is computed automatically and the `NA`
 #'   are distributed as evenly as possible using `n_rows` as the base
-#'   (`num_na` must be `>= n_rows`). If omitted, exactly `n_cols * n_rows`
-#'   NAs are injected. At least one of `n_cols` or `num_na` must be supplied
-#'   when `na_loc` is `NULL`. Ignored when `na_loc` is supplied.
-#' @param subset Optional integer or character vector restricting which columns
+#'   (`num_na` must be `>= n_rows`). If omitted but `n_cols` is supplied,
+#'   exactly `n_cols * n_rows` `NA` are injected. If `num_na`, `n_cols`, and
+#'   `na_loc` are all `NULL`, defaults to ~5% of total cells (capped at 500) in
+#'   [tune_imp()]. [sample_na_loc()] has no default `num_na`. Ignored in
+#'   [tune_imp()] when `na_loc` is supplied.
+#'
+#' @param na_col_subset Optional integer or character vector restricting which columns
 #'   of `obj` are eligible for NA injection.
 #'   - If `NULL` (default): all columns are eligible.
 #'   - If character: values must exist in `colnames(obj)`.
 #'   - If integer/numeric: values must be valid 1-based column indices.
 #'   The vector must be unique and must contain at least `n_cols` columns
 #'   (or the number derived from `num_na`).
+#'
+#' Ignored in [tune_imp()] when `na_loc` is supplied.
+#'
 #' @param max_attempts Integer. Maximum number of resampling attempts per
-#'   repetition before giving up due to row-budget exhaustion (default `10`).
+#'   repetition before giving up due to row-budget exhaustion (default `100`).
 #' @param na_loc Optional. Pre-defined missing value locations to bypass random
-#'   NA injection. Accepted formats include:
+#'   NA injection with [sample_na_loc()]. Accepted formats include:
 #'   - A two-column integer matrix (row, column indices).
 #'   - A numeric vector of linear locations.
 #'   - A list where each element is one of the above formats (one per repetition).
+#'
 #' @param .progress Logical. Show a progress bar during tuning (default `TRUE`).
+#'
 #' @param cores Controls the number of cores to parallelize over for K-NN and
 #'   sliding-window K-NN imputation with OpenMP. For other methods, use
 #'   `mirai::daemons()` instead.
+#'
 #' @param location Required only for `slide_imp`. Numeric vector of column
 #'   locations.
+#'
 #' @param pin_blas Logical. Pin BLAS threads to 1 during parallel tuning
 #'   (default `FALSE`).
+#'
 #' @param .f The imputation method to tune. Either a character string
 #'   (`"knn_imp"`, `"pca_imp"`, or `"slide_imp"`) or a custom function.
 #'
 #' @return A data.frame of class `c("slideimp_tune", "slideimp_tbl", "data.frame")`
-#'   containing:
-#'   - All columns from `parameters`
-#'   - `param_set`: Unique parameter set ID
-#'   - `rep`: Repetition index (from `n_reps`)
-#'   - `result`: A nested list-column of data.frames with `truth` and `estimate`
-#'     columns
-#'   - `error`: Character column with failure reason (or `NA` if successful)
+#'   with the following columns:
+#'   - `...`: All columns originally provided in `parameters`.
+#'   - `param_set`: An integer ID representing the unique parameter combination.
+#'   - `rep_id`: An integer indicating the repetition index.
+#'   - `result`: A nested list-column where each element is a data.frame containing
+#'     `truth` (original values) and `estimate` (imputed values).
+#'   - `error`: A character column containing the error message if the iteration
+#'     failed, otherwise `NA`.
 #'
 #' @examples
+#' # Setup example data
 #' data(khanmiss1)
 #' obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 #'
-#' # Tune full K-NN imputation
-#' parameters <- data.frame(k = c(5, 10))
-#'
-#' # With random NA injection
-#' results <- tune_imp(obj, parameters, .f = "knn_imp", n_reps = 1, num_na = 20)
-#'
-#' # Compute metrics on results
+#' # 1. Tune K-NN imputation with random NA injection
+#' params_knn <- data.frame(k = c(5, 10))
+#' results <- tune_imp(obj, params_knn, .f = "knn_imp", n_reps = 1, num_na = 20)
 #' compute_metrics(results)
 #'
-#' # Tune with fixed NA positions (2 repetitions)
+#' # 2. Tune with fixed NA positions
 #' na_positions <- list(
-#'   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2), # Rows 1-3 in column 1
-#'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2) # Rows 2-4 in column 2
+#'   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2),
+#'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)
 #' )
 #' results_fixed <- tune_imp(
 #'   obj,
@@ -403,42 +413,40 @@ resolve_na_loc <- function(
 #'   na_loc = na_positions
 #' )
 #'
-#' compute_metrics(results_fixed)
+#' # 3. Custom imputation function
+#' custom_fill <- function(obj, val = 0) {
+#'   obj[is.na(obj)] <- val
+#'   obj
+#' }
+#' tune_imp(obj, data.frame(val = c(0, 1)), .f = custom_fill, num_na = 10)
 #'
-#' # Custom imputation function example
-#' custom_imp <- function(obj, mean = 0, sd = 1) {
+#' # 4. Parallel tuning (requires mirai package)
+#' mirai::daemons(2)
+#' parameters_custom <- data.frame(mean = c(0, 1), sd = c(1, 1))
+#'
+#' # Define a simple custom function for illustration
+#' custom_imp <- function(obj, mean, sd) {
 #'   na_pos <- is.na(obj)
 #'   obj[na_pos] <- stats::rnorm(sum(na_pos), mean = mean, sd = sd)
 #'   obj
 #' }
 #'
-#' # Setup 2 cores for parallelization (mirai)
-#' mirai::daemons(2)
-#' parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
-#' results_custom <- tune_imp(
-#'   obj,
-#'   parameters_custom,
-#'   .f = custom_imp,
-#'   n_reps = 2,
-#'   num_na = 20
-#' )
-#' mirai::daemons(0)
-#' compute_metrics(results_custom)
-#'
+#' results_p <- tune_imp(obj, parameters_custom, .f = custom_imp, n_reps = 1, num_na = 10)
+#' mirai::daemons(0) # Close workers
 #' @export
 tune_imp <- function(
   obj,
   parameters = NULL,
   .f,
-  n_reps = 1,
   na_loc = NULL,
-  n_cols = NULL,
-  n_rows = 1,
   num_na = NULL,
+  n_reps = 1,
+  n_cols = NULL,
+  n_rows = 2,
   rowmax = 0.9,
   colmax = 0.9,
-  subset = NULL,
-  max_attempts = 10L,
+  na_col_subset = NULL,
+  max_attempts = 100,
   .progress = TRUE,
   cores = 1,
   location = NULL,
@@ -553,7 +561,7 @@ tune_imp <- function(
     n_rows = n_rows,
     rowmax = rowmax,
     colmax = colmax,
-    subset = subset,
+    na_col_subset = na_col_subset,
     max_attempts = max_attempts
   )
   n_reps <- length(na_loc)
@@ -928,3 +936,165 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
 #   linear_pos <- (col - 1) * nrow + row
 #   return(linear_pos)
 # }
+
+# # sample_each_rep (R) ----
+# # for each rep, we are sampling such that for each col we don't:
+# # * Break row room budget
+# # * Break col room budget
+# # * Introduce zcv columns
+# # only then, after collecting n_cols, do we return a rep. The row room budget
+# # is more tricky, since we are iterating column wise, we have to update
+# # row room budget after each selected column. Convert to arma is straightforawrd
+# sample_each_rep <- function(
+#   obj, # arma::mat &obj
+#   pool_idx, # arma::uvec &pool_idx (convert to zero)
+#   na_per_col, # arma::uvec &na_per_col
+#   row_room, # arma::uvec &row_room
+#   col_room, # arma::uvec &col_room
+#   max_attempts # arma::uword max_attempts
+# ) {
+#   # arma seed is hooked to R's seed. So we won't have to seed in arma.
+#   n_cols <- length(na_per_col) # total cols needed
+#   total_na <- sum(na_per_col) # total na values needed. Needed to track 2D index
+#
+#   for (iter in seq_len(max_attempts)) {
+#     # resetting state by reshuffling column order.
+#     shuffled <- pool_idx[sample.int(length(pool_idx))]
+#     attempt_row_room <- row_room
+#     row_out <- integer(total_na)
+#     col_out <- integer(total_na)
+#     written <- 0L
+#     slot <- 0L # each column occupy a "slot"
+#     for (col_idx in shuffled) {
+#       if (slot >= n_cols) {
+#         # if we filled n_cols, then no longer need to scan the available pool
+#         break
+#       }
+#       needed <- na_per_col[slot + 1L] # how many row NA is needed for this col
+#       # column budget (colmax). This column don't have enough rows left for us given budget
+#       if (col_room[col_idx] < needed) {
+#         next
+#       }
+#       candidate <- obj[, col_idx] # slice column
+#       obs_row <- which(!is.na(candidate)) # arma::find_finite(candidate)
+#       # protect 2 distinct observed values so column stays non-ZV
+#       uniq_vals <- unique(candidate[obs_row])
+#       if (length(uniq_vals) < 2L) {
+#         next
+#       }
+#       kept_vals <- sample(uniq_vals, size = 2L)
+#       # match keep the first two sampled missing values. This brings `kept_global` back to
+#       # to global row space. But we probably can find_unique() and sample the index in arma.
+#       kept_global <- obs_row[match(kept_vals, candidate[obs_row])]
+#       left_over <- setdiff(obs_row, kept_global)
+#       # row budget (rowmax)
+#       left_over <- left_over[attempt_row_room[left_over] > 0L]
+#       if (length(left_over) < needed) {
+#         next
+#       }
+#       # avoid sample() scalar trap
+#       selected <- left_over[sample.int(length(left_over), needed)]
+#       # commit
+#       slot <- slot + 1L
+#       idx <- (written + 1L):(written + needed)
+#       row_out[idx] <- selected
+#       col_out[idx] <- col_idx
+#       written <- written + needed
+#       attempt_row_room[selected] <- attempt_row_room[selected] - 1L
+#     }
+#
+#     if (slot == n_cols) {
+#       return(cbind(row = row_out, col = col_out))
+#     }
+#   }
+#
+#   cli::cli_abort("Failed to sample NA locations after {max_attempts} attempts.")
+# }
+
+#' Legacy function
+#'
+#' @keywords internal
+#' @noRd
+inject_na <- function(
+  obj,
+  num_na = NULL,
+  rowmax = 0.9,
+  colmax = 0.9,
+  check_sd = FALSE,
+  max_iter = 1000
+) {
+  # subset the matrix to the specified features and samples
+  na_mat <- !is.na(obj)
+  # check if existing NA pattern already exceeds thresholds
+  max_col_miss <- floor(nrow(na_mat) * colmax)
+  max_row_miss <- floor(ncol(na_mat) * rowmax)
+  # calculate current missingness
+  current_col_miss <- nrow(na_mat) - colSums(na_mat)
+  current_row_miss <- ncol(na_mat) - rowSums(na_mat)
+  # check if any columns already exceed the threshold
+  bad_cols <- which(current_col_miss > max_col_miss)
+  if (length(bad_cols) > 0) {
+    stop("Some columns have missing > colmax before na injections")
+  }
+  # check if any rows already exceed the threshold
+  bad_rows <- which(current_row_miss > max_row_miss)
+  if (length(bad_rows) > 0) {
+    stop("Some rows have missing > rowmax before na injections")
+  }
+  not_na <- which(na_mat)
+  # ensure 'num_na' does not exceed the number of available non-NA elements
+  if (num_na > length(not_na)) {
+    stop(
+      sprintf(
+        "'num_na' (%d) exceeds the number of available non-NA elements (%d).
+        Adjust 'num_na' or increase feature/sample group size.",
+        num_na,
+        length(not_na)
+      )
+    )
+  }
+
+  if (check_sd) {
+    # initial check for zero variance
+    cvars <- col_vars(obj)
+    if (any(cvars < .Machine$double.eps | is.na(cvars))) {
+      stop("Zero variance columns detected before na injections")
+    }
+  }
+
+  # initialize variables for the while loop
+  c_miss <- TRUE
+  r_miss <- TRUE
+  sd_ok <- !check_sd # TRUE if not checking, FALSE if we need to check
+
+  na_loc <- NULL
+  iter <- 0
+  # inject `NA` while ensuring missingness thresholds and iter are not exceeded
+  while (c_miss || r_miss || !sd_ok) {
+    iter <- iter + 1
+    if (iter > max_iter) {
+      stop(
+        "NA injection failed. Adjust 'num_na' or increase 'colmax' and 'rowmax'."
+      )
+    }
+    na_mat_test <- na_mat
+    na_loc <- sample(not_na, size = num_na)
+    na_mat_test[na_loc] <- FALSE
+
+    # calculate the counts of missing values in columns and rows
+    col_miss_count <- nrow(na_mat_test) - colSums(na_mat_test)
+    row_miss_count <- ncol(na_mat_test) - rowSums(na_mat_test)
+    # check if any column or row exceeds the missingness thresholds
+    c_miss <- any(col_miss_count > max_col_miss)
+    r_miss <- any(row_miss_count > max_row_miss)
+
+    if (check_sd) {
+      # this is the real obj, not is.na(obj)
+      obj_test <- obj
+      obj_test[na_loc] <- NA
+      cvars <- col_vars(obj_test)
+      sd_ok <- !any(cvars < .Machine$double.eps | is.na(cvars))
+    }
+  }
+  return(na_loc)
+}

@@ -112,10 +112,17 @@ For PCA imputation: regularization imputation algorithm (\code{"regularized"} or
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 }
 \value{
-By default, a numeric matrix of the same dimensions as \code{obj} with
-missing values imputed. If \code{dry_run = TRUE}, instead returns a
-\code{slideimp_tbl} object of the windows that would be used (after all dropping
-rules), without performing imputation.
+\itemize{
+\item \strong{Default:} A numeric matrix of the same dimensions as \code{obj} with
+missing values imputed. The result has class \code{c("slideimp_results", "matrix")}.
+\item \strong{\code{dry_run = TRUE}:} A \code{data.frame} of class \code{slideimp_tbl} containing:
+\itemize{
+\item \code{start}, \code{end}: Column indices defining the window.
+\item \code{window_n}: Number of columns in the window.
+\item \code{subset_local}: Local indices of targeted columns within that window.
+\item \code{target}: (Only if \code{flank = TRUE}) The global index of the target column.
+}
+}
 }
 \description{
 Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise. This
@@ -137,7 +144,8 @@ in \code{subset} that exactly flanks that specific feature using the supplied
 \code{window_size}.
 }
 
-Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments for PCA.
+Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, \code{ncp} and related
+arguments for \code{\link[=pca_imp]{pca_imp()}}.
 }
 \examples{
 # Generate sample data with missing values with 20 samples and 100 columns

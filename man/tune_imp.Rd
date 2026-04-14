@@ -8,15 +8,15 @@ tune_imp(
   obj,
   parameters = NULL,
   .f,
-  n_reps = 1,
   na_loc = NULL,
-  n_cols = NULL,
-  n_rows = 1,
   num_na = NULL,
+  n_reps = 1,
+  n_cols = NULL,
+  n_rows = 2,
   rowmax = 0.9,
   colmax = 0.9,
-  subset = NULL,
-  max_attempts = 10L,
+  na_col_subset = NULL,
+  max_attempts = 100,
   .progress = TRUE,
   cores = 1,
   location = NULL,
@@ -35,43 +35,46 @@ default parameters.}
 \item{.f}{The imputation method to tune. Either a character string
 (\code{"knn_imp"}, \code{"pca_imp"}, or \code{"slide_imp"}) or a custom function.}
 
-\item{n_reps}{Integer. Number of repetitions for random NA injection
-(default \code{1}).}
-
 \item{na_loc}{Optional. Pre-defined missing value locations to bypass random
-NA injection. Accepted formats include:
+NA injection with \code{\link[=sample_na_loc]{sample_na_loc()}}. Accepted formats include:
 \itemize{
 \item A two-column integer matrix (row, column indices).
 \item A numeric vector of linear locations.
 \item A list where each element is one of the above formats (one per repetition).
 }}
 
-\item{n_cols}{Integer. The number of columns to receive injected NAs per
+\item{num_na}{Integer. Total number of missing values to inject per
+repetition. If supplied, \code{n_cols} is computed automatically and the \code{NA}
+are distributed as evenly as possible using \code{n_rows} as the base
+(\code{num_na} must be \verb{>= n_rows}). If omitted but \code{n_cols} is supplied,
+exactly \code{n_cols * n_rows} \code{NA} are injected. If \code{num_na}, \code{n_cols}, and
+\code{na_loc} are all \code{NULL}, defaults to ~5\% of total cells (capped at 500) in
+\code{\link[=tune_imp]{tune_imp()}}. \code{\link[=sample_na_loc]{sample_na_loc()}} has no default \code{num_na}. Ignored in
+\code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
+
+\item{n_reps}{Integer. Number of repetitions for random NA injection
+(default \code{1}).}
+
+\item{n_cols}{Integer. The number of columns to receive injected \code{NA} per
 repetition. Ignored when \code{num_na} is supplied (in which case \code{n_cols} is
 derived as \code{as.integer(num_na \%/\% n_rows)}). Must be provided if
-\code{num_na} is \code{NULL}. Ignored when \code{na_loc} is supplied.}
+\code{num_na} is \code{NULL}. Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
 
-\item{n_rows}{Integer. The target number of NAs per column (default \code{1L}).
+\item{n_rows}{Integer. The target number of \code{NA} per column (default \code{2L}).
 \itemize{
 \item When \code{num_na} is supplied: used as the base size. Most columns receive
-exactly \code{n_rows} NAs; \code{num_na \%\% n_rows} columns receive \code{n_rows + 1}.
+exactly \code{n_rows} \code{NA}; \code{num_na \%\% n_rows} columns receive \code{n_rows + 1}.
+If there's only one column then that column receives all the remainder.
 \item When \code{num_na} is \code{NULL}: every selected column receives exactly
-\code{n_rows} NAs.
-Ignored when \code{na_loc} is supplied.
+\code{n_rows} \code{NA}.
+Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.
 }}
-
-\item{num_na}{Integer. Total number of missing values to inject per
-repetition. If supplied, \code{n_cols} is computed automatically and the NAs
-are distributed as evenly as possible using \code{n_rows} as the base
-(\code{num_na} must be \verb{>= n_rows}). If omitted, exactly \code{n_cols * n_rows}
-NAs are injected. At least one of \code{n_cols} or \code{num_na} must be supplied
-when \code{na_loc} is \code{NULL}. Ignored when \code{na_loc} is supplied.}
 
 \item{rowmax, colmax}{Numbers between 0 and 1. NA injection cannot create
 rows/columns with a higher proportion of missing values than these
 thresholds.}
 
-\item{subset}{Optional integer or character vector restricting which columns
+\item{na_col_subset}{Optional integer or character vector restricting which columns
 of \code{obj} are eligible for NA injection.
 \itemize{
 \item If \code{NULL} (default): all columns are eligible.
@@ -79,10 +82,12 @@ of \code{obj} are eligible for NA injection.
 \item If integer/numeric: values must be valid 1-based column indices.
 The vector must be unique and must contain at least \code{n_cols} columns
 (or the number derived from \code{num_na}).
-}}
+}
+
+Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
 
 \item{max_attempts}{Integer. Maximum number of resampling attempts per
-repetition before giving up due to row-budget exhaustion (default \code{10}).}
+repetition before giving up due to row-budget exhaustion (default \code{100}).}
 
 \item{.progress}{Logical. Show a progress bar during tuning (default \code{TRUE}).}
 
@@ -98,23 +103,25 @@ locations.}
 }
 \value{
 A data.frame of class \code{c("slideimp_tune", "slideimp_tbl", "data.frame")}
-containing:
+with the following columns:
 \itemize{
-\item All columns from \code{parameters}
-\item \code{param_set}: Unique parameter set ID
-\item \code{rep}: Repetition index (from \code{n_reps})
-\item \code{result}: A nested list-column of data.frames with \code{truth} and \code{estimate}
-columns
-\item \code{error}: Character column with failure reason (or \code{NA} if successful)
+\item \code{...}: All columns originally provided in \code{parameters}.
+\item \code{param_set}: An integer ID representing the unique parameter combination.
+\item \code{rep_id}: An integer indicating the repetition index.
+\item \code{result}: A nested list-column where each element is a data.frame containing
+\code{truth} (original values) and \code{estimate} (imputed values).
+\item \code{error}: A character column containing the error message if the iteration
+failed, otherwise \code{NA}.
 }
 }
 \description{
 Tunes hyperparameters for imputation methods such as \code{\link[=slide_imp]{slide_imp()}}, \code{\link[=knn_imp]{knn_imp()}},
-\code{\link[=pca_imp]{pca_imp()}}, or user-supplied custom functions by repeated cross-validation.
+\code{\link[=pca_imp]{pca_imp()}}, or user-supplied custom functions by repeated cross-validation. For
+\code{\link[=group_imp]{group_imp()}}, tune \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}} on a single group.
 }
 \details{
-The function supports tuning for built-in imputation methods ("slide_imp",
-"knn_imp", "pca_imp") or custom functions provided via \code{.f}.
+The function supports tuning for built-in imputation methods (\code{"slide_imp"},
+\code{"knn_imp"}, \code{"pca_imp"}) or custom functions provided via \code{.f}.
 
 When \code{.f} is a character string, the columns in \code{parameters} are validated
 against the chosen method's requirements:
@@ -130,26 +137,23 @@ to the arguments of \code{.f} (excluding the \code{obj} argument). The custom fu
 must accept \code{obj} (a numeric matrix) as its first argument and return a
 numeric matrix of identical dimensions.
 
-Tuning results can be evaluated using the \pkg{yardstick} package or
+Tuning results can be evaluated using the \code{yardstick} package or
 \code{\link[=compute_metrics]{compute_metrics()}}.
 }
 \examples{
+# Setup example data
 data(khanmiss1)
 obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
 
-# Tune full K-NN imputation
-parameters <- data.frame(k = c(5, 10))
-
-# With random NA injection
-results <- tune_imp(obj, parameters, .f = "knn_imp", n_reps = 1, num_na = 20)
-
-# Compute metrics on results
+# 1. Tune K-NN imputation with random NA injection
+params_knn <- data.frame(k = c(5, 10))
+results <- tune_imp(obj, params_knn, .f = "knn_imp", n_reps = 1, num_na = 20)
 compute_metrics(results)
 
-# Tune with fixed NA positions (2 repetitions)
+# 2. Tune with fixed NA positions
 na_positions <- list(
-  matrix(c(1, 2, 3, 1, 1, 1), ncol = 2), # Rows 1-3 in column 1
-  matrix(c(2, 3, 4, 2, 2, 2), ncol = 2) # Rows 2-4 in column 2
+  matrix(c(1, 2, 3, 1, 1, 1), ncol = 2),
+  matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)
 )
 results_fixed <- tune_imp(
   obj,
@@ -158,26 +162,24 @@ results_fixed <- tune_imp(
   na_loc = na_positions
 )
 
-compute_metrics(results_fixed)
+# 3. Custom imputation function
+custom_fill <- function(obj, val = 0) {
+  obj[is.na(obj)] <- val
+  obj
+}
+tune_imp(obj, data.frame(val = c(0, 1)), .f = custom_fill, num_na = 10)
 
-# Custom imputation function example
-custom_imp <- function(obj, mean = 0, sd = 1) {
+# 4. Parallel tuning (requires mirai package)
+mirai::daemons(2)
+parameters_custom <- data.frame(mean = c(0, 1), sd = c(1, 1))
+
+# Define a simple custom function for illustration
+custom_imp <- function(obj, mean, sd) {
   na_pos <- is.na(obj)
   obj[na_pos] <- stats::rnorm(sum(na_pos), mean = mean, sd = sd)
   obj
 }
 
-# Setup 2 cores for parallelization (mirai)
-mirai::daemons(2)
-parameters_custom <- data.frame(mean = c(0, 0, 1), sd = c(1, 2, 1))
-results_custom <- tune_imp(
-  obj,
-  parameters_custom,
-  .f = custom_imp,
-  n_reps = 2,
-  num_na = 20
-)
-mirai::daemons(0)
-compute_metrics(results_custom)
-
+results_p <- tune_imp(obj, parameters_custom, .f = custom_imp, n_reps = 1, num_na = 10)
+mirai::daemons(0) # Close workers
 }

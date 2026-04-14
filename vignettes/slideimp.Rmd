@@ -28,10 +28,10 @@ obj[1:3, 1:3]
 ```
 
 * Instead of random NA sampling inside `tune_imp()`, which internally calls `sample_na_loc()`, we can generate the NA locations up front and pass them to `tune_imp()`. 
-* Here, we randomly select 5 samples from each of 200 random genes for 5 repetitions using `sample_na_loc_stratified()`. To specify just certain columns (i.e., clock CpGs), provide the `subset` argument.
+* Here, we randomly select 5 samples from each of 200 random genes for 5 repetitions using `sample_na_loc()`. To specify just certain columns (i.e., clock CpGs), provide the `subset` argument.
   - `na_loc` have 5 elements (5 repeats) where each row (row and col index) is the position of a missing value.
 ```{r}
-na_loc <- sample_na_loc_stratified(obj, n_cols = 200, n_rows = 5, n_reps = 5)
+na_loc <- sample_na_loc(obj, n_cols = 200, n_rows = 5, n_reps = 5)
 na_loc[1:3] |> lapply(head)
 ```
 
