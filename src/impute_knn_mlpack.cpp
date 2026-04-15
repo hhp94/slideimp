@@ -1,79 +1,42 @@
-// [[Rcpp::depends(mlpack, RcppArmadillo)]]
-
 #include "imputed_value.h"
 #include <mlpack.h>
 #include <mlpack/methods/neighbor_search/neighbor_search.hpp>
-#include <RcppArmadillo.h>
 #include <stdexcept>
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
 
-//' Impute missing values in a matrix using treed k-nearest neighbors (K-NN)
-//'
-//' K-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
-//'
-//' @param obj Numeric matrix with missing values represented as NA (NaN).
-//' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
-//' @param k Number of nearest neighbors to use for imputation.
-//' @param n_col_miss Integer vector specifying the count of missing values per column.
-//' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
-//' @param tree Which type of tree? "kd" or "ball".
-//' @param dist_pow A positive double that controls the penalty for larger distances in
-//' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
-//' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-//' @param cores Number of CPU cores to use for parallel processing (default = 1).
-//' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index.
-//'
-//' @keywords internal
-//' @noRd
 // [[Rcpp::export]]
 arma::mat impute_knn_mlpack(
-    const arma::mat &obj,         // data with NA pre-filled. So there's no NA
-    const arma::umat &miss,       // missing data matrix
-    const arma::uword k,          // n neighbors
-    const arma::uvec &n_col_miss, // vector of missing per column
-    const int method,             // 0 = "euclidean" or 1 = "manhattan"
-    const std::string tree,       // "kd" or "ball"
+    const arma::mat &obj,         // data with NA pre-filled (no NA values)
+    const arma::mat &nmiss,       // missing data matrix
+    const arma::uword k,          // number of neighbors
+    const arma::uvec &grp_impute, // 0-based indices of columns to impute
+    const int method,             // 0 = euclidean, 1 = manhattan
     const double dist_pow,        // controls distance penalty for weighted average
-    const int cores = 1)          // Number of cores for parallel processing
+    const int cores = 1)          // number of cores for parallel processing
 {
-#ifdef _OPENMP
-  omp_set_num_threads(cores);
-#endif
-  // Find columns that contain missing values
-  arma::uvec col_index_miss = arma::find(n_col_miss > 0);
-  // Initialize result matrix and get column offsets using helper function
   arma::uvec col_offsets;
-  arma::mat result = initialize_result_matrix(miss, col_index_miss, n_col_miss, col_offsets);
+  std::vector<arma::uvec> rows_to_impute_vec;
+  arma::mat result = initialize_result_matrix(nmiss, grp_impute, col_offsets, rows_to_impute_vec);
   if (result.n_rows == 0)
   {
-    return result; // No missing values
+    return result;
   }
-  arma::mat query_mat = obj.cols(col_index_miss);
+
+  arma::mat query_mat = obj.cols(grp_impute);
+
   // Matrices to store output
   arma::umat resultingNeighbors;
   arma::mat resultingDistances;
-  // Perform K-NN search based on tree and method
-  if (tree == "kd" && method == 0)
-  {
-    using KNNType = mlpack::NeighborSearch<mlpack::NearestNeighborSort, mlpack::EuclideanDistance, arma::mat, mlpack::KDTree>;
-    KNNType nn(obj);
-    nn.Search(query_mat, k + 1, resultingNeighbors, resultingDistances);
-  }
-  else if (tree == "kd" && method == 1)
-  {
-    using KNNType = mlpack::NeighborSearch<mlpack::NearestNeighborSort, mlpack::ManhattanDistance, arma::mat, mlpack::KDTree>;
-    KNNType nn(obj);
-    nn.Search(query_mat, k + 1, resultingNeighbors, resultingDistances);
-  }
-  else if (tree == "ball" && method == 0)
+
+  if (method == 0)
   {
     using KNNType = mlpack::NeighborSearch<mlpack::NearestNeighborSort, mlpack::EuclideanDistance, arma::mat, mlpack::BallTree>;
     KNNType nn(obj);
     nn.Search(query_mat, k + 1, resultingNeighbors, resultingDistances);
   }
-  else if (tree == "ball" && method == 1)
+  else if (method == 1)
   {
     using KNNType = mlpack::NeighborSearch<mlpack::NearestNeighborSort, mlpack::ManhattanDistance, arma::mat, mlpack::BallTree>;
     KNNType nn(obj);
@@ -81,33 +44,35 @@ arma::mat impute_knn_mlpack(
   }
   else
   {
-    throw std::invalid_argument("Invalid `tree` or `method`. Use 'kd' or 'ball' for `tree`, and 0 for 'euclidean' or 1 for 'manhattan' for `method`.");
+    throw std::invalid_argument("Invalid `method`. Use 0 for 'euclidean' or 1 for 'manhattan'.");
   }
+
   // Main imputation loop
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp parallel for num_threads(cores)
 #endif
-  for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+  for (arma::uword i = 0; i < grp_impute.n_elem; ++i)
   {
     // Get the indices of the k nearest neighbors (skip the 0-th neighbor, which is self)
     arma::uvec nn_columns = resultingNeighbors(arma::span(1, k), i);
+
     // Get the corresponding distances for these neighbors
     arma::vec nn_dists = resultingDistances(arma::span(1, k), i);
-    // Copy pasted from impute_knn_brute
     const arma::uword n_neighbors = nn_columns.n_elem;
+
     // Calculate weights once (same for all methods)
     arma::vec weights(n_neighbors);
     weights = 1.0 / arma::pow(nn_dists + epsilon, dist_pow);
-    arma::uword target_col_idx = col_index_miss(i);
-    // Choose imputation method based on n_pmm
-    // Single deterministic imputation
-    arma::umat nn_columns_mat(n_neighbors, 1);
-    nn_columns_mat.col(0) = nn_columns;
 
+    arma::uword target_col_idx = grp_impute(i);
+
+    // Single deterministic imputation
     impute_column_values(
-        result, obj, miss,
+        result, obj, nmiss,
         col_offsets(i), target_col_idx,
-        nn_columns_mat, weights);
+        nn_columns, weights,
+        rows_to_impute_vec[i]);
   }
+
   return result;
 }

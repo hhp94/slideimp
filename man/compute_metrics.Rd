@@ -2,19 +2,25 @@
 % Please edit documentation in R/tune_imp.R
 \name{compute_metrics}
 \alias{compute_metrics}
+\alias{compute_metrics.data.frame}
+\alias{compute_metrics.slideimp_tune}
 \title{Compute Prediction Accuracy Metrics}
 \usage{
-compute_metrics(results, metrics = c("mae", "rmse", "rsq"))
+compute_metrics(results, metrics = c("mae", "rmse"))
+
+\method{compute_metrics}{data.frame}(results, metrics = c("mae", "rmse"))
+
+\method{compute_metrics}{slideimp_tune}(results, metrics = c("mae", "rmse"))
 }
 \arguments{
-\item{results}{A tibble from \code{\link[=tune_imp]{tune_imp()}} containing a \code{result} column
-with tibbles that have \code{truth} and \code{estimate} columns.}
+\item{results}{A \code{slideimp_tune} data.frame from \code{\link[=tune_imp]{tune_imp()}} containing
+a \code{result} list-column with data.frames that have \code{truth} and \code{estimate} columns.}
 
 \item{metrics}{A character vector of metric names to compute. Defaults
-to \code{c("mae", "rmse", "rsq")}. Also available: \code{"mape"}, \code{"bias"}, \code{"calc_rsq_trad"}.}
+to \code{c("mae", "rmse")}. Also available: \code{"mape"}, \code{"bias"}, \code{"rsq"}, and \code{"rsq_trad"}.}
 }
 \value{
-A tibble with the original parameters and unnested metrics
+A data.frame with the original parameters and un-nested metrics
 (\code{.metric}, \code{.estimator}, \code{.estimate}).
 }
 \description{
@@ -25,12 +31,13 @@ For alternative or faster metrics, see the \code{{yardstick}} package.
 }
 \examples{
 data(khanmiss1)
+
 set.seed(1234)
 results <- tune_imp(
   obj = t(khanmiss1),
   parameters = data.frame(k = 10),
   .f = "knn_imp",
-  rep = 1,
+  n_reps = 1,
   num_na = 20
 )
 

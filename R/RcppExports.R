@@ -5,74 +5,20 @@ pca_imp_internal_cpp <- function(X, miss, ncp, scale, regularized, threshold, in
     .Call(`_slideimp_pca_imp_internal_cpp`, X, miss, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge)
 }
 
-#' Impute missing values in a matrix using k-nearest neighbors (K-NN) with brute-force
-#'
-#' This function imputes missing values in a matrix using a k-nearest neighbors
-#' approach based on the specified distance metric. It processes only columns
-#' with missing values, calculating distances to other columns to find the
-#' k-nearest neighbors, and imputes missing values using either a simple average
-#' or a weighted average (inverse distance weighting) of non-missing values from
-#' these neighbors, depending on the `weighted` parameter.
-#'
-#'
-#' @param obj Numeric matrix with missing values represented as NA (NaN).
-#' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
-#' @param k Number of nearest neighbors to use for imputation.
-#' @param n_col_miss Integer vector specifying the count of missing values per column.
-#' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
-#' @param dist_pow A positive double that controls the penalty for larger distances in
-#' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
-#' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param cores Number of CPU cores to use for parallel processing (default = 1).
-#' @return A matrix where the first column is the 1-based row index.
-#'
-#' @keywords internal
-#' @noRd
-impute_knn_brute <- function(obj, miss, k, n_col_miss, method, dist_pow, cores = 1L) {
-    .Call(`_slideimp_impute_knn_brute`, obj, miss, k, n_col_miss, method, dist_pow, cores)
+find_windows <- function(x, window, overlap = 0.0) {
+    .Call(`_slideimp_find_windows`, x, window, overlap)
 }
 
-#' Impute missing values in a matrix using treed k-nearest neighbors (K-NN)
-#'
-#' K-NN using KDTree or BallTree with optional bootstrap support for uncertainty estimation.
-#'
-#' @param obj Numeric matrix with missing values represented as NA (NaN).
-#' @param miss Logical matrix (0/1) indicating missing values (1 = missing).
-#' @param k Number of nearest neighbors to use for imputation.
-#' @param n_col_miss Integer vector specifying the count of missing values per column.
-#' @param method Integer specifying the distance metric: 0 = Euclidean, 1 = Manhattan.
-#' @param tree Which type of tree? "kd" or "ball".
-#' @param dist_pow A positive double that controls the penalty for larger distances in
-#' the weighted mean imputation. Must be greater than zero: values between 0 and 1 apply a softer penalty,
-#' 1 is linear (default), and values greater than 1 apply a harsher penalty.
-#' @param cores Number of CPU cores to use for parallel processing (default = 1).
-#' @return A matrix where the first column is the 1-based row index, the second column is the 1-based column index.
-#'
-#' @keywords internal
-#' @noRd
-impute_knn_mlpack <- function(obj, miss, k, n_col_miss, method, tree, dist_pow, cores = 1L) {
-    .Call(`_slideimp_impute_knn_mlpack`, obj, miss, k, n_col_miss, method, tree, dist_pow, cores)
+find_windows_flank <- function(location, subset, window_size) {
+    .Call(`_slideimp_find_windows_flank`, location, subset, window_size)
 }
 
-#' @title Weighted Row Mean
-#'
-#' @description Calculate weighted row means for specified columns, accounting for missing values.
-#'
-#' @param obj A numeric matrix containing the data.
-#' @param miss An unsigned integer matrix indicating missing values (0 for observed, 1 for missing).
-#' @param nn_columns An unsigned integer vector of column indices for the neighbors.
-#' @param nn_weights A numeric vector of weights corresponding to the neighbors.
-#'
-#' @return A column vector containing the weighted row means, with NaN where computation is not possible.
-#'
-#' @keywords internal
-#' @noRd
-weighted_row_means <- function(obj, miss, nn_columns, nn_weights) {
-    .Call(`_slideimp_weighted_row_means`, obj, miss, nn_columns, nn_weights)
+impute_knn_brute <- function(obj, nmiss, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cache = TRUE, cores = 1L) {
+    .Call(`_slideimp_impute_knn_brute`, obj, nmiss, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cache, cores)
 }
 
-has_openmp <- function() {
-    .Call(`_slideimp_has_openmp`)
+impute_knn_mlpack <- function(obj, nmiss, k, grp_impute, method, dist_pow, cores = 1L) {
+    .Call(`_slideimp_impute_knn_mlpack`, obj, nmiss, k, grp_impute, method, dist_pow, cores)
 }
 
 col_min_max <- function(mat, min = 0L) {
@@ -81,5 +27,13 @@ col_min_max <- function(mat, min = 0L) {
 
 col_vars_internal <- function(mat, cores = 1L) {
     .Call(`_slideimp_col_vars_internal`, mat, cores)
+}
+
+has_openmp <- function() {
+    .Call(`_slideimp_has_openmp`)
+}
+
+sample_each_rep_cpp <- function(obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts) {
+    .Call(`_slideimp_sample_each_rep_cpp`, obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts)
 }
 
