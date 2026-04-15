@@ -25,8 +25,9 @@ You can install the development version of `{slideimp}` with:
 pak::pkg_install("hhp94/slideimp")
 ```
 
-The optional `{slideimp.extra}` package, providing lightweight Illumina
-manifests, can be installed with:
+You can install the optional
+[`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) package
+(which provides lightweight Illumina manifests) with:
 
 ``` r
 pak::pkg_install("hhp94/slideimp.extra")
@@ -40,13 +41,13 @@ pak::pkg_install("hhp94/slideimp.extra")
 
 ``` r
 dim(MSA_beta_matrix)
-#> [1]     20 281797
+# [1]     20 281797
 MSA_beta_matrix[1:4, 1:4]
-#>         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
-#> sample1              NA       0.5023435       0.3835431              NA
-#> sample2       0.4907466       0.5095459       0.9025816       0.4313347
-#> sample3       0.6885036              NA       0.7646753       0.4498772
-#> sample4       0.0000000       0.0000000              NA       0.0000000
+#         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
+# sample1              NA       0.5023435       0.3835431              NA
+# sample2       0.4907466       0.5095459       0.9025816       0.4313347
+# sample3       0.6885036              NA       0.7646753       0.4498772
+# sample4       0.0000000       0.0000000              NA       0.0000000
 ```
 
 - Chromosome-wise imputation of Illumina microarrays can be performed
@@ -68,22 +69,22 @@ imputed <- group_imp(
   ncp = 10, # <- change to `k` for KNN imputation
   .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
-#> Found cleaned manifest for 'MSA'
-#> Groups 24 dropped: no features remaining after matching obj columns.
-#> Imputing 25 group(s) using PCA.
-#> Running Mode: sequential ...
+# Found cleaned manifest for 'MSA'
+# Groups 24 dropped: no features remaining after matching obj columns.
+# Imputing 25 group(s) using PCA.
+# Running Mode: sequential ...
 
 print(imputed, n = 4, p = 4)
-#> slideimp_results (PCA)
-#> Dimensions: 20 x 281797
-#> 
-#>         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
-#> sample1       0.1517542       0.5023435      0.38354308       0.2067731
-#> sample2       0.4907466       0.5095459      0.90258164       0.4313347
-#> sample3       0.6885036       0.7339375      0.76467530       0.4498772
-#> sample4       0.0000000       0.0000000      0.05230101       0.0000000
-#> 
-#> # Showing [1:4, 1:4] of full matrix
+# slideimp_results (PCA)
+# Dimensions: 20 x 281797
+# 
+#         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
+# sample1       0.1517542       0.5023435      0.38354308       0.2067731
+# sample2       0.4907466       0.5095459      0.90258164       0.4313347
+# sample3       0.6885036       0.7339375      0.76467530       0.4498772
+# sample4       0.0000000       0.0000000      0.05230101       0.0000000
+# 
+# # Showing [1:4, 1:4] of full matrix
 ```
 
 - Tips

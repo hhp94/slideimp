@@ -486,8 +486,8 @@ test_that("prep_groups errors when no colnames match features_df", {
 
 # slideimp.extra ----
 test_that("slideimp_extra_manifests works with prep_groups", {
+  skip("manual testing with {slideimp.extra} on local machines only")
   skip_if_not_installed("slideimp.extra")
-  skip_on_cran()
   slideimp.extra::set_slideimp_path("dev")
   msa <- slideimp.extra::ilmn_manifest("MSA", deduped = TRUE, rawdir = "dev")
   n_feat <- length(msa$feature)
