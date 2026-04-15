@@ -14,8 +14,7 @@ permissions: read-all
 
 jobs:
   pkgdown:
-    runs-on: ubuntu-latest
-    # Only restrict concurrency for non-PR jobs
+    runs-on: ubuntu-24.04
     concurrency:
       group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
     env:
@@ -36,7 +35,7 @@ jobs:
           cat >> ~/.Rprofile <<EOF
           options(repos = c(
             hhp94 = "https://hhp94.r-universe.dev",
-            CRAN = "https://p3m.dev/cran/__linux__/jammy/latest"
+            CRAN = "https://p3m.dev/cran/__linux__/noble/latest"
           ))
           EOF
 
