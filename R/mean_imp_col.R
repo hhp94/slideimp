@@ -5,7 +5,7 @@
 #'
 #' @inheritParams knn_imp
 #'
-#' @return A numeric matrix of the same dimensions as `obj` with missing values
+#' @returns A numeric matrix of the same dimensions as `obj` with missing values
 #' in the specified columns replaced by column means.
 #'
 #' @examples

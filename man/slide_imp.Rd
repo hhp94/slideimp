@@ -112,17 +112,10 @@ For PCA imputation: regularization imputation algorithm (\code{"regularized"} or
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 }
 \value{
-\itemize{
-\item \strong{Default:} A numeric matrix of the same dimensions as \code{obj} with
-missing values imputed. The result has class \code{c("slideimp_results", "matrix")}.
-\item \strong{\code{dry_run = TRUE}:} A \code{data.frame} of class \code{slideimp_tbl} containing:
-\itemize{
-\item \code{start}, \code{end}: Column indices defining the window.
-\item \code{window_n}: Number of columns in the window.
-\item \code{subset_local}: Local indices of targeted columns within that window.
-\item \code{target}: (Only if \code{flank = TRUE}) The global index of the target column.
-}
-}
+A numeric matrix of the same dimensions as \code{obj} with missing values
+imputed. When \code{dry_run = TRUE}, returns a \code{data.frame} of class \code{slideimp_tbl}
+with columns \code{start}, \code{end}, \code{window_n}, plus \code{subset_local} (and \code{target}
+when \code{flank = TRUE}).
 }
 \description{
 Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise. This

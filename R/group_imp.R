@@ -8,7 +8,7 @@
 #' @param feat A list of character vectors representing feature column names per group,
 #'   must be the same length as `aux`.
 #' @param iter Levels to be used with [collapse::gsplit()]
-#' @return A list of character vectors of the same length as `aux`, with `feat`
+#' @returns A list of character vectors of the same length as `aux`, with `feat`
 #'   elements removed.
 #'
 #' @noRd
@@ -42,7 +42,7 @@ remove_feat_from_aux <- function(aux, feat, iter) {
 #' @param A Character vector to prune from.
 #' @param iter Levels to be used with [collapse::gsplit()]
 #'
-#' @return A list of character vectors the same length as `lst`, keeping only
+#' @returns A list of character vectors the same length as `lst`, keeping only
 #'   elements that exist in `A`.
 #'
 #' @noRd
@@ -67,7 +67,7 @@ prune_to_A <- function(lst, A, iter) {
 #'
 #' @param group Character. Name of the requested manifest.
 #'
-#' @return A data.frame containing the cleaned Illumina manifest for
+#' @returns A data.frame containing the cleaned Illumina manifest for
 #' the requested array type.
 #'
 #' @seealso [group_imp()]
@@ -109,7 +109,7 @@ slideimp_extra_manifests <- function(group = NULL) {
 #' @param prep_groups A list of character vectors, one per group, containing
 #'   the feature names (i.e., `group$feature` from the prepped table).
 #'
-#' @return A named list with three elements:
+#' @returns A named list with three elements:
 #'
 #' * `features_idx_local`: Integer vector of feature positions within the
 #'   extracted submatrix (`1:n_features`), used to slice imputed columns
@@ -154,7 +154,7 @@ group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
 #' * `Dropping:` Groups left with zero features after pruning are
 #'   removed entirely with a diagnostic message.
 #'
-#' @return A `data.frame` of class `slideimp_tbl` containing:
+#' @returns A `data.frame` of class `slideimp_tbl` containing:
 #' * `group`: Original group labels (if provided).
 #' * `feature`: A list-column of character vectors (feature names).
 #' * `aux`: A list-column of character vectors (auxiliary names).

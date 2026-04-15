@@ -19,7 +19,7 @@ library(slideimp)
 set.seed(1234)
 ```
 
-## Comparing Methods Using a Shared Cross-Validation Split (`tune_imp()`)
+## Comparing Methods Using a Shared Cross-Validation Split with `tune_imp()`
 * Let's use the included `khanmiss1` dataset.
 ```{r}
 data(khanmiss1)
@@ -69,12 +69,12 @@ rnorm_tune <- tune_imp(
 
 * PCA imputation performed best here.
 ```{r}
-mean(compute_metrics(pca_tune)$.estimate)
-mean(compute_metrics(knn_tune)$.estimate)
-mean(compute_metrics(rnorm_tune)$.estimate)
+mean(compute_metrics(pca_tune, metrics = "rmse")$.estimate)
+mean(compute_metrics(knn_tune, metrics = "rmse")$.estimate)
+mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
 ```
 
-## Group-Wise Imputation with Small-Group Padding and Group-Wise Parameters (`group_imp()`)
+## Group-Wise Imputation with Small-Group Padding and Group-Wise Parameters with `group_imp()`
 * `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation.
 * `group_imp()` requires the `group` argument, which maps `colnames(obj)` to groups. This can be created up front with `prep_groups()` for advanced features such as group-wise parameters and padding of small groups with random features from other groups. `prep_groups()` returns a list-column data.frame with:
   - `features`: **required** - a list-column where each element is a character vector of variable names to be imputed together.
@@ -87,7 +87,7 @@ sim_obj <- sim_mat(n = 20, p = 50, n_col_groups = 2)
 
 # Matrix to be imputed
 obj <- sim_obj$input
-obj[1:6, 1:6]
+obj[1:5, 1:4]
 
 # Metadata, i.e., which features belong to which group
 meta <- sim_obj$col_group
@@ -111,10 +111,10 @@ group_imp_df
 
 ```{r}
 knn_results <- group_imp(obj, group = group_imp_df, cores = 4, k = 10)
-knn_results
+print(knn_results, p = 4)
 ```
 
-## Sliding Window Imputation for WGBS/EM-seq Data
+## Sliding Window Imputation for WGBS/EM-seq Data with `slide_imp()`
 ### Select `window_size`, `overlap_size`, and PCA/KNN Parameters
 * We simulate the output of the `{methylKit}` package. 
   - **Note:** WGBS/EM-seq data should be grouped by chromosome before performing sliding window imputation.
@@ -160,7 +160,7 @@ beta_matrix <- t(beta_matrix)
 # Set 10% of the data to missing
 set.seed(1234)
 beta_matrix[sample.int(length(beta_matrix), floor(length(beta_matrix) * 0.1))] <- NA
-beta_matrix[1:5, 1:5]
+beta_matrix[1:4, 1:4]
 ```
 
 * Then, in a real dataset, we would tune hyperparameters using `chr22`. Here, as a demonstration, we use the whole data since the size is small.
@@ -213,7 +213,7 @@ slide_imp(
   overlap_size = 1000,
   ncp = 2,
   min_window_n = 20,
-  dry_run = TRUE
+  dry_run = FALSE
 )
 ```
 
@@ -222,7 +222,7 @@ slide_imp(
   - Pass the desired feature names to the `subset` argument. Only windows containing these features will be imputed.
   - Set `flank = TRUE` to build windows *centered* on each feature in the `subset`. Each window will extend `window_size` bp on either side of the target feature (flanking mode).
   - In this mode, the `overlap_size` argument is ignored.
-* Example: Here we only want to impute the features `"1323"` and `"33810"` by creating 5,000 bp flanking windows around each:
+* In this example, we only want to impute the features `"1323"` and `"33810"` by creating 5,000 bp flanking windows around each feature:
 
 ```{r}
 slide_imp(

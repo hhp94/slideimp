@@ -37,7 +37,6 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   invisible(x)
 }
 
-
 #' Print a `slideimp_sim` Object
 #'
 #' @param x A `slideimp_sim` object.

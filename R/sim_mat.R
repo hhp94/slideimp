@@ -16,7 +16,7 @@
 #' @param perc_col_na Proportion of columns across which those NAs are spread. Default is `0.5`.
 #' @param beta If TRUE (default) scale values between 0 and 1 column wise.
 #'
-#' @return An object of class `slideimp_sim`. This is a list containing:
+#' @returns An object of class `slideimp_sim`. This is a list containing:
 #' * `input`: A numeric matrix of dimension \eqn{n \times p} containing
 #'   the simulated values and injected `NA`s.
 #' * `col_group`: A data frame with $p$ rows mapping each `feature`

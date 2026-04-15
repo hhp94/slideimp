@@ -12,7 +12,7 @@
 #'
 #' @inheritParams tune_imp
 #'
-#' @return A list of length `n_reps`. Each element is a two-column integer
+#' @returns A list of length `n_reps`. Each element is a two-column integer
 #' matrix (`row`, `col`) representing the coordinates of the sampled `NA`
 #' locations.
 #'
@@ -383,15 +383,15 @@ resolve_na_loc <- function(
 #'
 #' @inheritSection group_imp Parallelization
 #'
-#' @return A data.frame of class `c("slideimp_tune", "slideimp_tbl", "data.frame")`
-#'   with the following columns:
-#'   - `...`: All columns originally provided in `parameters`.
-#'   - `param_set`: An integer ID representing the unique parameter combination.
-#'   - `rep_id`: An integer indicating the repetition index.
-#'   - `result`: A nested list-column where each element is a data.frame containing
-#'     `truth` (original values) and `estimate` (imputed values).
-#'   - `error`: A character column containing the error message if the iteration
-#'     failed, otherwise `NA`.
+#' @returns A `data.frame` of class `c("slideimp_tune", "slideimp_tbl", "data.frame")`
+#' containing the following columns:
+#' - `...`: All columns originally provided in `parameters`.
+#' - `param_set`: An integer ID representing the unique parameter combination.
+#' - `rep_id`: An integer indicating the repetition index.
+#' - `result`: A nested list-column where each element is a data.frame containing
+#'   `truth` (original values) and `estimate` (imputed values).
+#' - `error`: A character column containing the error message if the iteration
+#'   failed, otherwise `NA`.
 #'
 #' @examples
 #' # Setup example data
@@ -836,7 +836,7 @@ calc_all_metrics <- function(x, metric_fns) {
 #' @param metrics A character vector of metric names to compute. Defaults
 #' to `c("mae", "rmse")`. Also available: `"mape"`, `"bias"`, `"rsq"`, and `"rsq_trad"`.
 #'
-#' @return A data.frame with the original parameters and un-nested metrics
+#' @returns A data.frame with the original parameters and un-nested metrics
 #' (`.metric`, `.estimator`, `.estimate`).
 #'
 #' @examples
@@ -919,7 +919,7 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
 # #'   integer within the matrix bounds.
 # #' @param nrow The number of rows in the matrix.
 # #' @param ncol The number of columns in the matrix.
-# #' @return A numeric vector of linear positions corresponding to the input 2D
+# #' @returns A numeric vector of linear positions corresponding to the input 2D
 # #'   positions.
 # #'
 # #' @keywords internal

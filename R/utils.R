@@ -7,7 +7,7 @@
 #' @param x A character to format.
 #' @param n Integer scalar. The maximum number of elements to display. Default is `5`.
 #'
-#' @return A length-1 character string.
+#' @returns A length-1 character string.
 #'
 #' @noRd
 #' @keywords internal
@@ -27,7 +27,7 @@ fmt_trunc <- function(x, n = 5) {
 #'
 #' @param pin_blas Logical scalar. Whether BLAS thread pinning is requested.
 #'
-#' @return `NULL` invisibly. Called for its side effects (messages or errors).
+#' @returns `NULL` invisibly. Called for its side effects (messages or errors).
 #'
 #' @noRd
 #' @keywords internal
@@ -49,7 +49,7 @@ check_pin_blas <- function(pin_blas) {
 #' @param obj Input
 #' @param loc Output of `sample_each_rep()`
 #'
-#' @return `NULL` invisibly. Called for its side effects (messages or errors).
+#' @returns `NULL` invisibly. Called for its side effects (messages or errors).
 #'
 #' @noRd
 #' @keywords internal

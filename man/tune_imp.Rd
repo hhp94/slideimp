@@ -102,8 +102,8 @@ locations.}
 (default \code{FALSE}).}
 }
 \value{
-A data.frame of class \code{c("slideimp_tune", "slideimp_tbl", "data.frame")}
-with the following columns:
+A \code{data.frame} of class \code{c("slideimp_tune", "slideimp_tbl", "data.frame")}
+containing the following columns:
 \itemize{
 \item \code{...}: All columns originally provided in \code{parameters}.
 \item \code{param_set}: An integer ID representing the unique parameter combination.

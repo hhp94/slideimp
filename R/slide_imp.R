@@ -76,14 +76,10 @@ find_overlap_regions <- function(start, end) {
 #' Specify `k` and related arguments to use [knn_imp()], `ncp` and related
 #' arguments for [pca_imp()].
 #'
-#' @returns
-#' - **Default:** A numeric matrix of the same dimensions as `obj` with
-#'   missing values imputed. The result has class `c("slideimp_results", "matrix")`.
-#' - **`dry_run = TRUE`:** A `data.frame` of class `slideimp_tbl` containing:
-#'   - `start`, `end`: Column indices defining the window.
-#'   - `window_n`: Number of columns in the window.
-#'   - `subset_local`: Local indices of targeted columns within that window.
-#'   - `target`: (Only if `flank = TRUE`) The global index of the target column.
+#' @returns A numeric matrix of the same dimensions as `obj` with missing values
+#' imputed. When `dry_run = TRUE`, returns a `data.frame` of class `slideimp_tbl`
+#' with columns `start`, `end`, `window_n`, plus `subset_local` (and `target`
+#' when `flank = TRUE`).
 #'
 #' @examples
 #' # Generate sample data with missing values with 20 samples and 100 columns
