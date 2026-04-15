@@ -220,6 +220,7 @@ resolve_na_loc <- function(
       " " = "Increase for more reliability or decrease if missing is dense."
     ))
   }
+
   if (is.null(na_loc)) {
     return(sample_na_loc(
       obj = obj,
@@ -395,8 +396,7 @@ resolve_na_loc <- function(
 #'
 #' @examples
 #' # Setup example data
-#' data(khanmiss1)
-#' obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
+#' obj <- sim_mat(20, 200)$input
 #'
 #' # 1. Tune K-NN imputation with random NA injection
 #' params_knn <- data.frame(k = c(5, 10))
@@ -435,6 +435,7 @@ resolve_na_loc <- function(
 #'
 #' results_p <- tune_imp(obj, parameters_custom, .f = custom_imp, n_reps = 1, num_na = 10)
 #' mirai::daemons(0) # Close workers
+#'
 #' @export
 tune_imp <- function(
   obj,
@@ -840,11 +841,11 @@ calc_all_metrics <- function(x, metric_fns) {
 #' (`.metric`, `.estimator`, `.estimate`).
 #'
 #' @examples
-#' data(khanmiss1)
+#' obj <- sim_mat(100, 100)$input
 #'
 #' set.seed(1234)
 #' results <- tune_imp(
-#'   obj = t(khanmiss1),
+#'   obj = obj,
 #'   parameters = data.frame(k = 10),
 #'   .f = "knn_imp",
 #'   n_reps = 1,

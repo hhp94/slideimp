@@ -148,9 +148,7 @@ slide_imp <- function(
   dry_run = FALSE,
   # KNN-specific parameters
   k = NULL,
-  colmax = 0.9,
   cores = 1,
-  post_imp = FALSE,
   dist_pow = 0,
   max_cache = 4,
   # PCA-specific parameters
@@ -164,7 +162,9 @@ slide_imp <- function(
   miniter = 5,
   # Shared
   method = NULL,
-  .progress = TRUE
+  .progress = TRUE,
+  colmax = 0.9,
+  post_imp = TRUE
 ) {
   checkmate::assert_flag(dry_run, .var.name = "dry_run", null.ok = FALSE)
   # minimal pre-conditioning to avoid code fragility
@@ -214,43 +214,13 @@ slide_imp <- function(
       lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
       .var.name = "ncp"
     )
-    obj_vars <- col_vars(obj)
-    if (any(obj_vars < .Machine$double.eps | is.na(obj_vars))) {
-      stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
-    }
-    rm(obj_vars)
   }
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
 
   # resolve subset to sorted integer indices (needed before windowing when flank = TRUE)
-  if (!is.null(subset)) {
-    if (is.character(subset)) {
-      checkmate::assert_character(
-        subset,
-        any.missing = FALSE, unique = TRUE, min.len = 1L, .var.name = "`subset`"
-      )
-      checkmate::assert_subset(subset, cn, .var.name = "`subset`")
-      subset <- match(subset, cn, nomatch = NA)
-      if (anyNA(subset)) {
-        message("Feature(s) in `subset` not found in `colnames(obj)` and is dropped")
-      }
-      subset <- subset[!is.na(subset)]
-      if (length(subset) == 0) {
-        message("No features in subset detected. No imputation was performed.")
-        return(obj)
-      }
-    } else {
-      # numeric indices
-      checkmate::assert_integerish(
-        subset,
-        lower = 1L, upper = ncol(obj), any.missing = FALSE, unique = TRUE,
-        min.len = 1L, .var.name = "`subset`"
-      )
-      subset <- as.integer(subset)
-    }
-    subset <- sort(subset)
-  } else {
-    subset <- seq_len(ncol(obj))
+  subset <- resolve_subset(subset, obj, sort = TRUE)
+  if (is.null(subset)) {
+    return(obj)
   }
 
   # windowing Logic ----
@@ -369,17 +339,21 @@ slide_imp <- function(
         )
       )
     } else if (imp_method == "pca") {
-      imputed_window <- pca_imp(
-        obj = obj[, window_cols, drop = FALSE],
-        ncp = ncp,
-        scale = scale,
-        method = method,
-        coeff.ridge = coeff.ridge,
-        seed = seed,
-        nb.init = nb.init,
-        maxiter = maxiter,
-        miniter = miniter,
-        row.w = row.w
+      imputed_window <- suppressMessages(
+        pca_imp(
+          obj = obj[, window_cols, drop = FALSE],
+          ncp = ncp,
+          scale = scale,
+          method = method,
+          coeff.ridge = coeff.ridge,
+          seed = seed,
+          nb.init = nb.init,
+          maxiter = maxiter,
+          miniter = miniter,
+          row.w = row.w,
+          colmax = colmax,
+          post_imp = post_imp
+        )
       )
     }
 
@@ -429,21 +403,6 @@ slide_imp <- function(
       if (.progress) {
         message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
       }
-    }
-  }
-
-  # Post-imputation ----
-  if (post_imp) {
-    if (.progress) {
-      message("Post-imputation: filling remaining NAs with column means")
-    }
-    if (anyNA(result[, subset, drop = FALSE])) {
-      na_indices <- which(is.na(result[, subset, drop = FALSE]), arr.ind = TRUE)
-      sub_means <- colMeans(result[, subset, drop = FALSE], na.rm = TRUE)
-      i_vec <- na_indices[, 1]
-      jj_vec <- na_indices[, 2]
-      j_vec <- subset[jj_vec]
-      result[cbind(i_vec, j_vec)] <- sub_means[jj_vec]
     }
   }
 

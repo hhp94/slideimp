@@ -28,7 +28,8 @@ group_imp(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
-  pin_blas = FALSE
+  pin_blas = FALSE,
+  na_check = TRUE
 )
 }
 \arguments{
@@ -82,10 +83,10 @@ or mirai-based parallelism, use \code{mirai::daemons()} instead.}
 (features + aux) per group. Groups smaller than this are padded with
 randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}} internally.}
 
-\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.}
+\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which imputation is skipped.}
 
-\item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
-using column means (default = \code{TRUE}).}
+\item{post_imp}{Whether to impute remaining missing values (those that failed imputation)
+using column means.}
 
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
@@ -126,6 +127,8 @@ initialization is always mean imputation.}
 
 \item{pin_blas}{Logical. If \code{TRUE}, pin BLAS thread to 1 to help
 with parallel performance on systems linked with multi-threaded BLAS.}
+
+\item{na_check}{Boolean. Check if there are \code{NA} leftover in the results or not.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.

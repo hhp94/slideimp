@@ -1,4 +1,5 @@
 #include <RcppArmadillo.h>
+#include <cmath>
 #if defined(_OPENMP)
 #include <omp.h>
 #endif
@@ -7,37 +8,93 @@
 // [[Rcpp::export]]
 arma::rowvec col_min_max(const arma::mat &mat, const int min = 0)
 {
-  arma::rowvec result(mat.n_cols);
+  arma::rowvec out(mat.n_cols);
   if (min == 0)
   {
-    result = arma::min(mat, 0);
+    out = arma::min(mat, 0);
   }
   else
   {
-    result = arma::max(mat, 0);
+    out = arma::max(mat, 0);
   }
-  return result;
+  return out;
 }
 
 // [[Rcpp::export]]
-arma::rowvec col_vars_internal(const arma::mat &mat, const arma::uword cores = 1)
+arma::rowvec col_vars_internal(const arma::mat &mat, arma::uword cores = 1)
 {
-  arma::rowvec result(mat.n_cols);
+  arma::rowvec out(mat.n_cols);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(static)
 #endif
-  for (arma::uword i = 0; i < mat.n_cols; ++i)
+  for (arma::uword k = 0; k < mat.n_cols; ++k)
   {
-    arma::vec col = mat.col(i);
-    arma::vec valid = col.elem(arma::find_finite(col));
-    if (valid.n_elem < 1)
+    const double *col = mat.colptr(k);
+    double mean = 0.0;
+    double mean2 = 0.0;
+    arma::uword n = 0;
+    for (arma::uword i = 0; i < mat.n_rows; ++i)
     {
-      result(i) = arma::datum::nan;
+      if (std::isfinite(col[i]))
+      {
+        ++n;
+        double delta = col[i] - mean;
+        mean += delta / static_cast<double>(n);
+        double delta2 = col[i] - mean;
+        mean2 += delta * delta2;
+      }
     }
-    else
+    out(k) = (n < 2) ? arma::datum::nan : mean2 / (n - 1);
+  }
+  return out;
+}
+
+// [[Rcpp::export]]
+arma::mat mean_imp_col_internal(const arma::mat &mat,
+                                const arma::uvec &col_idx,
+                                arma::uword cores = 1)
+{
+  if (col_idx.max() >= mat.n_cols)
+  {
+    Rcpp::stop("col_idx out of bounds");
+  }
+
+  arma::mat out = mat;
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(static)
+#endif
+  for (arma::uword k = 0; k < col_idx.n_elem; ++k)
+  {
+    const arma::uword c = col_idx(k);
+    const double *col_ptr = mat.colptr(c);
+    double *out_ptr = out.colptr(c);
+
+    double sum = 0.0;
+    arma::uword n = 0;
+
+    // compute mean
+    for (arma::uword i = 0; i < mat.n_rows; ++i)
     {
-      result(i) = arma::var(valid);
+      if (std::isfinite(col_ptr[i]))
+      {
+        sum += col_ptr[i];
+        ++n;
+      }
+    }
+
+    // impute only if mean can be calculated
+    if (n > 0)
+    {
+      double mean_val = sum / static_cast<double>(n);
+      for (arma::uword i = 0; i < mat.n_rows; ++i)
+      {
+        if (!std::isfinite(col_ptr[i]))
+        {
+          out_ptr[i] = mean_val;
+        }
+      }
     }
   }
-  return result;
+  return out;
 }

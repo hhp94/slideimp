@@ -20,9 +20,10 @@ Invisible \code{x}
 Print a \code{slideimp_tbl} Object
 }
 \examples{
-data(khanmiss1)
+mat <- sim_mat(n = 10, p = 500)
 set.seed(1234)
-results <- tune_imp(t(khanmiss1), parameters = data.frame(k = 5), .f = "knn_imp")
+results <- tune_imp(mat$input, parameters = data.frame(k = 5), .f = "knn_imp")
 class(results)
 print(results)
+
 }

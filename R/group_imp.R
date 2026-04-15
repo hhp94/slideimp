@@ -528,7 +528,8 @@ group_imp <- function(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
-  pin_blas = FALSE
+  pin_blas = FALSE,
+  na_check = TRUE
 ) {
   checkmate::assert_matrix(
     obj,
@@ -625,7 +626,8 @@ group_imp <- function(
   } else {
     c(
       "ncp", "scale", "method", "coeff.ridge", "row.w",
-      "threshold", "seed", "nb.init", "maxiter", "miniter"
+      "threshold", "seed", "nb.init", "maxiter", "miniter",
+      "colmax", "post_imp"
     )
   }
   all_param_names <- unique(unlist(lapply(group$parameters, names)))
@@ -716,6 +718,7 @@ group_imp <- function(
   # Build per-group call parameters
   params <- lapply(iter, function(i) {
     p <- group$parameters[[i]]
+    p$na_check <- FALSE
     if (is_knn_mode) {
       p$cores <- cores
       p$subset <- indices[[i]]$features_idx_local
@@ -768,7 +771,7 @@ group_imp <- function(
         sub_mat <- src[, indices[[i]]$col_idx, drop = FALSE]
         imputed <- do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))
         dst[, out_ranges[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
-        invisible(NULL)
+        return(isTRUE(attr(imputed, "fallback")))
       },
       big_obj_desc = big_obj_desc,
       big_out_desc = big_out_desc,
@@ -779,22 +782,30 @@ group_imp <- function(
       out_ranges = out_ranges
     )
     m <- mirai::mirai_map(iter, crated_fn)
-    m[.progress = .progress]
+    fallback_flags <- unlist(m[.progress = .progress])
     obj[, all_feats_pos] <- big_out[, ]
   } else {
     if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
+    fallback_flags <- logical(length(iter))
     for (i in iter) {
       sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
       imputed <- do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))
       obj[, feat_splits[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
       if (.progress) cli::cli_progress_update(id = pb)
+      fallback_flags[i] <- isTRUE(attr(imputed, "fallback"))
     }
     if (.progress) cli::cli_progress_done(id = pb)
   }
+
+  fallback_groups <- which(fallback_flags)
+  has_remaining_na <- if (na_check) anyNA(obj[, all_feats_pos]) else NULL
 
   colnames(obj) <- cn
   rownames(obj) <- rn
   class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- imp_method
-  return(obj)
+  attr(obj, "metacaller") <- "group_imp"
+  attr(obj, "fallback") <- fallback_groups
+  attr(obj, "has_remaining_na") <- has_remaining_na
+  obj
 }

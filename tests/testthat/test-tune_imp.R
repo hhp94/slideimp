@@ -269,7 +269,6 @@ test_that("num_na = 11 with n_rows = 3 yields c(3, 4, 4)", {
 
 # tune imp ----
 test_that("tune_imp works", {
-  data(khanmiss1)
   slide_imp_par <- data.frame(
     window_size = c(100, 100),
     k = c(5, 10),
@@ -279,10 +278,8 @@ test_that("tune_imp works", {
     post_imp = FALSE
   )
   set.seed(1234)
-  # Tune `slide_imp` function on a subset of khanmiss1
-  obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
+  obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input
   expect_true(anyNA(obj))
-
   location <- 1:ncol(obj)
   # Check `slide_imp`
   expect_no_error({
@@ -387,10 +384,8 @@ test_that("tune_imp works", {
 })
 
 test_that("tune_imp works when n_reps is a list of NA locations", {
-  data(khanmiss1)
-
   # Create a complete matrix (no NAs) for testing
-  obj <- t(khanmiss1)[1:30, sample.int(nrow(khanmiss1), size = 200)]
+  obj <- sim_mat(50, 200)$input
   obj[is.na(obj)] <- 0 # Fill any existing NAs
 
   # Create predefined NA location sets

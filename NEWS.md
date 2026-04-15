@@ -33,6 +33,8 @@
 * `tune_imp()` results from v0.5.4 are no longer reproducible because
   internal NA generation now uses `sample_na_loc()`.
 
+* Removed the `khanmiss1` data
+
 ## New features
 
 * `compute_metrics()` supports data frames with a `result` list column

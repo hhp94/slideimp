@@ -14,9 +14,7 @@ slide_imp(
   subset = NULL,
   dry_run = FALSE,
   k = NULL,
-  colmax = 0.9,
   cores = 1,
-  post_imp = FALSE,
   dist_pow = 0,
   max_cache = 4,
   ncp = NULL,
@@ -28,7 +26,9 @@ slide_imp(
   maxiter = 1000,
   miniter = 5,
   method = NULL,
-  .progress = TRUE
+  .progress = TRUE,
+  colmax = 0.9,
+  post_imp = TRUE
 )
 }
 \arguments{
@@ -65,12 +65,7 @@ Default = \code{FALSE}.}
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
-\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.}
-
 \item{cores}{Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.}
-
-\item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
-using column means (default = \code{TRUE}).}
 
 \item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
 \code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
@@ -110,6 +105,11 @@ initialization is always mean imputation.}
 For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
 
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
+
+\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which imputation is skipped.}
+
+\item{post_imp}{Whether to impute remaining missing values (those that failed imputation)
+using column means.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values

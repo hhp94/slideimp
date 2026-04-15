@@ -4,13 +4,15 @@
 \alias{mean_imp_col}
 \title{Column Mean Imputation}
 \usage{
-mean_imp_col(obj, subset = NULL)
+mean_imp_col(obj, subset = NULL, cores = 1)
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
+
+\item{cores}{Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values

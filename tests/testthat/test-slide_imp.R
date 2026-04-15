@@ -267,12 +267,12 @@ test_that("`slide_imp` pca mode works", {
   expect_identical(simple_mean[, ], final_imputed)
 })
 
-test_that("`slide_imp` errors on zero-variance features in PCA mode", {
+test_that("`slide_imp` don't errors on zero-variance features in PCA mode", {
   set.seed(1234)
   to_test <- sim_mat(10, 200, perc_total_na = 0.5, perc_col_na = 1)$input
   to_test[, 1] <- 1
   location <- 1:ncol(to_test)
-  expect_error(
+  expect_no_error(
     slide_imp(
       to_test,
       location = location,
@@ -281,8 +281,7 @@ test_that("`slide_imp` errors on zero-variance features in PCA mode", {
       min_window_n = 10,
       ncp = 2,
       miniter = 2
-    ),
-    regexp = "Features with zero variance after na.rm not permitted for PCA Imputation"
+    )
   )
 })
 

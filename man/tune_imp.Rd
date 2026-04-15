@@ -162,8 +162,7 @@ configured. \code{cores} will fall back to 1 automatically; use
 
 \examples{
 # Setup example data
-data(khanmiss1)
-obj <- t(khanmiss1)[1:20, sample.int(nrow(khanmiss1), size = 200)]
+obj <- sim_mat(20, 200)$input
 
 # 1. Tune K-NN imputation with random NA injection
 params_knn <- data.frame(k = c(5, 10))
@@ -202,4 +201,5 @@ custom_imp <- function(obj, mean, sd) {
 
 results_p <- tune_imp(obj, parameters_custom, .f = custom_imp, n_reps = 1, num_na = 10)
 mirai::daemons(0) # Close workers
+
 }

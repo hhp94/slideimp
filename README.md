@@ -77,13 +77,13 @@ imputed <- group_imp(
 print(imputed, n = 4, p = 4)
 # slideimp_results (PCA)
 # Dimensions: 20 x 281797
-# 
+#
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
 # sample3       0.6885036       0.7339375      0.76467530       0.4498772
 # sample4       0.0000000       0.0000000      0.05230101       0.0000000
-# 
+#
 # # Showing [1:4, 1:4] of full matrix
 ```
 
@@ -152,7 +152,7 @@ tune_knn <- tune_imp(
 ```
 
 - Calculate errors using `compute_metrics()` or
-  [`{yardsticks}`](https://github.com/tidymodels/yardstick) functions.
+  [`{yardstick}`](https://github.com/tidymodels/yardstick) functions.
 
 ``` r
 metrics <- compute_metrics(tune_knn)
@@ -196,7 +196,7 @@ mirai::daemons(2) # 2 Cores
 
 # PCA imputation.
 pca_params <- data.frame(ncp = c(1, 5))
-# For machines multi-threaded BLAS, turn on `pin_blas = TRUE`
+# For machines with multi-threaded BLAS, turn on `pin_blas = TRUE`
 tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", n_reps = 10, num_na = 50)
 
 mirai::daemons(0) # Close daemons
@@ -245,13 +245,14 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
 ## Sliding Window Imputation
 
 - `slide_imp()` performs sliding window imputation.
-- **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes
-  (i.e., run `slide_imp()` separately on each chromosome) before
-  imputation. See the package vignette for more details.
 - This function is **not** for Illumina DNAm microarrays; see
   `group_imp()`.
-- See vignette for details about selecting `window_size` and
-  `overlap_size` with `tune_imp()`.
+- **Note:**
+  - DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run
+    `slide_imp()` separately on each chromosome) before imputation. See
+    the package vignette for more details.
+  - See vignette for details about selecting `window_size` and
+    `overlap_size` with `tune_imp()`.
 
 ``` r
 # Simulate some data

@@ -14,7 +14,8 @@ knn_imp(
   subset = NULL,
   dist_pow = 0,
   tree = FALSE,
-  max_cache = 4
+  max_cache = 4,
+  na_check = TRUE
 )
 }
 \arguments{
@@ -22,14 +23,14 @@ knn_imp(
 
 \item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
 
-\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.}
+\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which imputation is skipped.}
 
 \item{method}{Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.}
 
 \item{cores}{Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.}
 
-\item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
-using column means (default = \code{TRUE}).}
+\item{post_imp}{Whether to impute remaining missing values (those that failed imputation)
+using column means.}
 
 \item{subset}{Character vector of column names or integer vector of column
 indices specifying which columns to impute.}
@@ -44,6 +45,8 @@ greater than \code{0}, pairwise distances between columns with missing values
 are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
 Set to \code{0} to disable caching and trade speed for lower memory usage.}
+
+\item{na_check}{Boolean. Check if there are \code{NA} leftover in the results or not.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
@@ -74,12 +77,10 @@ specific columns need imputation (e.g., epigenetic clocks CpGs).
 }
 
 \examples{
-data(khanmiss1)
-sum(is.na(khanmiss1))
-
-# Basic K-NN imputation (khanmiss1 has genes in rows, so transpose)
-t_khanmiss1 <- t(khanmiss1)
-result <- knn_imp(t_khanmiss1, k = 10)
+# Basic K-NN imputation
+obj <- sim_mat(20, 20, perc_col_na = 1)$input
+sum(is.na(obj))
+result <- knn_imp(obj, k = 10)
 result
 
 }

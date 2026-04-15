@@ -26,4 +26,5 @@ set.seed(123)
 sim_data <- sim_mat(n = 50, p = 10, rho = 0.5)
 class(sim_data)
 print(sim_data)
+
 }

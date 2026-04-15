@@ -15,7 +15,10 @@ pca_imp(
   seed = NULL,
   nb.init = 1,
   maxiter = 1000,
-  miniter = 5
+  miniter = 5,
+  colmax = 0.9,
+  post_imp = TRUE,
+  na_check = TRUE
 )
 }
 \arguments{
@@ -49,6 +52,13 @@ initialization is always mean imputation.}
 \item{maxiter}{Integer. Maximum number of iterations for the algorithm.}
 
 \item{miniter}{Integer. Minimum number of iterations for the algorithm.}
+
+\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which imputation is skipped.}
+
+\item{post_imp}{Whether to impute remaining missing values (those that failed imputation)
+using column means.}
+
+\item{na_check}{Boolean. Check if there are \code{NA} leftover in the results or not.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
@@ -61,11 +71,11 @@ This algorithm is based on the original \code{missMDA::imputePCA} function and i
 optimized for tall/wide numeric matrices.
 }
 \examples{
-data("khanmiss1")
-
-# Transpose to put genes on columns.
+obj <- sim_mat(20, 20)$input
+sum(is.na(obj))
+obj[1:4, 1:4]
 # Randomly initialize missing values 5 times (1st time is mean).
-pca_imp(t(khanmiss1), ncp = 2, nb.init = 5)
+pca_imp(obj, ncp = 2, nb.init = 5)
 
 }
 \references{

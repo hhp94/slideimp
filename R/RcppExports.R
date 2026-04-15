@@ -29,6 +29,10 @@ col_vars_internal <- function(mat, cores = 1L) {
     .Call(`_slideimp_col_vars_internal`, mat, cores)
 }
 
+mean_imp_col_internal <- function(mat, col_idx, cores = 1L) {
+    .Call(`_slideimp_mean_imp_col_internal`, mat, col_idx, cores)
+}
+
 has_openmp <- function() {
     .Call(`_slideimp_has_openmp`)
 }

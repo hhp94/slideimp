@@ -22,9 +22,10 @@ Invisible \code{x}
 Print a \code{slideimp_results} Object
 }
 \examples{
-data(khanmiss1)
-t_khanmiss1 <- t(khanmiss1)
-result <- knn_imp(t_khanmiss1, k = 5)
+set.seed(1234)
+mat <- sim_mat(n = 10, p = 10)
+result <- knn_imp(mat$input, k = 5)
 class(result)
 print(result, n = 6, p = 6)
+
 }

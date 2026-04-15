@@ -30,11 +30,11 @@ Computes prediction accuracy metrics for results from \code{\link[=tune_imp]{tun
 For alternative or faster metrics, see the \code{{yardstick}} package.
 }
 \examples{
-data(khanmiss1)
+obj <- sim_mat(100, 100)$input
 
 set.seed(1234)
 results <- tune_imp(
-  obj = t(khanmiss1),
+  obj = obj,
   parameters = data.frame(k = 10),
   .f = "knn_imp",
   n_reps = 1,

@@ -13,7 +13,14 @@
 #' @export
 #'
 #' @examples
-#' col_vars(t(khanmiss1))
+#' mat <- matrix(rnorm(4 * 10), ncol = 4)
+#' mat[1, 1] <- NA
+#' mat[1:8, 2] <- NA
+#' mat[1:9, 3] <- NA
+#' mat[, 4] <- NA
+#' mat
+#' col_vars(mat)
+#' apply(mat, 2, var, na.rm = TRUE)
 col_vars <- function(mat, cores = 1) {
   checkmate::assert_matrix(
     mat,
