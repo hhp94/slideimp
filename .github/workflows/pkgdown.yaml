@@ -31,11 +31,19 @@ jobs:
         with:
           use-public-rspm: true
 
+      - name: Add r-universe repo
+        run: |
+          cat >> ~/.Rprofile <<EOF
+          options(repos = c(
+            hhp94 = "https://hhp94.r-universe.dev",
+            CRAN = "https://p3m.dev/cran/__linux__/jammy/latest"
+          ))
+          EOF
+
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::pkgdown, local::.
           needs: website
-          extra-repositories: https://hhp94.r-universe.dev
 
       - name: Build site
         run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
