@@ -4,18 +4,13 @@
 #include <omp.h>
 #endif
 
-// Col Mins/Max. min if min == 0, max otherwise
 // [[Rcpp::export]]
-arma::rowvec col_min_max(const arma::mat &mat, const int min = 0)
-{
-  arma::rowvec out(mat.n_cols);
-  if (min == 0)
-  {
-    out = arma::min(mat, 0);
-  }
-  else
-  {
-    out = arma::max(mat, 0);
+arma::mat col_min_max(const arma::mat &mat) {
+  const arma::uword p = mat.n_cols;
+  arma::mat out(2, p); // row 0 = min, row 1 = max
+  for (arma::uword j = 0; j < p; ++j) {
+    out(0, j) = mat.col(j).min();
+    out(1, j) = mat.col(j).max();
   }
   return out;
 }

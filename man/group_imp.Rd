@@ -29,20 +29,18 @@ group_imp(
   maxiter = NULL,
   miniter = NULL,
   pin_blas = FALSE,
-  na_check = TRUE
+  na_check = TRUE,
+  on_infeasible = c("error", "skip", "mean")
 )
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{group}{Specification of how features should be grouped for imputation.
-Accepts three formats:
+\item{group}{Specification of how features should be grouped for
+imputation. Accepts three formats:
 \itemize{
-\item \code{character}: (Requires the \code{{slideimp.extra}} package, available on GitHub). A single string
-naming a supported Illumina platform (e.g., \code{"EPICv2"}, \code{"EPICv2_deduped"}).
-The manifest is fetched automatically. For installation instructions, see the
-package README. Supported platforms can be viewed via
-\code{slideimp.extra::slideimp_arrays}.
+\item \code{character}: string naming a supported Illumina platform; see the Note
+section.
 \item \code{data.frame} (Long format):
 \itemize{
 \item \code{group}: Column identifying the group for each feature.
@@ -50,51 +48,60 @@ package README. Supported platforms can be viewed via
 }
 \item \code{data.frame} (List-column format):
 \itemize{
-\item \code{feature}: List-column of character vectors to impute (e.g., from \code{\link[=prep_groups]{prep_groups()}}).
-\item \code{aux}: (Optional) List-column of auxiliary names used for context.
-\item \code{parameters}: (Optional) List-column of group-specific parameter lists.
+\item \code{feature}: List-column of character vectors to impute. A row is a group.
+\item \code{aux}: (Optional) List-column of auxiliary names used for
+context.
+\item \code{parameters}: (Optional) List-column of group-specific
+parameter lists.
 }
 }}
 
-\item{subset}{Character vector of feature names to impute (default \code{NULL}
-means impute all features). Must be a subset of \code{obj_cn} (\code{colnames(obj)})
-and must appear in at least one group's \code{feature}. Features in a group
-but not in \code{subset} are demoted to auxiliary columns for that group. Groups left
-with zero features after demotion are dropped with a message.}
+\item{subset}{Character vector of feature names to impute (default
+\code{NULL} means impute all features). Must be a subset of \code{obj_cn}
+(\code{colnames(obj)}) and must appear in at least one group's
+\code{feature}. Features in a group but not in \code{subset} are demoted to
+auxiliary columns for that group. Groups left with zero features
+after demotion are dropped with a message.}
 
 \item{allow_unmapped}{Logical. If \code{FALSE}, every column in
-\code{colnames(obj)} \emph{must} appear in \code{group}. If \code{TRUE}, columns that have no
-group assignment are left untouched (neither imputed nor used as auxiliary
-columns) and a message is issued instead of an error.}
+\code{colnames(obj)} must appear in \code{group}. If \code{TRUE}, columns with
+no group assignment are left untouched (neither imputed nor used
+as auxiliary columns) and a message is issued instead of an error.}
 
-\item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
+\item{k}{Integer. Number of nearest neighbors for imputation. 10 is a good
+starting point.}
 
 \item{ncp}{Integer. Number of components used to predict the missing entries.}
 
 \item{method}{For K-NN imputation: distance metric to use (\code{"euclidean"} or \code{"manhattan"}).
 For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
 
-\item{cores}{The number of OpenMP cores for K-NN imputation \strong{only}. For PCA
-or mirai-based parallelism, use \code{mirai::daemons()} instead.}
+\item{cores}{The number of OpenMP cores for K-NN imputation
+\strong{only}. For PCA or mirai-based parallelism, use
+\code{mirai::daemons()} instead.}
 
-\item{.progress}{Show imputation progress (default = \code{TRUE}).}
+\item{.progress}{Show imputation progress (default \code{TRUE}).}
 
-\item{min_group_size}{Integer or \code{NULL}. Minimum number of columns
-(features + aux) per group. Groups smaller than this are padded with
-randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}} internally.}
+\item{min_group_size}{Integer or \code{NULL}. Minimum column count
+(features + aux) per group. Groups smaller than this are padded
+with randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}}
+internally.}
 
-\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which imputation is skipped.}
+\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
+data rate above which imputation is skipped.}
 
-\item{post_imp}{Whether to impute remaining missing values (those that failed imputation)
-using column means.}
+\item{post_imp}{Boolean. Whether to impute remaining missing values (those
+that failed imputation) using column means.}
 
-\item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
-\code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
+\item{dist_pow}{Numeric. The amount of penalization for further away nearest
+neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
+average of the nearest neighbors.}
 
-\item{tree}{Logical. \code{FALSE} (default) = brute-force K-NN. \code{TRUE} = use \code{{mlpack}} BallTree.}
+\item{tree}{Logical. \code{FALSE} (default) uses brute-force K-NN. \code{TRUE} uses
+\code{mlpack} BallTree.}
 
-\item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
-greater than \code{0}, pairwise distances between columns with missing values
+\item{max_cache}{Numeric. Maximum allowed cache size in GB (default \code{4}).
+When greater than \code{0}, pairwise distances between columns with missing values
 are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
 Set to \code{0} to disable caching and trade speed for lower memory usage.}
@@ -115,8 +122,7 @@ to EM); values > 1 regularize more (closer to mean imputation).}
 \item \code{"n_miss"}: Rows with more missing values receive lower weight.
 }}
 
-\item{seed}{Numeric or \code{NULL}. Random seed for reproducibility when padding
-for \code{min_group_size} and passed to \code{\link[=pca_imp]{pca_imp()}}.}
+\item{seed}{Numeric or \code{NULL}. Random seed for reproducibility.}
 
 \item{nb.init}{Integer. Number of random initializations. The first
 initialization is always mean imputation.}
@@ -125,67 +131,82 @@ initialization is always mean imputation.}
 
 \item{miniter}{Integer. Minimum number of iterations for the algorithm.}
 
-\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS thread to 1 to help
-with parallel performance on systems linked with multi-threaded BLAS.}
+\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 to
+reduce contention when using parallel PCA on systems linked with
+multi-threaded BLAS.}
 
-\item{na_check}{Boolean. Check if there are \code{NA} leftover in the results or not.}
+\item{na_check}{Boolean. Check for leftover \code{NA} values in the results or not
+(internal use).}
+
+\item{on_infeasible}{Character, one of \code{"error"} (default on
+\code{group_imp()}), \code{"skip"}, or \code{"mean"} (default on \code{slide_imp()}).
+Controls behaviour when a group is infeasible for imputation,
+e.g., \code{k}/\code{ncp} exceeds the number of usable columns after
+applying \code{colmax}, or all subset columns in the group exceed
+\code{colmax}.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
+A numeric matrix of the same dimensions as \code{obj} with missing
+values imputed.
 }
 \description{
 Perform K-NN or PCA imputation independently on feature groups
-(e.g. by chromosomes, flanking probes, or clustering-based groups).
+(e.g., by chromosomes, flanking probes, or clustering-based groups).
 }
 \details{
-This function performs K-NN or PCA imputation on groups of features
-independently, which significantly reduces imputation time for large
-datasets.
+Performs K-NN or PCA imputation on groups of features independently,
+which significantly reduces imputation time for large datasets.
 
-Specify \code{k} and related arguments to use K-NN, \code{ncp} and related arguments
-for PCA imputation. If \code{k} and \code{ncp} are both \code{NULL}, then
-\code{group$parameters} must contain either \code{k} or \code{ncp} for every group.
+Specify \code{k} and related arguments to use K-NN, or \code{ncp} and related
+arguments for PCA imputation. If both \code{k} and \code{ncp} are \code{NULL},
+\code{group$parameters} must supply either \code{k} or \code{ncp} for every group.
 \subsection{Parameter resolution}{
 
-Group-wise parameters (in \code{group$parameters}) take priority. Global
-arguments (\code{k}, \code{ncp}, \code{method}, etc.) fill in any gaps where a group has
-no value set. All groups must agree on the imputation method (all KNN or
-all PCA). Per-group \code{k} is capped at \code{group_size - 1} and \code{ncp} at
-\code{min(nrow(group) - 2L, ncol(group) - 1L)}, with a warning when capping occurs.
+Group-wise parameters (in \code{group$parameters}) take priority; global
+arguments (\code{k}, \code{ncp}, \code{method}, etc.) fill in any gaps. All groups
+must use the same imputation method. Per-group \code{k} is capped at
+\code{group_size - 1} and \code{ncp} at \code{min(nrow(group) - 2L, ncol(group) - 1L)}, with a warning when capping occurs.
 }
 
-\subsection{Strategies for grouping}{
+\subsection{Grouping strategies}{
 \itemize{
-\item Breaking down search space by chromosomes
-\item Grouping features with their flanking values/neighbors
-\item Using clusters identified by column clustering techniques
+\item Chromosomal grouping to break down the search space.
+\item Flanking-probe groups for spatially local imputation.
+\item Column-clustering to form correlation-based groups.
 }
 }
+}
+\note{
+A \code{character} string can be passed to \code{group} to name a supported
+Illumina platform (e.g., \code{"EPICv2"}, \code{"EPICv2_deduped"}), which
+fetches the manifest automatically. This requires the
+\code{slideimp.extra} package (available on GitHub; see its README for
+installation instructions). Supported platforms are listed in
+\code{slideimp.extra::slideimp_arrays}.
 }
 \section{Parallelization}{
 
-Parallelization behavior depends on the imputation method:
 \itemize{
-\item \strong{KNN}: use the \code{cores} argument (if OpenMP is available).
-If \code{mirai::daemons()} are also active, \code{cores} is automatically
-set to 1 to avoid nested parallelism.
+\item \strong{K-NN}: use the \code{cores} argument (requires OpenMP). If
+\code{mirai::daemons()} are active, \code{cores} is automatically set to 1
+to avoid nested parallelism.
 \item \strong{PCA}: use \code{mirai::daemons()} instead of \code{cores}.
 }
 
-\strong{Linux / OpenBLAS / MKL users:} If your machine uses a multi-threaded
-BLAS (e.g., OpenBLAS or Intel MKL), set \code{pin_blas = TRUE} when tuning
-PCA imputation in parallel. Without it, BLAS threads and \code{mirai} workers
-compete for cores, which can cause slowdowns (CPU thrashing).
+On macOS, OpenMP is typically unavailable and \code{cores} falls back to
+\enumerate{
+\item Use \code{mirai::daemons()} for parallelization instead.
+}
 
-\strong{macOS users:} OpenMP is typically unavailable on macOS unless manually
-configured. \code{cores} will fall back to 1 automatically; use
-\code{mirai::daemons()} for parallelization instead.
+On Linux with OpenBLAS or MKL, set \code{pin_blas = TRUE} when running
+parallel PCA to prevent BLAS threads and \code{mirai} workers competing
+for cores.
 }
 
 \examples{
 # Generate example data with missing values
 set.seed(1234)
-to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
+to_test <- sim_mat(10, 20, perc_total_na = 0.05, perc_col_na = 1)
 obj <- to_test$input
 group <- to_test$col_group # metadata that maps `colnames(obj)` to groups
 head(group)
@@ -195,19 +216,20 @@ results <- group_imp(obj, group = group, k = 2)
 
 # Impute only a subset of features
 subset_features <- sample(to_test$col_group$feature, size = 10)
-knn_subset <- group_imp(obj, group = group, subset = subset_features, k = 5)
+knn_subset <- group_imp(obj, group = group, subset = subset_features, k = 2)
 
 # Use prep_groups() to inspect and tweak per-group parameters
 prepped <- prep_groups(colnames(obj), group)
-prepped$parameters <- lapply(seq_len(nrow(prepped)), \(i) list(k = 5))
-prepped$parameters[[2]]$k <- 10
+prepped$parameters <- lapply(seq_len(nrow(prepped)), \(i) list(k = 2))
+prepped$parameters[[2]]$k <- 4
 knn_grouped <- group_imp(obj, group = prepped, cores = 2)
-
+\dontshow{if (interactive() && requireNamespace("mirai", quietly = TRUE)) withAutoprint(\{ # examplesIf}
 # PCA imputation with mirai parallelism
 mirai::daemons(2)
 pca_grouped <- group_imp(obj, group = group, ncp = 2)
 mirai::daemons(0)
 pca_grouped
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 \code{\link[=prep_groups]{prep_groups()}}

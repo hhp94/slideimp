@@ -1,8 +1,8 @@
 #' Simulate Matrix with Metadata
 #'
 #' @description
-#' Generates a matrix of random normal data then optionally scale to between 0
-#' and 1 between columns. It also creates corresponding data frames for feature
+#' Generates a matrix of random normal data, then optionally scales values
+#' between 0 and 1 column-wise. It also creates corresponding data frames for feature
 #' (column) and sample (row) metadata and can optionally introduce `NA` values
 #' into a specified proportion of rows. A correlation between columns `rho`
 #' (before scaling) can be added.
@@ -14,7 +14,7 @@
 #' @param n_row_groups An integer for the number of groups to assign to samples/rows. Default is `1`.
 #' @param perc_total_na Proportion of all cells to set to NA. Default is `0.1`.
 #' @param perc_col_na Proportion of columns across which those NAs are spread. Default is `0.5`.
-#' @param beta If TRUE (default) scale values between 0 and 1 column wise.
+#' @param beta If `TRUE` (default) scale values between 0 and 1 column wise.
 #'
 #' @returns An object of class `slideimp_sim`. This is a list containing:
 #' * `input`: A numeric matrix of dimension \eqn{n \times p} containing
@@ -45,9 +45,26 @@ sim_mat <- function(
   checkmate::assert_number(rho, lower = 0, upper = 1 - .Machine$double.eps^2)
   checkmate::assert_int(n_col_groups, lower = 1, upper = p)
   checkmate::assert_int(n_row_groups, lower = 1, upper = n)
-  checkmate::assert_number(perc_total_na, lower = 0, upper = 1)
+  checkmate::assert_number(perc_total_na, lower = 0, upper = (n - 1) / n)
   checkmate::assert_number(perc_col_na, lower = 0, upper = 1)
   checkmate::assert_flag(beta)
+
+  # NA feasibility checks
+  n_total_na <- ceiling(perc_total_na * n * p)
+  n_cols_na <- max(1L, floor(perc_col_na * p))
+  max_per_col <- n - 1L
+
+  if (n_total_na > n_cols_na * max_per_col) {
+    needed <- ceiling(n_total_na / max_per_col)
+    cli::cli_abort(
+      c(
+        "{.arg perc_col_na} is too small for the requested {.arg perc_total_na}.",
+        "i" = "Requested {n_total_na} NA{cli::qty(n_total_na)}{?s} across {n_cols_na} column{cli::qty(n_cols_na)}{?s} (max {max_per_col} per column).",
+        "x" = "Need at least {needed} NA-bearing column{cli::qty(needed)}{?s}.",
+        ">" = "Increase {.arg perc_col_na} so that at least {needed} of {p} columns can carry NAs (currently {n_cols_na}), or decrease {.arg perc_total_na}."
+      )
+    )
+  }
 
   # correlated columns: var = rho + (1 - rho) = 1, cor = rho
   if (rho > 0) {
@@ -58,17 +75,17 @@ sim_mat <- function(
     d <- matrix(stats::rnorm(n * p), n, p)
   }
 
-  # per-column [0,1] rescale
+  # re scale
   if (beta) {
-    mins <- apply(d, 2, min, na.rm = TRUE)
-    maxs <- apply(d, 2, max, na.rm = TRUE)
-    ranges <- maxs - mins
+    mm <- col_min_max(d)
+    mins <- mm[1, ]
+    ranges <- mm[2, ] - mins
     ranges[ranges == 0] <- 1
     d <- sweep(d, 2, mins, "-")
     d <- sweep(d, 2, ranges, "/")
   }
 
-  # metadata - columns/features
+  # metadata
   col_groups <- sample(
     paste0("group", seq_len(n_col_groups)),
     size = p,
@@ -78,31 +95,24 @@ sim_mat <- function(
     feature = paste0("feature", seq_len(p)),
     group = col_groups
   )
-
-  # metadata - rows/samples
   colnames(d) <- col_group$feature
   rownames(d) <- paste0("sample", seq_len(n))
-
   row_groups <- sample(
     paste0("group", seq_len(n_row_groups)),
     size = n,
     replace = (n_row_groups < n)
   )
-
   row_group <- data.frame(
     sample = rownames(d),
     group = row_groups
   )
 
-  # inject NAs
-  n_total_na <- ceiling(perc_total_na * length(d))
-  n_cols_na <- max(1, floor(perc_col_na * p))
+  # inject NAs: evenly divide across selected columns, cap at max_per_col
   if (n_total_na > 0) {
     cols_na <- sample.int(p, n_cols_na)
     per_col <- floor(n_total_na / n_cols_na)
     remainder <- n_total_na - per_col * n_cols_na
-    counts <- rep(per_col, n_cols_na) + c(rep(1, remainder), rep(0, n_cols_na - remainder))
-    counts <- pmin(counts, n)
+    counts <- rep(per_col, n_cols_na) + c(rep(1L, remainder), rep(0L, n_cols_na - remainder))
     row_idx <- unlist(lapply(counts, function(k) sample.int(n, k)))
     col_idx <- rep(cols_na, times = counts)
     d[cbind(row_idx, col_idx)] <- NA

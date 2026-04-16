@@ -53,25 +53,28 @@ initialization is always mean imputation.}
 
 \item{miniter}{Integer. Minimum number of iterations for the algorithm.}
 
-\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which imputation is skipped.}
+\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
+data rate above which imputation is skipped.}
 
-\item{post_imp}{Whether to impute remaining missing values (those that failed imputation)
-using column means.}
+\item{post_imp}{Boolean. Whether to impute remaining missing values (those
+that failed imputation) using column means.}
 
-\item{na_check}{Boolean. Check if there are \code{NA} leftover in the results or not.}
+\item{na_check}{Boolean. Check for leftover \code{NA} values in the results or not
+(internal use).}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing values imputed.
+A numeric matrix of the same dimensions as \code{obj} with missing
+values imputed.
 }
 \description{
 Impute missing values in a numeric matrix using (regularized) iterative PCA.
 }
 \details{
 This algorithm is based on the original \code{missMDA::imputePCA} function and is
-optimized for tall/wide numeric matrices.
+optimized for tall or wide numeric matrices.
 }
 \examples{
-obj <- sim_mat(20, 20)$input
+obj <- sim_mat(10, 10)$input
 sum(is.na(obj))
 obj[1:4, 1:4]
 # Randomly initialize missing values 5 times (1st time is mean).

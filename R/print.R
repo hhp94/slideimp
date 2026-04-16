@@ -1,11 +1,13 @@
 #' Print a `slideimp_results` Object
 #'
-#' @param x An `slideimp_results` object
-#' @param n Number of rows to print
-#' @param p Number of cols to print
-#' @param ... Not used
+#' Print the output of [knn_imp()], [pca_imp()], [group_imp()], [slide_imp()].
 #'
-#' @returns Invisible `x`
+#' @param x A `slideimp_results` object.
+#' @param n Number of rows to print.
+#' @param p Number of cols to print.
+#' @param ... Not used.
+#'
+#' @returns Invisible `x`.
 #'
 #' @examples
 #' set.seed(1234)
@@ -19,33 +21,36 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   imp_method <- toupper(attr(x, "imp_method"))
   metacaller <- attr(x, "metacaller")
   fallback <- attr(x, "fallback")
-  post_imp <- isTRUE(attr(x, "post_imp"))
+  fallback_action <- attr(x, "fallback_action")
+
   if (!is.null(metacaller)) {
     cat("Method: ", metacaller, " (", imp_method, " imputation", ")\n", sep = "")
   } else {
     cat("Method: ", imp_method, " imputation", "\n", sep = "")
   }
   cat("Dimensions: ", nrow(x), " x ", ncol(x), "\n", sep = "")
+
   # fallback notes
   if (!is.null(metacaller) && length(fallback) > 0L) {
     unit <- if (metacaller == "slide_imp") "window" else "group"
-    action <- if (post_imp) {
-      "fell back to mean imputation"
+    action <- if (is.null(fallback_action)) {
+      "had fallbacks"
     } else {
-      "skipped imputation (insufficient eligible columns)"
+      switch(fallback_action,
+        mean = "fell back to mean imputation",
+        skip = "skipped (insufficient eligible columns; original values retained)",
+        "had fallbacks"
+      )
     }
+    n <- length(fallback)
+    unit_plural <- if (n == 1) unit else paste0(unit, "s")
     cat(
-      "Note: ", length(fallback), " ", unit, "(s) ", action, ": ",
-      fmt_trunc(fallback), "\n",
+      "Note: ", n, " ", unit_plural, " ", action, ".\n",
+      "  See ", unit_plural, ": ", fmt_trunc(fallback), "\n",
       sep = ""
     )
-  } else if (isTRUE(fallback)) {
-    if (post_imp) {
-      cat("Note: fell back to mean imputation\n")
-    } else {
-      cat("Note: imputation skipped (insufficient eligible columns)\n")
-    }
   }
+
   # remaining NA note
   if (isTRUE(attr(x, "has_remaining_na"))) {
     unit <- if (identical(metacaller, "slide_imp")) "requested columns" else "requested features"
@@ -65,12 +70,14 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
 
 #' Print a `slideimp_sim` Object
 #'
+#' Print the output of [sim_mat()].
+#'
 #' @param x A `slideimp_sim` object.
 #' @param n Number of rows of each component to show.
 #' @param p Number of columns of `input` to show.
 #' @param ... Not used.
 #'
-#' @returns Invisible `x`
+#' @returns Invisible `x`.
 #'
 #' @examples
 #' set.seed(123)
@@ -107,11 +114,14 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
 
 #' Print a `slideimp_tbl` Object
 #'
+#' Print `slideimp_tbl` objects (which inherit `data.frame`) with nicer looking
+#' list-columns (similar to `tibble`).
+#'
 #' @param x A `slideimp_tbl` object.
 #' @param n Number of rows to show. Defaults to 10.
 #' @param ... Not used.
 #'
-#' @returns Invisible `x`
+#' @returns Invisible `x`.
 #'
 #' @examples
 #' mat <- sim_mat(n = 10, p = 500)

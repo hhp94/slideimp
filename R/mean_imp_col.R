@@ -1,6 +1,6 @@
 #' Column Mean Imputation
 #'
-#' Imputes missing values in a matrix by replacing them with the mean of their
+#' Impute missing values in a matrix by replacing them with the mean of their
 #' respective columns.
 #'
 #' @inheritParams knn_imp

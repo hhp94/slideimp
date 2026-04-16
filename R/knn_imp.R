@@ -19,46 +19,56 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 
 #' K-Nearest Neighbor Imputation for Numeric Matrices
 #'
-#' Imputes missing values in a numeric matrix using k-nearest neighbors (KNN).
+#' Impute missing values in a numeric matrix using k-nearest neighbors (K-NN).
 #'
 #' @details
-#' This function performs imputation **column-wise** (using rows as observations).
+#' This function performs imputation **column-wise** (using rows as
+#' observations).
 #'
-#' When `dist_pow > 0`, imputed values are computed as distance-weighted averages
-#' where weights are inverse distances raised to the power of `dist_pow`.
+#' When `dist_pow > 0`, imputed values are computed as distance-weighted
+#' averages where weights are inverse distances raised to the power of
+#' `dist_pow`.
 #'
 #' The `tree` parameter (when `TRUE`) uses a BallTree for faster neighbor search
 #' via `{mlpack}` but **requires pre-filling** missing values with column means.
 #' This can introduce a small bias when missingness is high.
 #'
 #' @section Performance Optimization:
-#' - **`tree = FALSE`** (default, brute-force KNN): Always safe and usually faster for
-#'   small-to-moderate data or high-dimensional cases.
-#' - **`tree = TRUE`** (BallTree KNN): Only use when imputation runtime becomes prohibitive
-#'   and missingness is low (<5% missing). Tree construction has overhead.
+#' - **`tree = FALSE`** (default, brute-force K-NN): Always safe and usually
+#'   faster for small to moderate data or high-dimensional cases.
+#' - **`tree = TRUE`** (BallTree K-NN): Only use when imputation run time
+#' becomes prohibitive and missingness is low (<5% missing).
 #' - **Subset imputation**: Use the `subset` parameter for efficiency when only
-#'   specific columns need imputation (e.g., epigenetic clocks CpGs).
+#' specific columns need imputation (e.g., epigenetic clock CpGs).
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#' @param k Number of nearest neighbors for imputation. 10 is a good starting point.
-#' @param colmax A number from 0 to 1. Threshold of column-wise missing data rate above which imputation is skipped.
-#' @param method Either "euclidean" (default) or "manhattan". Distance metric for nearest neighbor calculation.
-#' @param cores Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.
-#' @param post_imp Whether to impute remaining missing values (those that failed imputation)
-#' using column means.
-#' @param subset Character vector of column names or integer vector of column
+#' @param k Integer. Number of nearest neighbors for imputation. 10 is a good
+#' starting point.
+#' @param colmax Numeric. A number from 0 to 1. Threshold of column-wise missing
+#' data rate above which imputation is skipped.
+#' @param method Character. Either "euclidean" (default) or "manhattan".
+#' Distance metric for nearest neighbor calculation.
+#' @param cores Integer. Number of cores for K-NN parallelization (OpenMP). On
+#' macOS, OpenMP may need additional compiler configuration.
+#' @param post_imp Boolean. Whether to impute remaining missing values (those
+#' that failed imputation) using column means.
+#' @param subset Character. Vector of column names or integer vector of column
 #' indices specifying which columns to impute.
-#' @param dist_pow The amount of penalization for further away nearest neighbors in the weighted average.
-#' `dist_pow = 0` (default) is the simple average of the nearest neighbors.
-#' @param tree Logical. `FALSE` (default) = brute-force K-NN. `TRUE` = use `{mlpack}` BallTree.
-#' @param max_cache Maximum allowed cache size in GB (default `4`). When
-#' greater than `0`, pairwise distances between columns with missing values
+#' @param dist_pow Numeric. The amount of penalization for further away nearest
+#' neighbors in the weighted average. `dist_pow = 0` (default) is the simple
+#' average of the nearest neighbors.
+#' @param tree Logical. `FALSE` (default) uses brute-force K-NN. `TRUE` uses
+#' `mlpack` BallTree.
+#' @param max_cache Numeric. Maximum allowed cache size in GB (default `4`).
+#' When greater than `0`, pairwise distances between columns with missing values
 #' are pre-computed and cached, which is faster for moderate-sized data but
 #' uses O(m^2) memory where m is the number of columns with missing values.
 #' Set to `0` to disable caching and trade speed for lower memory usage.
-#' @param na_check Boolean. Check if there are `NA` leftover in the results or not.
+#' @param na_check Boolean. Check for leftover `NA` values in the results or not
+#' (internal use).
 #'
-#' @returns A numeric matrix of the same dimensions as `obj` with missing values imputed.
+#' @returns A numeric matrix of the same dimensions as `obj` with missing
+#' values imputed.
 #'
 #' @references
 #' Troyanskaya O, Cantor M, Sherlock G, Brown P, Hastie T, Tibshirani R,
@@ -121,23 +131,12 @@ knn_imp <- function(
 
   n_elig <- ncol(pre_imp_cols)
   if (k > n_elig - 1L) {
-    if (post_imp) {
-      cli::cli_inform(
-        "{.arg k} ({k}) exceeds usable columns ({n_elig}). Falling back to mean imputation."
-      )
-      obj <- mean_imp_col(obj, subset = subset, cores = cores)
-    }
-    # post_imp ran mean_imp_col but colmax-excluded cols may still have NAs -> check
-    # no post_imp -> definitely still has NAs -> skip check
-    return(
-      as_slideimp_results(
-        obj,
-        "knn",
-        fallback = TRUE,
-        post_imp = post_imp,
-        na_check = na_check,
-        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
-      )
+    cli::cli_abort(
+      c(
+        "{.arg k} ({k}) exceeds usable columns ({n_elig}).",
+        "i" = "Reduce {.arg k} or relax {.arg colmax} to admit more columns."
+      ),
+      class = "slideimp_infeasible"
     )
   }
 
@@ -150,21 +149,12 @@ knn_imp <- function(
   grp_miss_no_imp <- sort(setdiff(local_has_miss, local_in_subset))
   grp_complete <- which(local_cmiss == 0L)
   if (length(grp_impute) == 0L) {
-    if (post_imp) {
-      cli::cli_inform(
-        "All subset columns exceed {.arg colmax} ({colmax}). Falling back to mean imputation."
-      )
-      obj <- mean_imp_col(obj, subset = subset, cores = cores)
-    }
-    return(
-      as_slideimp_results(
-        obj,
-        "knn",
-        fallback = TRUE,
-        post_imp = post_imp,
-        na_check = na_check,
-        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
-      )
+    cli::cli_abort(
+      c(
+        "All subset columns with missing values exceed {.arg colmax} ({colmax}).",
+        "i" = "Relax {.arg colmax} to admit columns with more missingness."
+      ),
+      class = "slideimp_infeasible"
     )
   }
 

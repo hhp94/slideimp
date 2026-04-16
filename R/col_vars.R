@@ -1,6 +1,6 @@
 #' Calculate Matrix Column Variance
 #'
-#' Computes the sample variance for each column of a numeric matrix
+#' `col_vars` computes the sample variance for each column of a numeric matrix.
 #'
 #' @param mat A numeric matrix.
 #' @param cores Number of cores to use for parallel computation. Defaults to 1.
@@ -8,7 +8,7 @@
 #' @details
 #' Variances for columns with one unique value after dropping `NA` are set to `NA`.
 #'
-#' @returns A named numeric vector of column variances
+#' @returns `col_vars` returns a named numeric vector of column variances.
 #'
 #' @export
 #'

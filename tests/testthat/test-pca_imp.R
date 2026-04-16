@@ -189,16 +189,25 @@ test_that("pca_imp handles ineligible columns (high miss rate / zero variance) c
 test_that("pca_imp falls back to mean imputation when ncp > usable eligible columns", {
   set.seed(1234)
   to_test <- sim_mat(30, 8, perc_total_na = 0.1, perc_col_na = 0.3)$input
-
+  # This column will excceed colmax
+  to_test[1:29, 1] <- NA
+  expect_no_error(res <- pca_imp(
+    to_test,
+    ncp = 3,
+    nb.init = 3,
+    seed = 1234,
+    colmax = 0.9,
+    post_imp = FALSE
+  ))
   # Make most columns ineligible (all-NA)
   to_test[, 1:6] <- NA
   for (i in 1:6) {
     to_test[sample.int(30, size = 1), i] <- rnorm(1)
   }
 
-  # Only 2 eligible columns left -> ncp = 3 > min(28, 1) -> fallback
-  expect_message(
-    res <- pca_imp(
+  # Only 2 eligible columns left -> ncp = 3 > min(28, 1) -> error (1 usable component)
+  expect_error(
+    pca_imp(
       to_test,
       ncp = 3,
       nb.init = 3,
@@ -206,10 +215,40 @@ test_that("pca_imp falls back to mean imputation when ncp > usable eligible colu
       colmax = 0.9,
       post_imp = TRUE
     ),
-    regexp = "ncp.*exceeds usable columns"
+    "exceeds the maximum usable components"
   )
+})
 
-  expect_true(!anyNA(res[, 1:6]))
-  expect_false(anyNA(res[, 7:8]))
-  expect_false(attr(res, "has_remaining_na"))
+test_that("pca_imp doesn't mess up the original object", {
+  set.seed(1234)
+  to_test <- sim_mat(30, 30, perc_total_na = 0.1, perc_col_na = 1)$input
+  expect_true(anyNA(to_test))
+  passed_obj <- to_test
+  res <- pca_imp(
+    to_test,
+    ncp = 3,
+    nb.init = 3,
+    seed = 1234,
+    colmax = 0.9,
+    post_imp = FALSE
+  )
+  expect_identical(passed_obj, to_test)
+  expect_identical(is.na(to_test), is.na(passed_obj))
+})
+
+test_that("pca_imp restores object even on bad input", {
+  set.seed(1234)
+  to_test <- sim_mat(30, 30, perc_total_na = 0.1, perc_col_na = 1)$input
+  passed_obj <- to_test
+  expect_true(anyNA(to_test))
+  expect_error(pca_imp(
+    to_test,
+    ncp = 9999,
+    nb.init = 3,
+    seed = 1234,
+    colmax = 0.9,
+    post_imp = FALSE
+  ))
+
+  expect_identical(to_test, passed_obj)
 })

@@ -97,14 +97,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // col_min_max
-arma::rowvec col_min_max(const arma::mat& mat, const int min);
-RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP, SEXP minSEXP) {
+arma::mat col_min_max(const arma::mat& mat);
+RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    Rcpp::traits::input_parameter< const int >::type min(minSEXP);
-    rcpp_result_gen = Rcpp::wrap(col_min_max(mat, min));
+    rcpp_result_gen = Rcpp::wrap(col_min_max(mat));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -176,7 +175,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 10},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 7},
-    {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
+    {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 1},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
     {"_slideimp_mean_imp_col_internal", (DL_FUNC) &_slideimp_mean_imp_col_internal, 3},
     {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},

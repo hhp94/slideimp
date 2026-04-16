@@ -13,10 +13,10 @@
 #' side effect of registering the resolver.
 #'
 #' @export
-#'
 #' @examples
-#' # Only applicable when the `{slideimp.extra}` package is installed. See
-#' # `{slideimp.extra}` README on GitHub.
+#' # Typically called from `.onLoad` by `slideimp.extra` package, not by users directly.
+#' dummy_resolver <- function(x) data.frame(feature = character(), group = character())
+#' register_group_resolver(dummy_resolver)
 register_group_resolver <- function(resolver) {
   checkmate::assert_function(resolver, nargs = 1)
   .slideimp_env$group_resolver <- resolver

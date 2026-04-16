@@ -20,6 +20,7 @@ to register a callback that turns character manifest into a \code{data.frame} fo
 \code{group_imp()}/\code{prep_groups()}.
 }
 \examples{
-# Only applicable when the `{slideimp.extra}` package is installed. See
-# `{slideimp.extra}` README on GitHub.
+# Typically called from `.onLoad` by `slideimp.extra` package, not by users directly.
+dummy_resolver <- function(x) data.frame(feature = character(), group = character())
+register_group_resolver(dummy_resolver)
 }

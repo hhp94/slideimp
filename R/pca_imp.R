@@ -4,7 +4,7 @@
 #'
 #' @details
 #' This algorithm is based on the original `missMDA::imputePCA` function and is
-#' optimized for tall/wide numeric matrices.
+#' optimized for tall or wide numeric matrices.
 #'
 #' @inheritParams knn_imp
 #' @param ncp Integer. Number of components used to predict the missing entries.
@@ -38,7 +38,7 @@
 #' @author Francois Husson and Julie Josse (original `missMDA` implementation).
 #'
 #' @examples
-#' obj <- sim_mat(20, 20)$input
+#' obj <- sim_mat(10, 10)$input
 #' sum(is.na(obj))
 #' obj[1:4, 1:4]
 #' # Randomly initialize missing values 5 times (1st time is mean).
@@ -101,22 +101,19 @@ pca_imp <- function(
   eligible <- miss_rate < min(colmax, 1) & !(obj_vars < .Machine$double.eps | is.na(obj_vars))
 
   n_elig <- sum(eligible)
-  if (ncp > min(nrow(obj) - 2L, n_elig - 1L)) {
-    if (post_imp) {
-      cli::cli_inform(
-        "{.arg ncp} ({ncp}) exceeds usable columns ({n_elig}). Falling back to mean imputation."
-      )
-      obj <- mean_imp_col(obj)
-    }
-    return(
-      as_slideimp_results(
-        obj,
-        "pca",
-        fallback = TRUE,
-        post_imp = post_imp,
-        na_check = na_check,
-        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
-      )
+  cap <- min(nrow(obj) - 2L, n_elig - 1L)
+  row_bound <- nrow(obj) - 2L <= n_elig - 1L
+  if (ncp > cap) {
+    cli::cli_abort(
+      c(
+        "{.arg ncp} ({ncp}) exceeds the maximum usable components ({cap}).",
+        "i" = if (row_bound) {
+          "Limited by rows ({nrow(obj)}). Reduce {.arg ncp} or add more rows."
+        } else {
+          "Limited by eligible columns ({n_elig}). Reduce {.arg ncp} or relax {.arg colmax}."
+        }
+      ),
+      class = "slideimp_infeasible"
     )
   }
 
@@ -124,21 +121,12 @@ pca_imp <- function(
   pca_miss <- miss[, eligible, drop = FALSE]
 
   if (!any(pca_miss)) {
-    if (post_imp) {
-      cli::cli_inform(
-        "All columns with missingness are ineligible (exceed {.arg colmax} or zero variance). Falling back to mean imputation."
-      )
-      obj <- mean_imp_col(obj)
-    }
-    return(
-      as_slideimp_results(
-        obj,
-        "pca",
-        fallback = TRUE,
-        post_imp = post_imp,
-        na_check = na_check,
-        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
-      )
+    cli::cli_abort(
+      c(
+        "All columns with missing values are ineligible (exceed {.arg colmax} ({colmax}) or have zero variance).",
+        "i" = "Relax {.arg colmax} or remove zero-variance columns."
+      ),
+      class = "slideimp_infeasible"
     )
   }
   if (is.null(row.w)) {

@@ -33,6 +33,8 @@ find_overlap_regions <- function(start, end) {
 #'
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
+#' @inheritParams group_imp
+#'
 #' @param location A sorted numeric vector of length `ncol(obj)` giving the
 #' position of each column (e.g., genomic coordinates). Used to define
 #' sliding windows.
@@ -146,7 +148,7 @@ slide_imp <- function(
   min_window_n,
   subset = NULL,
   dry_run = FALSE,
-  # KNN-specific parameters
+  # K-NN-specific parameters
   k = NULL,
   cores = 1,
   dist_pow = 0,
@@ -165,7 +167,8 @@ slide_imp <- function(
   .progress = TRUE,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE
+  na_check = TRUE,
+  on_infeasible = c("skip", "error", "mean")
 ) {
   checkmate::assert_flag(dry_run, .var.name = "dry_run", null.ok = FALSE)
   # minimal pre-conditioning to avoid code fragility
@@ -178,12 +181,11 @@ slide_imp <- function(
     # k/ncp irrelevant when only computing window statistics
     imp_method <- NA_character_
   }
+  if (!dry_run) {
+    on_infeasible <- match.arg(on_infeasible)
+  }
   # Pre-conditioning ----
-  checkmate::assert_matrix(
-    obj,
-    mode = "numeric", col.names = "unique", null.ok = FALSE, .var.name = "obj"
-  )
-  cn <- colnames(obj)
+  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
   checkmate::assert_numeric(location,
     len = ncol(obj), any.missing = FALSE, sorted = TRUE,
     finite = TRUE, null.ok = FALSE, .var.name = "location"
@@ -327,52 +329,54 @@ slide_imp <- function(
     n_steps <- max(1, round(n_windows / 20))
   }
 
-  fallback_flags <- logical(length(start)) # metadata for diagnostic
+  # meta data
+  fallback_flags <- logical(length(start))
+  skipped_flags <- logical(length(start))
   for (i in seq_along(start)) {
     if (.progress && (i %% n_steps == 0 || i == n_windows || i == 1)) {
       message(sprintf(" Processing window %d of %d", i, n_windows))
     }
     window_cols <- start[i]:end[i]
-    if (imp_method == "knn") {
-      imputed_window <- suppressMessages(
-        knn_imp(
-          obj = obj[, window_cols, drop = FALSE],
-          k = k,
-          colmax = colmax,
-          cores = cores,
-          method = method,
-          post_imp = post_imp,
-          dist_pow = dist_pow,
-          max_cache = max_cache,
-          # tree = tree, # tree is deliberately excluded due to overhead and inaccuracy
-          na_check = FALSE,
-          subset = subset_list[[i]]
+    sub_mat <- obj[, window_cols, drop = FALSE]
+
+    imputed_window <- tryCatch(
+      suppressMessages(
+        if (imp_method == "knn") {
+          knn_imp(
+            obj = sub_mat, k = k, colmax = colmax, cores = cores,
+            method = method, post_imp = post_imp, dist_pow = dist_pow,
+            max_cache = max_cache, na_check = FALSE,
+            subset = subset_list[[i]]
+          )
+        } else {
+          pca_imp(
+            obj = sub_mat, ncp = ncp, scale = scale, method = method,
+            coeff.ridge = coeff.ridge, seed = seed, nb.init = nb.init,
+            maxiter = maxiter, miniter = miniter, row.w = row.w,
+            na_check = FALSE, colmax = colmax, post_imp = post_imp
+          )
+        }
+      ),
+      slideimp_infeasible = function(e) {
+        switch(on_infeasible,
+          error = stop(e),
+          skip = structure(sub_mat, fallback = TRUE, skipped = TRUE),
+          mean = structure(
+            mean_imp_col(sub_mat, subset = subset_list[[i]], cores = cores),
+            fallback = TRUE
+          )
         )
-      )
-    } else if (imp_method == "pca") {
-      imputed_window <- suppressMessages(
-        pca_imp(
-          obj = obj[, window_cols, drop = FALSE],
-          ncp = ncp,
-          scale = scale,
-          method = method,
-          coeff.ridge = coeff.ridge,
-          seed = seed,
-          nb.init = nb.init,
-          maxiter = maxiter,
-          miniter = miniter,
-          row.w = row.w,
-          na_check = FALSE,
-          colmax = colmax,
-          post_imp = post_imp
-        )
-      )
-    }
+      }
+    )
 
     fallback_flags[i] <- isTRUE(attr(imputed_window, "fallback"))
+    skipped_flags[i] <- isTRUE(attr(imputed_window, "skipped"))
+
+    if (skipped_flags[i]) {
+      next
+    }
 
     if (flank) {
-      # in flank mode each window targets a single column; only store that column
       local_idx <- subset_list[[i]]
       result[, window_cols[local_idx]] <- result[, window_cols[local_idx]] + imputed_window[, local_idx]
     } else {
@@ -387,23 +391,29 @@ slide_imp <- function(
   if (flank) {
     # in flank mode each target column is imputed exactly once, no averaging needed.
     # columns not targeted by any surviving window get original values.
-    uncovered <- setdiff(subset, target_cols)
+    skipped_targets <- target_cols[skipped_flags]
+    uncovered <- union(setdiff(subset, target_cols), skipped_targets)
     if (length(uncovered) > 0) {
       result[, uncovered] <- obj[, uncovered]
       if (.progress) {
         message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
       }
     }
-    # columns outside `subset` were never targets; restore originals
     non_subset <- setdiff(seq_len(ncol(obj)), subset)
     if (length(non_subset) > 0) {
       result[, non_subset] <- obj[, non_subset]
     }
   } else {
     counts_vec <- overlap$counts_vec
-    # pad to ncol(obj) in case trailing columns are uncovered
     if (length(counts_vec) < ncol(obj)) {
       counts_vec <- c(counts_vec, rep(0L, ncol(obj) - length(counts_vec)))
+    }
+    # remove skipped-window contributions
+    if (any(skipped_flags)) {
+      for (i in which(skipped_flags)) {
+        cols_i <- start[i]:end[i]
+        counts_vec[cols_i] <- counts_vec[cols_i] - 1L
+      }
     }
     # average only where multiple windows overlap
     gt_1_idx <- which(counts_vec > 1)
@@ -422,13 +432,13 @@ slide_imp <- function(
 
   if (na_check) {
     if (flank) {
-      imputed_cols <- target_cols
+      # all requested targets, not just non-skipped ones
+      imputed_cols <- subset
     } else {
-      imputed_cols <- subset[counts_vec[subset] > 0L]
+      imputed_cols <- subset
     }
     has_remaining_na <- FALSE
     if (length(imputed_cols) > 0L) {
-      # chunked for loop to avoid materializing a copy of the matrix
       max_bytes <- 500 * 1024^2
       max_cols_per_chunk <- as.integer(max_bytes %/% (nrow(result) * 8))
       chunk <- min(10000L, max(1L, max_cols_per_chunk))
@@ -449,6 +459,7 @@ slide_imp <- function(
   attr(result, "imp_method") <- imp_method
   attr(result, "metacaller") <- "slide_imp"
   attr(result, "fallback") <- fallback_windows
+  attr(result, "fallback_action") <- on_infeasible # "skip" or "mean"
   attr(result, "has_remaining_na") <- has_remaining_na
   attr(result, "flank") <- flank
   attr(result, "post_imp") <- post_imp

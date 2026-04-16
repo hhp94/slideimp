@@ -13,15 +13,17 @@ compute_metrics(results, metrics = c("mae", "rmse"))
 \method{compute_metrics}{slideimp_tune}(results, metrics = c("mae", "rmse"))
 }
 \arguments{
-\item{results}{A \code{slideimp_tune} data.frame from \code{\link[=tune_imp]{tune_imp()}} containing
-a \code{result} list-column with data.frames that have \code{truth} and \code{estimate} columns.}
+\item{results}{A \code{slideimp_tune} data.frame from \code{\link[=tune_imp]{tune_imp()}}. Must
+contain a \code{result} list-column with data.frames that have \code{truth} and
+\code{estimate} columns.}
 
 \item{metrics}{A character vector of metric names to compute. Defaults
-to \code{c("mae", "rmse")}. Also available: \code{"mape"}, \code{"bias"}, \code{"rsq"}, and \code{"rsq_trad"}.}
+to \code{c("mae", "rmse")}. Also available: \code{"mape"}, \code{"bias"}, \code{"rsq"}, and
+\code{"rsq_trad"}.}
 }
 \value{
-A data.frame with the original parameters and un-nested metrics
-(\code{.metric}, \code{.estimator}, \code{.estimate}).
+A data.frame with the original parameters along with
+unnested metrics: \code{.metric}, \code{.estimator}, and \code{.estimate}.
 }
 \description{
 Computes prediction accuracy metrics for results from \code{\link[=tune_imp]{tune_imp()}}.

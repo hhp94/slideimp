@@ -44,10 +44,12 @@ check_pin_blas <- function(pin_blas) {
   }
 }
 
-#' Ampute NA given the output of `sample_each_rep()`
+#' Ampute NA Given the Output of `sample_each_rep()`
 #'
-#' @param obj Input
-#' @param loc Output of `sample_each_rep()`
+#' Used in testthat only.
+#'
+#' @param obj Input.
+#' @param loc Output of `sample_each_rep()`.
 #'
 #' @returns `NULL` invisibly. Called for its side effects (messages or errors).
 #'
@@ -58,14 +60,15 @@ apply_na <- function(obj, loc) {
   obj
 }
 
-
-#' Resolve a subset argument to sorted integer column indices
+#' Resolve a Subset Argument to Sorted Integer Column Indices
 #'
-#' @param subset NULL (all columns), character, or integerish vector
-#' @param obj matrix/data.frame whose columns are referenced
-#' @param sort whether to sort the resulting indices (needed by slide_imp)
+#' Resolve the subset argument from integers, characters, to integers.
 #'
-#' @returns integer vector of column indices, or NULL to signal early return
+#' @param subset NULL (all columns), character, or integerish vector.
+#' @param obj matrix/data.frame whose columns are referenced.
+#' @param sort whether to sort the resulting indices (needed by `slide_imp()`).
+#'
+#' @returns integer vector of column indices, or NULL to signal early return.
 #'
 #' @noRd
 #' @keywords internal

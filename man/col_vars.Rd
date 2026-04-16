@@ -12,10 +12,10 @@ col_vars(mat, cores = 1)
 \item{cores}{Number of cores to use for parallel computation. Defaults to 1.}
 }
 \value{
-A named numeric vector of column variances
+\code{col_vars} returns a named numeric vector of column variances.
 }
 \description{
-Computes the sample variance for each column of a numeric matrix
+\code{col_vars} computes the sample variance for each column of a numeric matrix.
 }
 \details{
 Variances for columns with one unique value after dropping \code{NA} are set to \code{NA}.

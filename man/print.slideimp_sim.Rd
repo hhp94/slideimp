@@ -16,10 +16,10 @@
 \item{...}{Not used.}
 }
 \value{
-Invisible \code{x}
+Invisible \code{x}.
 }
 \description{
-Print a \code{slideimp_sim} Object
+Print the output of \code{\link[=sim_mat]{sim_mat()}}.
 }
 \examples{
 set.seed(123)
