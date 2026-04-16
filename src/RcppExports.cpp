@@ -97,27 +97,49 @@ BEGIN_RCPP
 END_RCPP
 }
 // col_min_max
-arma::rowvec col_min_max(const arma::mat& mat, const int min);
-RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP, SEXP minSEXP) {
+arma::mat col_min_max(const arma::mat& mat);
+RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    Rcpp::traits::input_parameter< const int >::type min(minSEXP);
-    rcpp_result_gen = Rcpp::wrap(col_min_max(mat, min));
+    rcpp_result_gen = Rcpp::wrap(col_min_max(mat));
     return rcpp_result_gen;
 END_RCPP
 }
 // col_vars_internal
-arma::rowvec col_vars_internal(const arma::mat& mat, const arma::uword cores);
+arma::rowvec col_vars_internal(const arma::mat& mat, arma::uword cores);
 RcppExport SEXP _slideimp_col_vars_internal(SEXP matSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    Rcpp::traits::input_parameter< const arma::uword >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type cores(coresSEXP);
     rcpp_result_gen = Rcpp::wrap(col_vars_internal(mat, cores));
     return rcpp_result_gen;
+END_RCPP
+}
+// mean_imp_col_internal
+arma::mat mean_imp_col_internal(const arma::mat& mat, const arma::uvec& col_idx, arma::uword cores);
+RcppExport SEXP _slideimp_mean_imp_col_internal(SEXP matSEXP, SEXP col_idxSEXP, SEXP coresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type col_idx(col_idxSEXP);
+    Rcpp::traits::input_parameter< arma::uword >::type cores(coresSEXP);
+    rcpp_result_gen = Rcpp::wrap(mean_imp_col_internal(mat, col_idx, cores));
+    return rcpp_result_gen;
+END_RCPP
+}
+// check_finite
+void check_finite(const arma::mat& mat);
+RcppExport SEXP _slideimp_check_finite(SEXP matSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
+    check_finite(mat);
+    return R_NilValue;
 END_RCPP
 }
 // has_openmp
@@ -153,8 +175,10 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 10},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 7},
-    {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
+    {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 1},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
+    {"_slideimp_mean_imp_col_internal", (DL_FUNC) &_slideimp_mean_imp_col_internal, 3},
+    {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},
     {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},
     {"_slideimp_sample_each_rep_cpp", (DL_FUNC) &_slideimp_sample_each_rep_cpp, 6},
     {NULL, NULL, 0}

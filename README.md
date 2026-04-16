@@ -33,7 +33,7 @@ You can install the optional
 pak::pkg_install("hhp94/slideimp.extra")
 ```
 
-## PCA or KNN imputation of Illumina DNAm microarrays
+## PCA or K-NN imputation of Illumina DNAm microarrays
 
 - This is a simulated beta matrix from the
   [MSA](https://www.illumina.com/products/by-type/microarray-kits/infinium-methylation-screening-array.html)
@@ -55,18 +55,18 @@ MSA_beta_matrix[1:4, 1:4]
   conveniently provided by the
   [`slideimp.extra`](https://github.com/hhp94/slideimp.extra) package).
 
-- This example demonstrates PCA imputation. To use KNN imputation
+- This example demonstrates PCA imputation. To use K-NN imputation
   instead, supply the `k` argument.
 
 ``` r
-library(slideimp)
 library(slideimp.extra)
+library(slideimp)
 library(mirai)
 
 imputed <- group_imp(
   obj = MSA_beta_matrix,
   group = "MSA", # <- this feature requires the `slideimp.extra` package
-  ncp = 10, # <- change to `k` for KNN imputation
+  ncp = 10, # <- change to `k` for K-NN imputation
   .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
 # Found cleaned manifest for 'MSA'
@@ -75,15 +75,15 @@ imputed <- group_imp(
 # Running Mode: sequential ...
 
 print(imputed, n = 4, p = 4)
-# slideimp_results (PCA)
+# Method: group_imp (PCA imputation)
 # Dimensions: 20 x 281797
-# 
+#
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
 # sample3       0.6885036       0.7339375      0.76467530       0.4498772
 # sample4       0.0000000       0.0000000      0.05230101       0.0000000
-# 
+#
 # # Showing [1:4, 1:4] of full matrix
 ```
 
@@ -93,7 +93,7 @@ print(imputed, n = 4, p = 4)
     `allow_unmapped = TRUE` to ignore them.
   - Deduplicate the MSA and EPICv2 data after imputation with
     `slideimp.extra::dedup_matrix()`.
-  - Speed up KNN imputation with OpenMP by using the `cores` argument
+  - Speed up K-NN imputation with OpenMP by using the `cores` argument
     instead of `{mirai}` (available by default on Windows and Linux). If
     you only need clock CpGs, provide the `subset` argument to ignore
     all other probes.
@@ -124,13 +124,13 @@ group_df <- sim_obj$col_group
     (higher values assign lower weights to more distant neighbors)
 
 - Tuning is performed on a subset of the data. We use 10 repeats
-  (`n_reps = 10`) of cross-validation for evaluation. We re-impute 50
-  observed values (`num_na = 50`) to compute the rmse and mae. Increase
-  both `n_reps` and `num_na` in real analyses to increase reliability of
-  error estimates.
+  (`n_reps = 10`) of cross-validation for evaluation. We artificially
+  mask 50 observed values (`num_na = 50`) to compute the RMSE and MAE.
+  Use larger values for both `n_reps` and `num_na` in real analyses for
+  more reliable error estimates.
 
 - **Note:** Parallelization via the `cores` argument is only available
-  for KNN imputation with OpenMP.
+  for K-NN imputation with OpenMP.
 
 ``` r
 knn_params <- expand.grid(k = c(5, 20), dist_pow = c(1, 2))
@@ -152,7 +152,7 @@ tune_knn <- tune_imp(
 ```
 
 - Calculate errors using `compute_metrics()` or
-  [`{yardsticks}`](https://github.com/tidymodels/yardstick) functions.
+  [`{yardstick}`](https://github.com/tidymodels/yardstick) functions.
 
 ``` r
 metrics <- compute_metrics(tune_knn)
@@ -196,7 +196,7 @@ mirai::daemons(2) # 2 Cores
 
 # PCA imputation.
 pca_params <- data.frame(ncp = c(1, 5))
-# For machines multi-threaded BLAS, turn on `pin_blas = TRUE`
+# For machines with multi-threaded BLAS, turn on `pin_blas = TRUE`
 tune_pca <- tune_imp(obj, parameters = pca_params, .f = "pca_imp", n_reps = 10, num_na = 50)
 
 mirai::daemons(0) # Close daemons
@@ -209,7 +209,7 @@ knn_group_results <- group_imp(obj, group = group_df, k = 20, dist_pow = 1, core
 #> Imputing 2 group(s) using KNN.
 #> Running Mode: parallel (OpenMP within groups)...
 knn_group_results
-#> slideimp_results (KNN)
+#> Method: group_imp (KNN imputation)
 #> Dimensions: 20 x 100
 #> 
 #>          feature1  feature2  feature3  feature4  feature5  feature6
@@ -245,13 +245,14 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
 ## Sliding Window Imputation
 
 - `slide_imp()` performs sliding window imputation.
-- **Note:** DNAm WGBS/EM-seq data should be grouped by chromosomes
-  (i.e., run `slide_imp()` separately on each chromosome) before
-  imputation. See the package vignette for more details.
 - This function is **not** for Illumina DNAm microarrays; see
   `group_imp()`.
-- See vignette for details about selecting `window_size` and
-  `overlap_size` with `tune_imp()`.
+- **Note:**
+  - DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run
+    `slide_imp()` separately on each chromosome) before imputation. See
+    the package vignette for more details.
+  - See vignette for details about selecting `window_size` and
+    `overlap_size` with `tune_imp()`.
 
 ``` r
 # Simulate some data
@@ -270,7 +271,7 @@ chr1_beta[1:5, 1:5]
 - `slide_imp()` parameters:
 
   - `location`: **required** - a sorted numeric vector of length
-    `ncol(obj)` giving the position of each column (e.g., genomic
+    `ncol(obj)` specifying the position of each column (e.g., genomic
     coordinates in *bp*).
   - `window_size`: **required** - width of each sliding window (same
     unit as `location`).
@@ -278,11 +279,12 @@ chr1_beta[1:5, 1:5]
     windows (same units as `location`). Must be strictly less than
     `window_size`.
   - `min_window_n`: **required** - minimum number of columns a window
-    must contain to be imputed. Windows smaller than this are dropped.
-    Must be greater than `k` (for KNN) or `ncp` (for PCA).
+    must contain to be imputed. Windows with fewer columns than this
+    threshold are dropped. Must be greater than `k` (for K-NN) or `ncp`
+    (for PCA).
   - `dry_run`: **optional** - return just the calculated windows to
     examine which windows are included.
-  - `k`: **required** - *(specifying KNN imputation)* number of nearest
+  - `k`: **required** - *(specifying K-NN imputation)* number of nearest
     neighbors to use inside each window.
   - `ncp`: **required** - *(specifying PCA imputation)* number of
     principal components to retain. Use this instead of `k` when
@@ -334,7 +336,7 @@ slide_imp(
   cores = 2,
   .progress = FALSE
 )
-#> slideimp_results (KNN)
+#> Method: slide_imp (KNN imputation)
 #> Dimensions: 10 x 2000
 #> 
 #>          feature1  feature2  feature3   feature4  feature5  feature6
@@ -374,3 +376,6 @@ slide_imp(
 - `pca_imp()`: Optimized version of
   [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
   for high-dimensional numeric matrices.
+- `col_vars()` and `mean_imp_col()` provide fast column-wise variance
+  and mean imputation using the high-performance `{RcppArmadillo}`
+  backend with full OpenMP parallelization support.

@@ -12,14 +12,21 @@ col_vars(mat, cores = 1)
 \item{cores}{Number of cores to use for parallel computation. Defaults to 1.}
 }
 \value{
-A named numeric vector of column variances
+\code{col_vars} returns a named numeric vector of column variances.
 }
 \description{
-Computes the sample variance for each column of a numeric matrix
+\code{col_vars} computes the sample variance for each column of a numeric matrix.
 }
 \details{
 Variances for columns with one unique value after dropping \code{NA} are set to \code{NA}.
 }
 \examples{
-col_vars(t(khanmiss1))
+mat <- matrix(rnorm(4 * 10), ncol = 4)
+mat[1, 1] <- NA
+mat[1:8, 2] <- NA
+mat[1:9, 3] <- NA
+mat[, 4] <- NA
+mat
+col_vars(mat)
+apply(mat, 2, var, na.rm = TRUE)
 }

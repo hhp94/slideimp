@@ -20,28 +20,31 @@ set.seed(1234)
 ```
 
 ## Comparing Methods Using a Shared Cross-Validation Split with `tune_imp()`
-* Let's use the included `khanmiss1` dataset.
+* Simulate some data
 ```{r}
-data(khanmiss1)
-obj <- t(khanmiss1)
-obj[1:3, 1:3]
+# 20 rows, 1000 columns, all columns have at least some NA
+sim_obj <- sim_mat(n = 20, p = 1000, perc_col_na = 1)
+obj <- sim_obj$input
+obj[1:4, 1:4]
 ```
 
 * Instead of random NA sampling inside `tune_imp()`, which internally calls `sample_na_loc()`, we can generate the NA locations up front and pass them to `tune_imp()`. 
-* Here, we randomly select 5 samples from each of 200 random genes for 5 repetitions using `sample_na_loc()`. To specify just certain columns (i.e., clock CpGs), provide the `subset` argument.
-  - `na_loc` have 5 elements (5 repeats) where each row (row and col index) is the position of a missing value.
+* Here, we randomly select 5 rows from each of 200 random columns (features) for 5 repetitions using `sample_na_loc()`. To specify just certain columns (i.e., clock CpGs), provide the `na_col_subset` argument.
+  - `na_loc` has 5 elements (5 repeats) where each row stores the row and column index of a missing value.
 ```{r}
 na_loc <- sample_na_loc(obj, n_cols = 200, n_rows = 5, n_reps = 5)
-na_loc[1:3] |> lapply(head)
+length(na_loc)
+na_loc[[1]][1:6, ]
 ```
 
-* Then we can compare 1) PCA, 2) KNN imputation, and 3) a custom method, since the cross-validation missing values are the same for all methods.
+* Then we can compare 1) PCA, 2) K-NN imputation, and 3) a custom method, since the cross-validation missing values are the same for all methods.
 * **Note**: The custom function requires the first argument to be `obj`, must return an object of the same dimensions, and all subsequent arguments must match the column names of the `parameters` data.frame.
 ```{r}
-# This custom function imputes missing values with random normal values and takes mean and sd as params
+# This custom function imputes missing values with random normal values and takes
+# `mean` and `sd` as params
 rnorm_imp <- function(obj, mean, sd) {
   na <- is.na(obj)
-  obj[na] <- rnorm(sum(na), mean = mean, sd = sd) # <- impute values with rnorm values
+  obj[na] <- rnorm(sum(na), mean = mean, sd = sd) # <- impute values with rnorm
   return(obj) # <- return an imputed object with the same dim as obj
 }
 
@@ -67,7 +70,7 @@ rnorm_tune <- tune_imp(
 )
 ```
 
-* PCA imputation performed best here.
+* Pick the method with the lowest cross-validation error:
 ```{r}
 mean(compute_metrics(pca_tune, metrics = "rmse")$.estimate)
 mean(compute_metrics(knn_tune, metrics = "rmse")$.estimate)
@@ -75,7 +78,7 @@ mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
 ```
 
 ## Group-Wise Imputation with Small-Group Padding and Group-Wise Parameters with `group_imp()`
-* `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces runtime and can increase accuracy for both K-NN and PCA imputation.
+* `group_imp()` allows imputation to be performed separately within defined groups (e.g., by chromosome), which significantly reduces run time and can increase accuracy for both K-NN and PCA imputation.
 * `group_imp()` requires the `group` argument, which maps `colnames(obj)` to groups. This can be created up front with `prep_groups()` for advanced features such as group-wise parameters and padding of small groups with random features from other groups. `prep_groups()` returns a list-column data.frame with:
   - `features`: **required** - a list-column where each element is a character vector of variable names to be imputed together.
   - `aux`: **optional** - auxiliary variables to include in each group. These are only used to augment the imputation quality of features and are not imputed themselves. If one group is too small (e.g., chrM), `aux` is used to pad the group by randomly drawing samples from other groups to meet `min_group_size`.
@@ -115,7 +118,7 @@ print(knn_results, p = 4)
 ```
 
 ## Sliding Window Imputation for WGBS/EM-seq Data with `slide_imp()`
-### Select `window_size`, `overlap_size`, and PCA/KNN Parameters
+### Select `window_size`, `overlap_size`, and PCA/K-NN Parameters
 * We simulate the output of the `{methylKit}` package. 
   - **Note:** WGBS/EM-seq data should be grouped by chromosome before performing sliding window imputation.
   - Here, we simulate 1000 sites.
@@ -164,8 +167,8 @@ beta_matrix[1:4, 1:4]
 ```
 
 * Then, in a real dataset, we would tune hyperparameters using `chr22`. Here, as a demonstration, we use the whole data since the size is small.
-* Using 2 repetitions of cross-validation (increase to 10-30 in a real analyses). We are selecting between:
-  - `ncp` of 2 or 4, indicating that we are performing sliding PCA imputation. Pass `k` for sliding KNN imputation.
+* We use 2 repetitions of cross-validation (increase to 10–30 in real analyses). We are selecting between:
+  - `ncp` (number of principal components) of 2 or 4, indicating that we are performing sliding PCA imputation. Pass `k` for sliding K-NN imputation.
   - `window_size` of 5,000 or 10,000 bp.
   - `overlap_size` fixed at 1,000 bp (does not affect results much in real analyses).
 
@@ -191,7 +194,7 @@ aggregate(.estimate ~ .metric + ncp + window_size, data = metrics, FUN = mean)
 * Finally, we can use `slide_imp()` to impute the full `beta_matrix`. Use the best parameter combination from the cross-validation metrics.
 * First, we use `dry_run = TRUE` to examine the columns to be imputed.
   - `start` and `end` are window location vectors.
-  - `window_n` is the number of features included in the column.
+  - `window_n` is the number of features included in the window.
 ```{r}
 slide_imp(
   obj = beta_matrix,
@@ -204,7 +207,7 @@ slide_imp(
 )
 ```
 
-* Turn-off `dry_run` to impute the data
+* Turn off `dry_run` to impute the data
 ```{r}
 slide_imp(
   obj = beta_matrix,
@@ -213,7 +216,8 @@ slide_imp(
   overlap_size = 1000,
   ncp = 2,
   min_window_n = 20,
-  dry_run = FALSE
+  dry_run = FALSE,
+  .progress = FALSE
 )
 ```
 

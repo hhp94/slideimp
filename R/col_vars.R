@@ -1,6 +1,6 @@
 #' Calculate Matrix Column Variance
 #'
-#' Computes the sample variance for each column of a numeric matrix
+#' `col_vars` computes the sample variance for each column of a numeric matrix.
 #'
 #' @param mat A numeric matrix.
 #' @param cores Number of cores to use for parallel computation. Defaults to 1.
@@ -8,12 +8,19 @@
 #' @details
 #' Variances for columns with one unique value after dropping `NA` are set to `NA`.
 #'
-#' @returns A named numeric vector of column variances
+#' @returns `col_vars` returns a named numeric vector of column variances.
 #'
 #' @export
 #'
 #' @examples
-#' col_vars(t(khanmiss1))
+#' mat <- matrix(rnorm(4 * 10), ncol = 4)
+#' mat[1, 1] <- NA
+#' mat[1:8, 2] <- NA
+#' mat[1:9, 3] <- NA
+#' mat[, 4] <- NA
+#' mat
+#' col_vars(mat)
+#' apply(mat, 2, var, na.rm = TRUE)
 col_vars <- function(mat, cores = 1) {
   checkmate::assert_matrix(
     mat,

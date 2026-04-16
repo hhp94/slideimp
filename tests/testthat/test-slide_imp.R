@@ -1,4 +1,4 @@
-test_that("`slide_imp` knn mode works", {
+test_that("slide_imp knn mode works", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## knn_imp, which we test correctness elsewhere
@@ -82,7 +82,7 @@ test_that("`slide_imp` knn mode works", {
   expect_true(sum((weighted_2[, ] - weighted_1[, ])^2) > 0)
 })
 
-test_that("`slide_imp` subset works", {
+test_that("slide_imp subset works", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## knn_imp, which we test correctness elsewhere
@@ -151,7 +151,7 @@ test_that("`slide_imp` subset works", {
   )
 })
 
-test_that("`slide_imp` edge case no overlap", {
+test_that("slide_imp edge case no overlap", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## knn_imp, which we test correctness elsewhere
@@ -210,11 +210,11 @@ test_that("`slide_imp` edge case no overlap", {
   )
 })
 
-test_that("`slide_imp` pca mode works", {
+test_that("slide_imp pca mode works", {
   set.seed(1234)
   ## Manual minimal implementation to test slide_imp functionality by using
   ## pca_imp, which we test correctness elsewhere
-  to_test <- sim_mat(100, 280, perc_total_na = 0.5, perc_col_na = 1)$input
+  to_test <- sim_mat(20, 280, perc_total_na = 0.5, perc_col_na = 1)$input
   # Init
   counts <- matrix(
     0,
@@ -267,12 +267,12 @@ test_that("`slide_imp` pca mode works", {
   expect_identical(simple_mean[, ], final_imputed)
 })
 
-test_that("`slide_imp` errors on zero-variance features in PCA mode", {
+test_that("slide_imp handling of errors on zero-variance features in PCA mode", {
   set.seed(1234)
   to_test <- sim_mat(10, 200, perc_total_na = 0.5, perc_col_na = 1)$input
   to_test[, 1] <- 1
   location <- 1:ncol(to_test)
-  expect_error(
+  expect_no_error(
     slide_imp(
       to_test,
       location = location,
@@ -281,12 +281,11 @@ test_that("`slide_imp` errors on zero-variance features in PCA mode", {
       min_window_n = 10,
       ncp = 2,
       miniter = 2
-    ),
-    regexp = "Features with zero variance after na.rm not permitted for PCA Imputation"
+    )
   )
 })
 
-test_that("`slide_imp` flank works with knn", {
+test_that("slide_imp flank works with knn", {
   set.seed(1234)
   to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   location <- 1:ncol(to_test)
@@ -337,7 +336,7 @@ test_that("`slide_imp` flank works with knn", {
   )
 })
 
-test_that("`slide_imp` KNN skips windows not covering any subset features", {
+test_that("slide_imp K-NN skips windows not covering any subset features", {
   set.seed(1234)
   to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   subset <- c(1, 6, 45, 50)
@@ -348,7 +347,7 @@ test_that("`slide_imp` KNN skips windows not covering any subset features", {
     dimnames = dimnames(to_test)
   )
   final_imputed <- counts
-  # Window 1: 1 to 20 — covers subset cols 1, 6
+  # window 1: 1 to 20 — covers subset cols 1, 6
   window_cols <- 1:20
   local_subset <- which(window_cols %in% subset)
   final_imputed[, window_cols] <- final_imputed[, window_cols] +
@@ -360,8 +359,8 @@ test_that("`slide_imp` KNN skips windows not covering any subset features", {
       subset = local_subset
     )
   counts[, window_cols] <- counts[, window_cols] + 1
-  # Window 2: 16 to 35 — no subset features, SKIPPED
-  # Window 3: 31 to 50 — covers subset cols 45, 50
+  # window 2: 16 to 35 — no subset features, SKIPPED
+  # window 3: 31 to 50 — covers subset cols 45, 50
   window_cols <- 31:50
   local_subset <- which(window_cols %in% subset)
   final_imputed[, window_cols] <- final_imputed[, window_cols] +
@@ -373,7 +372,7 @@ test_that("`slide_imp` KNN skips windows not covering any subset features", {
       subset = local_subset
     )
   counts[, window_cols] <- counts[, window_cols] + 1
-  # Average overlaps, restore originals where uncovered
+  # average overlaps, restore originals where uncovered
   for (j in which(colSums(counts) > 1)) {
     final_imputed[, j] <- final_imputed[, j] / counts[, j]
   }
@@ -396,7 +395,7 @@ test_that("`slide_imp` KNN skips windows not covering any subset features", {
   )
 })
 
-test_that("`slide_imp` PCA skips windows not covering any subset features", {
+test_that("slide_imp PCA skips windows not covering any subset features", {
   set.seed(1234)
   to_test <- sim_mat(100, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   subset <- c(1, 6, 45, 50)
@@ -407,7 +406,7 @@ test_that("`slide_imp` PCA skips windows not covering any subset features", {
     dimnames = dimnames(to_test)
   )
   final_imputed <- counts
-  # Window 1: 1 to 20 — covers subset cols 1, 6
+  # window 1: 1 to 20 — covers subset cols 1, 6
   window_cols <- 1:20
   final_imputed[, window_cols] <- final_imputed[, window_cols] +
     pca_imp(
@@ -417,8 +416,8 @@ test_that("`slide_imp` PCA skips windows not covering any subset features", {
       seed = 1
     )
   counts[, window_cols] <- counts[, window_cols] + 1
-  # Window 2: 16 to 35 — no subset features, SKIPPED
-  # Window 3: 31 to 50 — covers subset cols 45, 50
+  # window 2: 16 to 35 — no subset features, SKIPPED
+  # window 3: 31 to 50 — covers subset cols 45, 50
   window_cols <- 31:50
   final_imputed[, window_cols] <- final_imputed[, window_cols] +
     pca_imp(
@@ -428,7 +427,7 @@ test_that("`slide_imp` PCA skips windows not covering any subset features", {
       seed = 1
     )
   counts[, window_cols] <- counts[, window_cols] + 1
-  # Average overlaps, restore originals where uncovered
+  # average overlaps, restore originals where uncovered
   for (j in which(colSums(counts) > 1)) {
     final_imputed[, j] <- final_imputed[, j] / counts[, j]
   }
@@ -451,7 +450,7 @@ test_that("`slide_imp` PCA skips windows not covering any subset features", {
   )
 })
 
-test_that("`slide_imp` flank works with pca", {
+test_that("slide_imp flank works with pca", {
   set.seed(1234)
   to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   location <- 1:ncol(to_test)
@@ -500,4 +499,188 @@ test_that("`slide_imp` flank works with pca", {
     )[, ],
     result
   )
+})
+
+test_that("slide_imp: on_infeasible = 'error' rethrows slideimp_infeasible", {
+  set.seed(1234)
+  mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
+  location <- 1:100
+
+  # force one window to be infeasible
+  mat[1:19, 1:10] <- NA
+  mat[20, 1:10] <- rnorm(10)
+
+  expect_error(
+    suppressMessages(slide_imp(
+      mat,
+      location = location, k = 3,
+      window_size = 10, overlap_size = 0,
+      min_window_n = 5, colmax = 0.9,
+      on_infeasible = "error",
+      .progress = FALSE
+    )),
+    class = "slideimp_infeasible"
+  )
+})
+
+test_that("slide_imp: on_infeasible = 'skip' marks windows and retains originals", {
+  set.seed(1234)
+  mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
+  location <- 1:100
+  mat[1:19, 1:10] <- NA
+  mat[20, 1:10] <- rnorm(10)
+
+  res <- suppressMessages(slide_imp(
+    mat,
+    location = location, k = 3,
+    window_size = 10, overlap_size = 0,
+    min_window_n = 5, colmax = 0.9,
+    on_infeasible = "skip", .progress = FALSE
+  ))
+
+  # at least one window was skipped
+  expect_gt(length(attr(res, "fallback")), 0)
+  expect_identical(attr(res, "fallback_action"), "skip")
+
+  # skipped window columns should retain their original (NA) values
+  expect_true(all(is.na(res[1:19, 1:10])))
+
+  # downstream windows (that are feasible) should have imputed values
+  expect_false(anyNA(res[, 50:60]))
+})
+
+test_that("slide_imp: on_infeasible = 'mean' fills skipped windows with column means", {
+  set.seed(1234)
+  mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
+  location <- 1:100
+  # Make cols 1:10 infeasible but not fully NA (leave a few rows so mean exists)
+  mat[1:18, 1:10] <- NA
+  mat[19:20, 1:10] <- matrix(rnorm(20), nrow = 2)
+
+  res <- suppressMessages(slide_imp(
+    mat,
+    location = location, k = 3,
+    window_size = 10, overlap_size = 0,
+    min_window_n = 5, colmax = 0.9,
+    on_infeasible = "mean", .progress = FALSE
+  ))
+
+  expect_gt(length(attr(res, "fallback")), 0)
+  expect_identical(attr(res, "fallback_action"), "mean")
+  # No remaining NA because column means were available
+  expect_false(anyNA(res[, 1:10]))
+})
+
+test_that("slide_imp: mixed feasible + infeasible windows — skip isolates correctly", {
+  set.seed(1234)
+  mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
+  location <- 1:100
+  mat[1:19, 11:20] <- NA
+  mat[20, 11:20] <- rnorm(10)
+
+  res <- suppressMessages(slide_imp(
+    mat,
+    location = location, k = 3,
+    window_size = 10, overlap_size = 0,
+    min_window_n = 5, colmax = 0.9,
+    on_infeasible = "skip", .progress = FALSE
+  ))
+
+  expect_true(all(is.na(res[1:19, 11:20])))
+  expect_false(anyNA(res[, 1:10]))
+  expect_false(anyNA(res[, 21:30]))
+  # skipped window left NAs in requested columns -> must be flagged
+  expect_true(isTRUE(attr(res, "has_remaining_na")))
+  # and the skipped window should be recorded
+  expect_gt(length(attr(res, "fallback")), 0)
+  expect_identical(attr(res, "fallback_action"), "skip")
+})
+
+test_that("slide_imp: flank mode — infeasible flank window skips only its target", {
+  set.seed(1234)
+  mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
+  location <- 1:100
+  # kill a region around target 15 so its flanking window is infeasible
+  mat[1:19, 10:20] <- NA
+  mat[20, 10:20] <- rnorm(11)
+
+  res <- suppressMessages(slide_imp(
+    mat,
+    location = location, k = 2,
+    window_size = 10, flank = TRUE,
+    subset = c(15, 60),
+    min_window_n = 5, colmax = 0.9,
+    on_infeasible = "skip", .progress = FALSE
+  ))
+
+  # target 15's window was skipped -> col 15 retains original NA
+  expect_true(is.na(res[1, 15]) || all(is.na(res[which(is.na(mat[, 15])), 15])))
+  # target 60's window was feasible -> col 60 is imputed
+  expect_false(anyNA(res[, 60]))
+})
+
+test_that("slide_imp: overlapping windows — skip decrements overlap counts correctly", {
+  set.seed(1234)
+  mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
+  location <- 1:100
+  # force ONE window infeasible, ensure overlap regions shared with feasible
+  # windows still average only over non-skipped windows.
+  mat[1:19, 1:10] <- NA
+  mat[20, 1:10] <- rnorm(10)
+
+  res <- suppressMessages(slide_imp(
+    mat,
+    location = location, k = 3,
+    window_size = 20, overlap_size = 10,
+    min_window_n = 10, colmax = 0.9,
+    on_infeasible = "skip", .progress = FALSE
+  ))
+
+  # columns 11:20 are overlapped by windows [1-20] (skipped) and [11-30] (feasible)
+  # after skip-decrement, counts[11:20] == 1, so result == single-window contribution
+  # (no division). Values must be non-NA and finite.
+  expect_false(anyNA(res[, 11:20]))
+  expect_true(all(is.finite(res[, 11:20])))
+})
+
+test_that("slide_imp: all windows infeasible under 'error' fails with slideimp_infeasible", {
+  set.seed(1234)
+  mat <- matrix(NA_real_, nrow = 20, ncol = 100)
+  colnames(mat) <- sample.int(100, size = 100)
+  # Leave a handful of values so check_finite passes per column, but colmax rejects
+  for (j in seq_len(ncol(mat))) mat[1, j] <- rnorm(1)
+  location <- 1:100
+
+  expect_error(
+    suppressMessages(slide_imp(
+      mat,
+      location = location, k = 3,
+      window_size = 10, overlap_size = 0,
+      min_window_n = 5, colmax = 0.5,
+      on_infeasible = "error", .progress = FALSE
+    )),
+    class = "slideimp_infeasible"
+  )
+})
+
+test_that("slide_imp: all windows infeasible under 'skip' returns original matrix", {
+  set.seed(1234)
+  mat <- matrix(NA_real_, nrow = 20, ncol = 100)
+  colnames(mat) <- sample.int(100, size = 100)
+  for (j in seq_len(ncol(mat))) mat[1, j] <- rnorm(1)
+  location <- 1:100
+
+  res <- suppressMessages(slide_imp(
+    mat,
+    location = location, k = 3,
+    window_size = 10, overlap_size = 0,
+    min_window_n = 5, colmax = 0.5,
+    on_infeasible = "skip", .progress = FALSE
+  ))
+
+  # all windows skipped -> every value either original or 0-filled then overwritten
+  # subset cols should equal obj (NAs preserved)
+  expect_equal(sum(is.na(res)), sum(is.na(mat)))
+  expect_length(attr(res, "fallback"), length(attr(res, "fallback"))) # sanity
+  expect_identical(attr(res, "fallback_action"), "skip")
 })

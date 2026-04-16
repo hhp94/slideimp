@@ -14,9 +14,7 @@ slide_imp(
   subset = NULL,
   dry_run = FALSE,
   k = NULL,
-  colmax = 0.9,
   cores = 1,
-  post_imp = FALSE,
   dist_pow = 0,
   max_cache = 4,
   ncp = NULL,
@@ -28,7 +26,11 @@ slide_imp(
   maxiter = 1000,
   miniter = 5,
   method = NULL,
-  .progress = TRUE
+  .progress = TRUE,
+  colmax = 0.9,
+  post_imp = TRUE,
+  na_check = TRUE,
+  on_infeasible = c("skip", "error", "mean")
 )
 }
 \arguments{
@@ -53,7 +55,7 @@ provided. Default = \code{FALSE}.}
 imputed. Windows smaller than this are not imputed. \code{k} and \code{ncp} must also
 be smaller than \code{min_window_n}.}
 
-\item{subset}{Character vector of column names or integer vector of column
+\item{subset}{Character. Vector of column names or integer vector of column
 indices specifying which columns to impute.}
 
 \item{dry_run}{Logical. If \code{TRUE}, skip imputation and return a
@@ -63,20 +65,18 @@ rules). \code{k}/\code{ncp} are not required in this mode. Columns: \code{start}
 \code{flank = FALSE}, or \code{target} and \code{subset_local} when \code{flank = TRUE}.
 Default = \code{FALSE}.}
 
-\item{k}{Number of nearest neighbors for imputation. 10 is a good starting point.}
+\item{k}{Integer. Number of nearest neighbors for imputation. 10 is a good
+starting point.}
 
-\item{colmax}{A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.}
+\item{cores}{Integer. Number of cores for K-NN parallelization (OpenMP). On
+macOS, OpenMP may need additional compiler configuration.}
 
-\item{cores}{Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.}
+\item{dist_pow}{Numeric. The amount of penalization for further away nearest
+neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
+average of the nearest neighbors.}
 
-\item{post_imp}{Whether to impute remaining missing values (those that failed K-NN imputation)
-using column means (default = \code{TRUE}).}
-
-\item{dist_pow}{The amount of penalization for further away nearest neighbors in the weighted average.
-\code{dist_pow = 0} (default) is the simple average of the nearest neighbors.}
-
-\item{max_cache}{Maximum allowed cache size in GB (default \code{4}). When
-greater than \code{0}, pairwise distances between columns with missing values
+\item{max_cache}{Numeric. Maximum allowed cache size in GB (default \code{4}).
+When greater than \code{0}, pairwise distances between columns with missing values
 are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
 Set to \code{0} to disable caching and trade speed for lower memory usage.}
@@ -110,6 +110,22 @@ initialization is always mean imputation.}
 For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
 
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
+
+\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
+data rate above which imputation is skipped.}
+
+\item{post_imp}{Boolean. Whether to impute remaining missing values (those
+that failed imputation) using column means.}
+
+\item{na_check}{Boolean. Check for leftover \code{NA} values in the results or not
+(internal use).}
+
+\item{on_infeasible}{Character, one of \code{"error"} (default on
+\code{group_imp()}), \code{"skip"}, or \code{"mean"} (default on \code{slide_imp()}).
+Controls behaviour when a group is infeasible for imputation,
+e.g., \code{k}/\code{ncp} exceeds the number of usable columns after
+applying \code{colmax}, or all subset columns in the group exceed
+\code{colmax}.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values

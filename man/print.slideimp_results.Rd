@@ -7,24 +7,25 @@
 \method{print}{slideimp_results}(x, n = 6L, p = 6L, ...)
 }
 \arguments{
-\item{x}{An \code{slideimp_results} object}
+\item{x}{A \code{slideimp_results} object.}
 
-\item{n}{Number of rows to print}
+\item{n}{Number of rows to print.}
 
-\item{p}{Number of cols to print}
+\item{p}{Number of cols to print.}
 
-\item{...}{Not used}
+\item{...}{Not used.}
 }
 \value{
-Invisible \code{x}
+Invisible \code{x}.
 }
 \description{
-Print a \code{slideimp_results} Object
+Print the output of \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=pca_imp]{pca_imp()}}, \code{\link[=group_imp]{group_imp()}}, \code{\link[=slide_imp]{slide_imp()}}.
 }
 \examples{
-data(khanmiss1)
-t_khanmiss1 <- t(khanmiss1)
-result <- knn_imp(t_khanmiss1, k = 5)
+set.seed(1234)
+mat <- sim_mat(n = 10, p = 10)
+result <- knn_imp(mat$input, k = 5)
 class(result)
 print(result, n = 6, p = 6)
+
 }

@@ -57,15 +57,15 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
 })
 
 test_that("`knn_imp` works", {
-  data("khanmiss1")
+  obj <- sim_mat(50, 100)$input
   expect_no_error(knn_imp(
-    t(khanmiss1),
+    obj,
     k = 3,
     method = "euclidean"
   ))
 
   expect_no_error(knn_imp(
-    t(khanmiss1),
+    obj,
     k = 3,
     method = "manhattan",
     tree = TRUE
@@ -73,10 +73,10 @@ test_that("`knn_imp` works", {
 })
 
 test_that("`knn_imp` cache and non cache path is the same", {
-  data("khanmiss1")
+  obj <- sim_mat(50, 100)$input
   expect_identical(
-    knn_imp(t(khanmiss1), k = 10, method = "euclidean"),
-    knn_imp(t(khanmiss1), k = 10, method = "euclidean", max_cache = 0)
+    knn_imp(obj, k = 10, method = "euclidean"),
+    knn_imp(obj, k = 10, method = "euclidean", max_cache = 0)
   )
 })
 
@@ -95,20 +95,22 @@ test_that("`knn_imp` tree and brute is the same for few missing values", {
 test_that("Exactly replicate `impute.knn`", {
   skip("Manual Testing Only")
   # library(impute)
-  # data("khanmiss1")
+  # set.seed(1234)
+  # # post_imp behavior can cause differences
+  # obj <- sim_mat(100, 100, perc_total_na = 0.05)$input
   #
   # # Check if the 'impute' package is installed
   #
   # # Perform imputation using knn_imp with method "impute.knn" on transposed data
-  # r1 <- knn_imp(t(khanmiss1), k = 3, method = "euclidean")
+  # r1 <- knn_imp(obj, k = 3, method = "euclidean", post_imp = FALSE)
   #
   # # Perform imputation using the original impute.knn function
   # # Transpose the result to match the orientation
   # r2 <- t(
   #   impute.knn(
-  #     khanmiss1,
+  #     t(obj),
   #     k = 3,
-  #     maxp = nrow(khanmiss1)
+  #     maxp = ncol(obj)
   #   )$data
   # )
   #
@@ -162,5 +164,10 @@ test_that("Behavior with extreme missing columns and rows", {
   expect_true(!anyNA(knn_imp(to_test, k = 3, post_imp = TRUE)))
 
   to_test[, 1] <- NA
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE))
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "All NA/Inf")
+
+  # not admissible
+  mat <- matrix(NA, nrow = 20, ncol = 20)
+  diag(mat) <- rnorm(20)
+  expect_error(knn_imp(mat, k = 2), "exceeds usable columns")
 })

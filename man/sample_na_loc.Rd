@@ -20,28 +20,31 @@ sample_na_loc(
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
 \item{n_cols}{Integer. The number of columns to receive injected \code{NA} per
-repetition. Ignored when \code{num_na} is supplied (in which case \code{n_cols} is
-derived as \code{as.integer(num_na \%/\% n_rows)}). Must be provided if
-\code{num_na} is \code{NULL}. Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
+repetition. Ignored when \code{num_na} is supplied (in which case \code{n_cols}
+is derived as \code{num_na \%/\% n_rows}). Must be provided if \code{num_na} is
+\code{NULL}. Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
 
-\item{n_rows}{Integer. The target number of \code{NA} per column (default \code{2L}).
+\item{n_rows}{Integer. The target number of \code{NA} values per column
+(default \code{2L}).
 \itemize{
-\item When \code{num_na} is supplied: used as the base size. Most columns receive
-exactly \code{n_rows} \code{NA}; \code{num_na \%\% n_rows} columns receive \code{n_rows + 1}.
-If there's only one column then that column receives all the remainder.
+\item When \code{num_na} is supplied: used as the base size. Most columns
+receive exactly \code{n_rows} missing values; \code{num_na \%\% n_rows} columns
+receive one extra. If there's only one column, it receives all
+the remainder.
 \item When \code{num_na} is \code{NULL}: every selected column receives exactly
 \code{n_rows} \code{NA}.
 Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.
 }}
 
 \item{num_na}{Integer. Total number of missing values to inject per
-repetition. If supplied, \code{n_cols} is computed automatically and the \code{NA}
-are distributed as evenly as possible using \code{n_rows} as the base
-(\code{num_na} must be \verb{>= n_rows}). If omitted but \code{n_cols} is supplied,
-exactly \code{n_cols * n_rows} \code{NA} are injected. If \code{num_na}, \code{n_cols}, and
-\code{na_loc} are all \code{NULL}, defaults to ~5\% of total cells (capped at 500) in
-\code{\link[=tune_imp]{tune_imp()}}. \code{\link[=sample_na_loc]{sample_na_loc()}} has no default \code{num_na}. Ignored in
-\code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
+repetition. If supplied, \code{n_cols} is computed automatically and
+missing values are distributed as evenly as possible, using \code{n_rows}
+as the base size (\code{num_na} must be at least \code{n_rows}). If omitted
+but \code{n_cols} is supplied, the total injected is \code{n_cols * n_rows}.
+If \code{num_na}, \code{n_cols}, and \code{na_loc} are all \code{NULL}, \code{\link[=tune_imp]{tune_imp()}}
+defaults to roughly 5\% of total cells, capped at 500.
+\code{\link[=sample_na_loc]{sample_na_loc()}} has no default. Ignored in \code{\link[=tune_imp]{tune_imp()}} when
+\code{na_loc} is supplied.}
 
 \item{n_reps}{Integer. Number of repetitions for random NA injection
 (default \code{1}).}
@@ -50,17 +53,16 @@ exactly \code{n_cols * n_rows} \code{NA} are injected. If \code{num_na}, \code{n
 rows/columns with a higher proportion of missing values than these
 thresholds.}
 
-\item{na_col_subset}{Optional integer or character vector restricting which columns
-of \code{obj} are eligible for NA injection.
+\item{na_col_subset}{Optional integer or character vector restricting which
+columns of \code{obj} are eligible for NA injection.
 \itemize{
 \item If \code{NULL} (default): all columns are eligible.
 \item If character: values must exist in \code{colnames(obj)}.
 \item If integer/numeric: values must be valid 1-based column indices.
 The vector must be unique and must contain at least \code{n_cols} columns
 (or the number derived from \code{num_na}).
-}
-
-Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
+Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.
+}}
 
 \item{max_attempts}{Integer. Maximum number of resampling attempts per
 repetition before giving up due to row-budget exhaustion (default \code{100}).}
@@ -75,7 +77,8 @@ Samples indices for \code{NA} injection into a matrix while maintaining row/colu
 missing value budgets and avoiding zero-variance columns.
 }
 \details{
-The function uses a greedy stochastic search valid \code{NA} locations. It ensures that:
+The function uses a greedy stochastic search for valid \code{NA} locations. It
+ensures that:
 \itemize{
 \item Total missingness per row and column does not exceed \code{rowmax} and \code{colmax}.
 \item At least two distinct observed values are preserved in every column to

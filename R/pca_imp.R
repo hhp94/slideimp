@@ -4,7 +4,7 @@
 #'
 #' @details
 #' This algorithm is based on the original `missMDA::imputePCA` function and is
-#' optimized for tall/wide numeric matrices.
+#' optimized for tall or wide numeric matrices.
 #'
 #' @inheritParams knn_imp
 #' @param ncp Integer. Number of components used to predict the missing entries.
@@ -38,24 +38,37 @@
 #' @author Francois Husson and Julie Josse (original `missMDA` implementation).
 #'
 #' @examples
-#' data("khanmiss1")
-#'
-#' # Transpose to put genes on columns.
+#' obj <- sim_mat(10, 10)$input
+#' sum(is.na(obj))
+#' obj[1:4, 1:4]
 #' # Randomly initialize missing values 5 times (1st time is mean).
-#' pca_imp(t(khanmiss1), ncp = 2, nb.init = 5)
+#' pca_imp(obj, ncp = 2, nb.init = 5)
 #'
 #' @export
 pca_imp <- function(
-  obj, ncp = 2, scale = TRUE, method = c("regularized", "EM"),
-  coeff.ridge = 1, row.w = NULL, threshold = 1e-6, seed = NULL,
-  nb.init = 1, maxiter = 1000, miniter = 5
+  obj,
+  ncp = 2,
+  scale = TRUE,
+  method = c("regularized", "EM"),
+  coeff.ridge = 1,
+  row.w = NULL,
+  threshold = 1e-6,
+  seed = NULL,
+  nb.init = 1,
+  maxiter = 1000,
+  miniter = 5,
+  colmax = 0.9,
+  post_imp = TRUE,
+  na_check = TRUE
 ) {
-  #### Main program
+  # pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
   if (!anyNA(obj)) {
+    cli::cli_inform("No missing values in input. Returning input unchanged.")
     return(obj)
   }
-  checkmate::assert_int(ncp, lower = 1L, upper = min(nrow(obj) - 2L, ncol(obj) - 1L))
+  check_finite(obj)
+  checkmate::assert_int(ncp, lower = 1L, upper = ncol(obj) - 1L, .var.name = "ncp")
   method <- match.arg(method)
   checkmate::assert_flag(scale, .var.name = "scale")
   checkmate::assert_number(coeff.ridge, lower = 0, .var.name = "coeff.ridge")
@@ -80,35 +93,62 @@ pca_imp <- function(
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
 
-  obj_vars <- col_vars(obj)
-  if (any(obj_vars < .Machine$double.eps | is.na(obj_vars))) {
-    stop("Features with zero variance after na.rm not permitted for PCA Imputation. Try 'col_vars(obj)'")
-  }
   miss <- is.na(obj)
+  cmiss <- colSums(miss)
+  miss_rate <- cmiss / nrow(obj)
 
-  if (any((colSums(miss) / nrow(obj)) == 1)) {
-    stop("Col(s) with all missing detected. Remove before proceed")
+  obj_vars <- col_vars(obj)
+  eligible <- miss_rate < min(colmax, 1) & !(obj_vars < .Machine$double.eps | is.na(obj_vars))
+
+  n_elig <- sum(eligible)
+  cap <- min(nrow(obj) - 2L, n_elig - 1L)
+  row_bound <- nrow(obj) - 2L <= n_elig - 1L
+  if (ncp > cap) {
+    cli::cli_abort(
+      c(
+        "{.arg ncp} ({ncp}) exceeds the maximum usable components ({cap}).",
+        "i" = if (row_bound) {
+          "Limited by rows ({nrow(obj)}). Reduce {.arg ncp} or add more rows."
+        } else {
+          "Limited by eligible columns ({n_elig}). Reduce {.arg ncp} or relax {.arg colmax}."
+        }
+      ),
+      class = "slideimp_infeasible"
+    )
   }
-  init_obj <- Inf
 
+  pca_cols <- obj[, eligible, drop = FALSE]
+  pca_miss <- miss[, eligible, drop = FALSE]
+
+  if (!any(pca_miss)) {
+    cli::cli_abort(
+      c(
+        "All columns with missing values are ineligible (exceed {.arg colmax} ({colmax}) or have zero variance).",
+        "i" = "Relax {.arg colmax} or remove zero-variance columns."
+      ),
+      class = "slideimp_infeasible"
+    )
+  }
   if (is.null(row.w)) {
     row.w <- rep(1, nrow(obj))
   } else if (is.character(row.w) && row.w == "n_miss") {
-    n_miss_per_row <- rowSums(miss)
-    row.w <- 1 - (n_miss_per_row / ncol(obj))
+    n_miss_per_row <- rowSums(pca_miss)
+    row.w <- 1 - (n_miss_per_row / ncol(pca_cols))
     row.w[row.w < 1e-10] <- 1e-10
   }
 
   # These pre-fill and scale weight are now handled in C++
   # obj[miss] <- 0
   # row.w <- row.w / sum(row.w)
+
+  init_obj <- Inf
   for (i in seq_len(nb.init)) {
     if (!is.null(seed)) {
       set.seed(seed * (i - 1L)) # exactly as missMDA does
     }
     res.impute <- pca_imp_internal_cpp(
-      X = obj,
-      miss = miss,
+      X = pca_cols,
+      miss = pca_miss,
       ncp = ncp,
       scale = scale,
       regularized = (method == "regularized"),
@@ -126,9 +166,20 @@ pca_imp <- function(
     }
   }
   # apply best imputation
-  obj[miss] <- best_imputed
+  pca_cols[pca_miss] <- best_imputed
+  obj[, eligible] <- pca_cols
 
-  class(obj) <- c("slideimp_results", class(obj))
-  attr(obj, "imp_method") <- "pca"
-  return(obj)
+  if (post_imp) {
+    obj <- mean_imp_col(obj)
+  }
+
+  return(
+    as_slideimp_results(
+      obj,
+      "pca",
+      fallback = FALSE,
+      post_imp = post_imp,
+      na_check = na_check
+    )
+  )
 }

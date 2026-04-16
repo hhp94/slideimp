@@ -1,55 +1,90 @@
 #' Print a `slideimp_results` Object
 #'
-#' @param x An `slideimp_results` object
-#' @param n Number of rows to print
-#' @param p Number of cols to print
-#' @param ... Not used
+#' Print the output of [knn_imp()], [pca_imp()], [group_imp()], [slide_imp()].
 #'
-#' @returns Invisible `x`
+#' @param x A `slideimp_results` object.
+#' @param n Number of rows to print.
+#' @param p Number of cols to print.
+#' @param ... Not used.
 #'
-#' @export
+#' @returns Invisible `x`.
 #'
 #' @examples
-#' data(khanmiss1)
-#' t_khanmiss1 <- t(khanmiss1)
-#' result <- knn_imp(t_khanmiss1, k = 5)
+#' set.seed(1234)
+#' mat <- sim_mat(n = 10, p = 10)
+#' result <- knn_imp(mat$input, k = 5)
 #' class(result)
 #' print(result, n = 6, p = 6)
+#'
+#' @export
 print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
-  imp_method <- attr(x, "imp_method")
+  imp_method <- toupper(attr(x, "imp_method"))
+  metacaller <- attr(x, "metacaller")
+  fallback <- attr(x, "fallback")
+  fallback_action <- attr(x, "fallback_action")
 
-  # Cleaner header
-  cat("slideimp_results (", toupper(imp_method), ")\n", sep = "")
-  cat("Dimensions: ", nrow(x), " x ", ncol(x), "\n\n", sep = "")
+  if (!is.null(metacaller)) {
+    cat("Method: ", metacaller, " (", imp_method, " imputation", ")\n", sep = "")
+  } else {
+    cat("Method: ", imp_method, " imputation", "\n", sep = "")
+  }
+  cat("Dimensions: ", nrow(x), " x ", ncol(x), "\n", sep = "")
 
-  # Print subset
+  # fallback notes
+  if (!is.null(metacaller) && length(fallback) > 0L) {
+    unit <- if (metacaller == "slide_imp") "window" else "group"
+    action <- if (is.null(fallback_action)) {
+      "had fallbacks"
+    } else {
+      switch(fallback_action,
+        mean = "fell back to mean imputation",
+        skip = "skipped (insufficient eligible columns; original values retained)",
+        "had fallbacks"
+      )
+    }
+    n <- length(fallback)
+    unit_plural <- if (n == 1) unit else paste0(unit, "s")
+    cat(
+      "Note: ", n, " ", unit_plural, " ", action, ".\n",
+      "  See ", unit_plural, ": ", fmt_trunc(fallback), "\n",
+      sep = ""
+    )
+  }
+
+  # remaining NA note
+  if (isTRUE(attr(x, "has_remaining_na"))) {
+    unit <- if (identical(metacaller, "slide_imp")) "requested columns" else "requested features"
+    cat("Note: ", unit, " still contain NA values\n", sep = "")
+  }
+  cat("\n")
   subset_x <- x[seq_len(min(n, nrow(x))), seq_len(min(p, ncol(x))), drop = FALSE]
   print(subset_x, ...)
-
-  # Better truncation message
   if (n < nrow(x) || p < ncol(x)) {
     cat("\n# Showing [1:", min(n, nrow(x)), ", 1:", min(p, ncol(x)),
       "] of full matrix\n",
       sep = ""
     )
   }
-
   invisible(x)
 }
 
 #' Print a `slideimp_sim` Object
+#'
+#' Print the output of [sim_mat()].
 #'
 #' @param x A `slideimp_sim` object.
 #' @param n Number of rows of each component to show.
 #' @param p Number of columns of `input` to show.
 #' @param ... Not used.
 #'
-#' @returns Invisible `x`
+#' @returns Invisible `x`.
+#'
 #' @examples
 #' set.seed(123)
 #' sim_data <- sim_mat(n = 50, p = 10, rho = 0.5)
 #' class(sim_data)
 #' print(sim_data)
+#'
 #' @export
 print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
   cat("$col_group (", x$n_col_groups, " column groups)\n", sep = "")
@@ -79,17 +114,22 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
 
 #' Print a `slideimp_tbl` Object
 #'
+#' Print `slideimp_tbl` objects (which inherit `data.frame`) with nicer looking
+#' list-columns (similar to `tibble`).
+#'
 #' @param x A `slideimp_tbl` object.
 #' @param n Number of rows to show. Defaults to 10.
 #' @param ... Not used.
 #'
-#' @returns Invisible `x`
+#' @returns Invisible `x`.
+#'
 #' @examples
-#' data(khanmiss1)
+#' mat <- sim_mat(n = 10, p = 500)
 #' set.seed(1234)
-#' results <- tune_imp(t(khanmiss1), parameters = data.frame(k = 5), .f = "knn_imp")
+#' results <- tune_imp(mat$input, parameters = data.frame(k = 5), .f = "knn_imp")
 #' class(results)
 #' print(results)
+#'
 #' @export
 print.slideimp_tbl <- function(x, n = NULL, ...) {
   if (is.null(n)) n <- 10L

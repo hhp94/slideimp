@@ -30,7 +30,7 @@ sim_mat(
 
 \item{perc_col_na}{Proportion of columns across which those NAs are spread. Default is \code{0.5}.}
 
-\item{beta}{If TRUE (default) scale values between 0 and 1 column wise.}
+\item{beta}{If \code{TRUE} (default) scale values between 0 and 1 column wise.}
 }
 \value{
 An object of class \code{slideimp_sim}. This is a list containing:
@@ -44,8 +44,8 @@ to a \code{group}.
 }
 }
 \description{
-Generates a matrix of random normal data then optionally scale to between 0
-and 1 between columns. It also creates corresponding data frames for feature
+Generates a matrix of random normal data, then optionally scales values
+between 0 and 1 column-wise. It also creates corresponding data frames for feature
 (column) and sample (row) metadata and can optionally introduce \code{NA} values
 into a specified proportion of rows. A correlation between columns \code{rho}
 (before scaling) can be added.
