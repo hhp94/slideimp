@@ -17,7 +17,10 @@ pca_imp(
   seed = NULL,
   nb.init = 1,
   maxiter = 1000,
-  miniter = 5
+  miniter = 5,
+  colmax = 0.9,
+  post_imp = TRUE,
+  na_check = TRUE
 )
 ```
 
@@ -77,6 +80,21 @@ pca_imp(
 
   Integer. Minimum number of iterations for the algorithm.
 
+- colmax:
+
+  Numeric. A number from 0 to 1. Threshold of column-wise missing data
+  rate above which imputation is skipped.
+
+- post_imp:
+
+  Boolean. Whether to impute remaining missing values (those that failed
+  imputation) using column means.
+
+- na_check:
+
+  Boolean. Check for leftover `NA` values in the results or not
+  (internal use).
+
 ## Value
 
 A numeric matrix of the same dimensions as `obj` with missing values
@@ -86,7 +104,7 @@ imputed.
 
 This algorithm is based on the original
 [`missMDA::imputePCA`](https://rdrr.io/pkg/missMDA/man/imputePCA.html)
-function and is optimized for tall/wide numeric matrices.
+function and is optimized for tall or wide numeric matrices.
 
 ## References
 
@@ -106,21 +124,27 @@ Francois Husson and Julie Josse (original `missMDA` implementation).
 ## Examples
 
 ``` r
-data("khanmiss1")
-
-# Transpose to put genes on columns.
+obj <- sim_mat(10, 10)$input
+sum(is.na(obj))
+#> [1] 10
+obj[1:4, 1:4]
+#>          feature1  feature2  feature3   feature4
+#> sample1 0.1993174 0.0000000 0.5194403 0.19248733
+#> sample2 0.5861872 0.7793109 1.0000000 0.05740143
+#> sample3 0.2991663 0.4695521 0.8906237 0.53696051
+#> sample4 0.3010367 0.3079201 0.0000000 0.00000000
 # Randomly initialize missing values 5 times (1st time is mean).
-pca_imp(t(khanmiss1), ncp = 2, nb.init = 5)
-#> slideimp_results (PCA)
-#> Dimensions: 63 x 2308
+pca_imp(obj, ncp = 2, nb.init = 5)
+#> Method: PCA imputation
+#> Dimensions: 10 x 10
 #> 
-#>           g1   g2   g3   g4   g5   g6
-#> sample1 1873 1251  314 1324  776 1901
-#> sample2   57 1350 1758 1428  476 1521
-#> sample3   53 1140  162 1468  679   14
-#> sample4 2059 1385 1857 1250  772 2052
-#> sample5 1537 1261 1939 1666 1307 1705
-#> sample6 1819 1526 1640 1795 1454 1643
+#>          feature1  feature2  feature3   feature4  feature5  feature6
+#> sample1 0.1993174 0.0000000 0.5194403 0.19248733 0.0000000 0.3136988
+#> sample2 0.5861872 0.7793109 1.0000000 0.05740143 0.1396488 0.3300150
+#> sample3 0.2991663 0.4695521 0.8906237 0.53696051 0.6138600 0.3213725
+#> sample4 0.3010367 0.3079201 0.0000000 0.00000000 0.4679464 0.4484497
+#> sample5 0.3898840 0.8718041 0.8782409 0.81735982 1.0000000 0.7495673
+#> sample6 0.3191516 0.6561425 0.2994724 0.89020793 0.4422327 0.6983652
 #> 
 #> # Showing [1:6, 1:6] of full matrix
 ```

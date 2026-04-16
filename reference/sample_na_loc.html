@@ -9,7 +9,7 @@ missing value budgets and avoiding zero-variance columns."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -72,15 +72,17 @@ missing value budgets and avoiding zero-variance columns.</p>
 
 <dt id="arg-n-cols">n_cols<a class="anchor" aria-label="anchor" href="#arg-n-cols"></a></dt>
 <dd><p>Integer. The number of columns to receive injected <code>NA</code> per
-repetition. Ignored when <code>num_na</code> is supplied (in which case <code>n_cols</code> is
-derived as <code>as.integer(num_na %/% n_rows)</code>). Must be provided if
-<code>num_na</code> is <code>NULL</code>. Ignored in <code><a href="tune_imp.html">tune_imp()</a></code> when <code>na_loc</code> is supplied.</p></dd>
+repetition. Ignored when <code>num_na</code> is supplied (in which case <code>n_cols</code>
+is derived as <code>num_na %/% n_rows</code>). Must be provided if <code>num_na</code> is
+<code>NULL</code>. Ignored in <code><a href="tune_imp.html">tune_imp()</a></code> when <code>na_loc</code> is supplied.</p></dd>
 
 
 <dt id="arg-n-rows">n_rows<a class="anchor" aria-label="anchor" href="#arg-n-rows"></a></dt>
-<dd><p>Integer. The target number of <code>NA</code> per column (default <code>2L</code>).</p><ul><li><p>When <code>num_na</code> is supplied: used as the base size. Most columns receive
-exactly <code>n_rows</code> <code>NA</code>; <code>num_na %% n_rows</code> columns receive <code>n_rows + 1</code>.
-If there's only one column then that column receives all the remainder.</p></li>
+<dd><p>Integer. The target number of <code>NA</code> values per column
+(default <code>2L</code>).</p><ul><li><p>When <code>num_na</code> is supplied: used as the base size. Most columns
+receive exactly <code>n_rows</code> missing values; <code>num_na %% n_rows</code> columns
+receive one extra. If there's only one column, it receives all
+the remainder.</p></li>
 <li><p>When <code>num_na</code> is <code>NULL</code>: every selected column receives exactly
 <code>n_rows</code> <code>NA</code>.
 Ignored in <code><a href="tune_imp.html">tune_imp()</a></code> when <code>na_loc</code> is supplied.</p></li>
@@ -89,13 +91,14 @@ Ignored in <code><a href="tune_imp.html">tune_imp()</a></code> when <code>na_loc
 
 <dt id="arg-num-na">num_na<a class="anchor" aria-label="anchor" href="#arg-num-na"></a></dt>
 <dd><p>Integer. Total number of missing values to inject per
-repetition. If supplied, <code>n_cols</code> is computed automatically and the <code>NA</code>
-are distributed as evenly as possible using <code>n_rows</code> as the base
-(<code>num_na</code> must be <code>&gt;= n_rows</code>). If omitted but <code>n_cols</code> is supplied,
-exactly <code>n_cols * n_rows</code> <code>NA</code> are injected. If <code>num_na</code>, <code>n_cols</code>, and
-<code>na_loc</code> are all <code>NULL</code>, defaults to ~5% of total cells (capped at 500) in
-<code><a href="tune_imp.html">tune_imp()</a></code>. <code>sample_na_loc()</code> has no default <code>num_na</code>. Ignored in
-<code><a href="tune_imp.html">tune_imp()</a></code> when <code>na_loc</code> is supplied.</p></dd>
+repetition. If supplied, <code>n_cols</code> is computed automatically and
+missing values are distributed as evenly as possible, using <code>n_rows</code>
+as the base size (<code>num_na</code> must be at least <code>n_rows</code>). If omitted
+but <code>n_cols</code> is supplied, the total injected is <code>n_cols * n_rows</code>.
+If <code>num_na</code>, <code>n_cols</code>, and <code>na_loc</code> are all <code>NULL</code>, <code><a href="tune_imp.html">tune_imp()</a></code>
+defaults to roughly 5% of total cells, capped at 500.
+<code>sample_na_loc()</code> has no default. Ignored in <code><a href="tune_imp.html">tune_imp()</a></code> when
+<code>na_loc</code> is supplied.</p></dd>
 
 
 <dt id="arg-n-reps">n_reps<a class="anchor" aria-label="anchor" href="#arg-n-reps"></a></dt>
@@ -110,13 +113,14 @@ thresholds.</p></dd>
 
 
 <dt id="arg-na-col-subset">na_col_subset<a class="anchor" aria-label="anchor" href="#arg-na-col-subset"></a></dt>
-<dd><p>Optional integer or character vector restricting which columns
-of <code>obj</code> are eligible for NA injection.</p><ul><li><p>If <code>NULL</code> (default): all columns are eligible.</p></li>
+<dd><p>Optional integer or character vector restricting which
+columns of <code>obj</code> are eligible for NA injection.</p><ul><li><p>If <code>NULL</code> (default): all columns are eligible.</p></li>
 <li><p>If character: values must exist in <code>colnames(obj)</code>.</p></li>
 <li><p>If integer/numeric: values must be valid 1-based column indices.
 The vector must be unique and must contain at least <code>n_cols</code> columns
-(or the number derived from <code>num_na</code>).</p></li>
-</ul><p>Ignored in <code><a href="tune_imp.html">tune_imp()</a></code> when <code>na_loc</code> is supplied.</p></dd>
+(or the number derived from <code>num_na</code>).
+Ignored in <code><a href="tune_imp.html">tune_imp()</a></code> when <code>na_loc</code> is supplied.</p></li>
+</ul></dd>
 
 
 <dt id="arg-max-attempts">max_attempts<a class="anchor" aria-label="anchor" href="#arg-max-attempts"></a></dt>
@@ -132,7 +136,8 @@ locations.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>The function uses a greedy stochastic search valid <code>NA</code> locations. It ensures that:</p><ul><li><p>Total missingness per row and column does not exceed <code>rowmax</code> and <code>colmax</code>.</p></li>
+    <p>The function uses a greedy stochastic search for valid <code>NA</code> locations. It
+ensures that:</p><ul><li><p>Total missingness per row and column does not exceed <code>rowmax</code> and <code>colmax</code>.</p></li>
 <li><p>At least two distinct observed values are preserved in every column to
 ensure the column maintains non-zero variance.</p></li>
 </ul></div>
@@ -146,38 +151,38 @@ ensure the column maintains non-zero variance.</p></li>
 <span class="r-in"><span><span class="va">locs</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [[1]]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>      row col</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]   3   6</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]   9   3</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]   3   2</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]   5   8</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [5,]   3   4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1,]   2   4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [2,]   9   1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [3,]   7   5</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [4,]   8   3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [5,]   5   7</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Inject the `NA` from the first repetition</span></span></span>
 <span class="r-in"><span><span class="va">mat</span><span class="op">[</span><span class="va">locs</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="cn">NA</span></span></span>
 <span class="r-in"><span><span class="va">mat</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]         [,2]       [,3]       [,4]      [,5]      [,6]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,] 0.5044793 0.0008993864 0.43429326 0.22620728 0.7797749 0.9254811</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,] 0.4542898 0.7648822351 0.34157126 0.02528094 0.3495335 0.6082241</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,] 0.5930295           NA 0.04843577         NA 0.3519479        NA</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,] 0.6524231 0.8888526005 0.74858641 0.64403813 0.5107448 0.8905952</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,] 0.1709622 0.7550757593 0.18985401 0.89009857 0.1295436 0.3780364</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,] 0.1292282 0.0657838900 0.79292257 0.44571449 0.7847482 0.5121671</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,] 0.0394463 0.1643661999 0.83293183 0.42431843 0.5675350 0.7526136</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,] 0.1044847 0.4768695564 0.69533197 0.03300803 0.8175090 0.7031305</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,] 0.3594383 0.5060374299         NA 0.71031690 0.3599687 0.2534801</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [10,] 0.2879419 0.4133408088 0.67032239 0.66022914 0.3902879 0.2829546</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>            [,7]       [,8]       [,9]      [,10]</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,] 0.4928392 0.38979175 0.29948597 0.16996773</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,] 0.2184650 0.17013852 0.84989299 0.92530165</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,] 0.6902613 0.02169921 0.43049085 0.32640447</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,] 0.4112966 0.41161060 0.51858746 0.15314706</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,] 0.3430054         NA 0.28888987 0.92561734</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,] 0.6131221 0.67631006 0.36566163 0.21208089</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,] 0.1128234 0.55242846 0.70947389 0.43831051</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,] 0.2256672 0.84392291 0.76371036 0.03751617</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,] 0.6227623 0.04659831 0.05750697 0.15345698</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [10,] 0.3846486 0.95434221 0.31801622 0.15895596</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            [,1]      [,2]      [,3]        [,4]       [,5]      [,6]       [,7]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,] 0.8376339 0.4038305 0.1453584 0.191754386 0.92877424 0.1981642 0.57884620</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,] 0.4874663 0.8675411 0.4213214          NA 0.26107766 0.8810928 0.54187464</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,] 0.1103370 0.0633672 0.2007586 0.003423417 0.44312295 0.3643178 0.76257168</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,] 0.3513630 0.6840599 0.9788740 0.931021894 0.70764482 0.2699500 0.14225535</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,] 0.7610630 0.6885818 0.4949632 0.689435125 0.90294457 0.5899745         NA</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,] 0.3896648 0.3139780 0.3744674 0.252752172 0.51312311 0.1654506 0.80370827</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,] 0.4565140 0.6385193 0.8503906 0.665434266         NA 0.4890698 0.94901189</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,] 0.1073443 0.6412363        NA 0.476809311 0.04979171 0.9633836 0.03845219</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,]        NA 0.4929685 0.3577581 0.904765149 0.24939016 0.5796029 0.66919590</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [10,] 0.9880969 0.8560004 0.3736045 0.305509669 0.78848105 0.7907979 0.16308326</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            [,8]       [,9]      [,10]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [1,] 0.1163298 0.66799949 0.12984316</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [2,] 0.1324231 0.99507695 0.11584997</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [3,] 0.3910245 0.90379414 0.03223105</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [4,] 0.2157433 0.34029998 0.28859893</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [5,] 0.6970320 0.25729868 0.57751060</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [6,] 0.1571268 0.32218851 0.03855550</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [7,] 0.3405160 0.49326583 0.72626821</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [8,] 0.3331250 0.01892372 0.89637255</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  [9,] 0.6349510 0.28512190 0.73863998</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [10,] 0.4057082 0.65870852 0.40522444</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

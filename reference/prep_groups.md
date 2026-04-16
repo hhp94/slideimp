@@ -1,6 +1,6 @@
 # Prepare Groups for Imputation
 
-Normalizes and validates a grouping specification for use with
+Normalize and validate a grouping specification for use with
 [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
 Converts long-format or canonical list-column input into a validated
 `slideimp_tbl`, enforcing set relationships, pruning dropped columns,
@@ -25,19 +25,15 @@ prep_groups(
 
   Character vector of column names from the data matrix (e.g.,
   `colnames(obj)`). Every element must appear in `group$feature` unless
-  `allowed_unmapped = TRUE`.
+  `allow_unmapped = TRUE`.
 
 - group:
 
   Specification of how features should be grouped for imputation.
   Accepts three formats:
 
-  - `character`: (Requires the `{slideimp.extra}` package, available on
-    GitHub). A single string naming a supported Illumina platform (e.g.,
-    `"EPICv2"`, `"EPICv2_deduped"`). The manifest is fetched
-    automatically. For installation instructions, see the package
-    README. Supported platforms can be viewed via
-    [`slideimp.extra::slideimp_arrays`](https://rdrr.io/pkg/slideimp.extra/man/slideimp_arrays.html).
+  - `character`: string naming a supported Illumina platform; see the
+    Note section.
 
   - `data.frame` (Long format):
 
@@ -47,8 +43,8 @@ prep_groups(
 
   - `data.frame` (List-column format):
 
-    - `feature`: List-column of character vectors to impute (e.g., from
-      `prep_groups()`).
+    - `feature`: List-column of character vectors to impute. A row is a
+      group.
 
     - `aux`: (Optional) List-column of auxiliary names used for context.
 
@@ -66,28 +62,27 @@ prep_groups(
 
 - min_group_size:
 
-  Integer or `NULL`. Minimum number of columns (features + aux) per
-  group. Groups smaller than this are padded with randomly sampled
-  columns from `obj`. Passed to `prep_groups()` internally.
+  Integer or `NULL`. Minimum column count (features + aux) per group.
+  Groups smaller than this are padded with randomly sampled columns from
+  `obj`. Passed to `prep_groups()` internally.
 
 - allow_unmapped:
 
-  Logical. If `FALSE`, every column in `colnames(obj)` *must* appear in
-  `group`. If `TRUE`, columns that have no group assignment are left
+  Logical. If `FALSE`, every column in `colnames(obj)` must appear in
+  `group`. If `TRUE`, columns with no group assignment are left
   untouched (neither imputed nor used as auxiliary columns) and a
   message is issued instead of an error.
 
 - seed:
 
-  Numeric or `NULL`. Random seed for reproducibility when padding for
-  `min_group_size` and passed to
-  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
+  Numeric or `NULL`. Random seed for reproducibility.
 
 ## Value
 
 A `data.frame` of class `slideimp_tbl` containing:
 
-- `group`: Original group labels (if provided).
+- `group`: Original group labels (if provided) or sequential group
+  labels.
 
 - `feature`: A list-column of character vectors (feature names).
 

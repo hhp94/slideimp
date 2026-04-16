@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -75,7 +75,7 @@
 <code class="sourceCode R"><span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pkg_install.html" class="external-link">pkg_install</a></span><span class="op">(</span><span class="st">"hhp94/slideimp.extra"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="pca-or-knn-imputation-of-illumina-dnam-microarrays">PCA or KNN imputation of Illumina DNAm microarrays<a class="anchor" aria-label="anchor" href="#pca-or-knn-imputation-of-illumina-dnam-microarrays"></a>
+<h2 id="pca-or-k-nn-imputation-of-illumina-dnam-microarrays">PCA or K-NN imputation of Illumina DNAm microarrays<a class="anchor" aria-label="anchor" href="#pca-or-k-nn-imputation-of-illumina-dnam-microarrays"></a>
 </h2>
 <ul>
 <li>This is a simulated beta matrix from the <a href="https://www.illumina.com/products/by-type/microarray-kits/infinium-methylation-screening-array.html" class="external-link">MSA</a> microarray. CpGs are in columns.</li>
@@ -91,17 +91,17 @@
 <span><span class="co"># sample4       0.0000000       0.0000000              NA       0.0000000</span></span></code></pre></div>
 <ul>
 <li><p>Chromosome-wise imputation of Illumina microarrays can be performed with a single function call (requires the Illumina manifests, conveniently provided by the <a href="https://github.com/hhp94/slideimp.extra" class="external-link"><code>slideimp.extra</code></a> package).</p></li>
-<li><p>This example demonstrates PCA imputation. To use KNN imputation instead, supply the <code>k</code> argument.</p></li>
+<li><p>This example demonstrates PCA imputation. To use K-NN imputation instead, supply the <code>k</code> argument.</p></li>
 </ul>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a></span><span class="op">)</span></span>
-<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">slideimp.extra</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">slideimp.extra</span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mirai.r-lib.org" class="external-link">mirai</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">imputed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/group_imp.html">group_imp</a></span><span class="op">(</span></span>
 <span>  obj <span class="op">=</span> <span class="va">MSA_beta_matrix</span>,</span>
 <span>  group <span class="op">=</span> <span class="st">"MSA"</span>, <span class="co"># &lt;- this feature requires the `slideimp.extra` package</span></span>
-<span>  ncp <span class="op">=</span> <span class="fl">10</span>, <span class="co"># &lt;- change to `k` for KNN imputation</span></span>
+<span>  ncp <span class="op">=</span> <span class="fl">10</span>, <span class="co"># &lt;- change to `k` for K-NN imputation</span></span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- turn on to monitor progress of longer running jobs</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co"># Found cleaned manifest for 'MSA'</span></span>
@@ -110,22 +110,22 @@
 <span><span class="co"># Running Mode: sequential ...</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">imputed</span>, n <span class="op">=</span> <span class="fl">4</span>, p <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
-<span><span class="co"># slideimp_results (PCA)</span></span>
+<span><span class="co"># Method: group_imp (PCA imputation)</span></span>
 <span><span class="co"># Dimensions: 20 x 281797</span></span>
-<span><span class="co"># </span></span>
+<span><span class="co">#</span></span>
 <span><span class="co">#         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11</span></span>
 <span><span class="co"># sample1       0.1517542       0.5023435      0.38354308       0.2067731</span></span>
 <span><span class="co"># sample2       0.4907466       0.5095459      0.90258164       0.4313347</span></span>
 <span><span class="co"># sample3       0.6885036       0.7339375      0.76467530       0.4498772</span></span>
 <span><span class="co"># sample4       0.0000000       0.0000000      0.05230101       0.0000000</span></span>
-<span><span class="co"># </span></span>
+<span><span class="co">#</span></span>
 <span><span class="co"># # Showing [1:4, 1:4] of full matrix</span></span></code></pre></div>
 <ul>
 <li>Tips
 <ul>
 <li>Remove the “ctl” probes (control probes) before imputation with <code>obj &lt;- obj[, !grepl("^ctl", colnames(obj))]</code> or set <code>allow_unmapped = TRUE</code> to ignore them.</li>
 <li>Deduplicate the MSA and EPICv2 data after imputation with <code><a href="https://rdrr.io/pkg/slideimp.extra/man/dedup_matrix.html" class="external-link">slideimp.extra::dedup_matrix()</a></code>.</li>
-<li>Speed up KNN imputation with OpenMP by using the <code>cores</code> argument instead of <a href="https://mirai.r-lib.org" class="external-link">mirai</a> (available by default on Windows and Linux). If you only need clock CpGs, provide the <code>subset</code> argument to ignore all other probes.</li>
+<li>Speed up K-NN imputation with OpenMP by using the <code>cores</code> argument instead of <a href="https://mirai.r-lib.org" class="external-link">mirai</a> (available by default on Windows and Linux). If you only need clock CpGs, provide the <code>subset</code> argument to ignore all other probes.</li>
 </ul>
 </li>
 </ul>
@@ -154,8 +154,8 @@
 <li>Inverse distance power (<code>dist_pow</code>) for weighted averaging: 1 or 2 (higher values assign lower weights to more distant neighbors)</li>
 </ul>
 </li>
-<li><p>Tuning is performed on a subset of the data. We use 10 repeats (<code>n_reps = 10</code>) of cross-validation for evaluation. We re-impute 50 observed values (<code>num_na = 50</code>) to compute the rmse and mae. Increase both <code>n_reps</code> and <code>num_na</code> in real analyses to increase reliability of error estimates.</p></li>
-<li><p><strong>Note:</strong> Parallelization via the <code>cores</code> argument is only available for KNN imputation with OpenMP.</p></li>
+<li><p>Tuning is performed on a subset of the data. We use 10 repeats (<code>n_reps = 10</code>) of cross-validation for evaluation. We artificially mask 50 observed values (<code>num_na = 50</code>) to compute the RMSE and MAE. Use larger values for both <code>n_reps</code> and <code>num_na</code> in real analyses for more reliable error estimates.</p></li>
+<li><p><strong>Note:</strong> Parallelization via the <code>cores</code> argument is only available for K-NN imputation with OpenMP.</p></li>
 </ul>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">knn_params</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/expand.grid.html" class="external-link">expand.grid</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">5</span>, <span class="fl">20</span><span class="op">)</span>, dist_pow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
@@ -175,7 +175,7 @@
 <span><span class="co">#&gt; Running Mode: parallel...</span></span>
 <span><span class="co">#&gt; Step 2/2: Tuning</span></span></code></pre></div>
 <ul>
-<li>Calculate errors using <code><a href="reference/compute_metrics.html">compute_metrics()</a></code> or <a href="https://github.com/tidymodels/yardstick" class="external-link"><code>{yardsticks}</code></a> functions.</li>
+<li>Calculate errors using <code><a href="reference/compute_metrics.html">compute_metrics()</a></code> or <a href="https://github.com/tidymodels/yardstick" class="external-link"><code>{yardstick}</code></a> functions.</li>
 </ul>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">metrics</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">tune_knn</span><span class="op">)</span></span>
@@ -216,7 +216,7 @@
 <span></span>
 <span><span class="co"># PCA imputation.</span></span>
 <span><span class="va">pca_params</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>ncp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">5</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co"># For machines multi-threaded BLAS, turn on `pin_blas = TRUE`</span></span>
+<span><span class="co"># For machines with multi-threaded BLAS, turn on `pin_blas = TRUE`</span></span>
 <span><span class="va">tune_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/tune_imp.html">tune_imp</a></span><span class="op">(</span><span class="va">obj</span>, parameters <span class="op">=</span> <span class="va">pca_params</span>, .f <span class="op">=</span> <span class="st">"pca_imp"</span>, n_reps <span class="op">=</span> <span class="fl">10</span>, num_na <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span> <span class="co"># Close daemons</span></span></code></pre></div>
@@ -228,7 +228,7 @@
 <span><span class="co">#&gt; Imputing 2 group(s) using KNN.</span></span>
 <span><span class="co">#&gt; Running Mode: parallel (OpenMP within groups)...</span></span>
 <span><span class="va">knn_group_results</span></span>
-<span><span class="co">#&gt; slideimp_results (KNN)</span></span>
+<span><span class="co">#&gt; Method: group_imp (KNN imputation)</span></span>
 <span><span class="co">#&gt; Dimensions: 20 x 100</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;          feature1  feature2  feature3  feature4  feature5  feature6</span></span>
@@ -261,10 +261,14 @@
 <ul>
 <li>
 <code><a href="reference/slide_imp.html">slide_imp()</a></code> performs sliding window imputation.</li>
-<li>
-<strong>Note:</strong> DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run <code><a href="reference/slide_imp.html">slide_imp()</a></code> separately on each chromosome) before imputation. See the package vignette for more details.</li>
 <li>This function is <strong>not</strong> for Illumina DNAm microarrays; see <code><a href="reference/group_imp.html">group_imp()</a></code>.</li>
+<li>
+<strong>Note:</strong>
+<ul>
+<li>DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run <code><a href="reference/slide_imp.html">slide_imp()</a></code> separately on each chromosome) before imputation. See the package vignette for more details.</li>
 <li>See vignette for details about selecting <code>window_size</code> and <code>overlap_size</code> with <code><a href="reference/tune_imp.html">tune_imp()</a></code>.</li>
+</ul>
+</li>
 </ul>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Simulate some data</span></span>
@@ -283,17 +287,17 @@
 <p><code><a href="reference/slide_imp.html">slide_imp()</a></code> parameters:</p>
 <ul>
 <li>
-<code>location</code>: <strong>required</strong> - a sorted numeric vector of length <code>ncol(obj)</code> giving the position of each column (e.g., genomic coordinates in <em>bp</em>).</li>
+<code>location</code>: <strong>required</strong> - a sorted numeric vector of length <code>ncol(obj)</code> specifying the position of each column (e.g., genomic coordinates in <em>bp</em>).</li>
 <li>
 <code>window_size</code>: <strong>required</strong> - width of each sliding window (same unit as <code>location</code>).</li>
 <li>
 <code>overlap_size</code>: <strong>optional</strong> - overlap width between consecutive windows (same units as <code>location</code>). Must be strictly less than <code>window_size</code>.</li>
 <li>
-<code>min_window_n</code>: <strong>required</strong> - minimum number of columns a window must contain to be imputed. Windows smaller than this are dropped. Must be greater than <code>k</code> (for KNN) or <code>ncp</code> (for PCA).</li>
+<code>min_window_n</code>: <strong>required</strong> - minimum number of columns a window must contain to be imputed. Windows with fewer columns than this threshold are dropped. Must be greater than <code>k</code> (for K-NN) or <code>ncp</code> (for PCA).</li>
 <li>
 <code>dry_run</code>: <strong>optional</strong> - return just the calculated windows to examine which windows are included.</li>
 <li>
-<code>k</code>: <strong>required</strong> - <em>(specifying KNN imputation)</em> number of nearest neighbors to use inside each window.</li>
+<code>k</code>: <strong>required</strong> - <em>(specifying K-NN imputation)</em> number of nearest neighbors to use inside each window.</li>
 <li>
 <code>ncp</code>: <strong>required</strong> - <em>(specifying PCA imputation)</em> number of principal components to retain. Use this instead of <code>k</code> when performing sliding-window PCA imputation.</li>
 <li>
@@ -342,7 +346,7 @@
 <span>  cores <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; slideimp_results (KNN)</span></span>
+<span><span class="co">#&gt; Method: slide_imp (KNN imputation)</span></span>
 <span><span class="co">#&gt; Dimensions: 10 x 2000</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;          feature1  feature2  feature3   feature4  feature5  feature6</span></span>
@@ -375,6 +379,8 @@
 <code><a href="reference/knn_imp.html">knn_imp()</a></code>: Full-matrix K-NN imputation with multi-core parallelization, <a href="https://mlpack.org/" class="external-link"><code>{mlpack}</code></a> KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).</li>
 <li>
 <code><a href="reference/pca_imp.html">pca_imp()</a></code>: Optimized version of <a href="http://factominer.free.fr/missMDA/PCA.html" class="external-link"><code>missMDA::imputePCA()</code></a> for high-dimensional numeric matrices.</li>
+<li>
+<code><a href="reference/col_vars.html">col_vars()</a></code> and <code><a href="reference/mean_imp_col.html">mean_imp_col()</a></code> provide fast column-wise variance and mean imputation using the high-performance <a href="https://github.com/RcppCore/RcppArmadillo" class="external-link">RcppArmadillo</a> backend with full OpenMP parallelization support.</li>
 </ul>
 </div>
 </div>

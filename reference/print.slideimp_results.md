@@ -1,6 +1,10 @@
 # Print a `slideimp_results` Object
 
-Print a `slideimp_results` Object
+Print the output of
+[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md),
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md),
+[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md),
+[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md).
 
 ## Usage
 
@@ -13,43 +17,43 @@ print(x, n = 6L, p = 6L, ...)
 
 - x:
 
-  An `slideimp_results` object
+  A `slideimp_results` object.
 
 - n:
 
-  Number of rows to print
+  Number of rows to print.
 
 - p:
 
-  Number of cols to print
+  Number of cols to print.
 
 - ...:
 
-  Not used
+  Not used.
 
 ## Value
 
-Invisible `x`
+Invisible `x`.
 
 ## Examples
 
 ``` r
-data(khanmiss1)
-t_khanmiss1 <- t(khanmiss1)
-result <- knn_imp(t_khanmiss1, k = 5)
+set.seed(1234)
+mat <- sim_mat(n = 10, p = 10)
+result <- knn_imp(mat$input, k = 5)
 class(result)
 #> [1] "slideimp_results" "matrix"           "array"           
 print(result, n = 6, p = 6)
-#> slideimp_results (KNN)
-#> Dimensions: 63 x 2308
+#> Method: KNN imputation
+#> Dimensions: 10 x 10
 #> 
-#>           g1   g2   g3   g4   g5   g6
-#> sample1 1873 1251  314 1324  776 1901
-#> sample2   57 1350 1758 1428  476 1521
-#> sample3   53 1140  162 1468  679   14
-#> sample4 2059 1385 1857 1250  772 2052
-#> sample5 1537 1261 1939 1666 1307 1705
-#> sample6 1819 1526 1640 1795 1454 1643
+#>          feature1   feature2  feature3  feature4   feature5  feature6
+#> sample1 0.1568098 0.47991216 0.8510938 1.0000000 0.07839046 0.5527338
+#> sample2 0.4098416 0.66120576 0.8221066 0.6396885 0.68926345 1.0000000
+#> sample3 0.6801685 1.00000000 1.0000000 0.9953450 0.75246030 0.6958550
+#> sample4 0.0000000 0.01200625 0.0000000 0.0000000 0.00000000 0.0000000
+#> sample5 0.9639671 0.64091372 0.5111760 0.7184678 0.81815288 0.5883255
+#> sample6 0.7031741 0.37310619 0.6782811 0.7542872 0.99910554 0.9070005
 #> 
 #> # Showing [1:6, 1:6] of full matrix
 ```

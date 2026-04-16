@@ -1,6 +1,6 @@
 # Grouped K-NN or PCA Imputation
 
-Perform K-NN or PCA imputation independently on feature groups (e.g. by
+Perform K-NN or PCA imputation independently on feature groups (e.g., by
 chromosomes, flanking probes, or clustering-based groups).
 
 ## Usage
@@ -30,7 +30,9 @@ group_imp(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
-  pin_blas = FALSE
+  pin_blas = FALSE,
+  na_check = TRUE,
+  on_infeasible = c("error", "skip", "mean")
 )
 ```
 
@@ -45,12 +47,8 @@ group_imp(
   Specification of how features should be grouped for imputation.
   Accepts three formats:
 
-  - `character`: (Requires the `{slideimp.extra}` package, available on
-    GitHub). A single string naming a supported Illumina platform (e.g.,
-    `"EPICv2"`, `"EPICv2_deduped"`). The manifest is fetched
-    automatically. For installation instructions, see the package
-    README. Supported platforms can be viewed via
-    [`slideimp.extra::slideimp_arrays`](https://rdrr.io/pkg/slideimp.extra/man/slideimp_arrays.html).
+  - `character`: string naming a supported Illumina platform; see the
+    Note section.
 
   - `data.frame` (Long format):
 
@@ -60,8 +58,8 @@ group_imp(
 
   - `data.frame` (List-column format):
 
-    - `feature`: List-column of character vectors to impute (e.g., from
-      [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)).
+    - `feature`: List-column of character vectors to impute. A row is a
+      group.
 
     - `aux`: (Optional) List-column of auxiliary names used for context.
 
@@ -79,15 +77,15 @@ group_imp(
 
 - allow_unmapped:
 
-  Logical. If `FALSE`, every column in `colnames(obj)` *must* appear in
-  `group`. If `TRUE`, columns that have no group assignment are left
+  Logical. If `FALSE`, every column in `colnames(obj)` must appear in
+  `group`. If `TRUE`, columns with no group assignment are left
   untouched (neither imputed nor used as auxiliary columns) and a
   message is issued instead of an error.
 
 - k:
 
-  Number of nearest neighbors for imputation. 10 is a good starting
-  point.
+  Integer. Number of nearest neighbors for imputation. 10 is a good
+  starting point.
 
 - ncp:
 
@@ -108,41 +106,41 @@ group_imp(
 
 - .progress:
 
-  Show imputation progress (default = `TRUE`).
+  Show imputation progress (default `TRUE`).
 
 - min_group_size:
 
-  Integer or `NULL`. Minimum number of columns (features + aux) per
-  group. Groups smaller than this are padded with randomly sampled
-  columns from `obj`. Passed to
+  Integer or `NULL`. Minimum column count (features + aux) per group.
+  Groups smaller than this are padded with randomly sampled columns from
+  `obj`. Passed to
   [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
   internally.
 
 - colmax:
 
-  A number from 0 to 1. Threshold of column-wise missing data rate above
-  which K-NN imputation is skipped.
+  Numeric. A number from 0 to 1. Threshold of column-wise missing data
+  rate above which imputation is skipped.
 
 - post_imp:
 
-  Whether to impute remaining missing values (those that failed K-NN
-  imputation) using column means (default = `TRUE`).
+  Boolean. Whether to impute remaining missing values (those that failed
+  imputation) using column means.
 
 - dist_pow:
 
-  The amount of penalization for further away nearest neighbors in the
-  weighted average. `dist_pow = 0` (default) is the simple average of
-  the nearest neighbors.
+  Numeric. The amount of penalization for further away nearest neighbors
+  in the weighted average. `dist_pow = 0` (default) is the simple
+  average of the nearest neighbors.
 
 - tree:
 
-  Logical. `FALSE` (default) = brute-force K-NN. `TRUE` = use `{mlpack}`
+  Logical. `FALSE` (default) uses brute-force K-NN. `TRUE` uses `mlpack`
   BallTree.
 
 - max_cache:
 
-  Maximum allowed cache size in GB (default `4`). When greater than `0`,
-  pairwise distances between columns with missing values are
+  Numeric. Maximum allowed cache size in GB (default `4`). When greater
+  than `0`, pairwise distances between columns with missing values are
   pre-computed and cached, which is faster for moderate-sized data but
   uses O(m^2) memory where m is the number of columns with missing
   values. Set to `0` to disable caching and trade speed for lower memory
@@ -175,9 +173,7 @@ group_imp(
 
 - seed:
 
-  Numeric or `NULL`. Random seed for reproducibility when padding for
-  `min_group_size` and passed to
-  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
+  Numeric or `NULL`. Random seed for reproducibility.
 
 - nb.init:
 
@@ -194,8 +190,22 @@ group_imp(
 
 - pin_blas:
 
-  Logical. If `TRUE`, pin BLAS thread to 1 to help with parallel
-  performance on systems linked with multi-threaded BLAS.
+  Logical. If `TRUE`, pin BLAS threads to 1 to reduce contention when
+  using parallel PCA on systems linked with multi-threaded BLAS.
+
+- na_check:
+
+  Boolean. Check for leftover `NA` values in the results or not
+  (internal use).
+
+- on_infeasible:
+
+  Character, one of `"error"` (default on `group_imp()`), `"skip"`, or
+  `"mean"` (default on
+  [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)).
+  Controls behaviour when a group is infeasible for imputation, e.g.,
+  `k`/`ncp` exceeds the number of usable columns after applying
+  `colmax`, or all subset columns in the group exceed `colmax`.
 
 ## Value
 
@@ -204,53 +214,58 @@ imputed.
 
 ## Details
 
-This function performs K-NN or PCA imputation on groups of features
-independently, which significantly reduces imputation time for large
-datasets.
+Performs K-NN or PCA imputation on groups of features independently,
+which significantly reduces imputation time for large datasets.
 
-Specify `k` and related arguments to use K-NN, `ncp` and related
-arguments for PCA imputation. If `k` and `ncp` are both `NULL`, then
-`group$parameters` must contain either `k` or `ncp` for every group.
+Specify `k` and related arguments to use K-NN, or `ncp` and related
+arguments for PCA imputation. If both `k` and `ncp` are `NULL`,
+`group$parameters` must supply either `k` or `ncp` for every group.
 
 ### Parameter resolution
 
-Group-wise parameters (in `group$parameters`) take priority. Global
-arguments (`k`, `ncp`, `method`, etc.) fill in any gaps where a group
-has no value set. All groups must agree on the imputation method (all
-KNN or all PCA). Per-group `k` is capped at `group_size - 1` and `ncp`
-at `min(nrow(group) - 2L, ncol(group) - 1L)`, with a warning when
-capping occurs.
+Group-wise parameters (in `group$parameters`) take priority; global
+arguments (`k`, `ncp`, `method`, etc.) fill in any gaps. All groups must
+use the same imputation method. Per-group `k` is capped at
+`group_size - 1` and `ncp` at `min(nrow(group) - 2L, ncol(group) - 1L)`,
+with a warning when capping occurs.
 
-### Strategies for grouping
+### Grouping strategies
 
-- Breaking down search space by chromosomes
+- Chromosomal grouping to break down the search space.
 
-- Grouping features with their flanking values/neighbors
+- Flanking-probe groups for spatially local imputation.
 
-- Using clusters identified by column clustering techniques
+- Column-clustering to form correlation-based groups.
+
+## Note
+
+A `character` string can be passed to `group` to name a supported
+Illumina platform (e.g., `"EPICv2"`, `"EPICv2_deduped"`), which fetches
+the manifest automatically. This requires the `slideimp.extra` package
+(available on GitHub; see its README for installation instructions).
+Supported platforms are listed in
+[`slideimp.extra::slideimp_arrays`](https://rdrr.io/pkg/slideimp.extra/man/slideimp_arrays.html).
 
 ## Parallelization
 
-Parallelization behavior depends on the imputation method:
-
-- **KNN**: use the `cores` argument (if OpenMP is available). If
+- **K-NN**: use the `cores` argument (requires OpenMP). If
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
-  are also active, `cores` is automatically set to 1 to avoid nested
+  are active, `cores` is automatically set to 1 to avoid nested
   parallelism.
 
 - **PCA**: use
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
   instead of `cores`.
 
-**Linux / OpenBLAS / MKL users:** If your machine uses a multi-threaded
-BLAS (e.g., OpenBLAS or Intel MKL), set `pin_blas = TRUE` when tuning
-PCA imputation in parallel. Without it, BLAS threads and `mirai` workers
-compete for cores, which can cause slowdowns (CPU thrashing).
+On macOS, OpenMP is typically unavailable and `cores` falls back to
 
-**macOS users:** OpenMP is typically unavailable on macOS unless
-manually configured. `cores` will fall back to 1 automatically; use
-[`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html) for
-parallelization instead.
+1.  Use
+    [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
+    for parallelization instead.
+
+On Linux with OpenBLAS or MKL, set `pin_blas = TRUE` when running
+parallel PCA to prevent BLAS threads and `mirai` workers competing for
+cores.
 
 ## See also
 
@@ -261,17 +276,17 @@ parallelization instead.
 ``` r
 # Generate example data with missing values
 set.seed(1234)
-to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
+to_test <- sim_mat(10, 20, perc_total_na = 0.05, perc_col_na = 1)
 obj <- to_test$input
 group <- to_test$col_group # metadata that maps `colnames(obj)` to groups
 head(group)
 #>    feature  group
 #> 1 feature1 group2
-#> 2 feature2 group2
-#> 3 feature3 group2
+#> 2 feature2 group1
+#> 3 feature3 group1
 #> 4 feature4 group2
-#> 5 feature5 group2
-#> 6 feature6 group2
+#> 5 feature5 group1
+#> 6 feature6 group1
 
 # Simple grouped K-NN imputation
 results <- group_imp(obj, group = group, k = 2)
@@ -280,36 +295,22 @@ results <- group_imp(obj, group = group, k = 2)
 
 # Impute only a subset of features
 subset_features <- sample(to_test$col_group$feature, size = 10)
-knn_subset <- group_imp(obj, group = group, subset = subset_features, k = 5)
+knn_subset <- group_imp(obj, group = group, subset = subset_features, k = 2)
 #> Imputing 2 group(s) using KNN.
 #> Running Mode: sequential ...
 
 # Use prep_groups() to inspect and tweak per-group parameters
 prepped <- prep_groups(colnames(obj), group)
-prepped$parameters <- lapply(seq_len(nrow(prepped)), \(i) list(k = 5))
-prepped$parameters[[2]]$k <- 10
+prepped$parameters <- lapply(seq_len(nrow(prepped)), \(i) list(k = 2))
+prepped$parameters[[2]]$k <- 4
 knn_grouped <- group_imp(obj, group = prepped, cores = 2)
 #> Imputing 2 group(s) using KNN.
 #> Running Mode: parallel (OpenMP within groups)...
-
+if (FALSE) { # interactive() && requireNamespace("mirai", quietly = TRUE)
 # PCA imputation with mirai parallelism
 mirai::daemons(2)
 pca_grouped <- group_imp(obj, group = group, ncp = 2)
-#> Imputing 2 group(s) using PCA.
-#> Running Mode: parallel (mirai across groups)...
-#> Tip: set `pin_blas = TRUE` may improve parallel performance.
 mirai::daemons(0)
 pca_grouped
-#> slideimp_results (PCA)
-#> Dimensions: 50 x 20
-#> 
-#>           feature1   feature2  feature3  feature4  feature5  feature6
-#> sample1 0.05685662 0.39194101 0.2995808 0.5266989 0.3693625 0.3372606
-#> sample2 0.49992298 0.54447261 0.5504182 0.6699885 0.7143775 0.7084667
-#> sample3 0.54575968 0.78179817 0.8510282 0.7503179 0.7469653 0.8390176
-#> sample4 0.00000000 0.07766851 0.2063256 0.2967793 0.2200145 0.2558501
-#> sample5 0.59340652 0.50932703 0.5127284 0.6909102 0.5803437 0.7547226
-#> sample6 0.62356150 0.64673748 0.5254893 0.7499320 0.6118071 0.6436882
-#> 
-#> # Showing [1:6, 1:6] of full matrix
+}
 ```

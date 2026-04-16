@@ -1,12 +1,12 @@
 # Column Mean Imputation
 
-Imputes missing values in a matrix by replacing them with the mean of
+Impute missing values in a matrix by replacing them with the mean of
 their respective columns.
 
 ## Usage
 
 ``` r
-mean_imp_col(obj, subset = NULL)
+mean_imp_col(obj, subset = NULL, cores = 1)
 ```
 
 ## Arguments
@@ -17,8 +17,13 @@ mean_imp_col(obj, subset = NULL)
 
 - subset:
 
-  Character vector of column names or integer vector of column indices
+  Character. Vector of column names or integer vector of column indices
   specifying which columns to impute.
+
+- cores:
+
+  Integer. Number of cores for K-NN parallelization (OpenMP). On macOS,
+  OpenMP may need additional compiler configuration.
 
 ## Value
 

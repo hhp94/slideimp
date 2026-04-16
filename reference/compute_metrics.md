@@ -20,8 +20,8 @@ compute_metrics(results, metrics = c("mae", "rmse"))
 - results:
 
   A `slideimp_tune` data.frame from
-  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
-  containing a `result` list-column with data.frames that have `truth`
+  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md).
+  Must contain a `result` list-column with data.frames that have `truth`
   and `estimate` columns.
 
 - metrics:
@@ -32,8 +32,8 @@ compute_metrics(results, metrics = c("mae", "rmse"))
 
 ## Value
 
-A data.frame with the original parameters and un-nested metrics
-(`.metric`, `.estimator`, `.estimate`).
+A data.frame with the original parameters along with unnested metrics:
+`.metric`, `.estimator`, and `.estimate`.
 
 ## Details
 
@@ -42,11 +42,11 @@ For alternative or faster metrics, see the `{yardstick}` package.
 ## Examples
 
 ``` r
-data(khanmiss1)
+obj <- sim_mat(100, 100)$input
 
 set.seed(1234)
 results <- tune_imp(
-  obj = t(khanmiss1),
+  obj = obj,
   parameters = data.frame(k = 10),
   .f = "knn_imp",
   n_reps = 1,
@@ -59,6 +59,6 @@ results <- tune_imp(
 
 compute_metrics(results)
 #>    k param_set rep_id error  n n_miss .metric .estimator .estimate
-#> 1 10         1      1  <NA> 20      0     mae   standard  342.3206
-#> 2 10         1      1  <NA> 20      0    rmse   standard  438.5813
+#> 1 10         1      1  <NA> 20      0     mae   standard 0.1046064
+#> 2 10         1      1  <NA> 20      0    rmse   standard 0.1393337
 ```

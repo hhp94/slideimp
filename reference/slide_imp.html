@@ -9,7 +9,7 @@ method assumes that columns are meaningfully sorted by location."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -59,9 +59,7 @@ method assumes that columns are meaningfully sorted by <code>location</code>.</p
 <span>  subset <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  dry_run <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  k <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  colmax <span class="op">=</span> <span class="fl">0.9</span>,</span>
 <span>  cores <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  post_imp <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  dist_pow <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  max_cache <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  ncp <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -73,7 +71,11 @@ method assumes that columns are meaningfully sorted by <code>location</code>.</p
 <span>  maxiter <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  miniter <span class="op">=</span> <span class="fl">5</span>,</span>
 <span>  method <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  .progress <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  .progress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  colmax <span class="op">=</span> <span class="fl">0.9</span>,</span>
+<span>  post_imp <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  na_check <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  on_infeasible <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"skip"</span>, <span class="st">"error"</span>, <span class="st">"mean"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -115,7 +117,7 @@ be smaller than <code>min_window_n</code>.</p></dd>
 
 
 <dt id="arg-subset">subset<a class="anchor" aria-label="anchor" href="#arg-subset"></a></dt>
-<dd><p>Character vector of column names or integer vector of column
+<dd><p>Character. Vector of column names or integer vector of column
 indices specifying which columns to impute.</p></dd>
 
 
@@ -129,30 +131,24 @@ Default = <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-k">k<a class="anchor" aria-label="anchor" href="#arg-k"></a></dt>
-<dd><p>Number of nearest neighbors for imputation. 10 is a good starting point.</p></dd>
-
-
-<dt id="arg-colmax">colmax<a class="anchor" aria-label="anchor" href="#arg-colmax"></a></dt>
-<dd><p>A number from 0 to 1. Threshold of column-wise missing data rate above which K-NN imputation is skipped.</p></dd>
+<dd><p>Integer. Number of nearest neighbors for imputation. 10 is a good
+starting point.</p></dd>
 
 
 <dt id="arg-cores">cores<a class="anchor" aria-label="anchor" href="#arg-cores"></a></dt>
-<dd><p>Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may need additional compiler configuration.</p></dd>
-
-
-<dt id="arg-post-imp">post_imp<a class="anchor" aria-label="anchor" href="#arg-post-imp"></a></dt>
-<dd><p>Whether to impute remaining missing values (those that failed K-NN imputation)
-using column means (default = <code>TRUE</code>).</p></dd>
+<dd><p>Integer. Number of cores for K-NN parallelization (OpenMP). On
+macOS, OpenMP may need additional compiler configuration.</p></dd>
 
 
 <dt id="arg-dist-pow">dist_pow<a class="anchor" aria-label="anchor" href="#arg-dist-pow"></a></dt>
-<dd><p>The amount of penalization for further away nearest neighbors in the weighted average.
-<code>dist_pow = 0</code> (default) is the simple average of the nearest neighbors.</p></dd>
+<dd><p>Numeric. The amount of penalization for further away nearest
+neighbors in the weighted average. <code>dist_pow = 0</code> (default) is the simple
+average of the nearest neighbors.</p></dd>
 
 
 <dt id="arg-max-cache">max_cache<a class="anchor" aria-label="anchor" href="#arg-max-cache"></a></dt>
-<dd><p>Maximum allowed cache size in GB (default <code>4</code>). When
-greater than <code>0</code>, pairwise distances between columns with missing values
+<dd><p>Numeric. Maximum allowed cache size in GB (default <code>4</code>).
+When greater than <code>0</code>, pairwise distances between columns with missing values
 are pre-computed and cached, which is faster for moderate-sized data but
 uses O(m^2) memory where m is the number of columns with missing values.
 Set to <code>0</code> to disable caching and trade speed for lower memory usage.</p></dd>
@@ -204,6 +200,30 @@ For PCA imputation: regularization imputation algorithm (<code>"regularized"</co
 
 <dt id="arg--progress">.progress<a class="anchor" aria-label="anchor" href="#arg--progress"></a></dt>
 <dd><p>Show progress bar (default = <code>TRUE</code>).</p></dd>
+
+
+<dt id="arg-colmax">colmax<a class="anchor" aria-label="anchor" href="#arg-colmax"></a></dt>
+<dd><p>Numeric. A number from 0 to 1. Threshold of column-wise missing
+data rate above which imputation is skipped.</p></dd>
+
+
+<dt id="arg-post-imp">post_imp<a class="anchor" aria-label="anchor" href="#arg-post-imp"></a></dt>
+<dd><p>Boolean. Whether to impute remaining missing values (those
+that failed imputation) using column means.</p></dd>
+
+
+<dt id="arg-na-check">na_check<a class="anchor" aria-label="anchor" href="#arg-na-check"></a></dt>
+<dd><p>Boolean. Check for leftover <code>NA</code> values in the results or not
+(internal use).</p></dd>
+
+
+<dt id="arg-on-infeasible">on_infeasible<a class="anchor" aria-label="anchor" href="#arg-on-infeasible"></a></dt>
+<dd><p>Character, one of <code>"error"</code> (default on
+<code><a href="group_imp.html">group_imp()</a></code>), <code>"skip"</code>, or <code>"mean"</code> (default on <code>slide_imp()</code>).
+Controls behaviour when a group is infeasible for imputation,
+e.g., <code>k</code>/<code>ncp</code> exceeds the number of usable columns after
+applying <code>colmax</code>, or all subset columns in the group exceed
+<code>colmax</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
@@ -269,7 +289,7 @@ arguments for <code><a href="pca_imp.html">pca_imp()</a></code>.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  Processing window 3 of 3</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Step 2/2: Averaging overlapping regions</span>
 <span class="r-in"><span><span class="va">imputed_knn</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> slideimp_results (KNN)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Method: slide_imp (KNN imputation)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Dimensions: 20 x 100</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          feature1  feature2  feature3  feature4  feature5  feature6</span>
@@ -297,7 +317,7 @@ arguments for <code><a href="pca_imp.html">pca_imp()</a></code>.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  Processing window 3 of 3</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Step 2/2: Averaging overlapping regions</span>
 <span class="r-in"><span><span class="va">pca_knn</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> slideimp_results (PCA)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Method: slide_imp (PCA imputation)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Dimensions: 20 x 100</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          feature1  feature2  feature3  feature4  feature5  feature6</span>
@@ -328,7 +348,7 @@ arguments for <code><a href="pca_imp.html">pca_imp()</a></code>.</p>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  Processing window 3 of 3</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Step 2/2: Averaging overlapping regions</span>
 <span class="r-in"><span><span class="va">imputed_flank</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> slideimp_results (KNN)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Method: slide_imp (KNN imputation)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Dimensions: 20 x 100</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          feature1  feature2  feature3  feature4  feature5  feature6</span>

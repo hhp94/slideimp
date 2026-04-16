@@ -4,16 +4,11 @@
 
 ### Breaking changes
 
-- `group_features()` is renamed to
-  [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
-  to better reflect its purpose. It now accepts a column name vector
-  instead of a full matrix.
-
 - [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
   enforces stricter data validation. The requested feature subset must
-  be a subset of both the object’s column names and the mapping data
-  frame. Set `allow_unmapped = TRUE` to bypass errors when intersections
-  are incomplete.
+  be a subset the object’s column names which must be a subset of the
+  mapping `data.frame`. Set `allow_unmapped = TRUE` to bypass errors
+  when intersections are incomplete.
 
 - [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
   and
@@ -21,17 +16,30 @@
   now error when arguments are supplied that do not apply to the chosen
   imputation method, rather than silently ignoring them.
 
-- `inject_na()` is renamed to
-  [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md)
-  and is now exported. The original remains accessible via
-  `slideimp:::inject_na()` for legacy code.
+- [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
+  now uses a logical `tree` argument to toggle between Ball tree
+  (`TRUE`) and brute force (`FALSE`). KD tree is no longer supported.
 
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
-  uses a logical `tree` argument to toggle between Ball tree (`TRUE`)
-  and brute force (`FALSE`). KD tree is no longer supported.
+  and
+  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  gain more early errors and early exits.
+
+- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  gains the same `colmax` and `post_imp` arguments as
+  [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md).
+
+- [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
+  (formerly `group_features()`) is the new name for the grouping
+  function. It now accepts a column name vector instead of a full
+  matrix.
+
+- [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md)
+  (formerly `inject_na()`) is now exported. The original remains
+  accessible via `slideimp:::inject_na()` for legacy code.
 
 - [`sim_mat()`](https://hhp94.github.io/slideimp/reference/sim_mat.md)
-  returns a matrix in sample-by-column format for immediate
+  now returns a matrix in sample-by-column format for immediate
   compatibility with other package functions. `perc_NA` is renamed to
   `perc_total_na`, and dimensions are now specified via `n` (rows) and
   `p` (columns).
@@ -49,12 +57,20 @@
   generation now uses
   [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md).
 
+- The `khanmiss1` dataset has been removed.
+
 ### New features
 
 - [`compute_metrics()`](https://hhp94.github.io/slideimp/reference/compute_metrics.md)
-  supports data frames with a `result` list column containing truth and
-  estimate columns, similar to
+  now supports data frames with a `result` list column containing truth
+  and estimate columns, similar to
   [yardstick](https://github.com/tidymodels/yardstick).
+
+- [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
+  and
+  [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
+  automatically look up Illumina manifests using the register-on-load
+  pattern for `{slideimp.extra}`.
 
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
   gains `max_cache` to control the internal cache size (defaults to
@@ -82,6 +98,13 @@
 
 ### Minor improvements and fixes
 
+- [`col_vars()`](https://hhp94.github.io/slideimp/reference/col_vars.md)
+  and
+  [`mean_imp_col()`](https://hhp94.github.io/slideimp/reference/mean_imp_col.md)
+  have been overhauled to use the faster
+  [RcppArmadillo](https://github.com/RcppCore/RcppArmadillo) backend and
+  now support parallel computation with OpenMP.
+
 - Dependencies are streamlined. [tibble](https://tibble.tidyverse.org/)
   and [purrr](https://purrr.tidyverse.org/) are removed as hard
   dependencies, [cli](https://cli.r-lib.org) is added for more
@@ -94,12 +117,6 @@
 - [RhpcBLASctl](https://prs.ism.ac.jp/~nakama/Rhpc/) is added as a
   suggested package to allow pinning BLAS cores and avoid thrashing
   during parallel runs.
-
-- `{slideimp.extra}` is added as a suggested package, available via
-  R-universe. It provides lightweight Illumina manifests for
-  frictionless
-  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-  calls.
 
 - [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
   and
@@ -114,3 +131,21 @@
   and
   [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
   use optimized internal Rcpp functions for better performance.
+
+## slideimp 0.5.4
+
+CRAN release: 2026-01-07
+
+- CRAN resubmission.
+
+- `group_features()` is added to help with creating the group tibble
+  needed for
+  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
+
+- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  now allows `row.w = "n_miss"` to scale row weights by the number of
+  missing values per row.
+
+## slideimp 0.5.3
+
+- Initial CRAN submission.

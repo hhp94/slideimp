@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -76,62 +76,47 @@
 <code>tune_imp()</code><a class="anchor" aria-label="anchor" href="#comparing-methods-using-a-shared-cross-validation-split-with-tune_imp"></a>
 </h2>
 <ul>
-<li>Let’s use the included <code>khanmiss1</code> dataset.</li>
+<li>Simulate some data</li>
 </ul>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">khanmiss1</span><span class="op">)</span></span>
-<span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="va">khanmiss1</span><span class="op">)</span></span>
-<span><span class="va">obj</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">3</span><span class="op">]</span></span>
-<span><span class="co">#&gt;           g1   g2   g3</span></span>
-<span><span class="co">#&gt; sample1 1873 1251  314</span></span>
-<span><span class="co">#&gt; sample2   57 1350 1758</span></span>
-<span><span class="co">#&gt; sample3   53 1140  162</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># 20 rows, 1000 columns, all columns have at least some NA</span></span>
+<span><span class="va">sim_obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sim_mat.html">sim_mat</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">20</span>, p <span class="op">=</span> <span class="fl">1000</span>, perc_col_na <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="va">sim_obj</span><span class="op">$</span><span class="va">input</span></span>
+<span><span class="va">obj</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
+<span><span class="co">#&gt;          feature1  feature2  feature3  feature4</span></span>
+<span><span class="co">#&gt; sample1 0.3486482 0.7385414 0.4077444 0.1607935</span></span>
+<span><span class="co">#&gt; sample2 0.5338935 0.4724364 0.9663621 0.3722729</span></span>
+<span><span class="co">#&gt; sample3 0.7185848 0.7351035 0.6724479 0.3162537</span></span>
+<span><span class="co">#&gt; sample4 0.1734418        NA 0.0000000 0.0000000</span></span></code></pre></div>
 <ul>
 <li>Instead of random NA sampling inside <code><a href="../reference/tune_imp.html">tune_imp()</a></code>, which
 internally calls <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code>, we can generate the NA
 locations up front and pass them to <code><a href="../reference/tune_imp.html">tune_imp()</a></code>.</li>
-<li>Here, we randomly select 5 samples from each of 200 random genes for
-5 repetitions using <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code>. To specify just
-certain columns (i.e., clock CpGs), provide the <code>subset</code>
-argument.
+<li>Here, we randomly select 5 rows from each of 200 random columns
+(features) for 5 repetitions using <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code>. To
+specify just certain columns (i.e., clock CpGs), provide the
+<code>na_col_subset</code> argument.
 <ul>
 <li>
-<code>na_loc</code> have 5 elements (5 repeats) where each row (row
-and col index) is the position of a missing value.</li>
+<code>na_loc</code> has 5 elements (5 repeats) where each row stores
+the row and column index of a missing value.</li>
 </ul>
 </li>
 </ul>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">na_loc</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sample_na_loc.html">sample_na_loc</a></span><span class="op">(</span><span class="va">obj</span>, n_cols <span class="op">=</span> <span class="fl">200</span>, n_rows <span class="op">=</span> <span class="fl">5</span>, n_reps <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
-<span><span class="va">na_loc</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">3</span><span class="op">]</span> <span class="op">|&gt;</span> <span class="fu"><a href="https://rdrr.io/r/base/lapply.html" class="external-link">lapply</a></span><span class="op">(</span><span class="va">head</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [[1]]</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">na_loc</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 5</span></span>
+<span><span class="va">na_loc</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">6</span>, <span class="op">]</span></span>
 <span><span class="co">#&gt;      row col</span></span>
-<span><span class="co">#&gt; [1,]  61 783</span></span>
-<span><span class="co">#&gt; [2,]  21 783</span></span>
-<span><span class="co">#&gt; [3,]  55 783</span></span>
-<span><span class="co">#&gt; [4,]  17 783</span></span>
-<span><span class="co">#&gt; [5,]  19 783</span></span>
-<span><span class="co">#&gt; [6,]  40 473</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; [[2]]</span></span>
-<span><span class="co">#&gt;      row  col</span></span>
-<span><span class="co">#&gt; [1,]  46  513</span></span>
-<span><span class="co">#&gt; [2,]  60  513</span></span>
-<span><span class="co">#&gt; [3,]  22  513</span></span>
-<span><span class="co">#&gt; [4,]   7  513</span></span>
-<span><span class="co">#&gt; [5,]  57  513</span></span>
-<span><span class="co">#&gt; [6,]  34 1979</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; [[3]]</span></span>
-<span><span class="co">#&gt;      row  col</span></span>
-<span><span class="co">#&gt; [1,]   5  276</span></span>
-<span><span class="co">#&gt; [2,]  35  276</span></span>
-<span><span class="co">#&gt; [3,]  31  276</span></span>
-<span><span class="co">#&gt; [4,]  46  276</span></span>
-<span><span class="co">#&gt; [5,]  18  276</span></span>
-<span><span class="co">#&gt; [6,]  62 1012</span></span></code></pre></div>
+<span><span class="co">#&gt; [1,]  18 661</span></span>
+<span><span class="co">#&gt; [2,]  17 661</span></span>
+<span><span class="co">#&gt; [3,]  20 661</span></span>
+<span><span class="co">#&gt; [4,]  15 661</span></span>
+<span><span class="co">#&gt; [5,]   6 661</span></span>
+<span><span class="co">#&gt; [6,]  10 293</span></span></code></pre></div>
 <ul>
-<li>Then we can compare 1) PCA, 2) KNN imputation, and 3) a custom
+<li>Then we can compare 1) PCA, 2) K-NN imputation, and 3) a custom
 method, since the cross-validation missing values are the same for all
 methods.</li>
 <li>
@@ -141,10 +126,11 @@ dimensions, and all subsequent arguments must match the column names of
 the <code>parameters</code> data.frame.</li>
 </ul>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># This custom function imputes missing values with random normal values and takes mean and sd as params</span></span>
+<code class="sourceCode R"><span><span class="co"># This custom function imputes missing values with random normal values and takes</span></span>
+<span><span class="co"># `mean` and `sd` as params</span></span>
 <span><span class="va">rnorm_imp</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">obj</span>, <span class="va">mean</span>, <span class="va">sd</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">na</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">obj</span><span class="op">)</span></span>
-<span>  <span class="va">obj</span><span class="op">[</span><span class="va">na</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">na</span><span class="op">)</span>, mean <span class="op">=</span> <span class="va">mean</span>, sd <span class="op">=</span> <span class="va">sd</span><span class="op">)</span> <span class="co"># &lt;- impute values with rnorm values</span></span>
+<span>  <span class="va">obj</span><span class="op">[</span><span class="va">na</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/stats/Normal.html" class="external-link">rnorm</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="va">na</span><span class="op">)</span>, mean <span class="op">=</span> <span class="va">mean</span>, sd <span class="op">=</span> <span class="va">sd</span><span class="op">)</span> <span class="co"># &lt;- impute values with rnorm</span></span>
 <span>  <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="va">obj</span><span class="op">)</span> <span class="co"># &lt;- return an imputed object with the same dim as obj</span></span>
 <span><span class="op">}</span></span>
 <span></span>
@@ -181,15 +167,15 @@ the <code>parameters</code> data.frame.</li>
 <span><span class="co">#&gt; Running Mode: sequential...</span></span>
 <span><span class="co">#&gt; Step 2/2: Tuning</span></span></code></pre></div>
 <ul>
-<li>PCA imputation performed best here.</li>
+<li>Pick the method with the lowest cross-validation error:</li>
 </ul>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">pca_tune</span>, metrics <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span><span class="op">$</span><span class="va">.estimate</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 454.2612</span></span>
+<span><span class="co">#&gt; [1] 0.2048011</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">knn_tune</span>, metrics <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span><span class="op">$</span><span class="va">.estimate</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 477.9663</span></span>
+<span><span class="co">#&gt; [1] 0.1962497</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">rnorm_tune</span>, metrics <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span><span class="op">$</span><span class="va">.estimate</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 1215.746</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 1.110258</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="group-wise-imputation-with-small-group-padding-and-group-wise-parameters-with-group_imp">Group-Wise Imputation with Small-Group Padding and Group-Wise
@@ -199,7 +185,7 @@ Parameters with <code>group_imp()</code><a class="anchor" aria-label="anchor" hr
 <li>
 <code><a href="../reference/group_imp.html">group_imp()</a></code> allows imputation to be performed
 separately within defined groups (e.g., by chromosome), which
-significantly reduces runtime and can increase accuracy for both K-NN
+significantly reduces run time and can increase accuracy for both K-NN
 and PCA imputation.</li>
 <li>
 <code><a href="../reference/group_imp.html">group_imp()</a></code> requires the <code>group</code> argument,
@@ -236,21 +222,21 @@ column.</li>
 <span><span class="co"># Matrix to be imputed</span></span>
 <span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="va">sim_obj</span><span class="op">$</span><span class="va">input</span></span>
 <span><span class="va">obj</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
-<span><span class="co">#&gt;           feature1   feature2  feature3  feature4</span></span>
-<span><span class="co">#&gt; sample1 1.00000000 0.83993889 0.8425299 1.0000000</span></span>
-<span><span class="co">#&gt; sample2 0.04193941 0.03671375 0.3732779        NA</span></span>
-<span><span class="co">#&gt; sample3 0.70167887 1.00000000        NA 0.8740183</span></span>
-<span><span class="co">#&gt; sample4 0.22303103 0.05777196 0.3740496 0.5036475</span></span>
-<span><span class="co">#&gt; sample5 0.40880574 0.80651233 1.0000000 0.6259976</span></span>
+<span><span class="co">#&gt;           feature1  feature2  feature3  feature4</span></span>
+<span><span class="co">#&gt; sample1 0.03031619 0.1352710 0.4653579 0.1143298</span></span>
+<span><span class="co">#&gt; sample2 0.50962966 0.2313022 0.9737881 0.5198844</span></span>
+<span><span class="co">#&gt; sample3 0.69068459 0.5020337 0.7863144 0.9997625</span></span>
+<span><span class="co">#&gt; sample4 0.40710170 0.4094603 0.3228294 0.2529592</span></span>
+<span><span class="co">#&gt; sample5 0.73113251 0.4108405 0.6385945        NA</span></span>
 <span></span>
 <span><span class="co"># Metadata, i.e., which features belong to which group</span></span>
 <span><span class="va">meta</span> <span class="op">&lt;-</span> <span class="va">sim_obj</span><span class="op">$</span><span class="va">col_group</span></span>
 <span><span class="va">meta</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="op">]</span></span>
 <span><span class="co">#&gt;    feature  group</span></span>
 <span><span class="co">#&gt; 1 feature1 group1</span></span>
-<span><span class="co">#&gt; 2 feature2 group2</span></span>
-<span><span class="co">#&gt; 3 feature3 group2</span></span>
-<span><span class="co">#&gt; 4 feature4 group1</span></span>
+<span><span class="co">#&gt; 2 feature2 group1</span></span>
+<span><span class="co">#&gt; 3 feature3 group1</span></span>
+<span><span class="co">#&gt; 4 feature4 group2</span></span>
 <span><span class="co">#&gt; 5 feature5 group2</span></span>
 <span></span>
 <span><span class="co"># We put feature 1 in `group3`</span></span>
@@ -258,9 +244,9 @@ column.</li>
 <span><span class="va">meta</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="op">]</span></span>
 <span><span class="co">#&gt;    feature  group</span></span>
 <span><span class="co">#&gt; 1 feature1 group3</span></span>
-<span><span class="co">#&gt; 2 feature2 group2</span></span>
-<span><span class="co">#&gt; 3 feature3 group2</span></span>
-<span><span class="co">#&gt; 4 feature4 group1</span></span>
+<span><span class="co">#&gt; 2 feature2 group1</span></span>
+<span><span class="co">#&gt; 3 feature3 group1</span></span>
+<span><span class="co">#&gt; 4 feature4 group2</span></span>
 <span><span class="co">#&gt; 5 feature5 group2</span></span></code></pre></div>
 <ul>
 <li>Then we generate the <code>group</code> parameter for
@@ -276,8 +262,8 @@ neighbors as a demonstration.</li>
 <span><span class="va">group_imp_df</span></span>
 <span><span class="co">#&gt; # slideimp table: 3 x 4</span></span>
 <span><span class="co">#&gt;   group          feature             aux parameters</span></span>
-<span><span class="co">#&gt;  group1 &lt;character [24]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
-<span><span class="co">#&gt;  group2 &lt;character [25]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
+<span><span class="co">#&gt;  group1 &lt;character [26]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
+<span><span class="co">#&gt;  group2 &lt;character [23]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
 <span><span class="co">#&gt;  group3  &lt;character [1]&gt; &lt;character [9]&gt; &lt;list [1]&gt;</span></span></code></pre></div>
 <ul>
 <li>Finally, we impute <code>obj</code> using the modified
@@ -290,16 +276,16 @@ neighbors as a demonstration.</li>
 <span><span class="co">#&gt; Imputing 3 group(s) using KNN.</span></span>
 <span><span class="co">#&gt; Running Mode: parallel (OpenMP within groups)...</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">knn_results</span>, p <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
-<span><span class="co">#&gt; slideimp_results (KNN)</span></span>
+<span><span class="co">#&gt; Method: group_imp (KNN imputation)</span></span>
 <span><span class="co">#&gt; Dimensions: 20 x 50</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;           feature1   feature2  feature3   feature4</span></span>
-<span><span class="co">#&gt; sample1 1.00000000 0.83993889 0.8425299 1.00000000</span></span>
-<span><span class="co">#&gt; sample2 0.04193941 0.03671375 0.3732779 0.02400081</span></span>
-<span><span class="co">#&gt; sample3 0.70167887 1.00000000 0.9305440 0.87401826</span></span>
-<span><span class="co">#&gt; sample4 0.22303103 0.05777196 0.3740496 0.50364753</span></span>
-<span><span class="co">#&gt; sample5 0.40880574 0.80651233 1.0000000 0.62599759</span></span>
-<span><span class="co">#&gt; sample6 0.37769554 0.22618483 0.5819875 0.24203100</span></span>
+<span><span class="co">#&gt;           feature1  feature2  feature3  feature4</span></span>
+<span><span class="co">#&gt; sample1 0.03031619 0.1352710 0.4653579 0.1143298</span></span>
+<span><span class="co">#&gt; sample2 0.50962966 0.2313022 0.9737881 0.5198844</span></span>
+<span><span class="co">#&gt; sample3 0.69068459 0.5020337 0.7863144 0.9997625</span></span>
+<span><span class="co">#&gt; sample4 0.40710170 0.4094603 0.3228294 0.2529592</span></span>
+<span><span class="co">#&gt; sample5 0.73113251 0.4108405 0.6385945 0.4472338</span></span>
+<span><span class="co">#&gt; sample6 0.48993078 0.4950764 0.6553896 0.6737998</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; # Showing [1:6, 1:4] of full matrix</span></span></code></pre></div>
 </div>
@@ -308,8 +294,8 @@ neighbors as a demonstration.</li>
 <code>slide_imp()</code><a class="anchor" aria-label="anchor" href="#sliding-window-imputation-for-wgbsem-seq-data-with-slide_imp"></a>
 </h2>
 <div class="section level3">
-<h3 id="select-window_size-overlap_size-and-pcaknn-parameters">Select <code>window_size</code>, <code>overlap_size</code>, and
-PCA/KNN Parameters<a class="anchor" aria-label="anchor" href="#select-window_size-overlap_size-and-pcaknn-parameters"></a>
+<h3 id="select-window_size-overlap_size-and-pcak-nn-parameters">Select <code>window_size</code>, <code>overlap_size</code>, and
+PCA/K-NN Parameters<a class="anchor" aria-label="anchor" href="#select-window_size-overlap_size-and-pcak-nn-parameters"></a>
 </h3>
 <ul>
 <li>We simulate the output of the <code>{methylKit}</code> package.
@@ -382,13 +368,13 @@ columns.</li>
 <li>Then, in a real dataset, we would tune hyperparameters using
 <code>chr22</code>. Here, as a demonstration, we use the whole data
 since the size is small.</li>
-<li>Using 2 repetitions of cross-validation (increase to 10-30 in a real
+<li>We use 2 repetitions of cross-validation (increase to 10–30 in real
 analyses). We are selecting between:
 <ul>
 <li>
-<code>ncp</code> of 2 or 4, indicating that we are performing
-sliding PCA imputation. Pass <code>k</code> for sliding KNN
-imputation.</li>
+<code>ncp</code> (number of principal components) of 2 or 4,
+indicating that we are performing sliding PCA imputation. Pass
+<code>k</code> for sliding K-NN imputation.</li>
 <li>
 <code>window_size</code> of 5,000 or 10,000 bp.</li>
 <li>
@@ -442,7 +428,7 @@ be imputed.
 vectors.</li>
 <li>
 <code>window_n</code> is the number of features included in the
-column.</li>
+window.</li>
 </ul>
 </li>
 </ul>
@@ -471,7 +457,7 @@ column.</li>
 <span><span class="co">#&gt;    402 424       23 &lt;double [23]&gt;</span></span>
 <span><span class="co">#&gt; # ... with 14 more rows</span></span></code></pre></div>
 <ul>
-<li>Turn-off <code>dry_run</code> to impute the data</li>
+<li>Turn off <code>dry_run</code> to impute the data</li>
 </ul>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/slide_imp.html">slide_imp</a></span><span class="op">(</span></span>
@@ -481,38 +467,12 @@ column.</li>
 <span>  overlap_size <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  ncp <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  min_window_n <span class="op">=</span> <span class="fl">20</span>,</span>
-<span>  dry_run <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  dry_run <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  .progress <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Dropping 43 window(s) with fewer than 20 columns.</span></span>
-<span><span class="co">#&gt; Step 1/2: Imputing</span></span>
-<span><span class="co">#&gt;  Processing window 1 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 2 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 3 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 4 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 5 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 6 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 7 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 8 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 9 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 10 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 11 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 12 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 13 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 14 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 15 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 16 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 17 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 18 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 19 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 20 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 21 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 22 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 23 of 24</span></span>
-<span><span class="co">#&gt;  Processing window 24 of 24</span></span>
-<span><span class="co">#&gt; Step 2/2: Averaging overlapping regions</span></span>
-<span><span class="co">#&gt; Note: 551 column(s) not covered by any window; original values retained.</span></span>
-<span><span class="co">#&gt; slideimp_results (PCA)</span></span>
+<span><span class="co">#&gt; Method: slide_imp (PCA imputation)</span></span>
 <span><span class="co">#&gt; Dimensions: 10 x 1000</span></span>
+<span><span class="co">#&gt; Note: requested columns still contain NA values</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;           333       718       1173      1323      1483       1925</span></span>
 <span><span class="co">#&gt; S1 0.54966887 0.9761905 0.96000000 0.5932203        NA 0.08695652</span></span>

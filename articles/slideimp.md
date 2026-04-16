@@ -7,16 +7,18 @@ set.seed(1234)
 
 ## Comparing Methods Using a Shared Cross-Validation Split with `tune_imp()`
 
-- Let’s use the included `khanmiss1` dataset.
+- Simulate some data
 
 ``` r
-data(khanmiss1)
-obj <- t(khanmiss1)
-obj[1:3, 1:3]
-#>           g1   g2   g3
-#> sample1 1873 1251  314
-#> sample2   57 1350 1758
-#> sample3   53 1140  162
+# 20 rows, 1000 columns, all columns have at least some NA
+sim_obj <- sim_mat(n = 20, p = 1000, perc_col_na = 1)
+obj <- sim_obj$input
+obj[1:4, 1:4]
+#>          feature1  feature2  feature3  feature4
+#> sample1 0.3486482 0.7385414 0.4077444 0.1607935
+#> sample2 0.5338935 0.4724364 0.9663621 0.3722729
+#> sample3 0.7185848 0.7351035 0.6724479 0.3162537
+#> sample4 0.1734418        NA 0.0000000 0.0000000
 ```
 
 - Instead of random NA sampling inside
@@ -25,57 +27,41 @@ obj[1:3, 1:3]
   [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md),
   we can generate the NA locations up front and pass them to
   [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md).
-- Here, we randomly select 5 samples from each of 200 random genes for 5
-  repetitions using
+- Here, we randomly select 5 rows from each of 200 random columns
+  (features) for 5 repetitions using
   [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md).
   To specify just certain columns (i.e., clock CpGs), provide the
-  `subset` argument.
-  - `na_loc` have 5 elements (5 repeats) where each row (row and col
-    index) is the position of a missing value.
+  `na_col_subset` argument.
+  - `na_loc` has 5 elements (5 repeats) where each row stores the row
+    and column index of a missing value.
 
 ``` r
 na_loc <- sample_na_loc(obj, n_cols = 200, n_rows = 5, n_reps = 5)
-na_loc[1:3] |> lapply(head)
-#> [[1]]
+length(na_loc)
+#> [1] 5
+na_loc[[1]][1:6, ]
 #>      row col
-#> [1,]  61 783
-#> [2,]  21 783
-#> [3,]  55 783
-#> [4,]  17 783
-#> [5,]  19 783
-#> [6,]  40 473
-#> 
-#> [[2]]
-#>      row  col
-#> [1,]  46  513
-#> [2,]  60  513
-#> [3,]  22  513
-#> [4,]   7  513
-#> [5,]  57  513
-#> [6,]  34 1979
-#> 
-#> [[3]]
-#>      row  col
-#> [1,]   5  276
-#> [2,]  35  276
-#> [3,]  31  276
-#> [4,]  46  276
-#> [5,]  18  276
-#> [6,]  62 1012
+#> [1,]  18 661
+#> [2,]  17 661
+#> [3,]  20 661
+#> [4,]  15 661
+#> [5,]   6 661
+#> [6,]  10 293
 ```
 
-- Then we can compare 1) PCA, 2) KNN imputation, and 3) a custom method,
-  since the cross-validation missing values are the same for all
+- Then we can compare 1) PCA, 2) K-NN imputation, and 3) a custom
+  method, since the cross-validation missing values are the same for all
   methods.
 - **Note**: The custom function requires the first argument to be `obj`,
   must return an object of the same dimensions, and all subsequent
   arguments must match the column names of the `parameters` data.frame.
 
 ``` r
-# This custom function imputes missing values with random normal values and takes mean and sd as params
+# This custom function imputes missing values with random normal values and takes
+# `mean` and `sd` as params
 rnorm_imp <- function(obj, mean, sd) {
   na <- is.na(obj)
-  obj[na] <- rnorm(sum(na), mean = mean, sd = sd) # <- impute values with rnorm values
+  obj[na] <- rnorm(sum(na), mean = mean, sd = sd) # <- impute values with rnorm
   return(obj) # <- return an imputed object with the same dim as obj
 }
 
@@ -113,22 +99,22 @@ rnorm_tune <- tune_imp(
 #> Step 2/2: Tuning
 ```
 
-- PCA imputation performed best here.
+- Pick the method with the lowest cross-validation error:
 
 ``` r
 mean(compute_metrics(pca_tune, metrics = "rmse")$.estimate)
-#> [1] 454.2612
+#> [1] 0.2048011
 mean(compute_metrics(knn_tune, metrics = "rmse")$.estimate)
-#> [1] 477.9663
+#> [1] 0.1962497
 mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
-#> [1] 1215.746
+#> [1] 1.110258
 ```
 
 ## Group-Wise Imputation with Small-Group Padding and Group-Wise Parameters with `group_imp()`
 
 - [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
   allows imputation to be performed separately within defined groups
-  (e.g., by chromosome), which significantly reduces runtime and can
+  (e.g., by chromosome), which significantly reduces run time and can
   increase accuracy for both K-NN and PCA imputation.
 - [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
   requires the `group` argument, which maps `colnames(obj)` to groups.
@@ -156,21 +142,21 @@ sim_obj <- sim_mat(n = 20, p = 50, n_col_groups = 2)
 # Matrix to be imputed
 obj <- sim_obj$input
 obj[1:5, 1:4]
-#>           feature1   feature2  feature3  feature4
-#> sample1 1.00000000 0.83993889 0.8425299 1.0000000
-#> sample2 0.04193941 0.03671375 0.3732779        NA
-#> sample3 0.70167887 1.00000000        NA 0.8740183
-#> sample4 0.22303103 0.05777196 0.3740496 0.5036475
-#> sample5 0.40880574 0.80651233 1.0000000 0.6259976
+#>           feature1  feature2  feature3  feature4
+#> sample1 0.03031619 0.1352710 0.4653579 0.1143298
+#> sample2 0.50962966 0.2313022 0.9737881 0.5198844
+#> sample3 0.69068459 0.5020337 0.7863144 0.9997625
+#> sample4 0.40710170 0.4094603 0.3228294 0.2529592
+#> sample5 0.73113251 0.4108405 0.6385945        NA
 
 # Metadata, i.e., which features belong to which group
 meta <- sim_obj$col_group
 meta[1:5, ]
 #>    feature  group
 #> 1 feature1 group1
-#> 2 feature2 group2
-#> 3 feature3 group2
-#> 4 feature4 group1
+#> 2 feature2 group1
+#> 3 feature3 group1
+#> 4 feature4 group2
 #> 5 feature5 group2
 
 # We put feature 1 in `group3`
@@ -178,9 +164,9 @@ meta[1, 2] <- "group3"
 meta[1:5, ]
 #>    feature  group
 #> 1 feature1 group3
-#> 2 feature2 group2
-#> 3 feature3 group2
-#> 4 feature4 group1
+#> 2 feature2 group1
+#> 3 feature3 group1
+#> 4 feature4 group2
 #> 5 feature5 group2
 ```
 
@@ -197,8 +183,8 @@ group_imp_df$parameters <- list(list(k = 3), list(k = 4), list(k = 5))
 group_imp_df
 #> # slideimp table: 3 x 4
 #>   group          feature             aux parameters
-#>  group1 <character [24]> <character [0]> <list [1]>
-#>  group2 <character [25]> <character [0]> <list [1]>
+#>  group1 <character [26]> <character [0]> <list [1]>
+#>  group2 <character [23]> <character [0]> <list [1]>
 #>  group3  <character [1]> <character [9]> <list [1]>
 ```
 
@@ -212,23 +198,23 @@ knn_results <- group_imp(obj, group = group_imp_df, cores = 4, k = 10)
 #> Imputing 3 group(s) using KNN.
 #> Running Mode: parallel (OpenMP within groups)...
 print(knn_results, p = 4)
-#> slideimp_results (KNN)
+#> Method: group_imp (KNN imputation)
 #> Dimensions: 20 x 50
 #> 
-#>           feature1   feature2  feature3   feature4
-#> sample1 1.00000000 0.83993889 0.8425299 1.00000000
-#> sample2 0.04193941 0.03671375 0.3732779 0.02400081
-#> sample3 0.70167887 1.00000000 0.9305440 0.87401826
-#> sample4 0.22303103 0.05777196 0.3740496 0.50364753
-#> sample5 0.40880574 0.80651233 1.0000000 0.62599759
-#> sample6 0.37769554 0.22618483 0.5819875 0.24203100
+#>           feature1  feature2  feature3  feature4
+#> sample1 0.03031619 0.1352710 0.4653579 0.1143298
+#> sample2 0.50962966 0.2313022 0.9737881 0.5198844
+#> sample3 0.69068459 0.5020337 0.7863144 0.9997625
+#> sample4 0.40710170 0.4094603 0.3228294 0.2529592
+#> sample5 0.73113251 0.4108405 0.6385945 0.4472338
+#> sample6 0.48993078 0.4950764 0.6553896 0.6737998
 #> 
 #> # Showing [1:6, 1:4] of full matrix
 ```
 
 ## Sliding Window Imputation for WGBS/EM-seq Data with `slide_imp()`
 
-### Select `window_size`, `overlap_size`, and PCA/KNN Parameters
+### Select `window_size`, `overlap_size`, and PCA/K-NN Parameters
 
 - We simulate the output of the `{methylKit}` package.
   - **Note:** WGBS/EM-seq data should be grouped by chromosome before
@@ -297,10 +283,11 @@ beta_matrix[1:4, 1:4]
 - Then, in a real dataset, we would tune hyperparameters using `chr22`.
   Here, as a demonstration, we use the whole data since the size is
   small.
-- Using 2 repetitions of cross-validation (increase to 10-30 in a real
+- We use 2 repetitions of cross-validation (increase to 10–30 in real
   analyses). We are selecting between:
-  - `ncp` of 2 or 4, indicating that we are performing sliding PCA
-    imputation. Pass `k` for sliding KNN imputation.
+  - `ncp` (number of principal components) of 2 or 4, indicating that we
+    are performing sliding PCA imputation. Pass `k` for sliding K-NN
+    imputation.
   - `window_size` of 5,000 or 10,000 bp.
   - `overlap_size` fixed at 1,000 bp (does not affect results much in
     real analyses).
@@ -346,7 +333,7 @@ aggregate(.estimate ~ .metric + ncp + window_size, data = metrics, FUN = mean)
   from the cross-validation metrics.
 - First, we use `dry_run = TRUE` to examine the columns to be imputed.
   - `start` and `end` are window location vectors.
-  - `window_n` is the number of features included in the column.
+  - `window_n` is the number of features included in the window.
 
 ``` r
 slide_imp(
@@ -374,7 +361,7 @@ slide_imp(
 #> # ... with 14 more rows
 ```
 
-- Turn-off `dry_run` to impute the data
+- Turn off `dry_run` to impute the data
 
 ``` r
 slide_imp(
@@ -384,38 +371,12 @@ slide_imp(
   overlap_size = 1000,
   ncp = 2,
   min_window_n = 20,
-  dry_run = FALSE
+  dry_run = FALSE,
+  .progress = FALSE
 )
-#> Dropping 43 window(s) with fewer than 20 columns.
-#> Step 1/2: Imputing
-#>  Processing window 1 of 24
-#>  Processing window 2 of 24
-#>  Processing window 3 of 24
-#>  Processing window 4 of 24
-#>  Processing window 5 of 24
-#>  Processing window 6 of 24
-#>  Processing window 7 of 24
-#>  Processing window 8 of 24
-#>  Processing window 9 of 24
-#>  Processing window 10 of 24
-#>  Processing window 11 of 24
-#>  Processing window 12 of 24
-#>  Processing window 13 of 24
-#>  Processing window 14 of 24
-#>  Processing window 15 of 24
-#>  Processing window 16 of 24
-#>  Processing window 17 of 24
-#>  Processing window 18 of 24
-#>  Processing window 19 of 24
-#>  Processing window 20 of 24
-#>  Processing window 21 of 24
-#>  Processing window 22 of 24
-#>  Processing window 23 of 24
-#>  Processing window 24 of 24
-#> Step 2/2: Averaging overlapping regions
-#> Note: 551 column(s) not covered by any window; original values retained.
-#> slideimp_results (PCA)
+#> Method: slide_imp (PCA imputation)
 #> Dimensions: 10 x 1000
+#> Note: requested columns still contain NA values
 #> 
 #>           333       718       1173      1323      1483       1925
 #> S1 0.54966887 0.9761905 0.96000000 0.5932203        NA 0.08695652

@@ -17,9 +17,7 @@ slide_imp(
   subset = NULL,
   dry_run = FALSE,
   k = NULL,
-  colmax = 0.9,
   cores = 1,
-  post_imp = FALSE,
   dist_pow = 0,
   max_cache = 4,
   ncp = NULL,
@@ -31,7 +29,11 @@ slide_imp(
   maxiter = 1000,
   miniter = 5,
   method = NULL,
-  .progress = TRUE
+  .progress = TRUE,
+  colmax = 0.9,
+  post_imp = TRUE,
+  na_check = TRUE,
+  on_infeasible = c("skip", "error", "mean")
 )
 ```
 
@@ -72,7 +74,7 @@ slide_imp(
 
 - subset:
 
-  Character vector of column names or integer vector of column indices
+  Character. Vector of column names or integer vector of column indices
   specifying which columns to impute.
 
 - dry_run:
@@ -86,34 +88,24 @@ slide_imp(
 
 - k:
 
-  Number of nearest neighbors for imputation. 10 is a good starting
-  point.
-
-- colmax:
-
-  A number from 0 to 1. Threshold of column-wise missing data rate above
-  which K-NN imputation is skipped.
+  Integer. Number of nearest neighbors for imputation. 10 is a good
+  starting point.
 
 - cores:
 
-  Number of cores for KNN parallelization (OpenMP). On macOS, OpenMP may
-  need additional compiler configuration.
-
-- post_imp:
-
-  Whether to impute remaining missing values (those that failed K-NN
-  imputation) using column means (default = `TRUE`).
+  Integer. Number of cores for K-NN parallelization (OpenMP). On macOS,
+  OpenMP may need additional compiler configuration.
 
 - dist_pow:
 
-  The amount of penalization for further away nearest neighbors in the
-  weighted average. `dist_pow = 0` (default) is the simple average of
-  the nearest neighbors.
+  Numeric. The amount of penalization for further away nearest neighbors
+  in the weighted average. `dist_pow = 0` (default) is the simple
+  average of the nearest neighbors.
 
 - max_cache:
 
-  Maximum allowed cache size in GB (default `4`). When greater than `0`,
-  pairwise distances between columns with missing values are
+  Numeric. Maximum allowed cache size in GB (default `4`). When greater
+  than `0`, pairwise distances between columns with missing values are
   pre-computed and cached, which is faster for moderate-sized data but
   uses O(m^2) memory where m is the number of columns with missing
   values. Set to `0` to disable caching and trade speed for lower memory
@@ -170,6 +162,30 @@ slide_imp(
 - .progress:
 
   Show progress bar (default = `TRUE`).
+
+- colmax:
+
+  Numeric. A number from 0 to 1. Threshold of column-wise missing data
+  rate above which imputation is skipped.
+
+- post_imp:
+
+  Boolean. Whether to impute remaining missing values (those that failed
+  imputation) using column means.
+
+- na_check:
+
+  Boolean. Check for leftover `NA` values in the results or not
+  (internal use).
+
+- on_infeasible:
+
+  Character, one of `"error"` (default on
+  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)),
+  `"skip"`, or `"mean"` (default on `slide_imp()`). Controls behaviour
+  when a group is infeasible for imputation, e.g., `k`/`ncp` exceeds the
+  number of usable columns after applying `colmax`, or all subset
+  columns in the group exceed `colmax`.
 
 ## Value
 
@@ -240,7 +256,7 @@ imputed_knn <- slide_imp(
 #>  Processing window 3 of 3
 #> Step 2/2: Averaging overlapping regions
 imputed_knn
-#> slideimp_results (KNN)
+#> Method: slide_imp (KNN imputation)
 #> Dimensions: 20 x 100
 #> 
 #>          feature1  feature2  feature3  feature4  feature5  feature6
@@ -268,7 +284,7 @@ pca_knn <- slide_imp(
 #>  Processing window 3 of 3
 #> Step 2/2: Averaging overlapping regions
 pca_knn
-#> slideimp_results (PCA)
+#> Method: slide_imp (PCA imputation)
 #> Dimensions: 20 x 100
 #> 
 #>          feature1  feature2  feature3  feature4  feature5  feature6
@@ -299,7 +315,7 @@ imputed_flank <- slide_imp(
 #>  Processing window 3 of 3
 #> Step 2/2: Averaging overlapping regions
 imputed_flank
-#> slideimp_results (KNN)
+#> Method: slide_imp (KNN imputation)
 #> Dimensions: 20 x 100
 #> 
 #>          feature1  feature2  feature3  feature4  feature5  feature6

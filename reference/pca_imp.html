@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -57,7 +57,10 @@
 <span>  seed <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  nb.init <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  maxiter <span class="op">=</span> <span class="fl">1000</span>,</span>
-<span>  miniter <span class="op">=</span> <span class="fl">5</span></span>
+<span>  miniter <span class="op">=</span> <span class="fl">5</span>,</span>
+<span>  colmax <span class="op">=</span> <span class="fl">0.9</span>,</span>
+<span>  post_imp <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  na_check <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -115,15 +118,31 @@ initialization is always mean imputation.</p></dd>
 <dt id="arg-miniter">miniter<a class="anchor" aria-label="anchor" href="#arg-miniter"></a></dt>
 <dd><p>Integer. Minimum number of iterations for the algorithm.</p></dd>
 
+
+<dt id="arg-colmax">colmax<a class="anchor" aria-label="anchor" href="#arg-colmax"></a></dt>
+<dd><p>Numeric. A number from 0 to 1. Threshold of column-wise missing
+data rate above which imputation is skipped.</p></dd>
+
+
+<dt id="arg-post-imp">post_imp<a class="anchor" aria-label="anchor" href="#arg-post-imp"></a></dt>
+<dd><p>Boolean. Whether to impute remaining missing values (those
+that failed imputation) using column means.</p></dd>
+
+
+<dt id="arg-na-check">na_check<a class="anchor" aria-label="anchor" href="#arg-na-check"></a></dt>
+<dd><p>Boolean. Check for leftover <code>NA</code> values in the results or not
+(internal use).</p></dd>
+
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A numeric matrix of the same dimensions as <code>obj</code> with missing values imputed.</p>
+    <p>A numeric matrix of the same dimensions as <code>obj</code> with missing
+values imputed.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>This algorithm is based on the original <code><a href="https://rdrr.io/pkg/missMDA/man/imputePCA.html" class="external-link">missMDA::imputePCA</a></code> function and is
-optimized for tall/wide numeric matrices.</p>
+optimized for tall or wide numeric matrices.</p>
     </div>
     <div class="section level2">
     <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
@@ -140,21 +159,27 @@ Values in Multivariate Data Analysis. Journal of Statistical Software,
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="st">"khanmiss1"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Transpose to put genes on columns.</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="sim_mat.html">sim_mat</a></span><span class="op">(</span><span class="fl">10</span>, <span class="fl">10</span><span class="op">)</span><span class="op">$</span><span class="va">input</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/sum.html" class="external-link">sum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">obj</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
+<span class="r-in"><span><span class="va">obj</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>          feature1  feature2  feature3   feature4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample1 0.1993174 0.0000000 0.5194403 0.19248733</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample2 0.5861872 0.7793109 1.0000000 0.05740143</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample3 0.2991663 0.4695521 0.8906237 0.53696051</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample4 0.3010367 0.3079201 0.0000000 0.00000000</span>
 <span class="r-in"><span><span class="co"># Randomly initialize missing values 5 times (1st time is mean).</span></span></span>
-<span class="r-in"><span><span class="fu">pca_imp</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="va">khanmiss1</span><span class="op">)</span>, ncp <span class="op">=</span> <span class="fl">2</span>, nb.init <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> slideimp_results (PCA)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Dimensions: 63 x 2308</span>
+<span class="r-in"><span><span class="fu">pca_imp</span><span class="op">(</span><span class="va">obj</span>, ncp <span class="op">=</span> <span class="fl">2</span>, nb.init <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Method: PCA imputation</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Dimensions: 10 x 10</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>           g1   g2   g3   g4   g5   g6</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sample1 1873 1251  314 1324  776 1901</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sample2   57 1350 1758 1428  476 1521</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sample3   53 1140  162 1468  679   14</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sample4 2059 1385 1857 1250  772 2052</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sample5 1537 1261 1939 1666 1307 1705</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> sample6 1819 1526 1640 1795 1454 1643</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>          feature1  feature2  feature3   feature4  feature5  feature6</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample1 0.1993174 0.0000000 0.5194403 0.19248733 0.0000000 0.3136988</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample2 0.5861872 0.7793109 1.0000000 0.05740143 0.1396488 0.3300150</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample3 0.2991663 0.4695521 0.8906237 0.53696051 0.6138600 0.3213725</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample4 0.3010367 0.3079201 0.0000000 0.00000000 0.4679464 0.4484497</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample5 0.3898840 0.8718041 0.8782409 0.81735982 1.0000000 0.7495673</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> sample6 0.3191516 0.6561425 0.2994724 0.89020793 0.4422327 0.6983652</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> # Showing [1:6, 1:6] of full matrix</span>
 <span class="r-in"><span></span></span>

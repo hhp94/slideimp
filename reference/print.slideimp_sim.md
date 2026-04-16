@@ -1,6 +1,7 @@
 # Print a `slideimp_sim` Object
 
-Print a `slideimp_sim` Object
+Print the output of
+[`sim_mat()`](https://hhp94.github.io/slideimp/reference/sim_mat.md).
 
 ## Usage
 
@@ -29,7 +30,7 @@ print(x, n = 6L, p = 6L, ...)
 
 ## Value
 
-Invisible `x`
+Invisible `x`.
 
 ## Examples
 

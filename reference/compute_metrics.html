@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -60,19 +60,21 @@
 
 
 <dl><dt id="arg-results">results<a class="anchor" aria-label="anchor" href="#arg-results"></a></dt>
-<dd><p>A <code>slideimp_tune</code> data.frame from <code><a href="tune_imp.html">tune_imp()</a></code> containing
-a <code>result</code> list-column with data.frames that have <code>truth</code> and <code>estimate</code> columns.</p></dd>
+<dd><p>A <code>slideimp_tune</code> data.frame from <code><a href="tune_imp.html">tune_imp()</a></code>. Must
+contain a <code>result</code> list-column with data.frames that have <code>truth</code> and
+<code>estimate</code> columns.</p></dd>
 
 
 <dt id="arg-metrics">metrics<a class="anchor" aria-label="anchor" href="#arg-metrics"></a></dt>
 <dd><p>A character vector of metric names to compute. Defaults
-to <code>c("mae", "rmse")</code>. Also available: <code>"mape"</code>, <code>"bias"</code>, <code>"rsq"</code>, and <code>"rsq_trad"</code>.</p></dd>
+to <code>c("mae", "rmse")</code>. Also available: <code>"mape"</code>, <code>"bias"</code>, <code>"rsq"</code>, and
+<code>"rsq_trad"</code>.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A data.frame with the original parameters and un-nested metrics
-(<code>.metric</code>, <code>.estimator</code>, <code>.estimate</code>).</p>
+    <p>A data.frame with the original parameters along with
+unnested metrics: <code>.metric</code>, <code>.estimator</code>, and <code>.estimate</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
@@ -81,11 +83,11 @@ to <code>c("mae", "rmse")</code>. Also available: <code>"mape"</code>, <code>"bi
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/data.html" class="external-link">data</a></span><span class="op">(</span><span class="va">khanmiss1</span><span class="op">)</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="sim_mat.html">sim_mat</a></span><span class="op">(</span><span class="fl">100</span>, <span class="fl">100</span><span class="op">)</span><span class="op">$</span><span class="va">input</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">results</span> <span class="op">&lt;-</span> <span class="fu"><a href="tune_imp.html">tune_imp</a></span><span class="op">(</span></span></span>
-<span class="r-in"><span>  obj <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="va">khanmiss1</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>  obj <span class="op">=</span> <span class="va">obj</span>,</span></span>
 <span class="r-in"><span>  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>  .f <span class="op">=</span> <span class="st">"knn_imp"</span>,</span></span>
 <span class="r-in"><span>  n_reps <span class="op">=</span> <span class="fl">1</span>,</span></span>
@@ -98,8 +100,8 @@ to <code>c("mae", "rmse")</code>. Also available: <code>"mape"</code>, <code>"bi
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu">compute_metrics</span><span class="op">(</span><span class="va">results</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    k param_set rep_id error  n n_miss .metric .estimator .estimate</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1 10         1      1  &lt;NA&gt; 20      0     mae   standard  342.3206</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2 10         1      1  &lt;NA&gt; 20      0    rmse   standard  438.5813</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1 10         1      1  &lt;NA&gt; 20      0     mae   standard 0.1046064</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2 10         1      1  &lt;NA&gt; 20      0    rmse   standard 0.1393337</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

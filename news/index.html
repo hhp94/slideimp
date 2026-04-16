@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">0.5.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -43,18 +43,22 @@
 <h2 class="pkg-version" data-toc-text="1.0.0" id="slideimp-100">slideimp 1.0.0<a class="anchor" aria-label="anchor" href="#slideimp-100"></a></h2>
 <div class="section level3">
 <h3 id="breaking-changes-1-0-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-1-0-0"></a></h3>
-<ul><li><p><code>group_features()</code> is renamed to <code><a href="../reference/prep_groups.html">prep_groups()</a></code> to better reflect its purpose. It now accepts a column name vector instead of a full matrix.</p></li>
-<li><p><code><a href="../reference/group_imp.html">group_imp()</a></code> enforces stricter data validation. The requested feature subset must be a subset of both the object’s column names and the mapping data frame. Set <code>allow_unmapped = TRUE</code> to bypass errors when intersections are incomplete.</p></li>
+<ul><li><p><code><a href="../reference/group_imp.html">group_imp()</a></code> enforces stricter data validation. The requested feature subset must be a subset the object’s column names which must be a subset of the mapping <code>data.frame</code>. Set <code>allow_unmapped = TRUE</code> to bypass errors when intersections are incomplete.</p></li>
 <li><p><code><a href="../reference/group_imp.html">group_imp()</a></code> and <code><a href="../reference/tune_imp.html">tune_imp()</a></code> now error when arguments are supplied that do not apply to the chosen imputation method, rather than silently ignoring them.</p></li>
-<li><p><code>inject_na()</code> is renamed to <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code> and is now exported. The original remains accessible via <code>slideimp:::inject_na()</code> for legacy code.</p></li>
-<li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> uses a logical <code>tree</code> argument to toggle between Ball tree (<code>TRUE</code>) and brute force (<code>FALSE</code>). KD tree is no longer supported.</p></li>
-<li><p><code><a href="../reference/sim_mat.html">sim_mat()</a></code> returns a matrix in sample-by-column format for immediate compatibility with other package functions. <code>perc_NA</code> is renamed to <code>perc_total_na</code>, and dimensions are now specified via <code>n</code> (rows) and <code>p</code> (columns).</p></li>
+<li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> now uses a logical <code>tree</code> argument to toggle between Ball tree (<code>TRUE</code>) and brute force (<code>FALSE</code>). KD tree is no longer supported.</p></li>
+<li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> and <code><a href="../reference/pca_imp.html">pca_imp()</a></code> gain more early errors and early exits.</p></li>
+<li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> gains the same <code>colmax</code> and <code>post_imp</code> arguments as <code><a href="../reference/knn_imp.html">knn_imp()</a></code>.</p></li>
+<li><p><code><a href="../reference/prep_groups.html">prep_groups()</a></code> (formerly <code>group_features()</code>) is the new name for the grouping function. It now accepts a column name vector instead of a full matrix.</p></li>
+<li><p><code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code> (formerly <code>inject_na()</code>) is now exported. The original remains accessible via <code>slideimp:::inject_na()</code> for legacy code.</p></li>
+<li><p><code><a href="../reference/sim_mat.html">sim_mat()</a></code> now returns a matrix in sample-by-column format for immediate compatibility with other package functions. <code>perc_NA</code> is renamed to <code>perc_total_na</code>, and dimensions are now specified via <code>n</code> (rows) and <code>p</code> (columns).</p></li>
 <li><p><code><a href="../reference/tune_imp.html">tune_imp()</a></code> gains a unified <code>method</code> argument that applies to both <code><a href="../reference/pca_imp.html">pca_imp()</a></code> and <code><a href="../reference/knn_imp.html">knn_imp()</a></code>, replacing <code>pca_method</code> and <code>knn_method</code>. The <code>rep</code> argument is renamed to <code>n_reps</code>.</p></li>
 <li><p><code><a href="../reference/tune_imp.html">tune_imp()</a></code> results from v0.5.4 are no longer reproducible because internal NA generation now uses <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code>.</p></li>
+<li><p>The <code>khanmiss1</code> dataset has been removed.</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="new-features-1-0-0">New features<a class="anchor" aria-label="anchor" href="#new-features-1-0-0"></a></h3>
-<ul><li><p><code><a href="../reference/compute_metrics.html">compute_metrics()</a></code> supports data frames with a <code>result</code> list column containing truth and estimate columns, similar to <a href="https://github.com/tidymodels/yardstick" class="external-link">yardstick</a>.</p></li>
+<ul><li><p><code><a href="../reference/compute_metrics.html">compute_metrics()</a></code> now supports data frames with a <code>result</code> list column containing truth and estimate columns, similar to <a href="https://github.com/tidymodels/yardstick" class="external-link">yardstick</a>.</p></li>
+<li><p><code><a href="../reference/group_imp.html">group_imp()</a></code> and <code><a href="../reference/prep_groups.html">prep_groups()</a></code> automatically look up Illumina manifests using the register-on-load pattern for <code>{slideimp.extra}</code>.</p></li>
 <li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> gains <code>max_cache</code> to control the internal cache size (defaults to 4GB).</p></li>
 <li><p><code><a href="../reference/sim_mat.html">sim_mat()</a></code> gains a <code>rho</code> argument to support compound symmetry correlation structures in simulated matrices.</p></li>
 <li><p><code><a href="../reference/sim_mat.html">sim_mat()</a></code> and <code><a href="../reference/tune_imp.html">tune_imp()</a></code> gain dedicated print methods that provide concise summaries instead of dumping raw data to the console.</p></li>
@@ -63,14 +67,24 @@
 </ul></div>
 <div class="section level3">
 <h3 id="minor-improvements-and-fixes-1-0-0">Minor improvements and fixes<a class="anchor" aria-label="anchor" href="#minor-improvements-and-fixes-1-0-0"></a></h3>
-<ul><li><p>Dependencies are streamlined. <a href="https://tibble.tidyverse.org/" class="external-link">tibble</a> and <a href="https://purrr.tidyverse.org/" class="external-link">purrr</a> are removed as hard dependencies, <a href="https://cli.r-lib.org" class="external-link">cli</a> is added for more informative messaging, and <a href="https://github.com/r-lib/carrier" class="external-link">carrier</a> is added as an explicit dependency.</p></li>
+<ul><li><p><code><a href="../reference/col_vars.html">col_vars()</a></code> and <code><a href="../reference/mean_imp_col.html">mean_imp_col()</a></code> have been overhauled to use the faster <a href="https://github.com/RcppCore/RcppArmadillo" class="external-link">RcppArmadillo</a> backend and now support parallel computation with OpenMP.</p></li>
+<li><p>Dependencies are streamlined. <a href="https://tibble.tidyverse.org/" class="external-link">tibble</a> and <a href="https://purrr.tidyverse.org/" class="external-link">purrr</a> are removed as hard dependencies, <a href="https://cli.r-lib.org" class="external-link">cli</a> is added for more informative messaging, and <a href="https://github.com/r-lib/carrier" class="external-link">carrier</a> is added as an explicit dependency.</p></li>
 <li><p>Documentation is thoroughly overhauled with numerous consistency improvements and bug fixes.</p></li>
 <li><p><a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a> is added as a suggested package to allow pinning BLAS cores and avoid thrashing during parallel runs.</p></li>
-<li><p><code>{slideimp.extra}</code> is added as a suggested package, available via R-universe. It provides lightweight Illumina manifests for frictionless <code><a href="../reference/group_imp.html">group_imp()</a></code> calls.</p></li>
 <li><p><code><a href="../reference/group_imp.html">group_imp()</a></code> and <code><a href="../reference/tune_imp.html">tune_imp()</a></code> prioritize process-level parallelization via <a href="https://mirai.r-lib.org" class="external-link">mirai</a>. <code><a href="../reference/knn_imp.html">knn_imp()</a></code> supports OpenMP-controlled parallelization via the <code>cores</code> argument when <a href="https://mirai.r-lib.org" class="external-link">mirai</a> daemons are not active.</p></li>
 <li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> and <code><a href="../reference/pca_imp.html">pca_imp()</a></code> use optimized internal Rcpp functions for better performance.</p></li>
 </ul></div>
 </div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.5.4" id="slideimp-054">slideimp 0.5.4<a class="anchor" aria-label="anchor" href="#slideimp-054"></a></h2><p class="text-muted">CRAN release: 2026-01-07</p>
+<ul><li><p>CRAN resubmission.</p></li>
+<li><p><code>group_features()</code> is added to help with creating the group tibble needed for <code><a href="../reference/group_imp.html">group_imp()</a></code>.</p></li>
+<li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> now allows <code>row.w = "n_miss"</code> to scale row weights by the number of missing values per row.</p></li>
+</ul></div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.5.3" id="slideimp-053">slideimp 0.5.3<a class="anchor" aria-label="anchor" href="#slideimp-053"></a></h2>
+<ul><li>Initial CRAN submission.</li>
+</ul></div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside></div>
 

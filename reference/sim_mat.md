@@ -1,8 +1,8 @@
 # Simulate Matrix with Metadata
 
-Generates a matrix of random normal data then optionally scale to
-between 0 and 1 between columns. It also creates corresponding data
-frames for feature (column) and sample (row) metadata and can optionally
+Generates a matrix of random normal data, then optionally scales values
+between 0 and 1 column-wise. It also creates corresponding data frames
+for feature (column) and sample (row) metadata and can optionally
 introduce `NA` values into a specified proportion of rows. A correlation
 between columns `rho` (before scaling) can be added.
 
@@ -58,7 +58,7 @@ sim_mat(
 
 - beta:
 
-  If TRUE (default) scale values between 0 and 1 column wise.
+  If `TRUE` (default) scale values between 0 and 1 column wise.
 
 ## Value
 
