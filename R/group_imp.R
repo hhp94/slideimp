@@ -60,39 +60,6 @@ prune_to_A <- function(lst, A, iter) {
   out
 }
 
-#' Get Cleaned Illumina Manifests
-#'
-#' Downloads pre-cleaned Illumina manifests via the `slideimp.extra`
-#' package for use with [group_imp()].
-#'
-#' @param group Character. Name of the requested manifest.
-#'
-#' @returns A data.frame containing the cleaned Illumina manifest for
-#' the requested array type.
-#'
-#' @seealso [group_imp()]
-#'
-#' @noRd
-#' @keywords internal
-slideimp_extra_manifests <- function(group = NULL) {
-  if (!requireNamespace("slideimp.extra", quietly = TRUE)) {
-    cli::cli_abort(c(
-      "The {.pkg slideimp.extra} package is required for this functionality.",
-      "i" = "Install it with:",
-      ">" = "See the {.pkg slideimp} README or website for installation instructions."
-    ))
-  }
-  checkmate::assert_choice(group, choices = slideimp.extra::slideimp_arrays)
-  deduped <- group %in% c("EPICv2_deduped", "MSA_deduped")
-  if (deduped) {
-    group <- switch(group,
-      EPICv2_deduped = "EPICv2",
-      MSA_deduped = "MSA"
-    )
-  }
-  return(slideimp.extra::ilmn_manifest(chip = group, deduped = deduped))
-}
-
 #' Compute Column Index Mappings for a Single Group
 #'
 #' Maps a group's feature and auxiliary column positions (relative to the
@@ -155,7 +122,7 @@ group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
 #'   removed entirely with a diagnostic message.
 #'
 #' @returns A `data.frame` of class `slideimp_tbl` containing:
-#' * `group`: Original group labels (if provided).
+#' * `group`: Original group labels (if provided) or a sequential group labels.
 #' * `feature`: A list-column of character vectors (feature names).
 #' * `aux`: A list-column of character vectors (auxiliary names).
 #' * `parameters`: A list-column of per-group configuration lists.
@@ -178,7 +145,16 @@ prep_groups <- function(
     any.missing = FALSE, .var.name = "obj_cn"
   )
   if (is.character(group)) {
-    group <- slideimp_extra_manifests(group)
+    if (is.null(.slideimp_env$group_resolver)) {
+      cli::cli_abort(
+        c(
+          "Received a character value for {.arg group}, but no manifest provider is registered.",
+          "i" = "Install and load {.pkg slideimp.extra} to enable character-based group lookup.",
+          ">" = "See the {.pkg slideimp} README for installation instructions."
+        )
+      )
+    }
+    group <- .slideimp_env$group_resolver(group)
   } else {
     checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
     group <- unique(group)
@@ -379,6 +355,10 @@ prep_groups <- function(
   for (col in names(group)) {
     if (is.list(group[[col]])) names(group[[col]]) <- NULL
   }
+  # Add group names for diagnostic
+  if (!"group" %in% names(group)) {
+    group$group <- seq_len(nrow(group))
+  }
   class(group) <- c("slideimp_tbl", "data.frame")
   return(group)
 }
@@ -536,6 +516,7 @@ group_imp <- function(
     mode = "numeric", col.names = "unique",
     null.ok = FALSE, .var.name = "obj"
   )
+  check_finite(obj)
   checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
   cn <- colnames(obj)
   rn <- rownames(obj)
@@ -769,7 +750,7 @@ group_imp <- function(
         src <- bigmemory::attach.big.matrix(big_obj_desc)
         dst <- bigmemory::attach.big.matrix(big_out_desc)
         sub_mat <- src[, indices[[i]]$col_idx, drop = FALSE]
-        imputed <- do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))
+        imputed <- suppressMessages(do.call(imp_fn, c(list(obj = sub_mat), params[[i]])))
         dst[, out_ranges[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
         return(isTRUE(attr(imputed, "fallback")))
       },
@@ -789,7 +770,7 @@ group_imp <- function(
     fallback_flags <- logical(length(iter))
     for (i in iter) {
       sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
-      imputed <- do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))
+      imputed <- suppressMessages(do.call(imp_fn, c(list(obj = sub_mat), params[[i]])))
       obj[, feat_splits[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
       if (.progress) cli::cli_progress_update(id = pb)
       fallback_flags[i] <- isTRUE(attr(imputed, "fallback"))
@@ -797,7 +778,7 @@ group_imp <- function(
     if (.progress) cli::cli_progress_done(id = pb)
   }
 
-  fallback_groups <- which(fallback_flags)
+  fallback_groups <- group$group[fallback_flags]
   has_remaining_na <- if (na_check) anyNA(obj[, all_feats_pos]) else NULL
 
   colnames(obj) <- cn
@@ -807,5 +788,6 @@ group_imp <- function(
   attr(obj, "metacaller") <- "group_imp"
   attr(obj, "fallback") <- fallback_groups
   attr(obj, "has_remaining_na") <- has_remaining_na
+  attr(obj, "post_imp") <- post_imp
   obj
 }

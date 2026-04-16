@@ -33,6 +33,10 @@ mean_imp_col_internal <- function(mat, col_idx, cores = 1L) {
     .Call(`_slideimp_mean_imp_col_internal`, mat, col_idx, cores)
 }
 
+check_finite <- function(mat) {
+    invisible(.Call(`_slideimp_check_finite`, mat))
+}
+
 has_openmp <- function() {
     .Call(`_slideimp_has_openmp`)
 }

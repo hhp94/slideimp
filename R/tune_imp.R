@@ -464,10 +464,9 @@ tune_imp <- function(
     null.ok = FALSE,
     .var.name = "obj"
   )
+  check_finite(obj)
   nr <- nrow(obj)
   nc <- ncol(obj)
-
-  checkmate::assert_true(sum(is.infinite(obj)) == 0, .var.name = "obj")
   if (is.null(parameters)) {
     parameters_is_null <- TRUE
     parameters <- data.frame(.placeholder = TRUE)

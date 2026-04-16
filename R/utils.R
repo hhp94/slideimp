@@ -111,9 +111,9 @@ as_slideimp_results <- function(
   imp_method,
   fallback,
   post_imp,
-  na_check
+  na_check,
+  has_remaining_na = if (na_check) anyNA(obj) else NULL
 ) {
-  has_remaining_na <- if (na_check) anyNA(obj) else NULL
   class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- imp_method
   attr(obj, "fallback") <- fallback

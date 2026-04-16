@@ -162,5 +162,5 @@ test_that("Behavior with extreme missing columns and rows", {
   expect_true(!anyNA(knn_imp(to_test, k = 3, post_imp = TRUE)))
 
   to_test[, 1] <- NA
-  expect_no_error(knn_imp(to_test, k = 3, post_imp = FALSE))
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE))
 })

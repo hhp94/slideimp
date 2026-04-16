@@ -38,7 +38,6 @@ Suggests:
     missMDA,
     RhpcBLASctl,
     rmarkdown,
-    slideimp.extra,
     testthat (>= 3.0.0)
 LinkingTo: 
     mlpack,
@@ -47,7 +46,6 @@ LinkingTo:
     RcppEnsmallen
 VignetteBuilder: 
     knitr
-Additional_repositories: https://hhp94.r-universe.dev
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US

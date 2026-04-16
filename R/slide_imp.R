@@ -164,7 +164,8 @@ slide_imp <- function(
   method = NULL,
   .progress = TRUE,
   colmax = 0.9,
-  post_imp = TRUE
+  post_imp = TRUE,
+  na_check = TRUE
 ) {
   checkmate::assert_flag(dry_run, .var.name = "dry_run", null.ok = FALSE)
   # minimal pre-conditioning to avoid code fragility
@@ -216,6 +217,7 @@ slide_imp <- function(
     )
   }
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
+  checkmate::assert_flag(na_check, .var.name = "na_check")
 
   # resolve subset to sorted integer indices (needed before windowing when flank = TRUE)
   subset <- resolve_subset(subset, obj, sort = TRUE)
@@ -291,6 +293,12 @@ slide_imp <- function(
     overlap <- find_overlap_regions(start, end)
   }
 
+  # check for all NA/inf column
+  for (i in seq_along(start)) {
+    window_cols <- start[i]:end[i]
+    check_finite(obj[, window_cols, drop = FALSE])
+  }
+
   # early return: window statistics only ----
   if (dry_run) {
     out <- data.frame(
@@ -319,6 +327,7 @@ slide_imp <- function(
     n_steps <- max(1, round(n_windows / 20))
   }
 
+  fallback_flags <- logical(length(start)) # metadata for diagnostic
   for (i in seq_along(start)) {
     if (.progress && (i %% n_steps == 0 || i == n_windows || i == 1)) {
       message(sprintf(" Processing window %d of %d", i, n_windows))
@@ -335,6 +344,8 @@ slide_imp <- function(
           post_imp = post_imp,
           dist_pow = dist_pow,
           max_cache = max_cache,
+          # tree = tree, # tree is deliberately excluded due to overhead and inaccuracy
+          na_check = FALSE,
           subset = subset_list[[i]]
         )
       )
@@ -351,11 +362,14 @@ slide_imp <- function(
           maxiter = maxiter,
           miniter = miniter,
           row.w = row.w,
+          na_check = FALSE,
           colmax = colmax,
           post_imp = post_imp
         )
       )
     }
+
+    fallback_flags[i] <- isTRUE(attr(imputed_window, "fallback"))
 
     if (flank) {
       # in flank mode each window targets a single column; only store that column
@@ -406,7 +420,37 @@ slide_imp <- function(
     }
   }
 
+  if (na_check) {
+    if (flank) {
+      imputed_cols <- target_cols
+    } else {
+      imputed_cols <- subset[counts_vec[subset] > 0L]
+    }
+    has_remaining_na <- FALSE
+    if (length(imputed_cols) > 0L) {
+      # chunked for loop to avoid materializing a copy of the matrix
+      max_bytes <- 500 * 1024^2
+      max_cols_per_chunk <- as.integer(max_bytes %/% (nrow(result) * 8))
+      chunk <- min(10000L, max(1L, max_cols_per_chunk))
+      for (s in seq(1L, length(imputed_cols), by = chunk)) {
+        e <- min(s + chunk - 1L, length(imputed_cols))
+        if (anyNA(result[, imputed_cols[s:e], drop = FALSE])) {
+          has_remaining_na <- TRUE
+          break
+        }
+      }
+    }
+  } else {
+    has_remaining_na <- NULL
+  }
+  fallback_windows <- which(fallback_flags)
+
   class(result) <- c("slideimp_results", class(result))
   attr(result, "imp_method") <- imp_method
-  return(result)
+  attr(result, "metacaller") <- "slide_imp"
+  attr(result, "fallback") <- fallback_windows
+  attr(result, "has_remaining_na") <- has_remaining_na
+  attr(result, "flank") <- flank
+  attr(result, "post_imp") <- post_imp
+  result
 }

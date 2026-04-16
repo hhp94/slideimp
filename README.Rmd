@@ -44,7 +44,6 @@ pak::pkg_install("hhp94/slideimp.extra")
 ## PCA or KNN imputation of Illumina DNAm microarrays
 ```{r, include = FALSE, echo = FALSE, eval = F}
 set.seed(1234)
-library(slideimp)
 library(slideimp.extra)
 
 set_slideimp_path("dev")
@@ -82,8 +81,8 @@ MSA_beta_matrix[1:4, 1:4]
 * This example demonstrates PCA imputation. To use KNN imputation instead, supply the `k` argument.
 
 ```{r, eval = F}
-library(slideimp)
 library(slideimp.extra)
+library(slideimp)
 library(mirai)
 
 imputed <- group_imp(
@@ -98,15 +97,15 @@ imputed <- group_imp(
 # Running Mode: sequential ...
 
 print(imputed, n = 4, p = 4)
-# slideimp_results (PCA)
+# Method: group_imp (PCA imputation)
 # Dimensions: 20 x 281797
-#
+# 
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
 # sample3       0.6885036       0.7339375      0.76467530       0.4498772
 # sample4       0.0000000       0.0000000      0.05230101       0.0000000
-#
+# 
 # # Showing [1:4, 1:4] of full matrix
 ```
 
@@ -277,3 +276,4 @@ slide_imp(
 * `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.
 * `knn_imp()`: Full-matrix K-NN imputation with multi-core parallelization, [`{mlpack}`](https://mlpack.org/) KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).
 * `pca_imp()`: Optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrices.
+* `col_vars()` and `mean_imp_col()` provide fast column-wise variance and mean imputation using the high-performance `{RcppArmadillo}` backend with full OpenMP parallelization support.

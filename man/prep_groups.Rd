@@ -59,7 +59,7 @@ for \code{min_group_size} and passed to \code{\link[=pca_imp]{pca_imp()}}.}
 \value{
 A \code{data.frame} of class \code{slideimp_tbl} containing:
 \itemize{
-\item \code{group}: Original group labels (if provided).
+\item \code{group}: Original group labels (if provided) or a sequential group labels.
 \item \code{feature}: A list-column of character vectors (feature names).
 \item \code{aux}: A list-column of character vectors (auxiliary names).
 \item \code{parameters}: A list-column of per-group configuration lists.

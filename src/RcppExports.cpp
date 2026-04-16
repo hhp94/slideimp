@@ -133,6 +133,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// check_finite
+void check_finite(const arma::mat& mat);
+RcppExport SEXP _slideimp_check_finite(SEXP matSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
+    check_finite(mat);
+    return R_NilValue;
+END_RCPP
+}
 // has_openmp
 bool has_openmp();
 RcppExport SEXP _slideimp_has_openmp() {
@@ -169,6 +179,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 2},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
     {"_slideimp_mean_imp_col_internal", (DL_FUNC) &_slideimp_mean_imp_col_internal, 3},
+    {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},
     {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},
     {"_slideimp_sample_each_rep_cpp", (DL_FUNC) &_slideimp_sample_each_rep_cpp, 6},
     {NULL, NULL, 0}

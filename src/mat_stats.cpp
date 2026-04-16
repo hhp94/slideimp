@@ -98,3 +98,28 @@ arma::mat mean_imp_col_internal(const arma::mat &mat,
   }
   return out;
 }
+
+// [[Rcpp::export]]
+void check_finite(const arma::mat &mat)
+{
+  const int nr = mat.n_rows;
+  const int nc = mat.n_cols;
+
+  for (int col = 0; col < nc; ++col)
+  {
+    const double *cp = mat.colptr(col);
+    bool has_finite = false;
+    for (int row = 0; row < nr; ++row)
+    {
+      if (std::isfinite(cp[row]))
+      {
+        has_finite = true;
+        break;
+      }
+    }
+    if (!has_finite)
+    {
+      Rcpp::stop("All NA/Inf column detected");
+    }
+  }
+}

@@ -64,8 +64,10 @@ pca_imp <- function(
   # pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
   if (!anyNA(obj)) {
+    cli::cli_inform("No missing values in input. Returning input unchanged.")
     return(obj)
   }
+  check_finite(obj)
   checkmate::assert_int(ncp, lower = 1L, upper = ncol(obj) - 1L, .var.name = "ncp")
   method <- match.arg(method)
   checkmate::assert_flag(scale, .var.name = "scale")
@@ -112,7 +114,8 @@ pca_imp <- function(
         "pca",
         fallback = TRUE,
         post_imp = post_imp,
-        na_check = na_check && post_imp
+        na_check = na_check,
+        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
       )
     )
   }
@@ -120,6 +123,24 @@ pca_imp <- function(
   pca_cols <- obj[, eligible, drop = FALSE]
   pca_miss <- miss[, eligible, drop = FALSE]
 
+  if (!any(pca_miss)) {
+    if (post_imp) {
+      cli::cli_inform(
+        "All columns with missingness are ineligible (exceed {.arg colmax} or zero variance). Falling back to mean imputation."
+      )
+      obj <- mean_imp_col(obj)
+    }
+    return(
+      as_slideimp_results(
+        obj,
+        "pca",
+        fallback = TRUE,
+        post_imp = post_imp,
+        na_check = na_check,
+        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
+      )
+    )
+  }
   if (is.null(row.w)) {
     row.w <- rep(1, nrow(obj))
   } else if (is.character(row.w) && row.w == "n_miss") {

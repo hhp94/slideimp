@@ -28,7 +28,8 @@ slide_imp(
   method = NULL,
   .progress = TRUE,
   colmax = 0.9,
-  post_imp = TRUE
+  post_imp = TRUE,
+  na_check = TRUE
 )
 }
 \arguments{
@@ -110,6 +111,8 @@ For PCA imputation: regularization imputation algorithm (\code{"regularized"} or
 
 \item{post_imp}{Whether to impute remaining missing values (those that failed imputation)
 using column means.}
+
+\item{na_check}{Boolean. Check if there are \code{NA} leftover in the results or not.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values

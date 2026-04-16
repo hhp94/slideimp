@@ -22,8 +22,8 @@ set.seed(1234)
 ## Comparing Methods Using a Shared Cross-Validation Split with `tune_imp()`
 * Simulate some data
 ```{r}
-# 10 rows, 1000 columns, all columns have at least some NA
-sim_obj <- sim_mat(n = 10, p = 1000, perc_col_na = 1)
+# 20 rows, 1000 columns, all columns have at least some NA
+sim_obj <- sim_mat(n = 20, p = 1000, perc_col_na = 1)
 obj <- sim_obj$input
 obj[1:4, 1:4]
 ```
@@ -70,7 +70,7 @@ rnorm_tune <- tune_imp(
 )
 ```
 
-* PCA imputation performed best here.
+* Pick the method with the lowest cross-validation error:
 ```{r}
 mean(compute_metrics(pca_tune, metrics = "rmse")$.estimate)
 mean(compute_metrics(knn_tune, metrics = "rmse")$.estimate)
@@ -216,7 +216,8 @@ slide_imp(
   overlap_size = 1000,
   ncp = 2,
   min_window_n = 20,
-  dry_run = FALSE
+  dry_run = FALSE,
+  .progress = FALSE
 )
 ```
 

@@ -59,8 +59,8 @@ MSA_beta_matrix[1:4, 1:4]
   instead, supply the `k` argument.
 
 ``` r
-library(slideimp)
 library(slideimp.extra)
+library(slideimp)
 library(mirai)
 
 imputed <- group_imp(
@@ -75,15 +75,15 @@ imputed <- group_imp(
 # Running Mode: sequential ...
 
 print(imputed, n = 4, p = 4)
-# slideimp_results (PCA)
+# Method: group_imp (PCA imputation)
 # Dimensions: 20 x 281797
-#
+# 
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
 # sample3       0.6885036       0.7339375      0.76467530       0.4498772
 # sample4       0.0000000       0.0000000      0.05230101       0.0000000
-#
+# 
 # # Showing [1:4, 1:4] of full matrix
 ```
 
@@ -209,7 +209,7 @@ knn_group_results <- group_imp(obj, group = group_df, k = 20, dist_pow = 1, core
 #> Imputing 2 group(s) using KNN.
 #> Running Mode: parallel (OpenMP within groups)...
 knn_group_results
-#> slideimp_results (KNN)
+#> Method: group_imp (KNN imputation)
 #> Dimensions: 20 x 100
 #> 
 #>          feature1  feature2  feature3  feature4  feature5  feature6
@@ -335,7 +335,7 @@ slide_imp(
   cores = 2,
   .progress = FALSE
 )
-#> slideimp_results (KNN)
+#> Method: slide_imp (KNN imputation)
 #> Dimensions: 10 x 2000
 #> 
 #>          feature1  feature2  feature3   feature4  feature5  feature6
@@ -375,3 +375,6 @@ slide_imp(
 - `pca_imp()`: Optimized version of
   [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
   for high-dimensional numeric matrices.
+- `col_vars()` and `mean_imp_col()` provide fast column-wise variance
+  and mean imputation using the high-performance `{RcppArmadillo}`
+  backend with full OpenMP parallelization support.

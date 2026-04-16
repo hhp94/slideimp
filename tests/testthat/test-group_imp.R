@@ -20,12 +20,14 @@ test_that("group column + feature column API works correctly", {
 
   expect_identical(
     group_imp(obj, group = group_long, k = 3),
-    group_imp(obj, group = group_list, k = 3)
+    group_imp(obj, group = group_list, k = 3),
+    ignore_attr = "fallback"
   )
 
   expect_identical(
     group_imp(obj, group = group_long, ncp = 5, nb.init = 10, seed = 1234),
-    group_imp(obj, group = group_list, ncp = 5, nb.init = 10, seed = 1234)
+    group_imp(obj, group = group_list, ncp = 5, nb.init = 10, seed = 1234),
+    ignore_attr = "fallback"
   )
 })
 
@@ -487,12 +489,12 @@ test_that("prep_groups errors when no colnames match features_df", {
 # slideimp.extra ----
 test_that("slideimp_extra_manifests works with prep_groups", {
   skip("manual testing with {slideimp.extra} on local machines only")
-  skip_if_not_installed("slideimp.extra")
-  slideimp.extra::set_slideimp_path("dev")
-  msa <- slideimp.extra::ilmn_manifest("MSA", deduped = TRUE, rawdir = "dev")
-  n_feat <- length(msa$feature)
-  sim_mat <- matrix(rnorm(1 * n_feat), nrow = 1, dimnames = list(NULL, msa$feature))
-  expect_no_error(prep_groups(colnames(sim_mat), group = msa))
-  expect_no_error(prep_groups(colnames(sim_mat), group = "MSA_deduped"))
-  slideimp.extra::set_slideimp_path(NULL)
+  # skip_if_not_installed("slideimp.extra")
+  # slideimp.extra::set_slideimp_path("dev")
+  # msa <- slideimp.extra::ilmn_manifest("MSA", deduped = TRUE, rawdir = "dev")
+  # n_feat <- length(msa$feature)
+  # sim_mat <- matrix(rnorm(1 * n_feat), nrow = 1, dimnames = list(NULL, msa$feature))
+  # expect_no_error(prep_groups(colnames(sim_mat), group = msa))
+  # expect_no_error(prep_groups(colnames(sim_mat), group = "MSA_deduped"))
+  # slideimp.extra::set_slideimp_path(NULL)
 })

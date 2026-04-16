@@ -89,9 +89,7 @@ knn_imp <- function(
 ) {
   # Pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
-  if (!anyNA(obj)) {
-    return(obj)
-  }
+  check_finite(obj)
   method <- match.arg(method)
   checkmate::assert_int(k, lower = 1, upper = ncol(obj) - 1, .var.name = "k")
   checkmate::assert_int(cores, lower = 1, .var.name = "cores")
@@ -104,6 +102,11 @@ knn_imp <- function(
 
   subset <- resolve_subset(subset, obj)
   if (is.null(subset)) {
+    cli::cli_inform("No columns to impute. Returning input unchanged.")
+    return(obj)
+  }
+  if (!anyNA(obj[, subset])) {
+    cli::cli_inform("No missing values in subset columns. Returning input unchanged.")
     return(obj)
   }
 
@@ -132,7 +135,8 @@ knn_imp <- function(
         "knn",
         fallback = TRUE,
         post_imp = post_imp,
-        na_check = na_check && post_imp
+        na_check = na_check,
+        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
       )
     )
   }
@@ -145,6 +149,24 @@ knn_imp <- function(
   grp_impute <- sort(intersect(local_has_miss, local_in_subset))
   grp_miss_no_imp <- sort(setdiff(local_has_miss, local_in_subset))
   grp_complete <- which(local_cmiss == 0L)
+  if (length(grp_impute) == 0L) {
+    if (post_imp) {
+      cli::cli_inform(
+        "All subset columns exceed {.arg colmax} ({colmax}). Falling back to mean imputation."
+      )
+      obj <- mean_imp_col(obj, subset = subset, cores = cores)
+    }
+    return(
+      as_slideimp_results(
+        obj,
+        "knn",
+        fallback = TRUE,
+        post_imp = post_imp,
+        na_check = na_check,
+        has_remaining_na = if (!post_imp) TRUE else if (na_check) anyNA(obj) else NULL
+      )
+    )
+  }
 
   cache <- max_cache > 0
   if (cache) {

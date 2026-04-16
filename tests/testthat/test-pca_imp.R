@@ -77,7 +77,7 @@ test_that("Behavior with extreme missing columns and rows", {
   to_test[1, ] <- NA
   expect_no_error(pca_imp(to_test, ncp = 2, seed = 1234))
   to_test[, 1] <- NA
-  expect_no_error(pca_imp(to_test, ncp = 2, seed = 1234))
+  expect_error(pca_imp(to_test, ncp = 2, seed = 1234))
   expect_true(all(is.na(to_test[, 1])))
 })
 
@@ -192,8 +192,11 @@ test_that("pca_imp falls back to mean imputation when ncp > usable eligible colu
 
   # Make most columns ineligible (all-NA)
   to_test[, 1:6] <- NA
-  # Only 2 eligible columns left -> ncp = 3 > min(28, 1) -> fallback
+  for (i in 1:6) {
+    to_test[sample.int(30, size = 1), i] <- rnorm(1)
+  }
 
+  # Only 2 eligible columns left -> ncp = 3 > min(28, 1) -> fallback
   expect_message(
     res <- pca_imp(
       to_test,
@@ -206,7 +209,7 @@ test_that("pca_imp falls back to mean imputation when ncp > usable eligible colu
     regexp = "ncp.*exceeds usable columns"
   )
 
-  expect_true(all(is.na(res[, 1:6])))
+  expect_true(!anyNA(res[, 1:6]))
   expect_false(anyNA(res[, 7:8]))
-  expect_true(attr(res, "has_remaining_na"))
+  expect_false(attr(res, "has_remaining_na"))
 })

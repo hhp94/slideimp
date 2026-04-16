@@ -321,11 +321,18 @@ Rcpp::List pca_imp_internal_cpp(
     }
   }
   const double mse = sse / static_cast<double>(X.n_elem - missing.n_elem);
+  if (scale)
+  {
+    scale_cols_inplace(fittedX.memptr(), et.memptr(), nrX, ncX);
+  }
+  fittedX.each_row() += mean_p;
   LOC_TOC(pca_imp_gram, "postprocessing");
 
   LOC_TOC(pca_imp_gram, "pca_imp_internal_cpp_total");
 
   return Rcpp::List::create(
       Rcpp::Named("imputed_vals") = imputed_vals,
+      Rcpp::Named("fittedX") = fittedX,
+      Rcpp::Named("sse_obs") = sse,
       Rcpp::Named("mse") = mse);
 }

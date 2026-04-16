@@ -19,21 +19,28 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   imp_method <- toupper(attr(x, "imp_method"))
   metacaller <- attr(x, "metacaller")
   fallback <- attr(x, "fallback")
+  post_imp <- isTRUE(attr(x, "post_imp"))
   if (!is.null(metacaller)) {
-    cat("Method: ", metacaller, " (", imp_method, " imputation",")\n", sep = "")
+    cat("Method: ", metacaller, " (", imp_method, " imputation", ")\n", sep = "")
   } else {
     cat("Method: ", imp_method, " imputation", "\n", sep = "")
   }
   cat("Dimensions: ", nrow(x), " x ", ncol(x), "\n", sep = "")
   # fallback notes
   if (!is.null(metacaller) && length(fallback) > 0L) {
+    unit <- if (metacaller == "slide_imp") "window" else "group"
+    action <- if (post_imp) {
+      "fell back to mean imputation"
+    } else {
+      "skipped imputation (insufficient eligible columns)"
+    }
     cat(
-      "Note: ", length(fallback), " group(s) fell back to mean imputation: ",
+      "Note: ", length(fallback), " ", unit, "(s) ", action, ": ",
       fmt_trunc(fallback), "\n",
       sep = ""
     )
   } else if (isTRUE(fallback)) {
-    if (isTRUE(attr(x, "post_imp"))) {
+    if (post_imp) {
       cat("Note: fell back to mean imputation\n")
     } else {
       cat("Note: imputation skipped (insufficient eligible columns)\n")
@@ -41,9 +48,9 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   }
   # remaining NA note
   if (isTRUE(attr(x, "has_remaining_na"))) {
-    cat("Note: matrix still contains NA values\n")
+    unit <- if (identical(metacaller, "slide_imp")) "requested columns" else "requested features"
+    cat("Note: ", unit, " still contain NA values\n", sep = "")
   }
-
   cat("\n")
   subset_x <- x[seq_len(min(n, nrow(x))), seq_len(min(p, ncol(x))), drop = FALSE]
   print(subset_x, ...)
