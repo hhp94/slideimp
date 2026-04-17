@@ -2,6 +2,8 @@
 
 ## slideimp 1.0.0
 
+CRAN release: 2026-04-16
+
 ### Breaking changes
 
 - [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
