@@ -3,27 +3,37 @@
 #include <cmath>
 #include <algorithm>
 
-// initialize matrix to store the result. Also modify col_offsets and
-// precompute the row indices that need imputation for each column.
+#include "imputed_value.h"
+#include <cmath>
+#include <algorithm>
+
+// =============================================================================
+// initialize_result_matrix
+// -----------------------------------------------------------------------------
+// Only iterates group 1 (local positions [0, n_imp) in nmiss_masked).
+// Populates result columns 0 and 1 (1-based row / original 1-based column).
+// Column 2 is filled later by impute_column_values.
+// =============================================================================
 arma::mat initialize_result_matrix(
-    const arma::mat &nmiss,
-    const arma::uvec &col_index_miss,
+    const arma::mat &nmiss_masked,
+    const arma::uvec &grp_impute,
+    const GroupLayout &layout,
     arma::uvec &col_offsets,
     std::vector<arma::uvec> &rows_to_impute_vec)
 {
-    // col 1 = row index, col 2 = col index, col 3 = missing values
     const arma::uword n_col_result = 3;
+    const arma::uword n_imp = layout.n_imp;
 
-    if (col_index_miss.n_elem == 0)
+    if (n_imp == 0)
     {
         return arma::mat(0, n_col_result);
     }
 
-    // compute per-column missing counts internally
-    arma::uvec n_col_miss(col_index_miss.n_elem);
-    for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+    // per-column missing counts, read directly from the masked matrix
+    arma::uvec n_col_miss(n_imp);
+    for (arma::uword i = 0; i < n_imp; ++i)
     {
-        n_col_miss(i) = nmiss.n_rows - arma::accu(nmiss.col(col_index_miss(i)));
+        n_col_miss(i) = nmiss_masked.n_rows - arma::accu(nmiss_masked.col(i));
     }
 
     arma::uword sum_missing = arma::accu(n_col_miss);
@@ -35,50 +45,47 @@ arma::mat initialize_result_matrix(
     arma::mat result(sum_missing, n_col_result);
     result.fill(arma::datum::nan);
 
-    col_offsets.set_size(n_col_miss.n_elem + 1);
+    col_offsets.set_size(n_imp + 1);
     col_offsets.fill(arma::fill::zeros);
-    col_offsets.subvec(1, n_col_miss.n_elem) = arma::cumsum(n_col_miss);
+    col_offsets.subvec(1, n_imp) = arma::cumsum(n_col_miss);
 
-    // Precompute row indices and fill result with ij indices (1-based for R)
-    rows_to_impute_vec.resize(col_index_miss.n_elem);
-    for (arma::uword i = 0; i < col_index_miss.n_elem; ++i)
+    rows_to_impute_vec.resize(n_imp);
+    for (arma::uword i = 0; i < n_imp; ++i)
     {
-        const arma::uword target_col_idx = col_index_miss(i);
-        rows_to_impute_vec[i] = arma::find(nmiss.col(target_col_idx) == 0);
-        const arma::uvec &rows_to_impute = rows_to_impute_vec[i];
+        // Group 1 lives at local positions [0, n_imp) in nmiss_masked
+        rows_to_impute_vec[i] = arma::find(nmiss_masked.col(i) == 0);
+        const arma::uvec &rows = rows_to_impute_vec[i];
 
-        for (arma::uword r = 0; r < rows_to_impute.n_elem; ++r)
+        const arma::uword orig_col_1based = grp_impute(i) + 1;
+        for (arma::uword r = 0; r < rows.n_elem; ++r)
         {
-            const arma::uword row_idx = rows_to_impute(r);
             const arma::uword res_row = col_offsets(i) + r;
-            result(res_row, 0) = row_idx + 1;        // R Row index (1-based)
-            result(res_row, 1) = target_col_idx + 1; // R Column index (1-based)
+            result(res_row, 0) = rows(r) + 1;     // 1-based row
+            result(res_row, 1) = orig_col_1based; // original 1-based column
         }
     }
 
     return result;
 }
 
-// ======================== LOOP ORDER NOTE ====================================
-// The intuitive approach is: for each missing row, loop over the k neighbors
-// and accumulate a weighted average. That's easy to understand, but it means the
-// inner loop touches k *different* column pointers on every iteration so the CPU
-// can't prefetch any of them, and the compiler can't vectorize because consecutive
-// iterations read from unrelated memory. This is a slight optimization
+// =============================================================================
+// impute_column_values
+// -----------------------------------------------------------------------------
+// Neighbors are split into masked (groups 1+2) and unmasked (group 3) buckets
+// before accumulation. Each bucket gets its own clean inner loop.
 //
-// We iterate NEIGHBORS instead in the outer loop and ROWS in the inner loop.
-// This gives us:
-//  1. The neighbor's weight `w` is loaded once and reused for every miss row.
-//  2. The inner loop reads through exactly one base pointer (the neighbor's column)
-//  plus varying row offsets.
+// Unmasked simplification: every row is valid, so
+//   wt_ptr[r] += w   for every r, every unmasked neighbor
+// collapses to a single "total_unmasked_w" added to every row once at the end.
+// The ws_ptr accumulation still varies per row (different obj values).
 // =============================================================================
 void impute_column_values(
     arma::mat &result,
-    const arma::mat &obj,
-    const arma::mat &nmiss,
+    const arma::mat &obj_reordered,
+    const arma::mat &nmiss_masked,
+    const GroupLayout &layout,
     const arma::uword col_offset,
-    const arma::uword target_col_idx,
-    const arma::uvec &nn_columns_vec,
+    const arma::uvec &nn_columns,
     const arma::vec &nn_weights,
     const arma::uvec &rows_to_impute)
 {
@@ -87,30 +94,36 @@ void impute_column_values(
     {
         return;
     }
-    // accumulation buffers: one entry per missing row in this column. This enables
-    // vectorization. Previously, we had two double to hold the accumulators
+
     arma::vec weighted_sums(n_rows, arma::fill::zeros);
     arma::vec weight_totals(n_rows, arma::fill::zeros);
     double *__restrict__ ws_ptr = weighted_sums.memptr();
     double *__restrict__ wt_ptr = weight_totals.memptr();
 
-    // pre-cache the column pointers for each neighbor because this doesn't change
-    // in the inner loop.
-    std::vector<const double *> nn_nmiss_ptrs(nn_columns_vec.n_elem);
-    std::vector<const double *> nn_obj_ptrs(nn_columns_vec.n_elem);
-    for (arma::uword j = 0; j < nn_columns_vec.n_elem; ++j)
+    // partition neighbor indices by whether their column has a mask
+    const arma::uword complete_start = layout.complete_start();
+    std::vector<arma::uword> masked_j;
+    std::vector<arma::uword> unmasked_j;
+    masked_j.reserve(nn_columns.n_elem);
+    unmasked_j.reserve(nn_columns.n_elem);
+    for (arma::uword j = 0; j < nn_columns.n_elem; ++j)
     {
-        nn_nmiss_ptrs[j] = nmiss.colptr(nn_columns_vec(j));
-        nn_obj_ptrs[j] = obj.colptr(nn_columns_vec(j));
+        if (nn_columns(j) < complete_start)
+        {
+            masked_j.push_back(j);
+        }
+        else
+        {
+            unmasked_j.push_back(j);
+        }
     }
 
-    // ---- outer loop over neighbors ----
-    for (arma::uword j = 0; j < nn_columns_vec.n_elem; ++j)
+    // ---- masked neighbors (groups 1+2) ----
+    for (arma::uword j : masked_j)
     {
         const double w = nn_weights(j);
-        const double *obj_col = nn_obj_ptrs[j];
-        const double *nmiss_col = nn_nmiss_ptrs[j];
-        // ---- inner loop over missing rows ----
+        const double *obj_col = obj_reordered.colptr(nn_columns(j));
+        const double *nmiss_col = nmiss_masked.colptr(nn_columns(j));
         for (arma::uword r = 0; r < n_rows; ++r)
         {
             const arma::uword row_idx = rows_to_impute(r);
@@ -121,9 +134,30 @@ void impute_column_values(
         }
     }
 
-    // ---- write imputed values to the result matrix ----
+    // ---- unmasked neighbors (group 3) ----
+    // valid == 1 for every row, so weight == w uniformly across rows.
+    double total_unmasked_w = 0.0;
+    for (arma::uword j : unmasked_j)
+    {
+        const double w = nn_weights(j);
+        const double *obj_col = obj_reordered.colptr(nn_columns(j));
+        for (arma::uword r = 0; r < n_rows; ++r)
+        {
+            ws_ptr[r] += w * obj_col[rows_to_impute(r)];
+        }
+        total_unmasked_w += w;
+    }
+    if (total_unmasked_w > 0.0)
+    {
+        for (arma::uword r = 0; r < n_rows; ++r)
+        {
+            wt_ptr[r] += total_unmasked_w;
+        }
+    }
+
     for (arma::uword r = 0; r < n_rows; ++r)
     {
-        result(col_offset + r, 2) = (wt_ptr[r] > 0.0) ? (ws_ptr[r] / wt_ptr[r]) : arma::datum::nan;
+        result(col_offset + r, 2) =
+            (wt_ptr[r] > 0.0) ? (ws_ptr[r] / wt_ptr[r]) : arma::datum::nan;
     }
 }

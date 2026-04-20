@@ -9,19 +9,14 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
   eligible <- miss_rate < colmax
   pre_imp_cols <- to_test[, eligible, drop = FALSE]
   pre_imp_miss <- miss[, eligible, drop = FALSE]
-  pre_imp_cols[pre_imp_miss] <- 0.0
 
-  # local groups (0-based indices into pre_imp_cols)
   local_has_miss <- which(cmiss[eligible] > 0L)
   grp_impute <- as.integer(local_has_miss - 1L)
 
-  # Expected missing positions *local to the submatrix pre_imp_cols* (1-based)
   expected_local <- unname(which(pre_imp_miss, arr.ind = TRUE))
 
-  # brute-force path
   imputed_brute <- impute_knn_brute(
     obj = pre_imp_cols,
-    nmiss = !pre_imp_miss,
     k = 5,
     grp_impute = grp_impute,
     grp_miss_no_imp = integer(0L),
@@ -32,12 +27,12 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
     cores = 1
   )
 
-  # mlpack path
   imputed_mlpack <- impute_knn_mlpack(
-    obj = mean_imp_col(pre_imp_cols),
-    nmiss = !pre_imp_miss,
+    obj = pre_imp_cols,
     k = 5,
     grp_impute = grp_impute,
+    grp_miss_no_imp = integer(0L),
+    grp_complete = integer(0L),
     method = 0L,
     dist_pow = 1,
     cores = 1

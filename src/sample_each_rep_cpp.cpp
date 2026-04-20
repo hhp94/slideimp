@@ -5,7 +5,7 @@
 arma::umat sample_each_rep_cpp(const arma::mat &obj,
                                const arma::uvec &pool_idx_in, // 0-based column indices available for sampling
                                const arma::uvec &na_per_col,  // how many NAs to place in each needed column
-                               const arma::uvec &row_room, // per-row budget: max additional NAs allowed
+                               const arma::uvec &row_room,    // per-row budget: max additional NAs allowed
                                const arma::uvec &col_room,    // per-column budget: max NAs allowed
                                arma::uword max_attempts)
 {

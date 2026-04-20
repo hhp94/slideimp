@@ -34,6 +34,42 @@ test_that("same results as imputePCA", {
   expect_equal(r3_t$completeObs, r4_t[, ])
 })
 
+test_that("same results as imputePCA, method = 'EM'", {
+  skip_if_not_installed("missMDA")
+  set.seed(1234)
+  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  expect_true(anyNA(to_test))
+  # expected orientation (wide)
+  r1 <- missMDA::imputePCA(to_test, ncp = 2, nb.init = 10, seed = 1234, method = "EM")
+  set.seed(1234)
+  r2 <- pca_imp(to_test, ncp = 2, nb.init = 10, seed = 1234, method = "EM")
+  expect_equal(r1$completeObs, r2[, ])
+
+  row.w <- runif(nrow(to_test))
+  row.w <- row.w / sum(row.w)
+  set.seed(1234)
+  r3 <- missMDA::imputePCA(to_test, ncp = 2, row.w = row.w, nb.init = 5, seed = 1234, method = "EM")
+  set.seed(1234)
+  r4 <- pca_imp(to_test, ncp = 2, nb.init = 5, row.w = row.w, seed = 1234, method = "EM")
+  expect_equal(r3$completeObs, r4[, ])
+
+  # transposed input also gives identical results
+  set.seed(1234)
+  to_test_t <- t(to_test)
+  r1_t <- missMDA::imputePCA(to_test_t, ncp = 2, nb.init = 10, seed = 1234, method = "EM")
+  set.seed(1234)
+  r2_t <- pca_imp(to_test_t, ncp = 2, nb.init = 10, seed = 1234, method = "EM")
+  expect_equal(r1_t$completeObs, r2_t[, ])
+
+  row.w_t <- runif(nrow(to_test_t))
+  row.w_t <- row.w_t / sum(row.w_t)
+  set.seed(1234)
+  r3_t <- missMDA::imputePCA(to_test_t, ncp = 2, row.w = row.w_t, nb.init = 5, seed = 1234, method = "EM")
+  set.seed(1234)
+  r4_t <- pca_imp(to_test_t, ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234, method = "EM")
+  expect_equal(r3_t$completeObs, r4_t[, ])
+})
+
 test_that("same results as imputePCA, scale = FALSE", {
   skip_if_not_installed("missMDA")
   set.seed(1234)

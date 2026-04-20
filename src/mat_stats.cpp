@@ -5,10 +5,12 @@
 #endif
 
 // [[Rcpp::export]]
-arma::mat col_min_max(const arma::mat &mat) {
+arma::mat col_min_max(const arma::mat &mat)
+{
   const arma::uword p = mat.n_cols;
   arma::mat out(2, p); // row 0 = min, row 1 = max
-  for (arma::uword j = 0; j < p; ++j) {
+  for (arma::uword j = 0; j < p; ++j)
+  {
     out(0, j) = mat.col(j).min();
     out(1, j) = mat.col(j).max();
   }
@@ -117,4 +119,41 @@ void check_finite(const arma::mat &mat)
       Rcpp::stop("All NA/Inf column detected");
     }
   }
+}
+
+// [[Rcpp::export]]
+arma::uvec col_miss_internal(const arma::mat &obj)
+{
+  const arma::uword n_rows = obj.n_rows;
+  const arma::uword n_cols = obj.n_cols;
+  arma::uvec out(n_cols);
+  for (arma::uword j = 0; j < n_cols; ++j)
+  {
+    const double *p = obj.colptr(j);
+    arma::uword count = 0;
+    for (arma::uword i = 0; i < n_rows; ++i)
+    {
+      count += std::isnan(p[i]);
+    }
+    out(j) = count;
+  }
+  return out;
+}
+
+// [[Rcpp::export]]
+arma::uvec row_miss_internal(const arma::mat &obj)
+{
+  const arma::uword n_rows = obj.n_rows;
+  const arma::uword n_cols = obj.n_cols;
+  arma::uvec out(n_rows, arma::fill::zeros);
+  // column-major scan keeps memory access sequential
+  for (arma::uword j = 0; j < n_cols; ++j)
+  {
+    const double *p = obj.colptr(j);
+    for (arma::uword i = 0; i < n_rows; ++i)
+    {
+      out(i) += std::isnan(p[i]);
+    }
+  }
+  return out;
 }

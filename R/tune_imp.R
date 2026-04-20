@@ -290,7 +290,22 @@ resolve_na_loc <- function(
     )
   }
 
-  na_loc
+  # canonical form is going to be a 2D index
+  na_loc <- lapply(na_loc, function(elem) {
+    if (is.matrix(elem)) {
+      storage.mode(elem) <- "integer"
+      colnames(elem) <- c("row", "col")
+      elem
+    } else {
+      lp <- as.integer(elem)
+      cbind(
+        row = ((lp - 1L) %% nr) + 1L,
+        col = ((lp - 1L) %/% nr) + 1L
+      )
+    }
+  })
+
+  return(na_loc)
 }
 
 #' Tune Parameters for Imputation Methods
@@ -443,7 +458,8 @@ resolve_na_loc <- function(
 #' }
 #'
 #' results_p <- tune_imp(
-#'   obj, parameters_custom, .f = custom_imp, n_reps = 1, num_na = 10
+#'   obj, parameters_custom,
+#'   .f = custom_imp, n_reps = 1, num_na = 10
 #' )
 #' mirai::daemons(0) # Close workers
 #' @export
@@ -545,7 +561,6 @@ tune_imp <- function(
         stop("`pca_imp` does not accept `k`. Did you mean `.f = 'knn_imp'`?")
       }
     }
-
     message(sprintf("Tuning %s", .f))
   } else if (is.function(.f)) {
     message("Tuning custom function")
@@ -556,10 +571,21 @@ tune_imp <- function(
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
 
-  # parallelization mode flags
-  is_knn_mode <- {
-    (is.character(.f) && .f == "knn_imp") ||
-      (is.character(.f) && .f == "slide_imp" && "k" %in% names(parameters))
+  # parallelization + subset-injection mode flag.
+  # TRUE when the underlying imputer is knn_imp(), in which case we:
+  # (a) disallow user-supplied `subset` in `parameters`, and
+  # (b) inject a per-rep `subset` derived from the NA locations so that
+  #   only injected-NA columns are imputed (neighbors across all cols).
+  is_knn_mode <- is.character(.f) && (
+    .f == "knn_imp" ||
+      (.f == "slide_imp" && "k" %in% names(parameters))
+  )
+
+  if (is_knn_mode && "subset" %in% names(parameters)) {
+    stop(
+      "`subset` cannot be supplied in `parameters` for K-NN-based tuning.",
+      call. = FALSE
+    )
   }
 
   message("Step 1/2: Resolving NA locations")
@@ -578,12 +604,28 @@ tune_imp <- function(
   )
   n_reps <- length(na_loc)
 
+  # `na_loc` is guaranteed to be a list of 2-col (row, col) integer
+  # matrices (see resolve_na_loc). For K-NN-based tuning, precompute the
+  # unique injected columns per rep to pass as `subset` at call time.
+  subset_per_rep <- if (is_knn_mode) {
+    lapply(na_loc, function(m) {
+      sort.int(unique(as.integer(m[, 2L])))
+    })
+  } else {
+    NULL
+  }
+
   .rowid <- seq_len(nrow(parameters))
 
   indices <- expand.grid(
     param_set = .rowid,
     rep_id = seq_len(n_reps)
   )
+
+  # `truth_vec` depends only on `rep_id`, so precompute once per rep.
+  rep_ids <- indices$rep_id
+  param_sets <- indices$param_set
+  truth_list <- lapply(na_loc, function(pos) obj[pos])
 
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
   if (cores > 1 && is_knn_mode) {
@@ -643,6 +685,7 @@ tune_imp <- function(
       pca_imp   = pca_imp
     )
   } else {
+    # run the function once to validate the output
     impute_f <- .f
     pre <- obj
     na_positions <- na_loc[[1]]
@@ -681,6 +724,20 @@ tune_imp <- function(
 
   if (parallelize) {
     check_pin_blas(pin_blas)
+
+    # share obj across daemons via shared memory instead of crating. Each worker
+    # attaches on demand and materializes a local `pre`; the underlying pages
+    # are shared across daemons on the same host.
+    big_obj <- bigmemory::as.big.matrix(obj, shared = TRUE)
+    big_obj_desc <- bigmemory::describe(big_obj)
+    on.exit(
+      {
+        rm(big_obj)
+        gc()
+      },
+      add = TRUE
+    )
+
     crated_fn <- carrier::crate(
       function(i) {
         if (pin_blas) {
@@ -689,17 +746,25 @@ tune_imp <- function(
         }
         tryCatch(
           {
-            pre <- obj
-            na_positions <- na_loc[[indices[i, "rep_id", drop = TRUE]]]
+            rep_id <- rep_ids[i]
+            ps <- param_sets[i]
+            na_positions <- na_loc[[rep_id]]
+            truth_vec <- truth_list[[rep_id]]
+
+            src <- bigmemory::attach.big.matrix(big_obj_desc)
+            pre <- src[, ]
             pre[na_positions] <- NA
-            truth_vec <- obj[na_positions]
-            param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
-            imputed_result <- do.call(
-              impute_f,
-              args = c(list(obj = pre), fixed_args, param_vec)
+
+            call_args <- c(
+              list(obj = pre),
+              fixed_args,
+              parameters_list[[ps]]
             )
-            estimate_vec <- imputed_result[na_positions]
-            data.frame(truth = truth_vec, estimate = estimate_vec)
+            if (!is.null(subset_per_rep)) {
+              call_args$subset <- subset_per_rep[[rep_id]]
+            }
+            imputed_result <- do.call(impute_f, call_args)[na_positions]
+            data.frame(truth = truth_vec, estimate = imputed_result)
           },
           error = function(e) {
             out <- data.frame(truth = numeric(), estimate = numeric())
@@ -709,29 +774,46 @@ tune_imp <- function(
         )
       },
       impute_f = impute_f,
-      obj = obj,
+      big_obj_desc = big_obj_desc,
+      truth_list = truth_list,
       na_loc = na_loc,
-      indices = indices,
-      nr = nr,
-      nc = nc,
+      rep_ids = rep_ids,
+      param_sets = param_sets,
       parameters_list = parameters_list,
       fixed_args = fixed_args,
+      subset_per_rep = subset_per_rep,
       pin_blas = pin_blas
     )
     result_list <- mirai::mirai_map(iter, crated_fn)[.progress = .progress]
   } else {
-    run_sequential <- function(i) {
-      tryCatch(
+    # sequential: `indices` is built by expand.grid with param_set varying
+    # fastest, so consecutive iterations share rep_id. Build `pre` once per
+    # rep and reuse it across all param_sets in that rep.
+    result_list <- vector("list", length(iter))
+    if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
+    current_rep <- 0L
+    pre <- NULL
+    for (i in iter) {
+      rep_id <- rep_ids[i]
+      ps <- param_sets[i]
+      if (rep_id != current_rep) {
+        pre <- obj
+        pre[na_loc[[rep_id]]] <- NA
+        current_rep <- rep_id
+      }
+      na_positions <- na_loc[[rep_id]]
+      truth_vec <- truth_list[[rep_id]]
+      result_list[[i]] <- tryCatch(
         {
-          pre <- obj
-          na_positions <- na_loc[[indices[i, "rep_id", drop = TRUE]]]
-          pre[na_positions] <- NA
-          truth_vec <- obj[na_positions]
-          param_vec <- parameters_list[[indices[i, "param_set", drop = TRUE]]]
-          imputed_result <- do.call(
-            impute_f,
-            args = c(list(obj = pre), fixed_args, param_vec)
+          call_args <- c(
+            list(obj = pre),
+            fixed_args,
+            parameters_list[[ps]]
           )
+          if (!is.null(subset_per_rep)) {
+            call_args$subset <- subset_per_rep[[rep_id]]
+          }
+          imputed_result <- do.call(impute_f, call_args)
           estimate_vec <- imputed_result[na_positions]
           data.frame(truth = truth_vec, estimate = estimate_vec)
         },
@@ -741,13 +823,8 @@ tune_imp <- function(
           out
         }
       )
-    }
-    if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
-    result_list <- lapply(iter, function(i) {
-      out <- run_sequential(i)
       if (.progress) cli::cli_progress_update(id = pb)
-      out
-    })
+    }
     if (.progress) cli::cli_progress_done(id = pb)
   }
 
@@ -759,6 +836,7 @@ tune_imp <- function(
       e
     }
   }, character(1))
+
   result_df <- cbind(
     parameters[indices$param_set, , drop = FALSE],
     indices,

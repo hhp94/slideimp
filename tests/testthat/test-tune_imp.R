@@ -803,6 +803,47 @@ test_that("tune_imp with NULL parameters and a function that has defaults", {
   expect_equal(res_null$result[[1]]$estimate, res_explicit$result[[1]]$estimate)
 })
 
+test_that("serial branch reuses `pre` correctly across param_sets within a rep", {
+  set.seed(1234)
+  obj <- matrix(rnorm(50 * 100), nrow = 50, ncol = 100)  # clean, no pre-existing NAs
+
+  seen <- list()
+  capture_fun <- function(obj, tag) {
+    seen[[length(seen) + 1L]] <<- which(is.na(obj), arr.ind = TRUE)
+    obj[is.na(obj)] <- 0
+    obj
+  }
+
+  params <- data.frame(tag = c("a", "b", "c"))  # 3 param sets
+
+  res <- tune_imp(
+    obj, params, .f = capture_fun,
+    n_reps = 2, num_na = 20, .progress = FALSE
+  )
+
+  # 1 probe call + 2 reps * 3 param_sets = 7
+  expect_length(seen, 7L)
+
+  rep1 <- seen[2:4]
+  rep2 <- seen[5:7]
+
+  # within-rep: NA mask identical across param_sets (pre is reused correctly)
+  expect_identical(rep1[[1]], rep1[[2]])
+  expect_identical(rep1[[2]], rep1[[3]])
+  expect_identical(rep2[[1]], rep2[[2]])
+  expect_identical(rep2[[2]], rep2[[3]])
+
+  # across-rep: masks differ (pre is rebuilt with the new rep's NAs)
+  expect_false(identical(rep1[[1]], rep2[[1]]))
+
+  # truth_list is indexed by the correct rep_id.
+  # sort both sides because na_loc ordering (from C++) != which() column-major order.
+  for (i in seq_len(nrow(res))) {
+    mask <- if (res$rep_id[i] == 1L) rep1[[1]] else rep2[[1]]
+    expect_equal(sort(res$result[[i]]$truth), sort(obj[mask]))
+  }
+})
+
 # test_that("grid_to_linear correctly converts 2D positions to linear indices", {
 #   n <- 10
 #   m <- 10

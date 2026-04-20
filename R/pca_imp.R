@@ -63,10 +63,6 @@ pca_imp <- function(
 ) {
   # pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
-  if (!anyNA(obj)) {
-    cli::cli_inform("No missing values in input. Returning input unchanged.")
-    return(obj)
-  }
   check_finite(obj)
   checkmate::assert_int(ncp, lower = 1L, upper = ncol(obj) - 1L, .var.name = "ncp")
   method <- match.arg(method)
@@ -92,13 +88,25 @@ pca_imp <- function(
   }
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
+  checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
+  checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
+  checkmate::assert_flag(na_check, .var.name = "na_check")
 
-  miss <- is.na(obj)
-  cmiss <- colSums(miss)
+  # per-column missingnesss
+  cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
+
+  # early exit if no missingness at all
+  if (!any(cmiss > 0L)) {
+    cli::cli_inform("No missing values in input. Returning input unchanged.")
+    return(obj)
+  }
+
   miss_rate <- cmiss / nrow(obj)
 
+  # eligibility: below colmax and non-degenerate variance
   obj_vars <- col_vars(obj)
-  eligible <- miss_rate < min(colmax, 1) & !(obj_vars < .Machine$double.eps | is.na(obj_vars))
+  eligible <- miss_rate < min(colmax, 1) &
+    !(obj_vars < .Machine$double.eps | is.na(obj_vars))
 
   n_elig <- sum(eligible)
   cap <- min(nrow(obj) - 2L, n_elig - 1L)
@@ -117,10 +125,8 @@ pca_imp <- function(
     )
   }
 
-  pca_cols <- obj[, eligible, drop = FALSE]
-  pca_miss <- miss[, eligible, drop = FALSE]
-
-  if (!any(pca_miss)) {
+  # at least one eligible column must have missingness
+  if (!any(cmiss[eligible] > 0L)) {
     cli::cli_abort(
       c(
         "All columns with missing values are ineligible (exceed {.arg colmax} ({colmax}) or have zero variance).",
@@ -129,31 +135,39 @@ pca_imp <- function(
       class = "slideimp_infeasible"
     )
   }
+
+  # index of eligible columns (1-based)
+  eligible_idx <- which(eligible)
+
+  # row weights
   if (is.null(row.w)) {
     row.w <- rep(1, nrow(obj))
   } else if (is.character(row.w) && row.w == "n_miss") {
-    n_miss_per_row <- rowSums(pca_miss)
-    row.w <- 1 - (n_miss_per_row / ncol(pca_cols))
+    # per-row missingness without materializing any boolean subset. We
+    # purposefully scan the entire object here since for pca, we don't have the
+    # subset argument and if missingness is spreadout through all columns,
+    # obj[, eligible_idx] would materialize a full copy in RAM.
+    n_miss_per_row <- mat_miss(obj, col = FALSE, prop = FALSE)
+    row.w <- 1 - (n_miss_per_row / ncol(obj))
     row.w[row.w < 1e-10] <- 1e-10
   }
 
-  # These pre-fill and scale weight are now handled in C++
-  # obj[miss] <- 0
-  # row.w <- row.w / sum(row.w)
-
+  # iterate over initializations; C++ only returns the imputed triples + mse,
+  # not the reconstructed matrix.
   init_obj <- Inf
+  best_imputed <- NULL
   for (i in seq_len(nb.init)) {
     if (!is.null(seed)) {
       set.seed(seed * (i - 1L)) # exactly as missMDA does
     }
     res.impute <- pca_imp_internal_cpp(
-      X = pca_cols,
-      miss = pca_miss,
+      obj = obj,
+      eligible_idx = as.integer(eligible_idx - 1L),
       ncp = ncp,
       scale = scale,
       regularized = (method == "regularized"),
       threshold = threshold,
-      init = if (i == 1) 0 else i,
+      init = if (i == 1L) 0L else i,
       maxiter = maxiter,
       miniter = miniter,
       row_w = row.w,
@@ -161,13 +175,16 @@ pca_imp <- function(
     )
     cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {
-      best_imputed <- res.impute$imputed_vals
+      # res.impute$imputed_values: N_miss x 3 matrix of
+      # (row_idx, col_idx, value) in original-matrix, 1-based coordinates
+      best_imputed <- res.impute$imputed_values
       init_obj <- cur_obj
     }
   }
-  # apply best imputation
-  pca_cols[pca_miss] <- best_imputed
-  obj[, eligible] <- pca_cols
+
+  # column/row indices returned by C++ are already original-matrix indices,
+  imp_indices <- cbind(best_imputed[, 1], best_imputed[, 2])
+  obj[imp_indices] <- best_imputed[, 3]
 
   if (post_imp) {
     obj <- mean_imp_col(obj)
