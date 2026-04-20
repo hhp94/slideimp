@@ -6,7 +6,8 @@ using namespace Rcpp;
 #endif
 
 // [[Rcpp::export]]
-bool has_openmp() {
+bool has_openmp()
+{
 #ifdef _OPENMP
   return true;
 #else

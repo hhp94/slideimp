@@ -205,7 +205,8 @@ custom_imp <- function(obj, mean, sd) {
 }
 
 results_p <- tune_imp(
-  obj, parameters_custom, .f = custom_imp, n_reps = 1, num_na = 10
+  obj, parameters_custom,
+  .f = custom_imp, n_reps = 1, num_na = 10
 )
 mirai::daemons(0) # Close workers
 \dontshow{\}) # examplesIf}

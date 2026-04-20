@@ -115,21 +115,22 @@ knn_imp <- function(
     cli::cli_inform("No columns to impute. Returning input unchanged.")
     return(obj)
   }
-  if (!anyNA(obj[, subset])) {
+
+  # compute per-column missingness
+  cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
+
+  # early exit if no missingness in subset columns
+  if (!any(cmiss[subset] > 0)) {
     cli::cli_inform("No missing values in subset columns. Returning input unchanged.")
     return(obj)
   }
 
-  # partitioning
-  miss <- is.na(obj)
-  cmiss <- colSums(miss)
   miss_rate <- cmiss / nrow(obj)
 
+  # partitioning: determine eligible columns (under colmax threshold)
   eligible <- miss_rate < min(colmax, 1)
-  pre_imp_cols <- obj[, eligible, drop = FALSE]
-  pre_imp_miss <- miss[, eligible, drop = FALSE]
+  n_elig <- sum(eligible)
 
-  n_elig <- ncol(pre_imp_cols)
   if (k > n_elig - 1L) {
     cli::cli_abort(
       c(
@@ -140,14 +141,18 @@ knn_imp <- function(
     )
   }
 
-  # column groups (1-based local indices into pre_imp_cols)
-  orig_indices <- which(eligible)
-  local_cmiss <- cmiss[eligible]
-  local_has_miss <- which(local_cmiss > 0L)
-  local_in_subset <- which(orig_indices %in% subset)
-  grp_impute <- sort(intersect(local_has_miss, local_in_subset))
-  grp_miss_no_imp <- sort(setdiff(local_has_miss, local_in_subset))
-  grp_complete <- which(local_cmiss == 0L)
+  # Column groups as ORIGINAL (0-based) indices into obj.
+  # The C++ side will use cmiss to know which columns have missingness and
+  # skip/handle accordingly; it also uses `eligible` to restrict the working set.
+  eligible_idx <- which(eligible) # 1-based orig indices of eligible cols
+  has_miss_idx <- which(cmiss > 0L) # 1-based orig indices with any NA
+  eligible_has_miss <- intersect(eligible_idx, has_miss_idx)
+  eligible_complete <- setdiff(eligible_idx, has_miss_idx)
+
+  grp_impute <- sort(intersect(eligible_has_miss, subset))
+  grp_miss_no_imp <- sort(setdiff(eligible_has_miss, subset))
+  grp_complete <- sort(eligible_complete)
+
   if (length(grp_impute) == 0L) {
     cli::cli_abort(
       c(
@@ -166,35 +171,32 @@ knn_imp <- function(
     )
   }
 
+  method <- switch(method,
+    "euclidean" = 0L,
+    "manhattan" = 1L
+  )
+
   # Impute
   if (!tree) {
-    # Important: pre-fill with zero (required for auto-vectorization in brute-force path)
-    pre_imp_cols[pre_imp_miss] <- 0.0
     imputed_values <- impute_knn_brute(
-      obj = pre_imp_cols,
-      nmiss = !pre_imp_miss,
+      obj = obj,
       k = k,
       grp_impute = as.integer(grp_impute - 1L),
       grp_miss_no_imp = as.integer(grp_miss_no_imp - 1L),
       grp_complete = as.integer(grp_complete - 1L),
-      method = switch(method,
-        "euclidean" = 0L,
-        "manhattan" = 1L
-      ),
+      method = method,
       dist_pow = dist_pow,
       cores = cores,
       cache = cache
     )
   } else {
     imputed_values <- impute_knn_mlpack(
-      obj = mean_imp_col(pre_imp_cols),
-      nmiss = !pre_imp_miss,
+      obj = obj,
       k = k,
       grp_impute = as.integer(grp_impute - 1L),
-      method = switch(method,
-        "euclidean" = 0L,
-        "manhattan" = 1L
-      ),
+      grp_miss_no_imp = as.integer(grp_miss_no_imp - 1L),
+      grp_complete = as.integer(grp_complete - 1L),
+      method = method,
       dist_pow = dist_pow,
       cores = cores
     )
@@ -203,8 +205,9 @@ knn_imp <- function(
   # convert NaN values back to NA due to C++ handling
   imputed_values[is.nan(imputed_values)] <- NA_real_
 
-  # map column indices from pre_imp_cols back to original matrix columns
-  imp_indices <- cbind(imputed_values[, 1], orig_indices[imputed_values[, 2]])
+  # Column indices returned by C++ are already original-matrix indices now,
+  # so no remapping through orig_indices is needed.
+  imp_indices <- cbind(imputed_values[, 1], imputed_values[, 2])
   obj[imp_indices] <- imputed_values[, 3]
 
   # post-imputation: fill any remaining NAs with column means
