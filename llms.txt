@@ -417,6 +417,9 @@ slide_imp(
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) :
   K-Nearest Neighbor Imputation for Numeric Matrices
 
+- [`mat_miss()`](https://hhp94.github.io/slideimp/reference/mat_miss.md)
+  : Column or Row Missing Count (or Proportion)
+
 - [`mean_imp_col()`](https://hhp94.github.io/slideimp/reference/mean_imp_col.md)
   : Column Mean Imputation
 

@@ -13,7 +13,7 @@ a single group."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -42,7 +42,7 @@ a single group."></head><body>
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Tune Parameters for Imputation Methods</h1>
-      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/v1.0.0/R/tune_imp.R" class="external-link"><code>R/tune_imp.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/master/R/tune_imp.R" class="external-link"><code>R/tune_imp.R</code></a></small>
       <div class="d-none name"><code>tune_imp.Rd</code></div>
     </div>
 
@@ -288,7 +288,8 @@ for cores.</p>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">results_p</span> <span class="op">&lt;-</span> <span class="fu">tune_imp</span><span class="op">(</span></span></span>
-<span class="r-in"><span>  <span class="va">obj</span>, <span class="va">parameters_custom</span>, .f <span class="op">=</span> <span class="va">custom_imp</span>, n_reps <span class="op">=</span> <span class="fl">1</span>, num_na <span class="op">=</span> <span class="fl">10</span></span></span>
+<span class="r-in"><span>  <span class="va">obj</span>, <span class="va">parameters_custom</span>,</span></span>
+<span class="r-in"><span>  .f <span class="op">=</span> <span class="va">custom_imp</span>, n_reps <span class="op">=</span> <span class="fl">1</span>, num_na <span class="op">=</span> <span class="fl">10</span></span></span>
 <span class="r-in"><span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span> <span class="co"># Close workers</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
