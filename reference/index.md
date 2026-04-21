@@ -41,9 +41,6 @@
 
   Print a `slideimp_tbl` Object
 
-- [`register_group_resolver()`](https://hhp94.github.io/slideimp/reference/register_group_resolver.md)
-  : Register a Group Resolver
-
 - [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md)
   : Sample Missing Value Locations with Constraints
 
