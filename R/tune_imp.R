@@ -481,6 +481,8 @@ tune_imp <- function(
   location = NULL,
   pin_blas = FALSE
 ) {
+  # this function sometime leaves behind big matrices. This can help clean up.
+  on.exit(gc(verbose = FALSE), add = TRUE)
   # pre-conditioning
   checkmate::assert_matrix(
     obj,
@@ -724,10 +726,8 @@ tune_imp <- function(
 
   if (parallelize) {
     check_pin_blas(pin_blas)
-
     # share obj across daemons via shared memory instead of crating. Each worker
-    # attaches on demand and materializes a local `pre`; the underlying pages
-    # are shared across daemons on the same host.
+    # attaches on demand and materializes a local `pre`.
     big_obj <- bigmemory::as.big.matrix(obj, shared = TRUE)
     big_obj_desc <- bigmemory::describe(big_obj)
     on.exit(
@@ -737,7 +737,6 @@ tune_imp <- function(
       },
       add = TRUE
     )
-
     crated_fn <- carrier::crate(
       function(i) {
         if (pin_blas) {
@@ -750,11 +749,10 @@ tune_imp <- function(
             ps <- param_sets[i]
             na_positions <- na_loc[[rep_id]]
             truth_vec <- truth_list[[rep_id]]
-
             src <- bigmemory::attach.big.matrix(big_obj_desc)
             pre <- src[, ]
+            rm(src)
             pre[na_positions] <- NA
-
             call_args <- c(
               list(obj = pre),
               fixed_args,
@@ -763,8 +761,8 @@ tune_imp <- function(
             if (!is.null(subset_per_rep)) {
               call_args$subset <- subset_per_rep[[rep_id]]
             }
-            imputed_result <- do.call(impute_f, call_args)[na_positions]
-            data.frame(truth = truth_vec, estimate = imputed_result)
+            imputed_values <- do.call(impute_f, call_args)[na_positions]
+            data.frame(truth = truth_vec, estimate = imputed_values)
           },
           error = function(e) {
             out <- data.frame(truth = numeric(), estimate = numeric())
@@ -789,6 +787,21 @@ tune_imp <- function(
     # sequential: `indices` is built by expand.grid with param_set varying
     # fastest, so consecutive iterations share rep_id. Build `pre` once per
     # rep and reuse it across all param_sets in that rep.
+    run_one <- function(pre, ps, rep_id) {
+      call_args <- c(
+        list(obj = pre),
+        fixed_args,
+        parameters_list[[ps]]
+      )
+      if (!is.null(subset_per_rep)) {
+        call_args$subset <- subset_per_rep[[rep_id]]
+      }
+      imputed_result <- do.call(impute_f, call_args)
+      data.frame(
+        truth = truth_list[[rep_id]],
+        estimate = imputed_result[na_loc[[rep_id]]]
+      )
+    }
     result_list <- vector("list", length(iter))
     if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
     current_rep <- 0L
@@ -797,26 +810,13 @@ tune_imp <- function(
       rep_id <- rep_ids[i]
       ps <- param_sets[i]
       if (rep_id != current_rep) {
+        pre <- NULL
         pre <- obj
         pre[na_loc[[rep_id]]] <- NA
         current_rep <- rep_id
       }
-      na_positions <- na_loc[[rep_id]]
-      truth_vec <- truth_list[[rep_id]]
       result_list[[i]] <- tryCatch(
-        {
-          call_args <- c(
-            list(obj = pre),
-            fixed_args,
-            parameters_list[[ps]]
-          )
-          if (!is.null(subset_per_rep)) {
-            call_args$subset <- subset_per_rep[[rep_id]]
-          }
-          imputed_result <- do.call(impute_f, call_args)
-          estimate_vec <- imputed_result[na_positions]
-          data.frame(truth = truth_vec, estimate = estimate_vec)
-        },
+        run_one(pre, ps, rep_id),
         error = function(e) {
           out <- data.frame(truth = numeric(), estimate = numeric())
           attr(out, "error") <- conditionMessage(e)
@@ -826,8 +826,8 @@ tune_imp <- function(
       if (.progress) cli::cli_progress_update(id = pb)
     }
     if (.progress) cli::cli_progress_done(id = pb)
+    rm(pre)
   }
-
   error_vec <- vapply(result_list, function(x) {
     e <- attr(x, "error")
     if (is.null(e)) {
@@ -836,23 +836,19 @@ tune_imp <- function(
       e
     }
   }, character(1))
-
   result_df <- cbind(
     parameters[indices$param_set, , drop = FALSE],
     indices,
     data.frame(result = I(result_list), error = error_vec)
   )
-
   if (any(!is.na(result_df$error))) {
     warning("Some tuning iterations failed. Check the 'error' column in the output.",
       call. = FALSE
     )
   }
-
   if (parameters_is_null) {
     result_df$.placeholder <- NULL
   }
-
   class(result_df) <- c("slideimp_tune", "slideimp_tbl", "data.frame")
   return(result_df)
 }

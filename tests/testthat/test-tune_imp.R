@@ -805,7 +805,7 @@ test_that("tune_imp with NULL parameters and a function that has defaults", {
 
 test_that("serial branch reuses `pre` correctly across param_sets within a rep", {
   set.seed(1234)
-  obj <- matrix(rnorm(50 * 100), nrow = 50, ncol = 100)  # clean, no pre-existing NAs
+  obj <- matrix(rnorm(50 * 100), nrow = 50, ncol = 100) # clean, no pre-existing NAs
 
   seen <- list()
   capture_fun <- function(obj, tag) {
@@ -814,10 +814,11 @@ test_that("serial branch reuses `pre` correctly across param_sets within a rep",
     obj
   }
 
-  params <- data.frame(tag = c("a", "b", "c"))  # 3 param sets
+  params <- data.frame(tag = c("a", "b", "c")) # 3 param sets
 
   res <- tune_imp(
-    obj, params, .f = capture_fun,
+    obj, params,
+    .f = capture_fun,
     n_reps = 2, num_na = 20, .progress = FALSE
   )
 

@@ -1,3 +1,40 @@
+#' Resolve a group specification to a data.frame
+#'
+#' S3 generic for converting various group specifications into the
+#' canonical data.frame form expected by [prep_groups()]. This generic
+#' exists only to allow `slideimp.extra` to register the character method.
+#'
+#' @param x A group specification. The base package provides a method for
+#' `data.frame`. `slideimp.extra` provides `character` for chip-name lookup.
+#' @return A data.frame with at least a `feature` column, suitable for
+#' passing to [prep_groups()].
+#'
+#' @examples
+#' df <- data.frame(feature = c("cg1", "cg2"), group = c(1, 1))
+#' slideimp_resolve_group(df)
+#'
+#' @keywords internal
+#' @export
+slideimp_resolve_group <- function(x) {
+  UseMethod("slideimp_resolve_group")
+}
+
+#' @rdname slideimp_resolve_group
+#' @export
+slideimp_resolve_group.data.frame <- function(x) {
+  unique(x)
+}
+
+#' @rdname slideimp_resolve_group
+#' @export
+slideimp_resolve_group.default <- function(x) {
+  cli::cli_abort(c(
+    "No {.fun slideimp_resolve_group} method for objects of class {.cls {class(x)[1]}}.",
+    "i" = "Install and load {.pkg slideimp.extra} to enable character-based group lookup.",
+    ">" = "See the {.pkg slideimp} README for installation instructions."
+  ))
+}
+
 #' Remove Features from Auxiliary Columns
 #'
 #' Performs a fast, grouped set-difference using `collapse`. For each group
@@ -149,21 +186,8 @@ prep_groups <- function(
     min.len = 1, unique = TRUE,
     any.missing = FALSE, .var.name = "obj_cn"
   )
-  if (is.character(group)) {
-    if (is.null(.slideimp_env$group_resolver)) {
-      cli::cli_abort(
-        c(
-          "Received a character value for {.arg group}, but no manifest provider is registered.",
-          "i" = "Install and load {.pkg slideimp.extra} to enable character-based group lookup.",
-          ">" = "See the {.pkg slideimp} README for installation instructions."
-        )
-      )
-    }
-    group <- .slideimp_env$group_resolver(group)
-  } else {
-    checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
-    group <- unique(group)
-  }
+  group <- slideimp_resolve_group(group)
+  checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
   checkmate::assert_names(
     colnames(group),
     must.include = "feature", .var.name = "group"
