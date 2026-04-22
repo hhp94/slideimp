@@ -23,7 +23,6 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
     grp_complete = integer(0L),
     method = 0L,
     dist_pow = 1,
-    cache = FALSE,
     cores = 1
   )
 
@@ -65,14 +64,6 @@ test_that("`knn_imp` works", {
     method = "manhattan",
     tree = TRUE
   ))
-})
-
-test_that("`knn_imp` cache and non cache path is the same", {
-  obj <- sim_mat(50, 100)$input
-  expect_identical(
-    knn_imp(obj, k = 10, method = "euclidean"),
-    knn_imp(obj, k = 10, method = "euclidean", max_cache = 0)
-  )
 })
 
 test_that("`knn_imp` tree and brute is the same for few missing values", {
@@ -166,3 +157,4 @@ test_that("Behavior with extreme missing columns and rows", {
   diag(mat) <- rnorm(20)
   expect_error(knn_imp(mat, k = 2), "exceeds usable columns")
 })
+

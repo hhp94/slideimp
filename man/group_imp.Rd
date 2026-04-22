@@ -19,7 +19,6 @@ group_imp(
   post_imp = NULL,
   dist_pow = NULL,
   tree = NULL,
-  max_cache = NULL,
   scale = NULL,
   coeff.ridge = NULL,
   threshold = NULL,
@@ -99,12 +98,6 @@ average of the nearest neighbors.}
 
 \item{tree}{Logical. \code{FALSE} (default) uses brute-force K-NN. \code{TRUE} uses
 \code{mlpack} BallTree.}
-
-\item{max_cache}{Numeric. Maximum allowed cache size in GB (default \code{4}).
-When greater than \code{0}, pairwise distances between columns with missing values
-are pre-computed and cached, which is faster for moderate-sized data but
-uses O(m^2) memory where m is the number of columns with missing values.
-Set to \code{0} to disable caching and trade speed for lower memory usage.}
 
 \item{scale}{Logical. If \code{TRUE} (default), variables are scaled to have
 unit variance.}

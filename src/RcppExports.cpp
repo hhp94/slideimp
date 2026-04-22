@@ -60,8 +60,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // impute_knn_brute
-arma::mat impute_knn_brute(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, const bool cache, int cores);
-RcppExport SEXP _slideimp_impute_knn_brute(SEXP objSEXP, SEXP kSEXP, SEXP grp_imputeSEXP, SEXP grp_miss_no_impSEXP, SEXP grp_completeSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP cacheSEXP, SEXP coresSEXP) {
+arma::mat impute_knn_brute(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, int cores);
+RcppExport SEXP _slideimp_impute_knn_brute(SEXP objSEXP, SEXP kSEXP, SEXP grp_imputeSEXP, SEXP grp_miss_no_impSEXP, SEXP grp_completeSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -72,9 +72,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::uvec& >::type grp_complete(grp_completeSEXP);
     Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
-    Rcpp::traits::input_parameter< const bool >::type cache(cacheSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cache, cores));
+    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -195,7 +194,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 11},
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
-    {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 9},
+    {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 8},
     {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 1},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},

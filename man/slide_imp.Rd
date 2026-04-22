@@ -16,7 +16,6 @@ slide_imp(
   k = NULL,
   cores = 1,
   dist_pow = 0,
-  max_cache = 4,
   ncp = NULL,
   scale = TRUE,
   coeff.ridge = 1,
@@ -74,12 +73,6 @@ macOS, OpenMP may need additional compiler configuration.}
 \item{dist_pow}{Numeric. The amount of penalization for further away nearest
 neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
 average of the nearest neighbors.}
-
-\item{max_cache}{Numeric. Maximum allowed cache size in GB (default \code{4}).
-When greater than \code{0}, pairwise distances between columns with missing values
-are pre-computed and cached, which is faster for moderate-sized data but
-uses O(m^2) memory where m is the number of columns with missing values.
-Set to \code{0} to disable caching and trade speed for lower memory usage.}
 
 \item{ncp}{Integer. Number of components used to predict the missing entries.}
 

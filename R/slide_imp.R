@@ -152,7 +152,6 @@ slide_imp <- function(
   k = NULL,
   cores = 1,
   dist_pow = 0,
-  max_cache = 4,
   # PCA-specific parameters
   ncp = NULL,
   scale = TRUE,
@@ -345,7 +344,7 @@ slide_imp <- function(
           knn_imp(
             obj = sub_mat, k = k, colmax = colmax, cores = cores,
             method = method, post_imp = post_imp, dist_pow = dist_pow,
-            max_cache = max_cache, na_check = FALSE,
+            na_check = FALSE,
             subset = subset_list[[i]]
           )
         } else {

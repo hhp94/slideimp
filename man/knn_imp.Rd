@@ -14,7 +14,6 @@ knn_imp(
   subset = NULL,
   dist_pow = 0,
   tree = FALSE,
-  max_cache = 4,
   na_check = TRUE
 )
 }
@@ -45,12 +44,6 @@ average of the nearest neighbors.}
 
 \item{tree}{Logical. \code{FALSE} (default) uses brute-force K-NN. \code{TRUE} uses
 \code{mlpack} BallTree.}
-
-\item{max_cache}{Numeric. Maximum allowed cache size in GB (default \code{4}).
-When greater than \code{0}, pairwise distances between columns with missing values
-are pre-computed and cached, which is faster for moderate-sized data but
-uses O(m^2) memory where m is the number of columns with missing values.
-Set to \code{0} to disable caching and trade speed for lower memory usage.}
 
 \item{na_check}{Boolean. Check for leftover \code{NA} values in the results or not
 (internal use).}

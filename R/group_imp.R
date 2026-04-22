@@ -541,7 +541,6 @@ group_imp <- function(
   post_imp = NULL,
   dist_pow = NULL,
   tree = NULL,
-  max_cache = NULL,
   # PCA arguments
   scale = NULL,
   coeff.ridge = NULL,
@@ -591,10 +590,9 @@ group_imp <- function(
   # Global fills gaps (group-wise wins)
   global_params <- list(
     k = k, method = method, colmax = colmax, post_imp = post_imp,
-    dist_pow = dist_pow, tree = tree, max_cache = max_cache,
-    ncp = ncp, scale = scale, coeff.ridge = coeff.ridge,
-    threshold = threshold, row.w = row.w, seed = seed,
-    nb.init = nb.init, maxiter = maxiter, miniter = miniter
+    dist_pow = dist_pow, tree = tree, ncp = ncp, scale = scale,
+    coeff.ridge = coeff.ridge, threshold = threshold, row.w = row.w,
+    seed = seed, nb.init = nb.init, maxiter = maxiter, miniter = miniter
   )
   global_params <- global_params[!vapply(global_params, is.null, logical(1))]
 
@@ -648,7 +646,7 @@ group_imp <- function(
 
   # Validate parameter names
   allowed_params <- if (is_knn_mode) {
-    c("k", "method", "colmax", "post_imp", "dist_pow", "tree", "max_cache")
+    c("k", "method", "colmax", "post_imp", "dist_pow", "tree")
   } else {
     c(
       "ncp", "scale", "method", "coeff.ridge", "row.w",

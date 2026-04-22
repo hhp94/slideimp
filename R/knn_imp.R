@@ -1,22 +1,3 @@
-check_cache_memory <- function(n_miss_cols, max_cache) {
-  if (n_miss_cols <= 1L) {
-    return(invisible(NULL))
-  }
-  n <- as.numeric(n_miss_cols)
-  cache_gb <- (n * (n - 1) / 2) * 8 / 1024^3
-  if (cache_gb > max_cache) {
-    stop(sprintf(
-      paste0(
-        "Cache would require %.1f GB for %d missing columns, ",
-        "which exceeds `max_cache` (%.1f GB). ",
-        "Increase `max_cache` or set `max_cache = 0` to disable the cache."
-      ),
-      cache_gb, n_miss_cols, max_cache
-    ))
-  }
-  invisible(NULL)
-}
-
 #' K-Nearest Neighbor Imputation for Numeric Matrices
 #'
 #' Impute missing values in a numeric matrix using k-nearest neighbors (K-NN).
@@ -59,11 +40,6 @@ check_cache_memory <- function(n_miss_cols, max_cache) {
 #' average of the nearest neighbors.
 #' @param tree Logical. `FALSE` (default) uses brute-force K-NN. `TRUE` uses
 #' `mlpack` BallTree.
-#' @param max_cache Numeric. Maximum allowed cache size in GB (default `4`).
-#' When greater than `0`, pairwise distances between columns with missing values
-#' are pre-computed and cached, which is faster for moderate-sized data but
-#' uses O(m^2) memory where m is the number of columns with missing values.
-#' Set to `0` to disable caching and trade speed for lower memory usage.
 #' @param na_check Boolean. Check for leftover `NA` values in the results or not
 #' (internal use).
 #'
@@ -94,7 +70,6 @@ knn_imp <- function(
   subset = NULL,
   dist_pow = 0,
   tree = FALSE,
-  max_cache = 4,
   na_check = TRUE
 ) {
   # Pre-conditioning
@@ -108,7 +83,6 @@ knn_imp <- function(
   stopifnot(length(dist_pow) == 1, dist_pow >= 0, !is.infinite(dist_pow))
   checkmate::assert_flag(tree, .var.name = "tree")
   checkmate::assert_flag(na_check, .var.name = "na_check")
-  checkmate::assert_number(max_cache, lower = 0, finite = TRUE, null.ok = FALSE, .var.name = "max_cache")
 
   subset <- resolve_subset(subset, obj)
   if (is.null(subset)) {
@@ -163,14 +137,6 @@ knn_imp <- function(
     )
   }
 
-  cache <- max_cache > 0
-  if (cache) {
-    check_cache_memory(
-      n_miss_cols = length(grp_impute),
-      max_cache = max_cache
-    )
-  }
-
   method <- switch(method,
     "euclidean" = 0L,
     "manhattan" = 1L
@@ -186,8 +152,7 @@ knn_imp <- function(
       grp_complete = as.integer(grp_complete - 1L),
       method = method,
       dist_pow = dist_pow,
-      cores = cores,
-      cache = cache
+      cores = cores
     )
   } else {
     imputed_values <- impute_knn_mlpack(
