@@ -1,4 +1,5 @@
 #include "imputed_value.h"
+#include "loc_timer.h"
 #include <limits>
 #include <stdexcept>
 #include <cmath>
@@ -54,7 +55,7 @@ struct StrictLowerTriangularMatrix
 //                  When false, the original SIMD-friendly loop is emitted.
 // =============================================================================
 
-constexpr arma::uword GRAIN = 32; // best for hundreds to thousands of rows
+constexpr arma::uword GRAIN = 16; // best for hundreds to thousands of rows
 
 // =============================================================================
 // calc_distance_raw — called for Groups 1 & 2 (both target and other have missing)
@@ -519,7 +520,8 @@ void impute_knn_brute_impl(
     const std::vector<arma::uvec> &rows_to_impute_vec,
     const double dist_pow,
     int cores,
-    const StrictLowerTriangularMatrix *cache_ptr)
+    const StrictLowerTriangularMatrix *cache_ptr
+        LOC_TIMER_PARAM(timer))
 {
     arma::vec n_valid_vec(layout.n_imp);
     for (arma::uword i = 0; i < layout.n_imp; ++i)
@@ -532,28 +534,26 @@ void impute_knn_brute_impl(
 #endif
     for (arma::uword i = 0; i < layout.n_imp; ++i)
     {
+        LOC_TIMER_SCOPED(timer, "neighbor_search");
+
         std::vector<NeighborInfo> top_k = distance_vector<Method, UseCache>(
             obj_reordered, nmiss_masked, layout, i, k, n_valid_vec, cache_ptr);
 
         arma::uword n_neighbors = top_k.size();
         if (n_neighbors == 0)
-        {
             continue;
-        }
 
         arma::uvec nn_columns(n_neighbors);
         arma::vec weights(n_neighbors);
         for (arma::uword jj = 0; jj < n_neighbors; ++jj)
         {
-            nn_columns(jj) = top_k[jj].index; // local position in obj_reordered
+            nn_columns(jj) = top_k[jj].index;
             weights(jj) = 1.0 / std::pow(top_k[jj].distance + epsilon, dist_pow);
         }
 
         impute_column_values(
             result, obj_reordered, nmiss_masked, layout,
-            col_offsets(i),
-            nn_columns, weights,
-            rows_to_impute_vec[i]);
+            col_offsets(i), nn_columns, weights, rows_to_impute_vec[i]);
     }
 }
 
@@ -571,36 +571,48 @@ void dispatch_cache(
     const std::vector<arma::uvec> &rows_to_impute_vec,
     const double dist_pow,
     const bool use_cache,
-    int cores)
+    int cores
+        LOC_TIMER_PARAM(timer))
 {
     if (use_cache)
     {
         StrictLowerTriangularMatrix cache(layout.n_imp);
-// Fill cache upfront
+
+        LOC_TIC(timer, "cache_fill_total");
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic)
 #endif
         for (arma::uword row = 1; row < layout.n_imp; ++row)
         {
+          LOC_TIMER_SCOPED(timer, "fill_row");
+            double *cache_row = cache.data.data() + cache.row_offsets[row];
+            const double *tptr = obj_reordered.colptr(row);
+            const double *tnptr = nmiss_masked.colptr(row);
             for (arma::uword col = 0; col < row; ++col)
             {
-                cache(row, col) = calc_distance<Method>(
-                    obj_reordered, nmiss_masked, row, col);
+                cache_row[col] = calc_distance_raw<Method, false>(
+                    tptr, tnptr,
+                    obj_reordered.colptr(col), nmiss_masked.colptr(col),
+                    obj_reordered.n_rows);
             }
         }
+        LOC_TOC(timer, "cache_fill_total");
 
+        LOC_TIC(timer, "impute_total");
         impute_knn_brute_impl<Method, true>(
             result, obj_reordered, nmiss_masked, layout, k,
-            col_offsets, rows_to_impute_vec, dist_pow, cores, &cache);
+            col_offsets, rows_to_impute_vec, dist_pow, cores, &cache LOC_TIMER_ARG(timer));
+        LOC_TOC(timer, "impute_total");
     }
     else
     {
+        LOC_TIC(timer, "impute_total");
         impute_knn_brute_impl<Method, false>(
             result, obj_reordered, nmiss_masked, layout, k,
-            col_offsets, rows_to_impute_vec, dist_pow, cores, nullptr);
+            col_offsets, rows_to_impute_vec, dist_pow, cores, nullptr LOC_TIMER_ARG(timer));
+        LOC_TOC(timer, "impute_total");
     }
 }
-
 // =============================================================================
 // Entry point
 // -----------------------------------------------------------------------------
@@ -679,19 +691,22 @@ arma::mat impute_knn_brute(
             n_rows * sizeof(double));
     }
 
+    LOC_TIMER_OBJ(knn_tm);
+
     switch (method)
     {
     case 0:
         dispatch_cache<0>(result, obj_reordered, nmiss_masked, layout, k,
-                          col_offsets, rows_to_impute_vec, dist_pow, cache, cores);
+                          col_offsets, rows_to_impute_vec, dist_pow, cache, cores LOC_TIMER_ARG(knn_tm));
         break;
     case 1:
         dispatch_cache<1>(result, obj_reordered, nmiss_masked, layout, k,
-                          col_offsets, rows_to_impute_vec, dist_pow, cache, cores);
+                          col_offsets, rows_to_impute_vec, dist_pow, cache, cores LOC_TIMER_ARG(knn_tm));
         break;
     default:
         throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan");
     }
 
+    LOC_TIMER_DUMP_RAW(knn_tm, "knn_tm_raw");
     return result;
 }
