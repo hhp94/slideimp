@@ -22,17 +22,20 @@ arma::mat impute_knn_mlpack(
     GroupLayout layout{grp_impute.n_elem, grp_miss_no_imp.n_elem, grp_complete.n_elem};
     const arma::uword n_rows = obj.n_rows;
 
+    // obj_reordered holds ALL three groups (mlpack needs one contiguous matrix
+    // for the ball tree). `nmiss_masked` covers only groups 1+2 — group 3 has no
+    // missing entries by construction.
     arma::mat obj_reordered(n_rows, layout.n_working());
-    arma::mat nmiss_masked(n_rows, layout.n_imp + layout.n_mni);
+    arma::mat nmiss_masked(n_rows, layout.n_masked());
 
-    // mean-fill variant of copy_with_mask
+    // mean-fill variant of copy_with_mask: mlpack's distance metrics are
+    // mask-unaware, so we need a sensible numeric value in place of NaN.
     auto copy_mean_fill = [&](arma::uword local_pos, arma::uword orig_pos)
     {
         const double *src = obj.colptr(orig_pos);
         double *dst = obj_reordered.colptr(local_pos);
         double *mask_dst = nmiss_masked.colptr(local_pos);
 
-        // first pass: accumulate mean over finite entries, write mask
         double sum = 0.0;
         arma::uword n_finite = 0;
         for (arma::uword r = 0; r < n_rows; ++r)
@@ -46,7 +49,6 @@ arma::mat impute_knn_mlpack(
                 ++n_finite;
             }
         }
-        // second pass: write mean-filled values to dst
         double mean_val = (n_finite > 0) ? sum / static_cast<double>(n_finite) : 0.0;
         for (arma::uword r = 0; r < n_rows; ++r)
         {
@@ -55,30 +57,31 @@ arma::mat impute_knn_mlpack(
         }
     };
 
+    // group 1
     for (arma::uword i = 0; i < layout.n_imp; ++i)
-    {
         copy_mean_fill(i, grp_impute(i));
-    }
+
     arma::uvec col_offsets;
     std::vector<arma::uvec> rows_to_impute_vec;
     arma::mat result = initialize_result_matrix(
         nmiss_masked, grp_impute, layout, col_offsets, rows_to_impute_vec);
     if (result.n_rows == 0)
-    {
         return result;
-    }
+
+    // group 2
     for (arma::uword p = 0; p < layout.n_mni; ++p)
-    {
         copy_mean_fill(layout.mni_start() + p, grp_miss_no_imp(p));
-    }
-    // group 3: NaN-free by construction, straight memcpy
+
+    // group 3: NaN-free by construction, straight memcpy.
+    // Order matters: impute_column_values de-tags group 3 neighbors as
+    // grp_complete(local - complete_start), so physical layout here MUST match
+    // grp_complete's order.
     for (arma::uword p = 0; p < layout.n_complete; ++p)
-    {
         std::memcpy(
             obj_reordered.colptr(layout.complete_start() + p),
             obj.colptr(grp_complete(p)),
             n_rows * sizeof(double));
-    }
+
     // query matrix = group 1 columns (the ones we're imputing)
     arma::mat query_mat = obj_reordered.cols(0, layout.n_imp - 1);
 
@@ -127,7 +130,8 @@ arma::mat impute_knn_mlpack(
             result, obj_reordered, nmiss_masked, layout,
             col_offsets(i),
             nn_columns, weights,
-            rows_to_impute_vec[i]);
+            rows_to_impute_vec[i],
+            obj, grp_complete);
     }
 
     return result;

@@ -1,9 +1,4 @@
 #include "imputed_value.h"
-#include <random>
-#include <cmath>
-#include <algorithm>
-
-#include "imputed_value.h"
 #include <cmath>
 #include <algorithm>
 
@@ -21,7 +16,7 @@ arma::mat initialize_result_matrix(
     arma::uvec &col_offsets,
     std::vector<arma::uvec> &rows_to_impute_vec)
 {
-    const arma::uword n_col_result = 3;
+    const arma::uword n_col_result = 3; // column 1, 2 are row, col. 3 is value
     const arma::uword n_imp = layout.n_imp;
 
     if (n_imp == 0)
@@ -50,13 +45,14 @@ arma::mat initialize_result_matrix(
     col_offsets.subvec(1, n_imp) = arma::cumsum(n_col_miss);
 
     rows_to_impute_vec.resize(n_imp);
+
     for (arma::uword i = 0; i < n_imp; ++i)
     {
         // Group 1 lives at local positions [0, n_imp) in nmiss_masked
         rows_to_impute_vec[i] = arma::find(nmiss_masked.col(i) == 0);
         const arma::uvec &rows = rows_to_impute_vec[i];
-
         const arma::uword orig_col_1based = grp_impute(i) + 1;
+
         for (arma::uword r = 0; r < rows.n_elem; ++r)
         {
             const arma::uword res_row = col_offsets(i) + r;
@@ -74,20 +70,22 @@ arma::mat initialize_result_matrix(
 // Neighbors are split into masked (groups 1+2) and unmasked (group 3) buckets
 // before accumulation. Each bucket gets its own clean inner loop.
 //
-// Unmasked simplification: every row is valid, so
-//   wt_ptr[r] += w   for every r, every unmasked neighbor
-// collapses to a single "total_unmasked_w" added to every row once at the end.
-// The ws_ptr accumulation still varies per row (different obj values).
+// Unmasked simplification: every row is valid, so wt_ptr[r] += w for every r,
+// every unmasked neighbor collapses to a single "total_unmasked_w" added to
+// every row once at the end. The ws_ptr accumulation still varies per row
+// (different obj values).
 // =============================================================================
 void impute_column_values(
     arma::mat &result,
-    const arma::mat &obj_reordered,
+    const arma::mat &obj_masked,
     const arma::mat &nmiss_masked,
     const GroupLayout &layout,
     const arma::uword col_offset,
     const arma::uvec &nn_columns,
     const arma::vec &nn_weights,
-    const arma::uvec &rows_to_impute)
+    const arma::uvec &rows_to_impute,
+    const arma::mat &obj,
+    const arma::uvec &grp_complete)
 {
     const arma::uword n_rows = rows_to_impute.n_elem;
     if (n_rows == 0)
@@ -97,15 +95,17 @@ void impute_column_values(
 
     arma::vec weighted_sums(n_rows, arma::fill::zeros);
     arma::vec weight_totals(n_rows, arma::fill::zeros);
+
     double *__restrict__ ws_ptr = weighted_sums.memptr();
     double *__restrict__ wt_ptr = weight_totals.memptr();
 
-    // partition neighbor indices by whether their column has a mask
     const arma::uword complete_start = layout.complete_start();
+
     std::vector<arma::uword> masked_j;
-    std::vector<arma::uword> unmasked_j;
+    std::vector<arma::uword> complete_j;
     masked_j.reserve(nn_columns.n_elem);
-    unmasked_j.reserve(nn_columns.n_elem);
+    complete_j.reserve(nn_columns.n_elem);
+
     for (arma::uword j = 0; j < nn_columns.n_elem; ++j)
     {
         if (nn_columns(j) < complete_start)
@@ -114,16 +114,18 @@ void impute_column_values(
         }
         else
         {
-            unmasked_j.push_back(j);
+            complete_j.push_back(j);
         }
     }
 
-    // ---- masked neighbors (groups 1+2) ----
+    // masked neighbors (groups 1+2) ----
     for (arma::uword j : masked_j)
     {
         const double w = nn_weights(j);
-        const double *obj_col = obj_reordered.colptr(nn_columns(j));
-        const double *nmiss_col = nmiss_masked.colptr(nn_columns(j));
+        const arma::uword local = nn_columns(j);
+        const double *obj_col = obj_masked.colptr(local);
+        const double *nmiss_col = nmiss_masked.colptr(local);
+
         for (arma::uword r = 0; r < n_rows; ++r)
         {
             const arma::uword row_idx = rows_to_impute(r);
@@ -134,24 +136,28 @@ void impute_column_values(
         }
     }
 
-    // ---- unmasked neighbors (group 3) ----
+    // complete neighbors (group 3) ----
     // valid == 1 for every row, so weight == w uniformly across rows.
-    double total_unmasked_w = 0.0;
-    for (arma::uword j : unmasked_j)
+    double total_complete_w = 0.0;
+
+    for (arma::uword j : complete_j)
     {
         const double w = nn_weights(j);
-        const double *obj_col = obj_reordered.colptr(nn_columns(j));
+        const arma::uword c = nn_columns(j) - complete_start;
+        const double *obj_col = obj.colptr(grp_complete(c));
+
         for (arma::uword r = 0; r < n_rows; ++r)
         {
             ws_ptr[r] += w * obj_col[rows_to_impute(r)];
         }
-        total_unmasked_w += w;
+        total_complete_w += w;
     }
-    if (total_unmasked_w > 0.0)
+
+    if (total_complete_w > 0.0)
     {
         for (arma::uword r = 0; r < n_rows; ++r)
         {
-            wt_ptr[r] += total_unmasked_w;
+            wt_ptr[r] += total_complete_w;
         }
     }
 
