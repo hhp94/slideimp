@@ -43,7 +43,8 @@ LinkingTo:
     mlpack,
     Rcpp,
     RcppArmadillo,
-    RcppEnsmallen
+    RcppEnsmallen,
+    rcpptimer
 VignetteBuilder: 
     knitr
 Config/testthat/edition: 3
