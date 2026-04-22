@@ -2,10 +2,8 @@
 #include "loc_timer.h"
 #include <stdexcept>
 #include <cmath>
+#include <RcppThread.h>
 #include <algorithm>
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
 
 // -----------------------------------------------------------------------------
 // metric definitions, add new metrics by defining a struct with an accumulate()
@@ -320,7 +318,9 @@ arma::mat impute_knn_brute(
     int cores = 1)
 {
     if (method != 0 && method != 1)
+    {
         throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan");
+    }
 
     GroupLayout layout{grp_impute.n_elem, grp_miss_no_imp.n_elem, grp_complete.n_elem};
     const arma::uword n_rows = obj.n_rows;
@@ -373,38 +373,41 @@ arma::mat impute_knn_brute(
         n_valid_vec(i) = arma::accu(nmiss_masked.col(i));
     }
 
+    // parallelFor setup
+    cores = std::max(1, cores);
+    const size_t n_threads = static_cast<size_t>(cores);
+    const size_t n_batches = static_cast<size_t>(cores);
+
     LOC_TIMER_OBJ(knn_tm);
     LOC_TIC(knn_tm, "impute_total");
 
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic)
-#endif
-    for (arma::uword i = 0; i < layout.n_imp; ++i)
-    {
-        LOC_TIMER_SCOPED(knn_tm, "neighbor_search");
-        std::vector<NeighborInfo> top_k = distance_vector(
-            obj_masked, nmiss_masked, layout, i, k, n_valid_vec, method,
-            obj, grp_complete);
-
-        const arma::uword n_neighbors = top_k.size();
-        if (n_neighbors == 0)
+    RcppThread::parallelFor(
+        0,
+        layout.n_imp,
+        [&](arma::uword i)
         {
-            continue;
-        }
-
-        arma::uvec nn_columns(n_neighbors);
-        arma::vec weights(n_neighbors);
-        for (arma::uword jj = 0; jj < n_neighbors; ++jj)
-        {
-            nn_columns(jj) = top_k[jj].index;
-            weights(jj) = 1.0 / std::pow(top_k[jj].distance + epsilon, dist_pow);
-        }
-
-        impute_column_values(
-            result, obj_masked, nmiss_masked, layout,
-            col_offsets(i), nn_columns, weights, rows_to_impute_vec[i],
-            obj, grp_complete);
-    }
+            // LOC_TIMER_SCOPED(knn_tm, "neighbor_search");
+            std::vector<NeighborInfo> top_k = distance_vector(
+                obj_masked, nmiss_masked, layout, i, k, n_valid_vec, method,
+                obj, grp_complete);
+            const arma::uword n_neighbors = top_k.size();
+            if (n_neighbors == 0)
+            {
+                return; // was `continue`
+            }
+            arma::uvec nn_columns(n_neighbors);
+            arma::vec weights(n_neighbors);
+            for (arma::uword jj = 0; jj < n_neighbors; ++jj)
+            {
+                nn_columns(jj) = top_k[jj].index;
+                weights(jj) = 1.0 / std::pow(top_k[jj].distance + epsilon, dist_pow);
+            }
+            impute_column_values(
+                result, obj_masked, nmiss_masked, layout,
+                col_offsets(i), nn_columns, weights, rows_to_impute_vec[i],
+                obj, grp_complete);
+        },
+        n_threads, n_batches);
 
     LOC_TOC(knn_tm, "impute_total");
     LOC_TIMER_DUMP_RAW(knn_tm, "knn_tm_raw");
