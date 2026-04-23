@@ -1,4 +1,5 @@
 #include "eig_sym_sel.h"
+#include "imputed_value.h"
 #include "loc_timer.h"
 
 // small helper for more readable codes that deals with the CSC
@@ -118,7 +119,7 @@ Rcpp::List pca_imp_internal_cpp(
 {
   LOC_TIMER_OBJ(pca_imp_gram);
   LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
-
+  stop_on_inf(obj);
   const arma::uword nrX = obj.n_rows;
   const arma::uword n_elig = eligible_idx.n_elem;
   const double nrX_d = static_cast<double>(nrX);

@@ -344,7 +344,7 @@ slide_imp <- function(
           knn_imp(
             obj = sub_mat, k = k, colmax = colmax, cores = cores,
             method = method, post_imp = post_imp, dist_pow = dist_pow,
-            na_check = FALSE,
+            na_check = FALSE, .progress = FALSE,
             subset = subset_list[[i]]
           )
         } else {

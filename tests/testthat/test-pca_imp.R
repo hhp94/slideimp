@@ -288,3 +288,12 @@ test_that("pca_imp restores object even on bad input", {
 
   expect_identical(to_test, passed_obj)
 })
+
+test_that("Throw on Inf", {
+  set.seed(1234)
+  to_test <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
+  to_test[1, 1] <- Inf
+  expect_error(pca_imp(to_test, ncp = 3), "Infinite")
+  to_test[1, 1] <- -Inf
+  expect_error(pca_imp(to_test, ncp = 3), "Infinite")
+})

@@ -1,5 +1,13 @@
 # slideimp (development version)
 
+## Breaking changes
+* `knn_imp()` no longer uses the cache; the `use_cache` argument has been removed.
+
+## Minor improvements and fixes
+* `knn_imp()` now uses `{RcppThread}` instead of OpenMP for macOS support.
+* `tune_imp()` now infers the subset from `na_loc` to speed up tuning for `knn_imp()` and `slide_imp()`.
+* `prep_groups()` is now an S3 generic instead of using the register-on-load pattern with `{slideimp.extra}`.
+
 # slideimp 1.0.0
 
 ## Breaking changes

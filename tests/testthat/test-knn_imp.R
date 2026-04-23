@@ -157,3 +157,12 @@ test_that("Behavior with extreme missing columns and rows", {
   diag(mat) <- rnorm(20)
   expect_error(knn_imp(mat, k = 2), "exceeds usable columns")
 })
+
+test_that("Throw on Inf", {
+  set.seed(1234)
+  to_test <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
+  to_test[1, 1] <- Inf
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
+  to_test[1, 1] <- -Inf
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
+})

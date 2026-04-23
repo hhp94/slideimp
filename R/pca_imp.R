@@ -27,6 +27,18 @@
 #'
 #' @inherit knn_imp return
 #'
+#' @section Performance tip for Windows users:
+#' `pca_imp()` relies heavily on linear algebra (SVD). On Windows the
+#' default BLAS that ships with R is quite slow. You can get a big speedup by
+#' swapping it for OpenBLAS:
+#'
+#' - Follow this short guide: https://github.com/david-cortes/R-openblas-in-windows
+#' - After swapping, restart R and re-run your code.
+#'
+#' On machines with multi-threaded BLAS you may also want to set
+#' `pin_blas = TRUE` (in `tune_imp()` / `group_imp()`) to avoid
+#' thread thrashing when running in parallel with `mirai`.
+#'
 #' @references
 #' Josse, J. & Husson, F. (2013). Handling missing values in exploratory
 #' multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.

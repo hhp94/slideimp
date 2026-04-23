@@ -53,7 +53,7 @@ initialization is always mean imputation.}
 
 \item{miniter}{Integer. Minimum number of iterations for the algorithm.}
 
-\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
+\item{colmax}{Numeric. A number from \code{0} to \code{1}. Threshold of column-wise missing
 data rate above which imputation is skipped.}
 
 \item{post_imp}{Boolean. Whether to impute remaining missing values (those
@@ -73,6 +73,21 @@ Impute missing values in a numeric matrix using (regularized) iterative PCA.
 This algorithm is based on the original \code{missMDA::imputePCA} function and is
 optimized for tall or wide numeric matrices.
 }
+\section{Performance tip for Windows users}{
+
+\code{pca_imp()} relies heavily on linear algebra (SVD). On Windows the
+default BLAS that ships with R is quite slow. You can get a big speedup by
+swapping it for OpenBLAS:
+\itemize{
+\item Follow this short guide: https://github.com/david-cortes/R-openblas-in-windows
+\item After swapping, restart R and re-run your code.
+}
+
+On machines with multi-threaded BLAS you may also want to set
+\code{pin_blas = TRUE} (in \code{tune_imp()} / \code{group_imp()}) to avoid
+thread thrashing when running in parallel with \code{mirai}.
+}
+
 \examples{
 obj <- sim_mat(10, 10)$input
 sum(is.na(obj))

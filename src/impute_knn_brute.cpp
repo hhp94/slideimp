@@ -2,14 +2,14 @@
 #include "loc_timer.h"
 
 // parallelism
-#include <RcppThread.h>     // RcppThread::parallelFor + thread pool
+#include <RcppThread.h> // RcppThread::parallelFor + thread pool
 
 // standard library
-#include <stdexcept>        // Errors
-#include <algorithm>        // std::min, std::max, std::sort, std::swap
-#include <cmath>            // std::isnan
-#include <limits>           // std::numeric_limits<double>::infinity()
-#include <vector>           // std::vector<NeighborInfo>
+#include <stdexcept> // Errors
+#include <algorithm> // std::min, std::max, std::sort, std::swap
+#include <cmath>     // std::isnan
+#include <limits>    // std::numeric_limits<double>::infinity()
+#include <vector>    // std::vector<NeighborInfo>
 
 // -----------------------------------------------------------------------------
 // metric definitions, add new metrics by defining a struct with an accumulate()
@@ -326,7 +326,8 @@ arma::mat impute_knn_brute(
     const arma::uvec &grp_complete,
     const int method,
     const double dist_pow,
-    int cores = 1)
+    int cores = 1,
+    const bool pb = false)
 {
     if (method != 0 && method != 1)
     {
@@ -396,7 +397,11 @@ arma::mat impute_knn_brute(
     cores = std::max(1, cores);
     const size_t n_threads = static_cast<size_t>(cores);
     const size_t n_batches = static_cast<size_t>(cores);
-
+    std::unique_ptr<RcppThread::ProgressBar> bar;
+    if (pb)
+    {
+        bar = std::make_unique<RcppThread::ProgressBar>(layout.n_imp, 2);
+    }
     LOC_TIMER_OBJ(knn_tm);
     LOC_TIC(knn_tm, "impute_total");
 
@@ -405,6 +410,10 @@ arma::mat impute_knn_brute(
         layout.n_imp,
         [&](arma::uword i)
         {
+            if (i % 5 == 0)
+            {
+                RcppThread::checkUserInterrupt();
+            }
             // LOC_TIMER_SCOPED(knn_tm, "neighbor_search");
             std::vector<NeighborInfo> top_k = distance_vector(
                 obj_masked, nmiss_masked, layout, i, k, n_valid_vec, method,
@@ -425,6 +434,10 @@ arma::mat impute_knn_brute(
                 result, obj_masked, nmiss_masked, layout,
                 col_offsets(i), nn_columns, weights, rows_to_impute_vec[i],
                 obj, grp_complete);
+            if (pb)
+            {
+                ++(*bar);
+            }
         },
         n_threads, n_batches);
 

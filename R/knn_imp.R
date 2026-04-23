@@ -10,27 +10,26 @@
 #' averages where weights are inverse distances raised to the power of
 #' `dist_pow`.
 #'
-#' The `tree` parameter (when `TRUE`) uses a BallTree for faster neighbor search
+#' The `tree` parameter (when `TRUE`) uses a ball tree for faster neighbor search
 #' via `{mlpack}` but **requires pre-filling** missing values with column means.
-#' This can introduce a small bias when missingness is high.
+#' This can introduce bias when missingness is high.
 #'
 #' @section Performance Optimization:
 #' - **`tree = FALSE`** (default, brute-force K-NN): Always safe and usually
 #'   faster for small to moderate data or high-dimensional cases.
-#' - **`tree = TRUE`** (BallTree K-NN): Only use when imputation run time
+#' - **`tree = TRUE`** (ball tree K-NN): Only use when imputation run time
 #' becomes prohibitive and missingness is low (<5% missing).
 #' - **Subset imputation**: Use the `subset` parameter for efficiency when only
 #' specific columns need imputation (e.g., epigenetic clock CpGs).
 #'
 #' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#' @param k Integer. Number of nearest neighbors for imputation. 10 is a good
+#' @param k Integer. Number of nearest neighbors for imputation. `10` is a good
 #' starting point.
-#' @param colmax Numeric. A number from 0 to 1. Threshold of column-wise missing
+#' @param colmax Numeric. A number from `0` to `1`. Threshold of column-wise missing
 #' data rate above which imputation is skipped.
 #' @param method Character. Either "euclidean" (default) or "manhattan".
 #' Distance metric for nearest neighbor calculation.
-#' @param cores Integer. Number of cores for K-NN parallelization (OpenMP). On
-#' macOS, OpenMP may need additional compiler configuration.
+#' @param cores Integer. Number of cores to use for parallel computation. Defaults to `1`.
 #' @param post_imp Boolean. Whether to impute remaining missing values (those
 #' that failed imputation) using column means.
 #' @param subset Character. Vector of column names or integer vector of column
@@ -39,7 +38,8 @@
 #' neighbors in the weighted average. `dist_pow = 0` (default) is the simple
 #' average of the nearest neighbors.
 #' @param tree Logical. `FALSE` (default) uses brute-force K-NN. `TRUE` uses
-#' `mlpack` BallTree.
+#' `mlpack` ball tree K-NN.
+#' @param .progress Boolean. Show imputation progress.
 #' @param na_check Boolean. Check for leftover `NA` values in the results or not
 #' (internal use).
 #'
@@ -70,7 +70,8 @@ knn_imp <- function(
   subset = NULL,
   dist_pow = 0,
   tree = FALSE,
-  na_check = TRUE
+  na_check = TRUE,
+  .progress = TRUE
 ) {
   # Pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
@@ -82,6 +83,7 @@ knn_imp <- function(
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   stopifnot(length(dist_pow) == 1, dist_pow >= 0, !is.infinite(dist_pow))
   checkmate::assert_flag(tree, .var.name = "tree")
+  checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(na_check, .var.name = "na_check")
 
   subset <- resolve_subset(subset, obj)
@@ -152,7 +154,8 @@ knn_imp <- function(
       grp_complete = as.integer(grp_complete - 1L),
       method = method,
       dist_pow = dist_pow,
-      cores = cores
+      cores = cores,
+      pb = .progress
     )
   } else {
     imputed_values <- impute_knn_mlpack(

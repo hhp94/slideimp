@@ -13,8 +13,8 @@ find_windows_flank <- function(location, subset, window_size) {
     .Call(`_slideimp_find_windows_flank`, location, subset, window_size)
 }
 
-impute_knn_brute <- function(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores = 1L) {
-    .Call(`_slideimp_impute_knn_brute`, obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores)
+impute_knn_brute <- function(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores = 1L, pb = FALSE) {
+    .Call(`_slideimp_impute_knn_brute`, obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores, pb)
 }
 
 impute_knn_mlpack <- function(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores = 1L) {

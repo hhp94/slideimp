@@ -12,8 +12,7 @@ mean_imp_col(obj, subset = NULL, cores = 1)
 \item{subset}{Character. Vector of column names or integer vector of column
 indices specifying which columns to impute.}
 
-\item{cores}{Integer. Number of cores for K-NN parallelization (OpenMP). On
-macOS, OpenMP may need additional compiler configuration.}
+\item{cores}{Integer. Number of cores to use for parallel computation. Defaults to \code{1}.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing values

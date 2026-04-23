@@ -14,23 +14,23 @@ knn_imp(
   subset = NULL,
   dist_pow = 0,
   tree = FALSE,
-  na_check = TRUE
+  na_check = TRUE,
+  .progress = TRUE
 )
 }
 \arguments{
 \item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
 
-\item{k}{Integer. Number of nearest neighbors for imputation. 10 is a good
+\item{k}{Integer. Number of nearest neighbors for imputation. \code{10} is a good
 starting point.}
 
-\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
+\item{colmax}{Numeric. A number from \code{0} to \code{1}. Threshold of column-wise missing
 data rate above which imputation is skipped.}
 
 \item{method}{Character. Either "euclidean" (default) or "manhattan".
 Distance metric for nearest neighbor calculation.}
 
-\item{cores}{Integer. Number of cores for K-NN parallelization (OpenMP). On
-macOS, OpenMP may need additional compiler configuration.}
+\item{cores}{Integer. Number of cores to use for parallel computation. Defaults to \code{1}.}
 
 \item{post_imp}{Boolean. Whether to impute remaining missing values (those
 that failed imputation) using column means.}
@@ -43,10 +43,12 @@ neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
 average of the nearest neighbors.}
 
 \item{tree}{Logical. \code{FALSE} (default) uses brute-force K-NN. \code{TRUE} uses
-\code{mlpack} BallTree.}
+\code{mlpack} ball tree K-NN.}
 
 \item{na_check}{Boolean. Check for leftover \code{NA} values in the results or not
 (internal use).}
+
+\item{.progress}{Boolean. Show imputation progress.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj} with missing
@@ -63,16 +65,16 @@ When \code{dist_pow > 0}, imputed values are computed as distance-weighted
 averages where weights are inverse distances raised to the power of
 \code{dist_pow}.
 
-The \code{tree} parameter (when \code{TRUE}) uses a BallTree for faster neighbor search
+The \code{tree} parameter (when \code{TRUE}) uses a ball tree for faster neighbor search
 via \code{{mlpack}} but \strong{requires pre-filling} missing values with column means.
-This can introduce a small bias when missingness is high.
+This can introduce bias when missingness is high.
 }
 \section{Performance Optimization}{
 
 \itemize{
 \item \strong{\code{tree = FALSE}} (default, brute-force K-NN): Always safe and usually
 faster for small to moderate data or high-dimensional cases.
-\item \strong{\code{tree = TRUE}} (BallTree K-NN): Only use when imputation run time
+\item \strong{\code{tree = TRUE}} (ball tree K-NN): Only use when imputation run time
 becomes prohibitive and missingness is low (<5\% missing).
 \item \strong{Subset imputation}: Use the \code{subset} parameter for efficiency when only
 specific columns need imputation (e.g., epigenetic clock CpGs).

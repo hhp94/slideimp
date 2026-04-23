@@ -433,11 +433,9 @@ prep_groups <- function(
 #' with randomly sampled columns from `obj`. Passed to [prep_groups()]
 #' internally.
 #'
-#' @param cores The number of OpenMP cores for K-NN imputation
-#' **only**. For PCA or mirai-based parallelism, use
-#' `mirai::daemons()` instead.
-#'
-#' @param .progress Show imputation progress (default `TRUE`).
+#' @param cores The number of cores for K-NN imputation
+#' **only**. For PCA imputation parallelization by groups use `mirai::daemons()`
+#' with `pin_blas = TRUE` instead.
 #'
 #' @param seed Numeric or `NULL`. Random seed for reproducibility.
 #'
@@ -473,17 +471,12 @@ prep_groups <- function(
 #' * Column-clustering to form correlation-based groups.
 #'
 #' @section Parallelization:
-#' * **K-NN**: use the `cores` argument (requires OpenMP). If
-#'   `mirai::daemons()` are active, `cores` is automatically set to 1
-#'   to avoid nested parallelism.
+#' * **K-NN**: use the `cores` argument. If `mirai::daemons()` are active,
+#' `cores` is automatically set to `1` to avoid nested parallelism.
 #' * **PCA**: use `mirai::daemons()` instead of `cores`.
 #'
-#' On macOS, OpenMP is typically unavailable and `cores` falls back to
-#' 1. Use `mirai::daemons()` for parallelization instead.
-#'
-#' On Linux with OpenBLAS or MKL, set `pin_blas = TRUE` when running
-#' parallel PCA to prevent BLAS threads and `mirai` workers competing
-#' for cores.
+#' On Linux with threaded BLAS like OpenBLAS/MKL, set `pin_blas = TRUE` when running
+#' parallel PCA imputation to prevent BLAS threads and `mirai` workers competing for cores.
 #'
 #' @note
 #' A `character` string can be passed to `group` to name a supported
@@ -564,7 +557,6 @@ group_imp <- function(
   on_infeasible <- match.arg(on_infeasible)
   cn <- colnames(obj)
   rn <- rownames(obj)
-  # obj_attrs <- attributes(obj)
   attributes(obj) <- list(dim = dim(obj))
 
   # Step 1: Build canonical groups via prep_groups() ----
@@ -646,7 +638,7 @@ group_imp <- function(
 
   # Validate parameter names
   allowed_params <- if (is_knn_mode) {
-    c("k", "method", "colmax", "post_imp", "dist_pow", "tree")
+    c("k", "method", "colmax", "post_imp", "dist_pow", "tree", ".progress")
   } else {
     c(
       "ncp", "scale", "method", "coeff.ridge", "row.w",
@@ -658,8 +650,9 @@ group_imp <- function(
   unknown_params <- setdiff(all_param_names, allowed_params)
   if (length(unknown_params) > 0) {
     cli::cli_abort(c(
-      "{cli::qty(length(unknown_params))}Unknown parameter{?s} for {imp_method} method:",
-      "x" = "{fmt_trunc(unknown_params, 10)}"
+      "{cli::qty(length(unknown_params))}Unknown parameter{?s} for {.strong {toupper(imp_method)}} method:",
+      "x" = "{fmt_trunc(unknown_params, 10)}",
+      "i" = "Allowed: {.arg {allowed_params}}."
     ))
   }
 
@@ -675,10 +668,9 @@ group_imp <- function(
       min(group_size[i] - 1L, nrow(obj) - 2L)
     }
     if (p[[required_param]] > cap) {
-      warning(sprintf(
-        "Group %d: %s capped from %d to %d (group size = %d).",
-        i, required_param, p[[required_param]], cap, group_size[i]
-      ))
+      cli::cli_warn(
+        "Group {i}: {.arg {required_param}} capped from {p[[required_param]]} to {cap} (group size = {group_size[i]})."
+      )
       p[[required_param]] <- cap
     }
     if (p[[required_param]] < 1L) {
@@ -690,7 +682,9 @@ group_imp <- function(
     group$parameters[[i]] <- p
   }
 
-  message(sprintf("Imputing %d group(s) using %s.", nrow(group), toupper(imp_method)))
+  cli::cli_inform(
+    "Imputing {nrow(group)} group{?s} using {.strong {toupper(imp_method)}}."
+  )
 
   # Step 3: Imputation loop ----
   # Column-index lookups
@@ -719,18 +713,17 @@ group_imp <- function(
 
   if (is_knn_mode) {
     if (cores > 1 && parallelize) {
-      message(
-        "Both `cores > 1` and `mirai::daemons()` detected. ",
-        "Setting `cores = 1` to avoid nested parallelism. ",
-        "Parallelization will be handled by `mirai`."
-      )
+      cli::cli_inform(c(
+        "!" = "Both {.arg cores} > 1 and active {.pkg mirai} daemons detected.",
+        "i" = "Setting {.arg cores} = 1 to avoid nested parallelism. Distribution will be handled by {.pkg mirai}."
+      ))
       cores <- 1
     }
-  } else if (cores > 1) {
-    warning(
-      "`cores` is ignored for PCA imputation; parallelism comes from ",
-      "threaded BLAS or mirai daemons across groups. Setting `cores = 1`."
-    )
+  } else if (cores > 1 && !parallelize) {
+    cli::cli_inform(c(
+      "!" = "{.arg cores} = {cores} is ignored for PCA imputation.",
+      "i" = "Parallelism comes from threaded BLAS or {.pkg mirai} daemons across groups."
+    ))
     cores <- 1
   }
 
@@ -741,6 +734,7 @@ group_imp <- function(
     if (is_knn_mode) {
       p$cores <- cores
       p$subset <- indices[[i]]$features_idx_local
+      p$.progress <- FALSE
     }
     p
   })
@@ -748,11 +742,11 @@ group_imp <- function(
   imp_fn <- if (is_knn_mode) knn_imp else pca_imp
 
   if (parallelize) {
-    message("Running Mode: parallel (mirai across groups)...")
+    cli::cli_inform("Running mode: {.strong mirai}")
   } else if (is_knn_mode && cores > 1) {
-    message("Running Mode: parallel (OpenMP within groups)...")
+    cli::cli_inform("Running mode: {.strong threaded} ({cores} cores)")
   } else {
-    message("Running Mode: sequential ...")
+    cli::cli_inform("Running mode: {.strong sequential}")
   }
 
   # Imputation
@@ -817,7 +811,7 @@ group_imp <- function(
     fallback_flags <- unlist(m[.progress = .progress])
     obj[, all_feats_pos] <- big_out[, ]
   } else {
-    if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
+    if (.progress) pb <- cli::cli_progress_bar(name = "Imputing", total = length(iter))
     fallback_flags <- logical(length(iter))
     for (i in iter) {
       sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
@@ -835,8 +829,8 @@ group_imp <- function(
         }
       )
       obj[, feat_splits[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
-      if (.progress) cli::cli_progress_update(id = pb)
       fallback_flags[i] <- isTRUE(attr(imputed, "fallback"))
+      if (.progress) cli::cli_progress_update(id = pb)
     }
     if (.progress) cli::cli_progress_done(id = pb)
   }

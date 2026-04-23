@@ -96,7 +96,7 @@ repetition before giving up due to row-budget exhaustion (default \code{100}).}
 (default \code{TRUE}).}
 
 \item{cores}{Controls the number of cores to parallelize over for K-NN
-and sliding-window K-NN imputation with OpenMP. For other methods, use
+and sliding-window K-NN imputation with \code{RcppThread}. For other methods, use
 \code{mirai::daemons()} instead.}
 
 \item{location}{Required only for \code{slide_imp}. Numeric vector of column
@@ -147,20 +147,13 @@ Tuning results can be evaluated using the \code{yardstick} package or
 \section{Parallelization}{
 
 \itemize{
-\item \strong{K-NN}: use the \code{cores} argument (requires OpenMP). If
-\code{mirai::daemons()} are active, \code{cores} is automatically set to 1
-to avoid nested parallelism.
+\item \strong{K-NN}: use the \code{cores} argument. If \code{mirai::daemons()} are active,
+\code{cores} is automatically set to \code{1} to avoid nested parallelism.
 \item \strong{PCA}: use \code{mirai::daemons()} instead of \code{cores}.
 }
 
-On macOS, OpenMP is typically unavailable and \code{cores} falls back to
-\enumerate{
-\item Use \code{mirai::daemons()} for parallelization instead.
-}
-
-On Linux with OpenBLAS or MKL, set \code{pin_blas = TRUE} when running
-parallel PCA to prevent BLAS threads and \code{mirai} workers competing
-for cores.
+On Linux with threaded BLAS like OpenBLAS/MKL, set \code{pin_blas = TRUE} when running
+parallel PCA imputation to prevent BLAS threads and \code{mirai} workers competing for cores.
 }
 
 \examples{

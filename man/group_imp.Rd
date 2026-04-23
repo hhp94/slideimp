@@ -67,7 +67,7 @@ after demotion are dropped with a message.}
 no group assignment are left untouched (neither imputed nor used
 as auxiliary columns) and a message is issued instead of an error.}
 
-\item{k}{Integer. Number of nearest neighbors for imputation. 10 is a good
+\item{k}{Integer. Number of nearest neighbors for imputation. \code{10} is a good
 starting point.}
 
 \item{ncp}{Integer. Number of components used to predict the missing entries.}
@@ -75,18 +75,18 @@ starting point.}
 \item{method}{For K-NN imputation: distance metric to use (\code{"euclidean"} or \code{"manhattan"}).
 For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
 
-\item{cores}{The number of OpenMP cores for K-NN imputation
-\strong{only}. For PCA or mirai-based parallelism, use
-\code{mirai::daemons()} instead.}
+\item{cores}{The number of cores for K-NN imputation
+\strong{only}. For PCA imputation parallelization by groups use \code{mirai::daemons()}
+with \code{pin_blas = TRUE} instead.}
 
-\item{.progress}{Show imputation progress (default \code{TRUE}).}
+\item{.progress}{Show progress bar (default = \code{TRUE}).}
 
 \item{min_group_size}{Integer or \code{NULL}. Minimum column count
 (features + aux) per group. Groups smaller than this are padded
 with randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}}
 internally.}
 
-\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
+\item{colmax}{Numeric. A number from \code{0} to \code{1}. Threshold of column-wise missing
 data rate above which imputation is skipped.}
 
 \item{post_imp}{Boolean. Whether to impute remaining missing values (those
@@ -97,7 +97,7 @@ neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
 average of the nearest neighbors.}
 
 \item{tree}{Logical. \code{FALSE} (default) uses brute-force K-NN. \code{TRUE} uses
-\code{mlpack} BallTree.}
+\code{mlpack} ball tree K-NN.}
 
 \item{scale}{Logical. If \code{TRUE} (default), variables are scaled to have
 unit variance.}
@@ -180,20 +180,13 @@ installation instructions). Supported platforms are listed in
 \section{Parallelization}{
 
 \itemize{
-\item \strong{K-NN}: use the \code{cores} argument (requires OpenMP). If
-\code{mirai::daemons()} are active, \code{cores} is automatically set to 1
-to avoid nested parallelism.
+\item \strong{K-NN}: use the \code{cores} argument. If \code{mirai::daemons()} are active,
+\code{cores} is automatically set to \code{1} to avoid nested parallelism.
 \item \strong{PCA}: use \code{mirai::daemons()} instead of \code{cores}.
 }
 
-On macOS, OpenMP is typically unavailable and \code{cores} falls back to
-\enumerate{
-\item Use \code{mirai::daemons()} for parallelization instead.
-}
-
-On Linux with OpenBLAS or MKL, set \code{pin_blas = TRUE} when running
-parallel PCA to prevent BLAS threads and \code{mirai} workers competing
-for cores.
+On Linux with threaded BLAS like OpenBLAS/MKL, set \code{pin_blas = TRUE} when running
+parallel PCA imputation to prevent BLAS threads and \code{mirai} workers competing for cores.
 }
 
 \examples{

@@ -64,11 +64,10 @@ rules). \code{k}/\code{ncp} are not required in this mode. Columns: \code{start}
 \code{flank = FALSE}, or \code{target} and \code{subset_local} when \code{flank = TRUE}.
 Default = \code{FALSE}.}
 
-\item{k}{Integer. Number of nearest neighbors for imputation. 10 is a good
+\item{k}{Integer. Number of nearest neighbors for imputation. \code{10} is a good
 starting point.}
 
-\item{cores}{Integer. Number of cores for K-NN parallelization (OpenMP). On
-macOS, OpenMP may need additional compiler configuration.}
+\item{cores}{Integer. Number of cores to use for parallel computation. Defaults to \code{1}.}
 
 \item{dist_pow}{Numeric. The amount of penalization for further away nearest
 neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
@@ -104,7 +103,7 @@ For PCA imputation: regularization imputation algorithm (\code{"regularized"} or
 
 \item{.progress}{Show progress bar (default = \code{TRUE}).}
 
-\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
+\item{colmax}{Numeric. A number from \code{0} to \code{1}. Threshold of column-wise missing
 data rate above which imputation is skipped.}
 
 \item{post_imp}{Boolean. Whether to impute remaining missing values (those
