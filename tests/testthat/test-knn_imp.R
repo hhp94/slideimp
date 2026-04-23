@@ -157,4 +157,3 @@ test_that("Behavior with extreme missing columns and rows", {
   diag(mat) <- rnorm(20)
   expect_error(knn_imp(mat, k = 2), "exceeds usable columns")
 })
-

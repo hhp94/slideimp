@@ -1,8 +1,5 @@
 #include "eig_sym_sel.h"
 #include "loc_timer.h"
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
 
 // small helper for more readable codes that deals with the CSC
 template <typename F>

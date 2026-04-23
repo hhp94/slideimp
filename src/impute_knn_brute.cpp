@@ -1,9 +1,15 @@
 #include "imputed_value.h"
 #include "loc_timer.h"
-#include <stdexcept>
-#include <cmath>
-#include <RcppThread.h>
-#include <algorithm>
+
+// parallelism
+#include <RcppThread.h>     // RcppThread::parallelFor + thread pool
+
+// standard library
+#include <stdexcept>        // Errors
+#include <algorithm>        // std::min, std::max, std::sort, std::swap
+#include <cmath>            // std::isnan
+#include <limits>           // std::numeric_limits<double>::infinity()
+#include <vector>           // std::vector<NeighborInfo>
 
 // -----------------------------------------------------------------------------
 // metric definitions, add new metrics by defining a struct with an accumulate()
@@ -13,6 +19,7 @@ struct EuclideanMetric
 {
     static inline double accumulate(double diff) { return diff * diff; }
 };
+
 struct ManhattanMetric
 {
     static inline double accumulate(double diff) { return std::abs(diff); }
@@ -34,9 +41,9 @@ constexpr arma::uword GRAIN = 16;
 template <typename Metric, bool Bound>
 inline double calc_distance_raw(
     const double *__restrict__ target_ptr,
-    const double *__restrict__ target_nmiss,
+    const mask_t *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const double *__restrict__ other_nmiss,
+    const mask_t *__restrict__ other_nmiss,
     const arma::uword n_rows,
     const double worst_dist = std::numeric_limits<double>::infinity())
 {
@@ -50,7 +57,7 @@ inline double calc_distance_raw(
         for (arma::uword i = 0; i < GRAIN; ++i)
         {
             const arma::uword rr = r + i;
-            const double valid = target_nmiss[rr] * other_nmiss[rr];
+            const double valid = target_nmiss[rr] & other_nmiss[rr]; // implicit
             const double diff = target_ptr[rr] - other_ptr[rr];
             dist += valid * Metric::accumulate(diff);
             n_valid += valid;
@@ -66,7 +73,7 @@ inline double calc_distance_raw(
     }
     for (; r < n_rows; ++r)
     {
-        const double valid = target_nmiss[r] * other_nmiss[r];
+        const double valid = target_nmiss[r] & other_nmiss[r];
         const double diff = target_ptr[r] - other_ptr[r];
         dist += valid * Metric::accumulate(diff);
         n_valid += valid;
@@ -80,17 +87,17 @@ inline double calc_distance_raw(
     return dist / n_valid;
 }
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // calc_distance_raw_complete — Group 3 (other side fully observed)
 // -----------------------------------------------------------------------------
 // Bound math (exact): n_valid is known up front, so if
 //   partial_dist > worst_dist * n_valid
 // then final_dist / n_valid > worst_dist, and we can prune.
-// =============================================================================
+// -----------------------------------------------------------------------------
 template <typename Metric, bool Bound>
 inline double calc_distance_raw_complete(
     const double *__restrict__ target_ptr,
-    const double *__restrict__ target_nmiss,
+    const mask_t *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
     const arma::uword n_rows,
     const double n_valid,
@@ -175,7 +182,7 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
 template <typename Metric>
 std::vector<NeighborInfo> distance_vector_impl(
     const arma::mat &obj_masked,
-    const arma::mat &nmiss_masked,
+    const MaskMat &nmiss_masked,
     const GroupLayout &layout,
     const arma::uword index,
     const arma::uword k,
@@ -187,7 +194,7 @@ std::vector<NeighborInfo> distance_vector_impl(
     const arma::uword n_masked = layout.n_masked();
     const arma::uword complete_start = layout.complete_start();
     const double *target_ptr = obj_masked.colptr(index);
-    const double *target_nmiss_ptr = nmiss_masked.colptr(index);
+    const mask_t *target_nmiss_ptr = nmiss_masked.colptr(index);
     const double target_n_valid = n_valid_vec(index);
 
     std::vector<NeighborInfo> top_k;
@@ -270,7 +277,7 @@ std::vector<NeighborInfo> distance_vector_impl(
 // dispatch once per target column, then the whole body is monomorphized.
 std::vector<NeighborInfo> distance_vector(
     const arma::mat &obj_masked,
-    const arma::mat &nmiss_masked,
+    const MaskMat &nmiss_masked,
     const GroupLayout &layout,
     const arma::uword index,
     const arma::uword k,
@@ -302,9 +309,13 @@ std::vector<NeighborInfo> distance_vector(
 //  [ n_imp -> (n_imp + n_mni) )             grp_miss_no_imp
 //
 // `nmiss_masked` covers only the first two regions. For groups 1 and 2, NaN
-// entries in obj_masked are replaced with 0.0 (required for correctness of
-// the masked kernel) and the corresponding `nmiss_masked` entry is 0.0;
-// everything else is 1.0.
+// entries in obj_masked are replaced with 0.0 (required for correctness of the
+// masked kernel) and the corresponding `nmiss_masked` entry is 0; everything
+// else is 1.
+//
+// `n_col_valid` is populated in the same pass as the copy/mask. It feeds both
+// initialize_result_matrix (to size per-column missing row lists) and
+// `n_valid_vec` (`target_n_valid` for the complete-neighbor kernel).
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 arma::mat impute_knn_brute(
@@ -321,26 +332,33 @@ arma::mat impute_knn_brute(
     {
         throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan");
     }
-
+    stop_on_inf(obj);
     GroupLayout layout{grp_impute.n_elem, grp_miss_no_imp.n_elem, grp_complete.n_elem};
     const arma::uword n_rows = obj.n_rows;
     const arma::uword n_masked = layout.n_masked();
 
     arma::mat obj_masked(n_rows, n_masked);
-    arma::mat nmiss_masked(n_rows, n_masked);
+    MaskMat nmiss_masked(n_rows, n_masked);
+    arma::uvec n_col_valid(n_masked, arma::fill::zeros);
 
     auto copy_with_mask = [&](arma::uword local_pos, arma::uword orig_pos)
     {
         const double *src = obj.colptr(orig_pos);
         double *dst = obj_masked.colptr(local_pos);
-        double *mask_dst = nmiss_masked.colptr(local_pos);
+        mask_t *mask_dst = nmiss_masked.colptr(local_pos);
+        arma::uword valid_count = 0;
         for (arma::uword r = 0; r < n_rows; ++r)
         {
             double v = src[r];
-            bool is_nan = std::isnan(v);
-            dst[r] = is_nan ? 0.0 : v;
-            mask_dst[r] = is_nan ? 0.0 : 1.0;
+            // `finite` is 1 when observed, 0 when NaN. Single isnan call, used
+            // directly as both the mask byte and the count increment. The
+            // ternary zero out the NaN for kernel math.
+            mask_t finite = !std::isnan(v);
+            dst[r] = finite ? v : 0.0;
+            mask_dst[r] = finite;
+            valid_count += finite;
         }
+        n_col_valid(local_pos) = valid_count;
     };
 
     // group 1
@@ -353,7 +371,7 @@ arma::mat impute_knn_brute(
     arma::uvec col_offsets;
     std::vector<arma::uvec> rows_to_impute_vec;
     arma::mat result = initialize_result_matrix(
-        nmiss_masked, grp_impute, layout, col_offsets, rows_to_impute_vec);
+        nmiss_masked, grp_impute, layout, n_col_valid, col_offsets, rows_to_impute_vec);
 
     if (result.n_rows == 0)
     {
@@ -367,10 +385,11 @@ arma::mat impute_knn_brute(
     }
 
     // group 3: read directly from obj via grp_complete — no copy.
+    // n_valid_vec built directly from the group-1 portion of n_col_valid
     arma::vec n_valid_vec(layout.n_imp);
     for (arma::uword i = 0; i < layout.n_imp; ++i)
     {
-        n_valid_vec(i) = arma::accu(nmiss_masked.col(i));
+        n_valid_vec(i) = static_cast<double>(n_col_valid(i));
     }
 
     // parallelFor setup
@@ -393,7 +412,7 @@ arma::mat impute_knn_brute(
             const arma::uword n_neighbors = top_k.size();
             if (n_neighbors == 0)
             {
-                return; // was `continue`
+                return;
             }
             arma::uvec nn_columns(n_neighbors);
             arma::vec weights(n_neighbors);

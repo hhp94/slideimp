@@ -2,17 +2,21 @@
 #include <cmath>
 #include <algorithm>
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // initialize_result_matrix
 // -----------------------------------------------------------------------------
 // Only iterates group 1 (local positions [0, n_imp) in nmiss_masked).
 // Populates result columns 0 and 1 (1-based row / original 1-based column).
 // Column 2 is filled later by impute_column_values.
-// =============================================================================
+//
+// n_col_valid is computed once during the copy-with-mask pass so we never
+// call arma::accu on the byte mask matrix.
+// -----------------------------------------------------------------------------
 arma::mat initialize_result_matrix(
-    const arma::mat &nmiss_masked,
+    const MaskMat &nmiss_masked,
     const arma::uvec &grp_impute,
     const GroupLayout &layout,
+    const arma::uvec &n_col_valid,
     arma::uvec &col_offsets,
     std::vector<arma::uvec> &rows_to_impute_vec)
 {
@@ -24,11 +28,12 @@ arma::mat initialize_result_matrix(
         return arma::mat(0, n_col_result);
     }
 
-    // per-column missing counts, read directly from the masked matrix
+    // per-column missing counts derived from the pre-computed valid counts
+    const arma::uword mask_n_rows = nmiss_masked.n_rows;
     arma::uvec n_col_miss(n_imp);
     for (arma::uword i = 0; i < n_imp; ++i)
     {
-        n_col_miss(i) = nmiss_masked.n_rows - arma::accu(nmiss_masked.col(i));
+        n_col_miss(i) = mask_n_rows - n_col_valid(i);
     }
 
     arma::uword sum_missing = arma::accu(n_col_miss);
@@ -48,15 +53,37 @@ arma::mat initialize_result_matrix(
 
     for (arma::uword i = 0; i < n_imp; ++i)
     {
-        // Group 1 lives at local positions [0, n_imp) in nmiss_masked
-        rows_to_impute_vec[i] = arma::find(nmiss_masked.col(i) == 0);
-        const arma::uvec &rows = rows_to_impute_vec[i];
+        // Group 1 lives at local positions [0, n_imp) in nmiss_masked.
+        const mask_t *col_ptr = nmiss_masked.colptr(i);
+        const arma::uword n_miss_i = n_col_miss(i);
+
+        arma::uvec rows(n_miss_i);
+        arma::uword w = 0;
+        for (arma::uword r = 0; r < mask_n_rows; ++r)
+        {
+            if (col_ptr[r] == 0)
+            {
+                rows(w++) = r;
+            }
+        }
+        // sanity: caller-supplied n_col_valid must agree with the mask it
+        // was computed from. cheap (off hot path, called once per impute).
+        if (w != n_miss_i)
+        {
+            Rcpp::stop(
+                "initialize_result_matrix: n_col_valid inconsistent with "
+                "nmiss_masked at column %u (expected %u missing, found %u)",
+                i, n_miss_i, w);
+        }
+        rows_to_impute_vec[i] = std::move(rows);
+
+        const arma::uvec &rows_ref = rows_to_impute_vec[i];
         const arma::uword orig_col_1based = grp_impute(i) + 1;
 
-        for (arma::uword r = 0; r < rows.n_elem; ++r)
+        for (arma::uword r = 0; r < rows_ref.n_elem; ++r)
         {
             const arma::uword res_row = col_offsets(i) + r;
-            result(res_row, 0) = rows(r) + 1;     // 1-based row
+            result(res_row, 0) = rows_ref(r) + 1; // 1-based row
             result(res_row, 1) = orig_col_1based; // original 1-based column
         }
     }
@@ -64,7 +91,7 @@ arma::mat initialize_result_matrix(
     return result;
 }
 
-// =============================================================================
+// -----------------------------------------------------------------------------
 // impute_column_values
 // -----------------------------------------------------------------------------
 // Neighbors are split into masked (groups 1+2) and unmasked (group 3) buckets
@@ -74,11 +101,11 @@ arma::mat initialize_result_matrix(
 // every unmasked neighbor collapses to a single "total_unmasked_w" added to
 // every row once at the end. The ws_ptr accumulation still varies per row
 // (different obj values).
-// =============================================================================
+// -----------------------------------------------------------------------------
 void impute_column_values(
     arma::mat &result,
     const arma::mat &obj_masked,
-    const arma::mat &nmiss_masked,
+    const MaskMat &nmiss_masked,
     const GroupLayout &layout,
     const arma::uword col_offset,
     const arma::uvec &nn_columns,
@@ -124,12 +151,12 @@ void impute_column_values(
         const double w = nn_weights(j);
         const arma::uword local = nn_columns(j);
         const double *obj_col = obj_masked.colptr(local);
-        const double *nmiss_col = nmiss_masked.colptr(local);
+        const mask_t *nmiss_col = nmiss_masked.colptr(local);
 
         for (arma::uword r = 0; r < n_rows; ++r)
         {
             const arma::uword row_idx = rows_to_impute(r);
-            double valid = nmiss_col[row_idx];
+            double valid = nmiss_col[row_idx]; // uint8 -> double: exact 0.0/1.0
             double weight = w * valid;
             ws_ptr[r] += weight * obj_col[row_idx];
             wt_ptr[r] += weight;

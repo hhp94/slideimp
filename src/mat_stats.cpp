@@ -1,8 +1,6 @@
 #include <RcppArmadillo.h>
+#include <RcppThread.h>
 #include <cmath>
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
 
 // [[Rcpp::export]]
 arma::mat col_min_max(const arma::mat &mat)
@@ -18,81 +16,104 @@ arma::mat col_min_max(const arma::mat &mat)
 }
 
 // [[Rcpp::export]]
-arma::rowvec col_vars_internal(const arma::mat &mat, arma::uword cores = 1)
+arma::rowvec col_vars_internal(const arma::mat &mat, int cores = 1)
 {
   arma::rowvec out(mat.n_cols);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(static)
-#endif
-  for (arma::uword k = 0; k < mat.n_cols; ++k)
-  {
-    const double *col = mat.colptr(k);
-    double mean = 0.0;
-    double mean2 = 0.0;
-    arma::uword n = 0;
-    for (arma::uword i = 0; i < mat.n_rows; ++i)
-    {
-      if (std::isfinite(col[i]))
+
+  // parallelFor setup
+  cores = std::max(1, cores);
+  const size_t n_threads = static_cast<size_t>(cores);
+
+  RcppThread::parallelFor(
+      0,
+      mat.n_cols,
+      [&](arma::uword k)
       {
-        ++n;
-        double delta = col[i] - mean;
-        mean += delta / static_cast<double>(n);
-        double delta2 = col[i] - mean;
-        mean2 += delta * delta2;
-      }
-    }
-    out(k) = (n < 2) ? arma::datum::nan : mean2 / (n - 1);
-  }
+        const double *col = mat.colptr(k);
+        double mean = 0.0;
+        double mean2 = 0.0;
+        arma::uword n = 0;
+        for (arma::uword i = 0; i < mat.n_rows; ++i)
+        {
+          if (std::isfinite(col[i]))
+          {
+            ++n;
+            double delta = col[i] - mean;
+            mean += delta / static_cast<double>(n);
+            double delta2 = col[i] - mean;
+            mean2 += delta * delta2;
+          }
+        }
+        out(k) = (n < 2) ? arma::datum::nan : mean2 / (n - 1);
+      },
+      n_threads);
+
   return out;
 }
 
 // [[Rcpp::export]]
 arma::mat mean_imp_col_internal(const arma::mat &mat,
                                 const arma::uvec &col_idx,
-                                arma::uword cores = 1)
+                                int cores = 1)
 {
-  if (col_idx.max() >= mat.n_cols)
+  if (col_idx.n_elem > 0 && col_idx.max() >= mat.n_cols)
   {
     Rcpp::stop("col_idx out of bounds");
   }
 
-  arma::mat out = mat;
-
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(static)
-#endif
-  for (arma::uword k = 0; k < col_idx.n_elem; ++k)
+  std::vector<uint8_t> needs_imp(mat.n_cols, 0);
+  for (arma::uword i = 0; i < col_idx.n_elem; ++i)
   {
-    const arma::uword c = col_idx(k);
-    const double *col_ptr = mat.colptr(c);
-    double *out_ptr = out.colptr(c);
-
-    double sum = 0.0;
-    arma::uword n = 0;
-
-    // compute mean
-    for (arma::uword i = 0; i < mat.n_rows; ++i)
-    {
-      if (std::isfinite(col_ptr[i]))
-      {
-        sum += col_ptr[i];
-        ++n;
-      }
-    }
-
-    // impute only if mean can be calculated
-    if (n > 0)
-    {
-      double mean_val = sum / static_cast<double>(n);
-      for (arma::uword i = 0; i < mat.n_rows; ++i)
-      {
-        if (!std::isfinite(col_ptr[i]))
-        {
-          out_ptr[i] = mean_val;
-        }
-      }
-    }
+    needs_imp[col_idx(i)] = 1;
   }
+  // initialize out matrix
+  const arma::uword n_rows = mat.n_rows;
+  arma::mat out(n_rows, mat.n_cols, arma::fill::none);
+
+  cores = std::max(1, cores);
+  const size_t n_threads = static_cast<size_t>(cores);
+  const size_t col_bytes = n_rows * sizeof(double);
+
+  RcppThread::parallelFor(
+      0, mat.n_cols,
+      [&](arma::uword c)
+      {
+        const double *in_ptr = mat.colptr(c);
+        double *out_ptr = out.colptr(c);
+
+        if (!needs_imp[c])
+        {
+          std::memcpy(out_ptr, in_ptr, col_bytes);
+          return;
+        }
+
+        // pass 1: sum + count
+        double sum = 0.0;
+        arma::uword n = 0;
+        for (arma::uword i = 0; i < n_rows; ++i)
+        {
+          const double x = in_ptr[i];
+          const bool fin = std::isfinite(x);
+          sum += fin ? x : 0.0;
+          n += fin ? 1u : 0u;
+        }
+
+        if (n == 0 || n == n_rows)
+        {
+          std::memcpy(out_ptr, in_ptr, col_bytes);
+          return;
+        }
+
+        // pass 2: write.
+        const double mean_val = sum / static_cast<double>(n);
+        for (arma::uword i = 0; i < n_rows; ++i)
+        {
+          const double x = in_ptr[i];
+          out_ptr[i] = std::isfinite(x) ? x : mean_val;
+        }
+      },
+      n_threads);
+
   return out;
 }
 

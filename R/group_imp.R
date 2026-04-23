@@ -718,18 +718,13 @@ group_imp <- function(
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
 
   if (is_knn_mode) {
-    if (cores > 1) {
-      if (!has_openmp()) {
-        message("OpenMP not available (common on macOS). K-NN will run single-threaded. Use mirai::daemons() for parallelization.")
-        cores <- 1
-      } else if (parallelize) {
-        message(
-          "Both `cores > 1` and `mirai::daemons()` detected. ",
-          "Setting `cores = 1` to avoid nested parallelism. ",
-          "Parallelization will be handled by `mirai`."
-        )
-        cores <- 1
-      }
+    if (cores > 1 && parallelize) {
+      message(
+        "Both `cores > 1` and `mirai::daemons()` detected. ",
+        "Setting `cores = 1` to avoid nested parallelism. ",
+        "Parallelization will be handled by `mirai`."
+      )
+      cores <- 1
     }
   } else if (cores > 1) {
     warning(

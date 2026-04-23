@@ -45,10 +45,6 @@ row_miss_internal <- function(obj) {
     .Call(`_slideimp_row_miss_internal`, obj)
 }
 
-has_openmp <- function() {
-    .Call(`_slideimp_has_openmp`)
-}
-
 sample_each_rep_cpp <- function(obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts) {
     .Call(`_slideimp_sample_each_rep_cpp`, obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts)
 }

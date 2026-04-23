@@ -630,11 +630,8 @@ tune_imp <- function(
   truth_list <- lapply(na_loc, function(pos) obj[pos])
 
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
-  if (cores > 1 && is_knn_mode) {
-    if (!has_openmp()) {
-      message("OpenMP not available (common on macOS). K-NN will run single-threaded. Use mirai::daemons() for parallelization.")
-      cores <- 1
-    } else if (parallelize) {
+  if (is_knn_mode) {
+    if (cores > 1 && parallelize) {
       message(
         "Both `cores > 1` and `mirai::daemons()` detected. ",
         "Setting `cores = 1` to avoid nested parallelism. ",
