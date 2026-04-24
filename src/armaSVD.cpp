@@ -299,6 +299,14 @@ Rcpp::List pca_imp_internal_cpp(
   const double *xhp = Xhat.memptr(); // stable: Xhat modified in place
   double *fxp = fittedX.memptr();    // allow to refetch
 
+  // debug only ---
+  arma::mat eigval_hist(ncp, maxiter, arma::fill::zeros);
+  arma::vec obj_hist(maxiter, arma::fill::zeros);
+  arma::vec subspace_cos_hist(maxiter, arma::fill::zeros); // min sing val of V_prev^T V_new
+  arma::mat V_prev;
+  arma::uword iters_done = 0;
+  // debug only ---
+
   for (arma::uword nb_iter = 1;; ++nb_iter)
   {
     LOC_TIC(pca_imp_gram, "restandardize");
@@ -378,7 +386,24 @@ Rcpp::List pca_imp_internal_cpp(
       objective = objective_full - miss_contrib;
     }
     LOC_TOC(pca_imp_gram, "objective");
-
+    // --- log diagnostics ---
+    eigval_hist.col(nb_iter - 1) = vs_top.head(ncp);
+    obj_hist(nb_iter - 1) = objective;
+    {
+      arma::mat V_new = eigvecs.head_cols(ncp);
+      if (V_prev.n_elem > 0)
+      {
+        arma::vec s = arma::svd(V_prev.t() * V_new); // ncp x ncp, cheap
+        subspace_cos_hist(nb_iter - 1) = s.min();    // cos(max principal angle)
+      }
+      else
+      {
+        subspace_cos_hist(nb_iter - 1) = arma::datum::nan;
+      }
+      V_prev = std::move(V_new);
+    }
+    iters_done = nb_iter;
+    // --- log diagnostics ---
     const double criterion = std::isinf(old) ? 1.0 : std::abs(1.0 - objective / old);
     old = objective;
 
@@ -479,10 +504,15 @@ Rcpp::List pca_imp_internal_cpp(
 
   LOC_TOC(pca_imp_gram, "postprocessing");
   LOC_TOC(pca_imp_gram, "pca_imp_internal_cpp_total");
-
+  // --- shrink ---
+  eigval_hist.resize(ncp, iters_done);
+  obj_hist.resize(iters_done);
+  subspace_cos_hist.resize(iters_done);
+  // --- shrink ---
   return Rcpp::List::create(
       Rcpp::Named("imputed_values") = imputed_values,
-      // Rcpp::Named("fittedX") = fittedX,
-      // Rcpp::Named("eligible_cols") = eligible_cols_R,
-      Rcpp::Named("mse") = mse);
+      Rcpp::Named("mse") = mse,
+      Rcpp::Named("eigval_hist") = eigval_hist,
+      Rcpp::Named("obj_hist") = obj_hist,
+      Rcpp::Named("subspace_cos_hist") = subspace_cos_hist);
 }
