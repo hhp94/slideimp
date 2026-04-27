@@ -25,83 +25,109 @@ find_overlap_regions <- function(start, end) {
   )
 }
 
-#' Sliding Window K-NN or PCA Imputation
+#' Sliding-Window K-NN or PCA Imputation
 #'
-#' @description
-#' Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise. This
-#' method assumes that columns are meaningfully sorted by `location`.
+#' Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
+#' columns are meaningfully ordered.
 #'
-#' @inheritParams knn_imp
-#' @inheritParams pca_imp
-#' @inheritParams group_imp
-#'
+#' @param obj A numeric matrix with samples in rows and features in columns.
 #' @param location A sorted numeric vector of length `ncol(obj)` giving the
-#' position of each column (e.g., genomic coordinates). Used to define
-#' sliding windows.
-#' @param window_size Window width in the same units as `location`.
-#' @param overlap_size Overlap between consecutive windows in the same units
-#' as `location`. Must be less than `window_size`. Default is `0`. Ignored
-#' when `flank = TRUE`.
-#' @param flank Logical. If `TRUE`, instead of sliding windows across the
-#' whole matrix, one window of width `window_size` is created flanking each feature
-#' listed in `subset`. In this mode `overlap_size` is ignored. Requires `subset` to be
-#' provided. Default = `FALSE`.
-#' @param min_window_n Minimum number of columns a window must contain to be
-#' imputed. Windows smaller than this are not imputed. `k` and `ncp` must also
-#' be smaller than `min_window_n`.
-#' @param .progress Show progress bar (default = `TRUE`).
-#' @param method For K-NN imputation: distance metric to use (`"euclidean"` or `"manhattan"`).
-#' For PCA imputation: regularization imputation algorithm (`"regularized"` or `"EM"`).
+#'   position of each column, such as genomic coordinates.
+#' @param window_size Numeric. Window width in the same units as `location`.
+#' @param overlap_size Numeric. Overlap between consecutive windows in the
+#'   same units as `location`. Must be less than `window_size`. Ignored when
+#'   `flank = TRUE`.
+#' @param flank Logical. If `FALSE`, imputation uses sliding windows across the
+#'   full matrix. If `TRUE`, one window of width `window_size` is created for
+#'   each feature listed in `subset`; `overlap_size` is ignored. `subset` must
+#'   be supplied when `flank = TRUE`.
+#' @param min_window_n Integer. Minimum number of columns a window must contain
+#'   to be imputed. `k` and `ncp` must be smaller than `min_window_n`.
+#' @param subset Optional character or integer vector specifying columns to
+#'   impute. If `NULL`, all eligible columns are imputed. Required when
+#'   `flank = TRUE`.
 #' @param dry_run Logical. If `TRUE`, skip imputation and return a
-#' `slideimp_tbl` object of the windows that *would* be used (after all dropping
-#' rules). `k`/`ncp` are not required in this mode. Columns: `start`, `end`,
-#' `window_n`, plus `subset_local` (list-column of local subset indices) when
-#' `flank = FALSE`, or `target` and `subset_local` when `flank = TRUE`.
-#' Default = `FALSE`.
+#'   `slideimp_tbl` describing the windows that would be used after all
+#'   filtering rules are applied. In this mode, `k` and `ncp` are not required.
+#' @param k Integer or `NULL`. Number of nearest neighbors for K-NN imputation.
+#'   Supply `k` to use K-NN imputation.
+#' @param cores Integer. Number of cores to use for K-NN imputation.
+#' @param dist_pow Numeric. K-NN distance-weighting power. If `0`, use an
+#'   unweighted average of nearest neighbors.
+#' @param ncp Integer or `NULL`. Number of components for PCA imputation.
+#'   Supply `ncp` to use PCA imputation.
+#' @param scale Logical. For PCA imputation, whether to scale columns to unit
+#'   variance.
+#' @param coeff.ridge Numeric. Ridge regularization coefficient for regularized
+#'   PCA imputation.
+#' @param threshold Numeric. Convergence threshold for PCA imputation.
+#' @param seed Integer, numeric, or `NULL`. Random seed for PCA initialization.
+#' @param row.w Row weights for PCA imputation, or `NULL`. See [pca_imp()].
+#' @param nb.init Integer. Number of PCA random initializations.
+#' @param maxiter Integer. Maximum number of PCA iterations.
+#' @param miniter Integer. Minimum number of PCA iterations.
+#' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
+#'   created by [lobpcg_control()], or `NULL`.
+#' @param method Character or `NULL`. For K-NN imputation, one of
+#'   `"euclidean"` or `"manhattan"`. For PCA imputation, one of
+#'   `"regularized"` or `"EM"`. If `NULL`, the corresponding backend default
+#'   is used.
+#' @param .progress Logical. If `TRUE`, show progress.
+#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
+#'   proportion greater than `colmax` are not imputed.
+#' @param post_imp Logical. If `TRUE`, replace any remaining missing values
+#'   with column means after imputation.
+#' @param na_check Logical. If `TRUE`, check whether the result still contains
+#'   missing values.
+#' @param on_infeasible Character. One of `"skip"`, `"error"`, or `"mean"`.
+#'   Controls behavior when a window is infeasible for imputation, for example
+#'   when `k` or `ncp` exceeds the number of usable columns after applying
+#'   `colmax`.
 #'
 #' @details
-#' The sliding window approach divides the input matrix into smaller segments
+#' The sliding-window approach divides the input matrix into smaller segments
 #' based on `location` values and applies imputation to each window
-#' independently. Values in overlapping areas are averaged across windows to
+#' independently. Values in overlapping regions are averaged across windows to
 #' produce the final imputed result.
 #'
 #' Two windowing modes are supported:
 #'
-#' * `flank = FALSE` (default): Greedily partitions the
-#'   `location` vector into windows of width `window_size` with the requested
-#'   `overlap_size` between consecutive windows.
+#' * `flank = FALSE`: greedily partition `location` into windows of width
+#'   `window_size` with the requested `overlap_size` between consecutive
+#'   windows.
+#' * `flank = TRUE`: create one window per feature in `subset`, centered on
+#'   that feature using the supplied `window_size`.
 #'
-#' * `flank = TRUE`: Creates one window per feature
-#'   in `subset` that exactly flanks that specific feature using the supplied
-#'   `window_size`.
+#' Specify `k` and related arguments to use [knn_imp()], or `ncp` and related
+#' arguments to use [pca_imp()].
 #'
-#' Specify `k` and related arguments to use [knn_imp()], `ncp` and related
-#' arguments for [pca_imp()].
+#' @returns A numeric matrix of the same dimensions as `obj`, with missing
+#' values imputed. The returned object has class `slideimp_results`.
 #'
-#' @returns A numeric matrix of the same dimensions as `obj` with missing values
-#' imputed. When `dry_run = TRUE`, returns a `data.frame` of class `slideimp_tbl`
-#' with columns `start`, `end`, `window_n`, plus `subset_local` (and `target`
-#' when `flank = TRUE`).
+#' When `dry_run = TRUE`, returns a `data.frame` of class `slideimp_tbl` with
+#' columns `start`, `end`, and `window_n`, plus `subset_local` and, when
+#' `flank = TRUE`, `target`.
 #'
 #' @examples
-#' # Generate sample data with missing values with 20 samples and 100 columns
-#' # where the column order is sorted (i.e., by genomic position)
 #' set.seed(1234)
+#'
+#' # Example data with 20 samples and 100 ordered columns
 #' beta_matrix <- sim_mat(20, 100)$input
 #' location <- 1:100
 #'
-#' # It's very useful to first perform a dry run to examine the calculated windows
-#' windows_statistics <- slide_imp(
+#' # First perform a dry run to inspect the calculated windows
+#' window_statistics <- slide_imp(
 #'   beta_matrix,
 #'   location = location,
 #'   window_size = 50,
 #'   overlap_size = 10,
 #'   min_window_n = 10,
-#'   dry_run = TRUE
+#'   dry_run = TRUE,
+#'   .progress = FALSE
 #' )
-#' windows_statistics
+#' window_statistics
 #'
-#' # Sliding Window K-NN imputation by specifying `k` (sliding windows)
+#' # Sliding-window K-NN imputation
 #' imputed_knn <- slide_imp(
 #'   beta_matrix,
 #'   location = location,
@@ -109,24 +135,23 @@ find_overlap_regions <- function(start, end) {
 #'   window_size = 50,
 #'   overlap_size = 10,
 #'   min_window_n = 10,
-#'   scale = FALSE # This argument belongs to PCA imputation and will be ignored
+#'   .progress = FALSE
 #' )
 #' imputed_knn
 #'
-#' # Sliding Window PCA imputation by specifying `ncp` (sliding windows)
-#' pca_knn <- slide_imp(
+#' # Sliding-window PCA imputation
+#' imputed_pca <- slide_imp(
 #'   beta_matrix,
 #'   location = location,
 #'   ncp = 2,
 #'   window_size = 50,
 #'   overlap_size = 10,
-#'   min_window_n = 10
+#'   min_window_n = 10,
+#'   .progress = FALSE
 #' )
-#' pca_knn
+#' imputed_pca
 #'
-#' # Sliding Window K-NN imputation with flanking windows (flank = TRUE)
-#' # Only the columns listed in `subset` are imputed; each uses its own
-#' # centered window of width `window_size`.
+#' # K-NN imputation with flanking windows
 #' imputed_flank <- slide_imp(
 #'   beta_matrix,
 #'   location = location,
@@ -134,7 +159,8 @@ find_overlap_regions <- function(start, end) {
 #'   window_size = 30,
 #'   flank = TRUE,
 #'   subset = c(10, 30, 70),
-#'   min_window_n = 5
+#'   min_window_n = 5,
+#'   .progress = FALSE
 #' )
 #' imputed_flank
 #'
@@ -152,16 +178,17 @@ slide_imp <- function(
   k = NULL,
   cores = 1,
   dist_pow = 0,
-  max_cache = 4,
   # PCA-specific parameters
   ncp = NULL,
   scale = TRUE,
   coeff.ridge = 1,
+  threshold = 1e-6,
   seed = NULL,
   row.w = NULL,
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  lobpcg_control = NULL,
   # Shared
   method = NULL,
   .progress = TRUE,
@@ -217,7 +244,10 @@ slide_imp <- function(
       lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
       .var.name = "ncp"
     )
+    # other pca arguments are checked in pca_imp to avoid brittleness
+    lobpcg_control <- new_lobpcg_control(lobpcg_control)
   }
+
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
   checkmate::assert_flag(na_check, .var.name = "na_check")
 
@@ -345,14 +375,15 @@ slide_imp <- function(
           knn_imp(
             obj = sub_mat, k = k, colmax = colmax, cores = cores,
             method = method, post_imp = post_imp, dist_pow = dist_pow,
-            max_cache = max_cache, na_check = FALSE,
+            na_check = FALSE, .progress = FALSE,
             subset = subset_list[[i]]
           )
         } else {
           pca_imp(
             obj = sub_mat, ncp = ncp, scale = scale, method = method,
-            coeff.ridge = coeff.ridge, seed = seed, nb.init = nb.init,
-            maxiter = maxiter, miniter = miniter, row.w = row.w,
+            coeff.ridge = coeff.ridge, threshold = threshold, seed = seed,
+            nb.init = nb.init, maxiter = maxiter, miniter = miniter,
+            row.w = row.w, lobpcg_control = lobpcg_control,
             na_check = FALSE, colmax = colmax, post_imp = post_imp
           )
         }

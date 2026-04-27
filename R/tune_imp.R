@@ -1,30 +1,47 @@
-#' Sample Missing Value Locations with Constraints
+#' Sample Missing-Value Locations with Constraints
 #'
-#' Samples indices for `NA` injection into a matrix while maintaining row/column
-#' missing value budgets and avoiding zero-variance columns.
+#' Sample matrix indices for `NA` injection while respecting row and column
+#' missingness limits and avoiding zero-variance columns.
 #'
 #' @details
 #' The function uses a greedy stochastic search for valid `NA` locations. It
 #' ensures that:
 #'
-#' - Total missingness per row and column does not exceed `rowmax` and `colmax`.
-#' - At least two distinct observed values are preserved in every column to
-#'   ensure the column maintains non-zero variance.
+#' - Total missingness per row and column does not exceed `rowmax` and
+#'   `colmax`.
+#' - At least two distinct observed values are preserved in every affected
+#'   column.
 #'
-#' @inheritParams tune_imp
+#' @param obj A numeric matrix.
+#' @param n_cols Integer or `NULL`. Number of columns to receive injected
+#'   missing values. Must be supplied when `num_na = NULL`.
+#' @param n_rows Integer. Target number of missing values to inject per selected
+#'   column.
+#' @param num_na Integer or `NULL`. Total number of missing values to inject per
+#'   repetition. If supplied, `n_cols` is derived from `num_na` and `n_rows`,
+#'   and missing values are distributed as evenly as possible across columns.
+#' @param n_reps Integer. Number of independent repetitions.
+#' @param rowmax Numeric scalar between `0` and `1`. Maximum allowed
+#'   missing-data proportion per row after injection.
+#' @param colmax Numeric scalar between `0` and `1`. Maximum allowed
+#'   missing-data proportion per column after injection.
+#' @param na_col_subset Optional integer or character vector restricting which
+#'   columns are eligible for missing-value injection.
+#' @param max_attempts Integer. Maximum number of resampling attempts per
+#'   repetition before giving up.
 #'
 #' @returns A list of length `n_reps`. Each element is a two-column integer
-#' matrix (`row`, `col`) representing the coordinates of the sampled `NA`
-#' locations.
+#' matrix with row and column indices for sampled `NA` locations.
 #'
 #' @examples
+#' set.seed(123)
 #' mat <- matrix(runif(100), nrow = 10)
 #'
-#' # Sample 5 `NA` across 5 columns (1 per column)
+#' # Sample 5 missing values across 5 columns
 #' locs <- sample_na_loc(mat, n_cols = 5, n_rows = 1)
 #' locs
 #'
-#' # Inject the `NA` from the first repetition
+#' # Inject the missing values from the first repetition
 #' mat[locs[[1]]] <- NA
 #' mat
 #'
@@ -308,125 +325,102 @@ resolve_na_loc <- function(
   return(na_loc)
 }
 
-#' Tune Parameters for Imputation Methods
+#' Tune Imputation Method Parameters
 #'
-#' Tunes hyperparameters for imputation methods such as [slide_imp()],
-#' [knn_imp()], [pca_imp()], or user-supplied custom functions by repeated
-#' cross-validation. For [group_imp()], tune [knn_imp()] or [pca_imp()] on
-#' a single group.
+#' Tune imputation-method parameters by repeatedly masking observed values,
+#' imputing them, and comparing the imputed values with the original values.
 #'
-#' @inheritParams slide_imp
-#' @inheritParams group_imp
-#'
-#' @param parameters A data.frame specifying parameter combinations to tune,
-#'   where each column represents a parameter accepted by `.f` (excluding
-#'   `obj`). List columns are supported for complex parameters. Duplicate
-#'   rows are automatically removed. `NULL` is treated as tuning the function
-#'   with its default parameters.
-#' @param n_reps Integer. Number of repetitions for random NA injection
-#'   (default `1`).
-#' @param rowmax,colmax Numbers between 0 and 1. NA injection cannot create
-#'   rows/columns with a higher proportion of missing values than these
-#'   thresholds.
-#' @param n_cols Integer. The number of columns to receive injected `NA` per
-#'   repetition. Ignored when `num_na` is supplied (in which case `n_cols`
-#'   is derived as `num_na %/% n_rows`). Must be provided if `num_na` is
-#'   `NULL`. Ignored in [tune_imp()] when `na_loc` is supplied.
-#' @param n_rows Integer. The target number of `NA` values per column
-#'   (default `2L`).
-#'   - When `num_na` is supplied: used as the base size. Most columns
-#'     receive exactly `n_rows` missing values; `num_na %% n_rows` columns
-#'     receive one extra. If there's only one column, it receives all
-#'     the remainder.
-#'   - When `num_na` is `NULL`: every selected column receives exactly
-#'     `n_rows` `NA`.
-#'   Ignored in [tune_imp()] when `na_loc` is supplied.
-#'
-#' @param num_na Integer. Total number of missing values to inject per
-#'   repetition. If supplied, `n_cols` is computed automatically and
-#'   missing values are distributed as evenly as possible, using `n_rows`
-#'   as the base size (`num_na` must be at least `n_rows`). If omitted
-#'   but `n_cols` is supplied, the total injected is `n_cols * n_rows`.
-#'   If `num_na`, `n_cols`, and `na_loc` are all `NULL`, [tune_imp()]
-#'   defaults to roughly 5% of total cells, capped at 500.
-#'   [sample_na_loc()] has no default. Ignored in [tune_imp()] when
-#'   `na_loc` is supplied.
-#'
-#' @param na_col_subset Optional integer or character vector restricting which
-#'   columns of `obj` are eligible for NA injection.
-#'   - If `NULL` (default): all columns are eligible.
-#'   - If character: values must exist in `colnames(obj)`.
-#'   - If integer/numeric: values must be valid 1-based column indices.
-#'   The vector must be unique and must contain at least `n_cols` columns
-#'   (or the number derived from `num_na`).
-#'   Ignored in [tune_imp()] when `na_loc` is supplied.
-#'
-#' @param max_attempts Integer. Maximum number of resampling attempts per
-#'   repetition before giving up due to row-budget exhaustion (default `100`).
-#' @param na_loc Optional. Pre-defined missing value locations to bypass
-#'   random NA injection with [sample_na_loc()]. Accepted formats include:
-#'   - A two-column integer matrix (row, column indices).
-#'   - A numeric vector of linear locations.
-#'   - A list where each element is one of the above formats (one per
-#'     repetition).
-#'
-#' @param .progress Logical. Show a progress bar during tuning
-#'   (default `TRUE`).
-#'
-#' @param cores Controls the number of cores to parallelize over for K-NN
-#'   and sliding-window K-NN imputation with OpenMP. For other methods, use
-#'   `mirai::daemons()` instead.
-#'
-#' @param location Required only for `slide_imp`. Numeric vector of column
-#'   locations.
-#'
-#' @param pin_blas Logical. Pin BLAS threads to 1 during parallel tuning
-#'   (default `FALSE`).
-#'
+#' @param obj A numeric matrix.
+#' @param parameters A `data.frame` specifying parameter combinations to tune.
+#'   Each column should be a parameter accepted by `.f`, excluding `obj`.
+#'   List-columns are supported for complex parameters. Duplicate rows are
+#'   removed. `NULL` is treated as a single parameter set with no additional
+#'   arguments, which is useful for functions whose required arguments all have
+#'   defaults.
 #' @param .f Either `"knn_imp"`, `"pca_imp"`, `"slide_imp"`, or a custom
-#'   function specifying the imputation method to tune.
+#'   imputation function.
+#' @param na_loc Optional predefined missing-value locations. Accepted formats
+#'   are a two-column integer matrix of row and column indices, a numeric vector
+#'   of linear positions, or a list whose elements are either of those formats.
+#' @param num_na Integer or `NULL`. Total number of missing values to inject per
+#'   repetition. If supplied, `n_cols` is derived from `num_na` and `n_rows`,
+#'   and missing values are distributed as evenly as possible across columns.
+#'   Ignored when `na_loc` is supplied.
+#' @param n_reps Integer. Number of repetitions for random missing-value
+#'   injection.
+#' @param n_cols Integer or `NULL`. Number of columns to receive injected
+#'   missing values per repetition. Must be supplied when both `num_na` and
+#'   `na_loc` are `NULL`, unless [tune_imp()] chooses its automatic default.
+#'   Ignored when `num_na` or `na_loc` is supplied.
+#' @param n_rows Integer. Target number of missing values to inject per selected
+#'   column. Ignored when `na_loc` is supplied.
+#' @param rowmax Numeric scalar between `0` and `1`. Random injection cannot
+#'   create rows with a missing-data proportion greater than `rowmax`.
+#' @param colmax Numeric scalar between `0` and `1`. Random injection cannot
+#'   create columns with a missing-data proportion greater than `colmax`.
+#' @param na_col_subset Optional integer or character vector restricting which
+#'   columns are eligible for random missing-value injection. Ignored when
+#'   `na_loc` is supplied.
+#' @param max_attempts Integer. Maximum number of resampling attempts per
+#'   repetition before giving up.
+#' @param .progress Logical. If `TRUE`, show progress during tuning.
+#' @param cores Integer. Number of cores to use for K-NN and sliding-window
+#'   K-NN imputation. For other methods, use `mirai::daemons()`.
+#' @param location Numeric vector of column locations. Required when
+#'   `.f = "slide_imp"`.
+#' @param pin_blas Logical. If `TRUE`, pin BLAS threads to 1 during parallel
+#'   tuning to reduce thread contention.
 #'
 #' @details
-#' The function supports tuning for built-in methods (`"slide_imp"`,
-#' `"knn_imp"`, `"pca_imp"`) or custom functions provided via `.f`.
+#' Built-in methods can be selected by passing `.f = "knn_imp"`,
+#' `.f = "pca_imp"`, or `.f = "slide_imp"`. A custom function can also be
+#' supplied. Custom functions must accept `obj` as their first argument and
+#' return a numeric matrix with the same dimensions as `obj`.
 #'
-#' When `.f` is a character string, the columns in `parameters` are validated
-#' against the chosen method's requirements:
-#' - `"knn_imp"`: requires `k` in `parameters`
-#' - `"pca_imp"`: requires `ncp` in `parameters`
-#' - `"slide_imp"`: requires `window_size`, `overlap_size`, and
-#'   `min_window_n`, plus exactly one of `k` or `ncp`
+#' When `.f` is a character string, columns in `parameters` are validated
+#' against the selected method:
 #'
-#' When `.f` is a custom function, the columns in `parameters` must
-#' correspond to the arguments of `.f` (excluding the `obj` argument). The
-#' custom function must accept `obj` (a numeric matrix) as its first argument
-#' and return a numeric matrix of identical dimensions.
+#' - `"knn_imp"` requires `k`.
+#' - `"pca_imp"` requires `ncp`.
+#' - `"slide_imp"` requires `window_size`, `overlap_size`, and `min_window_n`,
+#'   plus exactly one of `k` or `ncp`.
 #'
-#' Tuning results can be evaluated using the `yardstick` package or
-#' [compute_metrics()].
+#' To tune parameters for grouped imputation, tune [knn_imp()] or [pca_imp()]
+#' on representative groups, then pass the selected parameters to [group_imp()].
+#'
+#' Tuning results can be summarized with [compute_metrics()] or evaluated with
+#' external packages such as `yardstick`.
 #'
 #' @inheritSection group_imp Parallelization
 #'
 #' @returns A `data.frame` of class `slideimp_tune` containing:
-#'   - `...`: All columns originally provided in `parameters`.
-#'   - `param_set`: An integer ID for the unique parameter combination.
-#'   - `rep_id`: An integer indicating the repetition index.
-#'   - `result`: A nested list-column where each element is a data.frame
-#'     containing `truth` (original values) and `estimate` (imputed values).
-#'   - `error`: A character column containing the error message if the
+#'   - columns originally provided in `parameters`;
+#'   - `param_set`, an integer ID for each unique parameter combination;
+#'   - `rep_id`, an integer repetition index;
+#'   - `result`, a list-column where each element is a data frame containing
+#'     `truth` and `estimate` columns;
+#'   - `error`, a character column containing the error message if the
 #'     iteration failed, otherwise `NA`.
 #'
 #' @examples
-#' # Setup example data. Increase `num_na` (500) and `n_reps` (10-30) in real
-#' # analyses
+#' set.seed(123)
+#'
+#' # Increase num_na and n_reps for real analyses.
 #' obj <- sim_mat(10, 50)$input
 #'
-#' # 1. Tune K-NN imputation with random NA injection
+#' # Tune K-NN imputation with random missing-value injection
 #' params_knn <- data.frame(k = c(2, 4))
-#' results <- tune_imp(obj, params_knn, .f = "knn_imp", n_reps = 1, num_na = 10)
+#' results <- tune_imp(
+#'   obj,
+#'   params_knn,
+#'   .f = "knn_imp",
+#'   n_reps = 1,
+#'   num_na = 10,
+#'   .progress = FALSE
+#' )
 #' compute_metrics(results)
 #'
-#' # 2. Tune with fixed NA positions
+#' # Tune with fixed missing-value positions
 #' na_positions <- list(
 #'   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2),
 #'   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)
@@ -436,21 +430,30 @@ resolve_na_loc <- function(
 #'   obj,
 #'   data.frame(k = 2),
 #'   .f = "knn_imp",
-#'   na_loc = na_positions
+#'   na_loc = na_positions,
+#'   .progress = FALSE
 #' )
 #'
-#' # 3. Custom imputation function
+#' # Custom imputation function
 #' custom_fill <- function(obj, val = 0) {
 #'   obj[is.na(obj)] <- val
 #'   obj
 #' }
-#' tune_imp(obj, data.frame(val = c(0, 1)), .f = custom_fill, num_na = 10)
+#'
+#' tune_imp(
+#'   obj,
+#'   data.frame(val = c(0, 1)),
+#'   .f = custom_fill,
+#'   num_na = 10,
+#'   .progress = FALSE
+#' )
+#'
 #' @examplesIf interactive() && requireNamespace("mirai", quietly = TRUE)
-#' # 4. Parallel tuning (requires mirai package)
+#' # Parallel tuning with mirai
 #' mirai::daemons(2)
+#'
 #' parameters_custom <- data.frame(mean = c(0, 1), sd = c(1, 1))
 #'
-#' # Define a simple custom function for illustration
 #' custom_imp <- function(obj, mean, sd) {
 #'   na_pos <- is.na(obj)
 #'   obj[na_pos] <- stats::rnorm(sum(na_pos), mean = mean, sd = sd)
@@ -458,10 +461,16 @@ resolve_na_loc <- function(
 #' }
 #'
 #' results_p <- tune_imp(
-#'   obj, parameters_custom,
-#'   .f = custom_imp, n_reps = 1, num_na = 10
+#'   obj,
+#'   parameters_custom,
+#'   .f = custom_imp,
+#'   n_reps = 1,
+#'   num_na = 10,
+#'   .progress = FALSE
 #' )
-#' mirai::daemons(0) # Close workers
+#'
+#' mirai::daemons(0)
+#'
 #' @export
 tune_imp <- function(
   obj,
@@ -483,6 +492,7 @@ tune_imp <- function(
 ) {
   # this function sometime leaves behind big matrices. This can help clean up.
   on.exit(gc(verbose = FALSE), add = TRUE)
+
   # pre-conditioning
   checkmate::assert_matrix(
     obj,
@@ -495,6 +505,7 @@ tune_imp <- function(
   check_finite(obj)
   nr <- nrow(obj)
   nc <- ncol(obj)
+
   if (is.null(parameters)) {
     parameters_is_null <- TRUE
     parameters <- data.frame(.placeholder = TRUE)
@@ -502,8 +513,6 @@ tune_imp <- function(
     parameters_is_null <- FALSE
     checkmate::assert_data_frame(
       parameters,
-      any.missing = FALSE,
-      all.missing = FALSE,
       min.rows = 1,
       col.names = "unique",
       .var.name = "parameters",
@@ -515,14 +524,66 @@ tune_imp <- function(
 
   # validate .f
   if (is.character(.f)) {
-    stopifnot(
-      "`.f` must be 'slide_imp', 'knn_imp', or 'pca_imp'." =
-        .f %in% c("slide_imp", "knn_imp", "pca_imp") && length(.f) == 1
-    )
+    if (!(length(.f) == 1 && .f %in% c("slide_imp", "knn_imp", "pca_imp"))) {
+      cli::cli_abort(
+        "{.arg .f} must be one of {.val slide_imp}, {.val knn_imp}, or {.val pca_imp}."
+      )
+    }
+    fn_name <- .f
+    # Args excluded from tuning across all .f:
+    #   obj       - supplied by tune_imp
+    #   subset    - injected by tune_imp from na_loc (for slide_imp/knn_imp)
+    #   na_check  - tune_imp controls this
+    #   cores     - passed via tune_imp's `cores` arg, not tuneable
+    #   .progress - tune_imp owns progress reporting
+    # slide_imp-specific exclusions:
+    #   location  - passed via tune_imp's `location` arg
+    #   dry_run   - returns a data.frame, breaks matrix contract
+    if (!parameters_is_null) {
+      if (.f == "knn_imp") {
+        check_unknown_params(
+          param_names = names(parameters),
+          mode = "knn",
+          arg = "parameters"
+        )
+      } else if (.f == "pca_imp") {
+        check_unknown_params(
+          param_names = names(parameters),
+          mode = "pca",
+          arg = "parameters"
+        )
+      } else if (.f == "slide_imp") {
+        allowed_params <- c(
+          # required
+          "window_size", "overlap_size", "min_window_n",
+          # one of
+          "k", "ncp",
+          # shared tuneable
+          "flank", "method", "colmax", "post_imp", "on_infeasible",
+          # knn branch
+          "dist_pow",
+          # pca branch
+          "scale", "coeff.ridge", "threshold", "row.w",
+          "seed", "nb.init", "maxiter", "miniter", "lobpcg_control",
+          # suppressed
+          ".progress"
+        )
+
+        unknown_params <- setdiff(names(parameters), allowed_params)
+
+        if (length(unknown_params) > 0) {
+          cli::cli_abort(c(
+            "{cli::qty(length(unknown_params))}Unknown parameter{?s} in {.arg parameters} for {.fn {fn_name}}:",
+            "x" = "{fmt_trunc(unknown_params, 10)}",
+            "i" = "Allowed: {.arg {allowed_params}}."
+          ))
+        }
+      }
+    }
 
     if (.f == "slide_imp") {
       if (is.null(location)) {
-        stop("`slide_imp` requires the `location` argument to be provided.")
+        cli::cli_abort("Tuning {.fn slide_imp} requires the {.arg location} argument provided to `tune_imp(location = ...)`.")
       }
       checkmate::assert_numeric(
         location,
@@ -534,63 +595,78 @@ tune_imp <- function(
         .var.name = "location"
       )
       if (!all(c("window_size", "overlap_size", "min_window_n") %in% names(parameters))) {
-        stop("`slide_imp` requires `window_size`, `overlap_size`, and `min_window_n` in `parameters`.")
-      }
-      if ("flank" %in% names(parameters)) {
-        stop("Tuning with `flank` passed as parameters is not yet supported.")
+        cli::cli_abort(
+          "{.fn slide_imp} requires {.arg window_size}, {.arg overlap_size}, and {.arg min_window_n} in {.arg parameters}."
+        )
       }
       if ("k" %in% names(parameters) && "ncp" %in% names(parameters)) {
-        stop("`slide_imp` requires exactly one of `k` or `ncp` in `parameters`, not both.")
+        cli::cli_abort(
+          "{.fn slide_imp} requires exactly one of {.arg k} or {.arg ncp} in {.arg parameters}, not both."
+        )
       }
       if (!any(c("k", "ncp") %in% names(parameters))) {
-        stop("`slide_imp` requires either `k` or `ncp` in `parameters`.")
+        cli::cli_abort(
+          "{.fn slide_imp} requires either {.arg k} or {.arg ncp} in {.arg parameters}."
+        )
       }
-      if (!".progress" %in% names(parameters)) {
-        parameters$.progress <- FALSE
+      # slide_imp defaults set progress to true. so we suppress it
+      if (".progress" %in% names(parameters)) {
+        cli::cli_alert_info("{.arg .progress} in {.arg parameters} is suppressed.")
       }
+      parameters$.progress <- FALSE
     } else if (.f == "knn_imp") {
       if (!"k" %in% names(parameters)) {
-        stop("`knn_imp` requires `k` in `parameters`.")
+        cli::cli_abort("{.fn knn_imp} requires {.arg k} in {.arg parameters}.")
       }
       if ("ncp" %in% names(parameters)) {
-        stop("`knn_imp` does not accept `ncp`. Did you mean `.f = 'pca_imp'`?")
+        cli::cli_abort(
+          "{.fn knn_imp} does not accept {.arg ncp}. Did you mean {.code .f = 'pca_imp'}?"
+        )
       }
+      if (".progress" %in% names(parameters)) {
+        cli::cli_alert_info("{.arg .progress} in {.arg parameters} is suppressed.")
+      }
+      parameters$.progress <- FALSE
     } else if (.f == "pca_imp") {
       if (!"ncp" %in% names(parameters)) {
-        stop("`pca_imp` requires `ncp` in `parameters`.")
+        cli::cli_abort("{.fn pca_imp} requires {.arg ncp} in {.arg parameters}.")
       }
       if ("k" %in% names(parameters)) {
-        stop("`pca_imp` does not accept `k`. Did you mean `.f = 'knn_imp'`?")
+        cli::cli_abort(
+          "{.fn pca_imp} does not accept {.arg k}. Did you mean {.code .f = 'knn_imp'}?"
+        )
       }
     }
-    message(sprintf("Tuning %s", .f))
+
+    cli::cli_inform("Tuning {.fn {fn_name}}")
   } else if (is.function(.f)) {
-    message("Tuning custom function")
+    cli::cli_inform("Tuning {.field custom function}")
   } else {
-    stop("`.f` must be a function or one of 'slide_imp', 'knn_imp', 'pca_imp'.")
+    cli::cli_abort(
+      "{.arg .f} must be a function or one of {.val slide_imp}, {.val knn_imp}, {.val pca_imp}."
+    )
   }
 
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
 
-  # parallelization + subset-injection mode flag.
-  # TRUE when the underlying imputer is knn_imp(), in which case we:
-  # (a) disallow user-supplied `subset` in `parameters`, and
-  # (b) inject a per-rep `subset` derived from the NA locations so that
-  #   only injected-NA columns are imputed (neighbors across all cols).
+  # Two separate flags:
+  # - is_subset_mode: slide_imp (both PCA & KNN) + knn_imp -> controls subset
+  # injection by infering automatically from `na_loc`
+  # - is_knn_mode: only paths that benefit from RcppThread cores
+  is_subset_mode <- is.character(.f) && .f %in% c("slide_imp", "knn_imp")
   is_knn_mode <- is.character(.f) && (
     .f == "knn_imp" ||
       (.f == "slide_imp" && "k" %in% names(parameters))
   )
 
-  if (is_knn_mode && "subset" %in% names(parameters)) {
-    stop(
-      "`subset` cannot be supplied in `parameters` for K-NN-based tuning.",
-      call. = FALSE
+  if (is_subset_mode && "subset" %in% names(parameters)) {
+    cli::cli_abort(
+      "{.arg subset} cannot be supplied in {.arg parameters} for {.fn slide_imp} or {.fn knn_imp} tuning."
     )
   }
 
-  message("Step 1/2: Resolving NA locations")
+  cli::cli_inform("Step 1/2: {.field Resolving NA locations}")
 
   na_loc <- resolve_na_loc(
     obj = obj,
@@ -606,10 +682,8 @@ tune_imp <- function(
   )
   n_reps <- length(na_loc)
 
-  # `na_loc` is guaranteed to be a list of 2-col (row, col) integer
-  # matrices (see resolve_na_loc). For K-NN-based tuning, precompute the
-  # unique injected columns per rep to pass as `subset` at call time.
-  subset_per_rep <- if (is_knn_mode) {
+  # Pre-compute subset per rep only when needed (now includes all slide_imp)
+  subset_per_rep <- if (is_subset_mode) {
     lapply(na_loc, function(m) {
       sort.int(unique(as.integer(m[, 2L])))
     })
@@ -618,46 +692,39 @@ tune_imp <- function(
   }
 
   .rowid <- seq_len(nrow(parameters))
-
   indices <- expand.grid(
     param_set = .rowid,
     rep_id = seq_len(n_reps)
   )
-
-  # `truth_vec` depends only on `rep_id`, so precompute once per rep.
   rep_ids <- indices$rep_id
   param_sets <- indices$param_set
   truth_list <- lapply(na_loc, function(pos) obj[pos])
 
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
-  if (cores > 1 && is_knn_mode) {
-    if (!has_openmp()) {
-      message("OpenMP not available (common on macOS). K-NN will run single-threaded. Use mirai::daemons() for parallelization.")
-      cores <- 1
-    } else if (parallelize) {
-      message(
-        "Both `cores > 1` and `mirai::daemons()` detected. ",
-        "Setting `cores = 1` to avoid nested parallelism. ",
-        "Parallelization will be handled by `mirai`."
-      )
+
+  if (is_knn_mode) {
+    if (cores > 1 && parallelize) {
+      cli::cli_inform(c(
+        "!" = "Both {.arg cores} > 1 and active {.pkg mirai} daemons detected.",
+        "i" = "Setting {.arg cores} = 1 to avoid nested parallelism. Distribution will be handled by {.pkg mirai}."
+      ))
       cores <- 1
     }
   }
 
   if (!parallelize && cores > 1 && !is_knn_mode) {
-    message(
-      sprintf(
-        "cores = %d but is ignored for non-K-NN imputation. Call `mirai::daemons(%d)` to set up parallelization.",
-        cores,
-        cores
-      )
-    )
+    cli::cli_inform(c(
+      "!" = "{.arg cores} = {cores} is ignored for non-K-NN imputation.",
+      "i" = "Call {.code mirai::daemons({cores})} to enable parallel execution."
+    ))
   }
 
-  if (parallelize || (is_knn_mode && cores > 1)) {
-    message("Running Mode: parallel...")
+  if (parallelize) {
+    cli::cli_inform("Running mode: {.strong mirai}")
+  } else if (is_knn_mode && cores > 1) {
+    cli::cli_inform("Running mode: {.strong threaded} ({cores} cores)")
   } else {
-    message("Running Mode: sequential...")
+    cli::cli_inform("Running mode: {.strong sequential}")
   }
 
   is_slide <- is.character(.f) && .f == "slide_imp"
@@ -683,8 +750,8 @@ tune_imp <- function(
   if (is.character(.f)) {
     impute_f <- switch(.f,
       slide_imp = slide_imp,
-      knn_imp   = knn_imp,
-      pca_imp   = pca_imp
+      knn_imp = knn_imp,
+      pca_imp = pca_imp
     )
   } else {
     # run the function once to validate the output
@@ -693,12 +760,9 @@ tune_imp <- function(
     na_positions <- na_loc[[1]]
     pre[na_positions] <- NA
     param_vec <- parameters_list[[1]]
-    probe_result <- do.call(
-      impute_f,
-      c(list(obj = pre), fixed_args, param_vec)
-    )
     tryCatch(
       {
+        probe_result <- do.call(impute_f, c(list(obj = pre), param_vec))
         checkmate::assert_matrix(
           probe_result,
           mode = "numeric",
@@ -711,16 +775,17 @@ tune_imp <- function(
         )
       },
       error = function(e) {
-        stop(
-          "Custom `.f` must accept `obj` as its first argument and return a ",
-          "numeric matrix with the same dimensions as `obj` and no Inf values.",
-          call. = FALSE
+        cli::cli_abort(
+          c(
+            "Custom {.arg .f} must accept {.arg obj} as its first argument and return a numeric matrix with the same dimensions as {.arg obj} and no {.val Inf} values.",
+            "i" = "Original error: {conditionMessage(e)}"
+          )
         )
       }
     )
   }
 
-  message("Step 2/2: Tuning\n")
+  cli::cli_inform("Step 2/2: {.field Tuning}")
 
   iter <- seq_len(nrow(indices))
 
@@ -803,14 +868,13 @@ tune_imp <- function(
       )
     }
     result_list <- vector("list", length(iter))
-    if (.progress) pb <- cli::cli_progress_bar(total = length(iter))
+    if (.progress) pb <- cli::cli_progress_bar(name = "Tuning", total = length(iter))
     current_rep <- 0L
     pre <- NULL
     for (i in iter) {
       rep_id <- rep_ids[i]
       ps <- param_sets[i]
       if (rep_id != current_rep) {
-        pre <- NULL
         pre <- obj
         pre[na_loc[[rep_id]]] <- NA
         current_rep <- rep_id
@@ -828,6 +892,7 @@ tune_imp <- function(
     if (.progress) cli::cli_progress_done(id = pb)
     rm(pre)
   }
+
   error_vec <- vapply(result_list, function(x) {
     e <- attr(x, "error")
     if (is.null(e)) {
@@ -836,19 +901,23 @@ tune_imp <- function(
       e
     }
   }, character(1))
+
   result_df <- cbind(
     parameters[indices$param_set, , drop = FALSE],
     indices,
     data.frame(result = I(result_list), error = error_vec)
   )
+
   if (any(!is.na(result_df$error))) {
-    warning("Some tuning iterations failed. Check the 'error' column in the output.",
-      call. = FALSE
+    cli::cli_warn(
+      "Some tuning iterations may have failed. Check the {.field error} column in the output."
     )
   }
+
   if (parameters_is_null) {
     result_df$.placeholder <- NULL
   }
+
   class(result_df) <- c("slideimp_tune", "slideimp_tbl", "data.frame")
   return(result_df)
 }
@@ -910,31 +979,29 @@ calc_all_metrics <- function(x, metric_fns) {
 
 #' Compute Prediction Accuracy Metrics
 #'
-#' Computes prediction accuracy metrics for results from [tune_imp()].
+#' Compute prediction accuracy metrics for results from [tune_imp()].
 #'
-#' For alternative or faster metrics, see the `{yardstick}` package.
+#' @param results A `slideimp_tune` data frame from [tune_imp()]. Must contain
+#'   a `result` list-column whose elements are data frames with `truth` and
+#'   `estimate` columns.
+#' @param metrics Character vector of metric names to compute. Defaults to
+#'   `c("mae", "rmse")`. Available metrics are `"mae"`, `"rmse"`, `"mape"`,
+#'   `"bias"`, `"rsq"`, and `"rsq_trad"`.
 #'
-#' @param results A `slideimp_tune` data.frame from [tune_imp()]. Must
-#' contain a `result` list-column with data.frames that have `truth` and
-#' `estimate` columns.
-#'
-#' @param metrics A character vector of metric names to compute. Defaults
-#' to `c("mae", "rmse")`. Also available: `"mape"`, `"bias"`, `"rsq"`, and
-#' `"rsq_trad"`.
-#'
-#' @returns A data.frame with the original parameters along with
-#'   unnested metrics: `.metric`, `.estimator`, and `.estimate`.
+#' @returns A data frame containing the original parameter columns along with
+#' unnested metric columns: `.metric`, `.estimator`, and `.estimate`.
 #'
 #' @examples
-#' obj <- sim_mat(100, 100)$input
-#'
 #' set.seed(1234)
+#' obj <- sim_mat(20, 30)$input
+#'
 #' results <- tune_imp(
 #'   obj = obj,
-#'   parameters = data.frame(k = 10),
+#'   parameters = data.frame(k = 5),
 #'   .f = "knn_imp",
 #'   n_reps = 1,
-#'   num_na = 20
+#'   num_na = 10,
+#'   .progress = FALSE
 #' )
 #'
 #' compute_metrics(results)
@@ -945,6 +1012,7 @@ compute_metrics <- function(results, metrics = c("mae", "rmse")) {
 }
 
 #' @rdname compute_metrics
+#' @method compute_metrics data.frame
 #' @export
 compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
   if (!"result" %in% names(results)) {
@@ -959,6 +1027,7 @@ compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
 }
 
 #' @rdname compute_metrics
+#' @method compute_metrics slideimp_tune
 #' @export
 compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   checkmate::assert_character(metrics, unique = TRUE)
@@ -993,111 +1062,6 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   rownames(out) <- NULL
   out
 }
-
-
-# #' Convert 2D Positions to Linear Indices
-# #'
-# #' This function converts 2D positions (row and column indices, i.e., first and
-# #' second columns) in a matrix to their corresponding linear (1D) positions.
-# #'
-# #' @param pos_2d A numeric matrix with exactly 2 columns (first for rows,
-# #'   second for columns) and at least 1 row. Each entry must be a positive
-# #'   integer within the matrix bounds.
-# #' @param nrow The number of rows in the matrix.
-# #' @param ncol The number of columns in the matrix.
-# #' @returns A numeric vector of linear positions corresponding to the input 2D
-# #'   positions.
-# #'
-# #' @keywords internal
-# #' @noRd
-# grid_to_linear <- function(pos_2d, nrow, ncol) {
-#   checkmate::assert_matrix(pos_2d, ncols = 2, min.rows = 1, mode = "integerish", .var.name = "pos_2d")
-#   checkmate::assert_int(nrow, lower = 1, "nrow")
-#   checkmate::assert_int(ncol, lower = 1, "ncol")
-#
-#   row <- pos_2d[, 1]
-#   col <- pos_2d[, 2]
-#
-#   checkmate::assert_true(all(row >= 1 & row <= nrow), .var.name = "row indices")
-#   checkmate::assert_true(all(col >= 1 & col <= ncol), .var.name = "column indices")
-#
-#   linear_pos <- (col - 1) * nrow + row
-#   return(linear_pos)
-# }
-
-# # sample_each_rep (R) ----
-# # for each rep, we are sampling such that for each col we don't:
-# # * Break row room budget
-# # * Break col room budget
-# # * Introduce zcv columns
-# # only then, after collecting n_cols, do we return a rep. The row room budget
-# # is more tricky, since we are iterating column wise, we have to update
-# # row room budget after each selected column. Convert to arma is straightforawrd
-# sample_each_rep <- function(
-#   obj, # arma::mat &obj
-#   pool_idx, # arma::uvec &pool_idx (convert to zero)
-#   na_per_col, # arma::uvec &na_per_col
-#   row_room, # arma::uvec &row_room
-#   col_room, # arma::uvec &col_room
-#   max_attempts # arma::uword max_attempts
-# ) {
-#   # arma seed is hooked to R's seed. So we won't have to seed in arma.
-#   n_cols <- length(na_per_col) # total cols needed
-#   total_na <- sum(na_per_col) # total na values needed. Needed to track 2D index
-#
-#   for (iter in seq_len(max_attempts)) {
-#     # resetting state by reshuffling column order.
-#     shuffled <- pool_idx[sample.int(length(pool_idx))]
-#     attempt_row_room <- row_room
-#     row_out <- integer(total_na)
-#     col_out <- integer(total_na)
-#     written <- 0L
-#     slot <- 0L # each column occupy a "slot"
-#     for (col_idx in shuffled) {
-#       if (slot >= n_cols) {
-#         # if we filled n_cols, then no longer need to scan the available pool
-#         break
-#       }
-#       needed <- na_per_col[slot + 1L] # how many row NA is needed for this col
-#       # column budget (colmax). This column don't have enough rows left for us given budget
-#       if (col_room[col_idx] < needed) {
-#         next
-#       }
-#       candidate <- obj[, col_idx] # slice column
-#       obs_row <- which(!is.na(candidate)) # arma::find_finite(candidate)
-#       # protect 2 distinct observed values so column stays non-ZV
-#       uniq_vals <- unique(candidate[obs_row])
-#       if (length(uniq_vals) < 2L) {
-#         next
-#       }
-#       kept_vals <- sample(uniq_vals, size = 2L)
-#       # match keep the first two sampled missing values. This brings `kept_global` back to
-#       # to global row space. But we probably can find_unique() and sample the index in arma.
-#       kept_global <- obs_row[match(kept_vals, candidate[obs_row])]
-#       left_over <- setdiff(obs_row, kept_global)
-#       # row budget (rowmax)
-#       left_over <- left_over[attempt_row_room[left_over] > 0L]
-#       if (length(left_over) < needed) {
-#         next
-#       }
-#       # avoid sample() scalar trap
-#       selected <- left_over[sample.int(length(left_over), needed)]
-#       # commit
-#       slot <- slot + 1L
-#       idx <- (written + 1L):(written + needed)
-#       row_out[idx] <- selected
-#       col_out[idx] <- col_idx
-#       written <- written + needed
-#       attempt_row_room[selected] <- attempt_row_room[selected] - 1L
-#     }
-#
-#     if (slot == n_cols) {
-#       return(cbind(row = row_out, col = col_out))
-#     }
-#   }
-#
-#   cli::cli_abort("Failed to sample NA locations after {max_attempts} attempts.")
-# }
 
 #' Legacy Function
 #'

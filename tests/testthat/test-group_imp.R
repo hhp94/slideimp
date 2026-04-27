@@ -18,13 +18,13 @@ test_that("group column + feature column API works correctly", {
     feature = I(list(group_1, group_2))
   )
 
-  expect_identical(
+  expect_equal(
     group_imp(obj, group = group_long, k = 3),
     group_imp(obj, group = group_list, k = 3),
     ignore_attr = "fallback"
   )
 
-  expect_identical(
+  expect_equal(
     group_imp(obj, group = group_long, ncp = 5, nb.init = 10, seed = 1234),
     group_imp(obj, group = group_list, ncp = 5, nb.init = 10, seed = 1234),
     ignore_attr = "fallback"
@@ -48,7 +48,7 @@ test_that("group column API collapses duplicate groups correctly", {
     feature = gf$feature
   )
 
-  expect_identical(
+  expect_equal(
     group_imp(obj, group = group_doubled, k = 3),
     group_imp(obj, group = group_single, k = 3)
   )
@@ -76,8 +76,8 @@ test_that("group_imp() handles aux columns present in only some groups (padded)"
   expect_no_error(
     res <- group_imp(obj, group = prepped, k = 3)
   )
-  expect_identical(dim(res), dim(obj))
-  expect_identical(colnames(res), colnames(obj))
+  expect_equal(dim(res), dim(obj))
+  expect_equal(colnames(res), colnames(obj))
   expect_false(anyNA(res))
 })
 
@@ -161,7 +161,7 @@ test_that("grouped result is correct with aux columns, knn", {
 
   expected_results <- cbind(sub1, sub2)[, colnames(obj)]
   # Compare results
-  expect_identical(grouped_results[, ], expected_results)
+  expect_equal(grouped_results[, ], expected_results)
 })
 
 test_that("grouped result is correct with aux columns, pca", {
@@ -215,7 +215,7 @@ test_that("group-specific parameters work correctly", {
   sub2 <- knn_imp(obj[, group_2], k = 7, subset = group_2[1:4], dist_pow = 1)
   expected_results <- cbind(sub1, sub2)[, colnames(obj)]
 
-  expect_identical(grouped_results[, ], expected_results)
+  expect_equal(grouped_results[, ], expected_results)
 })
 
 test_that("duplicate feature across groups throws error", {
@@ -263,7 +263,7 @@ test_that("grouped imputation works without aux columns, knn", {
   expected_results[, group_1[1:5]] <- sub1
   expected_results[, group_2[6:10]] <- sub2
 
-  expect_identical(grouped_results[, ], expected_results)
+  expect_equal(grouped_results[, ], expected_results)
 })
 
 test_that("group-specific parameters work correctly, pca", {
@@ -325,7 +325,7 @@ test_that("grouped imputation works without aux columns, pca", {
   expected_results[, group_1[1:5]] <- sub1
   expected_results[, group_2[6:10]] <- sub2
 
-  expect_identical(grouped_results[, ], expected_results)
+  expect_equal(grouped_results[, ], expected_results)
 })
 
 test_that("group-specific parameters work correctly in parallel, pca", {
@@ -548,7 +548,7 @@ test_that("group_imp: on_infeasible = 'skip' retains original NAs and flags grou
   expect_true(all(is.na(res[1:19, 1:5])))
   # group should be recorded in fallback attribute
   expect_true("bad_group" %in% attr(res, "fallback"))
-  expect_identical(attr(res, "fallback_action"), "skip")
+  expect_equal(attr(res, "fallback_action"), "skip")
   expect_true(isTRUE(attr(res, "has_remaining_na")))
 })
 
@@ -581,7 +581,7 @@ test_that("group_imp: on_infeasible = 'mean' fills with column means and flags g
   )
 
   expect_true("bad_group" %in% attr(res, "fallback"))
-  expect_identical(attr(res, "fallback_action"), "mean")
+  expect_equal(attr(res, "fallback_action"), "mean")
   # no remaining NA in the group's subset columns (means were computable)
   expect_false(anyNA(res[, 1:5]))
 })

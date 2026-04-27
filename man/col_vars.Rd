@@ -2,31 +2,35 @@
 % Please edit documentation in R/col_vars.R
 \name{col_vars}
 \alias{col_vars}
-\title{Calculate Matrix Column Variance}
+\title{Calculate Matrix Column Variances}
 \usage{
 col_vars(mat, cores = 1)
 }
 \arguments{
 \item{mat}{A numeric matrix.}
 
-\item{cores}{Number of cores to use for parallel computation. Defaults to 1.}
+\item{cores}{Integer. Number of cores to use for parallel computation.
+Defaults to \code{1}.}
 }
 \value{
-\code{col_vars} returns a named numeric vector of column variances.
+A numeric vector of column variances, named when \code{mat} has column
+names.
 }
 \description{
-\code{col_vars} computes the sample variance for each column of a numeric matrix.
+Computes the sample variance for each column of a numeric matrix.
 }
 \details{
-Variances for columns with one unique value after dropping \code{NA} are set to \code{NA}.
+Columns with fewer than two distinct non-missing values are assigned \code{NA}.
 }
 \examples{
+set.seed(123)
 mat <- matrix(rnorm(4 * 10), ncol = 4)
 mat[1, 1] <- NA
 mat[1:8, 2] <- NA
 mat[1:9, 3] <- NA
 mat[, 4] <- NA
 mat
+
 col_vars(mat)
 apply(mat, 2, var, na.rm = TRUE)
 }

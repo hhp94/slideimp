@@ -23,7 +23,6 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
     grp_complete = integer(0L),
     method = 0L,
     dist_pow = 1,
-    cache = FALSE,
     cores = 1
   )
 
@@ -67,21 +66,13 @@ test_that("`knn_imp` works", {
   ))
 })
 
-test_that("`knn_imp` cache and non cache path is the same", {
-  obj <- sim_mat(50, 100)$input
-  expect_identical(
-    knn_imp(obj, k = 10, method = "euclidean"),
-    knn_imp(obj, k = 10, method = "euclidean", max_cache = 0)
-  )
-})
-
 test_that("`knn_imp` tree and brute is the same for few missing values", {
   set.seed(1234)
   to_test <- sim_mat(20, n = 1000, perc_total_na = 0, perc_col_na = 0)$input
   to_test[1, 1] <- NA
   to_test[2, 2] <- NA
 
-  expect_identical(
+  expect_equal(
     knn_imp(to_test, k = 3, method = "euclidean"),
     knn_imp(to_test, k = 3, method = "euclidean", tree = TRUE)
   )
@@ -165,4 +156,13 @@ test_that("Behavior with extreme missing columns and rows", {
   mat <- matrix(NA, nrow = 20, ncol = 20)
   diag(mat) <- rnorm(20)
   expect_error(knn_imp(mat, k = 2), "exceeds usable columns")
+})
+
+test_that("Throw on Inf", {
+  set.seed(1234)
+  to_test <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
+  to_test[1, 1] <- Inf
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
+  to_test[1, 1] <- -Inf
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
 })

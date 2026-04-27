@@ -1,28 +1,38 @@
-#' Simulate Matrix with Metadata
+#' Simulate a Matrix with Metadata
+#'
+#' Generate a numeric matrix, optional column and row metadata, and optionally
+#' injected missing values.
 #'
 #' @description
-#' Generates a matrix of random normal data, then optionally scales values
-#' between 0 and 1 column-wise. It also creates corresponding data frames for feature
-#' (column) and sample (row) metadata and can optionally introduce `NA` values
-#' into a specified proportion of rows. A correlation between columns `rho`
-#' (before scaling) can be added.
+#' `sim_mat()` generates random normal data with optional compound-symmetric
+#' column correlation. Values can optionally be scaled to the interval
+#' `[0, 1]` column-wise. The function also creates feature metadata for columns
+#' and sample metadata for rows, and can inject `NA` values into a specified
+#' proportion of matrix cells across a specified proportion of columns.
 #'
-#' @param n An integer specifying the number of rows (samples). Default is `100`.
-#' @param p An integer specifying the number of columns (features). Default is `100`.
-#' @param rho Columns correlation before scaling (compound symmetry). Default is `0.5`.
-#' @param n_col_groups An integer for the number of groups to assign to features/columns. Default is `2`.
-#' @param n_row_groups An integer for the number of groups to assign to samples/rows. Default is `1`.
-#' @param perc_total_na Proportion of all cells to set to NA. Default is `0.1`.
-#' @param perc_col_na Proportion of columns across which those NAs are spread. Default is `0.5`.
-#' @param beta If `TRUE` (default) scale values between 0 and 1 column wise.
+#' @param n Integer. Number of rows, interpreted as samples. Defaults to `100`.
+#' @param p Integer. Number of columns, interpreted as features. Defaults to
+#'   `100`.
+#' @param rho Numeric. Compound-symmetric column correlation before optional
+#'   scaling. Defaults to `0.5`.
+#' @param n_col_groups Integer. Number of groups to assign to features.
+#'   Defaults to `2`.
+#' @param n_row_groups Integer. Number of groups to assign to samples.
+#'   Defaults to `1`.
+#' @param perc_total_na Numeric scalar between `0` and `1`. Proportion of all
+#'   matrix cells to set to `NA`. Defaults to `0.1`.
+#' @param perc_col_na Numeric scalar between `0` and `1`. Proportion of columns
+#'   across which injected `NA` values are spread. Defaults to `0.5`.
+#' @param beta Logical. If `TRUE`, scale values to the interval `[0, 1]`
+#'   column-wise.
 #'
 #' @returns An object of class `slideimp_sim`. This is a list containing:
-#' * `input`: A numeric matrix of dimension \eqn{n \times p} containing
-#'   the simulated values and injected `NA`s.
-#' * `col_group`: A data frame with $p$ rows mapping each `feature`
-#'   to a `group`.
-#' * `row_group`: A data frame with $n$ rows mapping each `sample`
-#'   to a `group`.
+#' * `input`: a numeric matrix of dimension \eqn{n \times p} containing the
+#'   simulated values and injected missing values.
+#' * `col_group`: a data frame with \eqn{p} rows mapping each `feature` to a
+#'   `group`.
+#' * `row_group`: a data frame with \eqn{n} rows mapping each `sample` to a
+#'   `group`.
 #'
 #' @export
 #'

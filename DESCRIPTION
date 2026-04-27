@@ -1,7 +1,7 @@
 Type: Package
 Package: slideimp
 Title: Numeric Matrices K-NN and PCA Imputation
-Version: 1.0.0.9000
+Version: 1.0.0.9001
 Authors@R:
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355"))
@@ -43,7 +43,9 @@ LinkingTo:
     mlpack,
     Rcpp,
     RcppArmadillo,
-    RcppEnsmallen
+    RcppEnsmallen,
+    RcppThread,
+    rcpptimer
 VignetteBuilder: 
     knitr
 Config/testthat/edition: 3

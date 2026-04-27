@@ -2,7 +2,7 @@
 % Please edit documentation in R/knn_imp.R
 \name{knn_imp}
 \alias{knn_imp}
-\title{K-Nearest Neighbor Imputation for Numeric Matrices}
+\title{K-Nearest Neighbors Imputation for Numeric Matrices}
 \usage{
 knn_imp(
   obj,
@@ -14,89 +14,85 @@ knn_imp(
   subset = NULL,
   dist_pow = 0,
   tree = FALSE,
-  max_cache = 4,
-  na_check = TRUE
+  na_check = TRUE,
+  .progress = TRUE
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix with samples in rows and features in columns.}
 
-\item{k}{Integer. Number of nearest neighbors for imputation. 10 is a good
-starting point.}
+\item{k}{Integer. Number of nearest neighbors to use for imputation.}
 
-\item{colmax}{Numeric. A number from 0 to 1. Threshold of column-wise missing
-data rate above which imputation is skipped.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
+proportion greater than \code{colmax} are not imputed.}
 
-\item{method}{Character. Either "euclidean" (default) or "manhattan".
-Distance metric for nearest neighbor calculation.}
+\item{method}{Character. Distance metric for nearest-neighbor calculation:
+either \code{"euclidean"} or \code{"manhattan"}.}
 
-\item{cores}{Integer. Number of cores for K-NN parallelization (OpenMP). On
-macOS, OpenMP may need additional compiler configuration.}
+\item{cores}{Integer. Number of cores to use for parallel computation.
+Defaults to \code{1}.}
 
-\item{post_imp}{Boolean. Whether to impute remaining missing values (those
-that failed imputation) using column means.}
+\item{post_imp}{Logical. If \code{TRUE}, replace any remaining missing values
+with column means after K-NN imputation.}
 
-\item{subset}{Character. Vector of column names or integer vector of column
-indices specifying which columns to impute.}
+\item{subset}{Optional character or integer vector specifying columns to
+impute. If \code{NULL}, all eligible columns are imputed.}
 
-\item{dist_pow}{Numeric. The amount of penalization for further away nearest
-neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
-average of the nearest neighbors.}
+\item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
+the weighted average. \code{dist_pow = 0} gives an unweighted average of the
+nearest neighbors.}
 
-\item{tree}{Logical. \code{FALSE} (default) uses brute-force K-NN. \code{TRUE} uses
-\code{mlpack} BallTree.}
+\item{tree}{Logical. If \code{FALSE}, use brute-force K-NN. If \code{TRUE}, use
+ball-tree K-NN via \code{mlpack}.}
 
-\item{max_cache}{Numeric. Maximum allowed cache size in GB (default \code{4}).
-When greater than \code{0}, pairwise distances between columns with missing values
-are pre-computed and cached, which is faster for moderate-sized data but
-uses O(m^2) memory where m is the number of columns with missing values.
-Set to \code{0} to disable caching and trade speed for lower memory usage.}
+\item{na_check}{Logical. If \code{TRUE}, check whether the result still contains
+missing values.}
 
-\item{na_check}{Boolean. Check for leftover \code{NA} values in the results or not
-(internal use).}
+\item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing
-values imputed.
+A numeric matrix of the same dimensions as \code{obj}, with missing
+values imputed. The returned object has class \code{slideimp_results}.
 }
 \description{
-Impute missing values in a numeric matrix using k-nearest neighbors (K-NN).
+Impute missing values in a numeric matrix using k-nearest neighbors
+(K-NN).
 }
 \details{
-This function performs imputation \strong{column-wise} (using rows as
-observations).
+\code{knn_imp()} performs imputation column-wise, treating rows as observations
+and columns as features.
 
 When \code{dist_pow > 0}, imputed values are computed as distance-weighted
-averages where weights are inverse distances raised to the power of
-\code{dist_pow}.
+averages. Weights are inverse distances raised to the power of \code{dist_pow}.
 
-The \code{tree} parameter (when \code{TRUE}) uses a BallTree for faster neighbor search
-via \code{{mlpack}} but \strong{requires pre-filling} missing values with column means.
-This can introduce a small bias when missingness is high.
+If \code{tree = TRUE}, nearest neighbors are found with a ball tree via the
+\code{mlpack} package. This can be faster for some large, low-missingness data
+sets, but it requires initially filling missing values with column means,
+which can introduce bias when missingness is high.
 }
-\section{Performance Optimization}{
+\section{Performance optimization}{
 
 \itemize{
-\item \strong{\code{tree = FALSE}} (default, brute-force K-NN): Always safe and usually
-faster for small to moderate data or high-dimensional cases.
-\item \strong{\code{tree = TRUE}} (BallTree K-NN): Only use when imputation run time
-becomes prohibitive and missingness is low (<5\% missing).
-\item \strong{Subset imputation}: Use the \code{subset} parameter for efficiency when only
-specific columns need imputation (e.g., epigenetic clock CpGs).
+\item \code{tree = FALSE} uses brute-force K-NN. This is always safe and is often
+faster for small to moderate data sets or high-dimensional data.
+\item \code{tree = TRUE} uses ball-tree K-NN. Consider this only when run time is
+prohibitive and missingness is low, for example less than 5\%.
+\item Use \code{subset} when only specific columns need imputation.
 }
 }
 
 \examples{
-# Basic K-NN imputation
+set.seed(123)
 obj <- sim_mat(20, 20, perc_col_na = 1)$input
 sum(is.na(obj))
-result <- knn_imp(obj, k = 10)
+
+result <- knn_imp(obj, k = 10, .progress = FALSE)
 result
 
 }
 \references{
 Troyanskaya O, Cantor M, Sherlock G, Brown P, Hastie T, Tibshirani R,
-Botstein D, Altman RB (2001).
-Missing value estimation methods for DNA microarrays.
-Bioinformatics 17(6): 520-525.
+Botstein D, Altman RB (2001). Missing value estimation methods for DNA
+microarrays. \emph{Bioinformatics}, 17(6), 520-525.
+\doi{10.1093/bioinformatics/17.6.520}
 }

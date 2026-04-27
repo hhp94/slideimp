@@ -13,34 +13,32 @@ compute_metrics(results, metrics = c("mae", "rmse"))
 \method{compute_metrics}{slideimp_tune}(results, metrics = c("mae", "rmse"))
 }
 \arguments{
-\item{results}{A \code{slideimp_tune} data.frame from \code{\link[=tune_imp]{tune_imp()}}. Must
-contain a \code{result} list-column with data.frames that have \code{truth} and
+\item{results}{A \code{slideimp_tune} data frame from \code{\link[=tune_imp]{tune_imp()}}. Must contain
+a \code{result} list-column whose elements are data frames with \code{truth} and
 \code{estimate} columns.}
 
-\item{metrics}{A character vector of metric names to compute. Defaults
-to \code{c("mae", "rmse")}. Also available: \code{"mape"}, \code{"bias"}, \code{"rsq"}, and
-\code{"rsq_trad"}.}
+\item{metrics}{Character vector of metric names to compute. Defaults to
+\code{c("mae", "rmse")}. Available metrics are \code{"mae"}, \code{"rmse"}, \code{"mape"},
+\code{"bias"}, \code{"rsq"}, and \code{"rsq_trad"}.}
 }
 \value{
-A data.frame with the original parameters along with
-unnested metrics: \code{.metric}, \code{.estimator}, and \code{.estimate}.
+A data frame containing the original parameter columns along with
+unnested metric columns: \code{.metric}, \code{.estimator}, and \code{.estimate}.
 }
 \description{
-Computes prediction accuracy metrics for results from \code{\link[=tune_imp]{tune_imp()}}.
-}
-\details{
-For alternative or faster metrics, see the \code{{yardstick}} package.
+Compute prediction accuracy metrics for results from \code{\link[=tune_imp]{tune_imp()}}.
 }
 \examples{
-obj <- sim_mat(100, 100)$input
-
 set.seed(1234)
+obj <- sim_mat(20, 30)$input
+
 results <- tune_imp(
   obj = obj,
-  parameters = data.frame(k = 10),
+  parameters = data.frame(k = 5),
   .f = "knn_imp",
   n_reps = 1,
-  num_na = 20
+  num_na = 10,
+  .progress = FALSE
 )
 
 compute_metrics(results)

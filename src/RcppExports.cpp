@@ -3,6 +3,7 @@
 
 #include <RcppArmadillo.h>
 #include <RcppEnsmallen.h>
+#include <RcppThread.h>
 #include <Rcpp.h>
 
 using namespace Rcpp;
@@ -13,8 +14,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // pca_imp_internal_cpp
-Rcpp::List pca_imp_internal_cpp(const arma::mat& obj, const arma::uvec& eligible_idx, const arma::uword ncp, const bool scale, const bool regularized, const double threshold, const arma::uword init, const arma::uword maxiter, const arma::uword miniter, arma::rowvec row_w, const double coeff_ridge);
-RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP objSEXP, SEXP eligible_idxSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP) {
+Rcpp::List pca_imp_internal_cpp(const arma::mat& obj, const arma::uvec& eligible_idx, const arma::uword ncp, const bool scale, const bool regularized, const double threshold, const arma::uword init, const arma::uword maxiter, const arma::uword miniter, arma::rowvec row_w, const double coeff_ridge, const arma::uword warmup_iters, const double lobpcg_tol, const arma::uword lobpcg_maxiter);
+RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP objSEXP, SEXP eligible_idxSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP, SEXP warmup_itersSEXP, SEXP lobpcg_tolSEXP, SEXP lobpcg_maxiterSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -29,7 +30,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::uword >::type miniter(miniterSEXP);
     Rcpp::traits::input_parameter< arma::rowvec >::type row_w(row_wSEXP);
     Rcpp::traits::input_parameter< const double >::type coeff_ridge(coeff_ridgeSEXP);
-    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(obj, eligible_idx, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge));
+    Rcpp::traits::input_parameter< const arma::uword >::type warmup_iters(warmup_itersSEXP);
+    Rcpp::traits::input_parameter< const double >::type lobpcg_tol(lobpcg_tolSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type lobpcg_maxiter(lobpcg_maxiterSEXP);
+    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(obj, eligible_idx, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge, warmup_iters, lobpcg_tol, lobpcg_maxiter));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -60,8 +64,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // impute_knn_brute
-arma::mat impute_knn_brute(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, const bool cache, int cores);
-RcppExport SEXP _slideimp_impute_knn_brute(SEXP objSEXP, SEXP kSEXP, SEXP grp_imputeSEXP, SEXP grp_miss_no_impSEXP, SEXP grp_completeSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP cacheSEXP, SEXP coresSEXP) {
+arma::mat impute_knn_brute(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, int cores, const bool pb);
+RcppExport SEXP _slideimp_impute_knn_brute(SEXP objSEXP, SEXP kSEXP, SEXP grp_imputeSEXP, SEXP grp_miss_no_impSEXP, SEXP grp_completeSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP, SEXP pbSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -72,14 +76,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::uvec& >::type grp_complete(grp_completeSEXP);
     Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
-    Rcpp::traits::input_parameter< const bool >::type cache(cacheSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cache, cores));
+    Rcpp::traits::input_parameter< const bool >::type pb(pbSEXP);
+    rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores, pb));
     return rcpp_result_gen;
 END_RCPP
 }
 // impute_knn_mlpack
-arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, const int cores);
+arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, int cores);
 RcppExport SEXP _slideimp_impute_knn_mlpack(SEXP objSEXP, SEXP kSEXP, SEXP grp_imputeSEXP, SEXP grp_miss_no_impSEXP, SEXP grp_completeSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -91,7 +95,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::uvec& >::type grp_complete(grp_completeSEXP);
     Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
-    Rcpp::traits::input_parameter< const int >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
     rcpp_result_gen = Rcpp::wrap(impute_knn_mlpack(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores));
     return rcpp_result_gen;
 END_RCPP
@@ -108,26 +112,26 @@ BEGIN_RCPP
 END_RCPP
 }
 // col_vars_internal
-arma::rowvec col_vars_internal(const arma::mat& mat, arma::uword cores);
+arma::rowvec col_vars_internal(const arma::mat& mat, int cores);
 RcppExport SEXP _slideimp_col_vars_internal(SEXP matSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    Rcpp::traits::input_parameter< arma::uword >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
     rcpp_result_gen = Rcpp::wrap(col_vars_internal(mat, cores));
     return rcpp_result_gen;
 END_RCPP
 }
 // mean_imp_col_internal
-arma::mat mean_imp_col_internal(const arma::mat& mat, const arma::uvec& col_idx, arma::uword cores);
+arma::mat mean_imp_col_internal(const arma::mat& mat, const arma::uvec& col_idx, int cores);
 RcppExport SEXP _slideimp_mean_imp_col_internal(SEXP matSEXP, SEXP col_idxSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
     Rcpp::traits::input_parameter< const arma::uvec& >::type col_idx(col_idxSEXP);
-    Rcpp::traits::input_parameter< arma::uword >::type cores(coresSEXP);
+    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
     rcpp_result_gen = Rcpp::wrap(mean_imp_col_internal(mat, col_idx, cores));
     return rcpp_result_gen;
 END_RCPP
@@ -164,16 +168,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// has_openmp
-bool has_openmp();
-RcppExport SEXP _slideimp_has_openmp() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(has_openmp());
-    return rcpp_result_gen;
-END_RCPP
-}
 // sample_each_rep_cpp
 arma::umat sample_each_rep_cpp(const arma::mat& obj, const arma::uvec& pool_idx_in, const arma::uvec& na_per_col, const arma::uvec& row_room, const arma::uvec& col_room, arma::uword max_attempts);
 RcppExport SEXP _slideimp_sample_each_rep_cpp(SEXP objSEXP, SEXP pool_idx_inSEXP, SEXP na_per_colSEXP, SEXP row_roomSEXP, SEXP col_roomSEXP, SEXP max_attemptsSEXP) {
@@ -192,7 +186,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 11},
+    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 14},
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 9},
@@ -203,7 +197,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},
     {"_slideimp_col_miss_internal", (DL_FUNC) &_slideimp_col_miss_internal, 1},
     {"_slideimp_row_miss_internal", (DL_FUNC) &_slideimp_row_miss_internal, 1},
-    {"_slideimp_has_openmp", (DL_FUNC) &_slideimp_has_openmp, 0},
     {"_slideimp_sample_each_rep_cpp", (DL_FUNC) &_slideimp_sample_each_rep_cpp, 6},
     {NULL, NULL, 0}
 };

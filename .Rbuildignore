@@ -14,3 +14,6 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+^\.Renviron$
+^\.positai$
+^\.claude$
