@@ -99,7 +99,7 @@ imputed <- group_imp(
 print(imputed, n = 4, p = 4)
 # Method: group_imp (PCA imputation)
 # Dimensions: 20 x 281797
-# 
+#
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
