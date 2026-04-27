@@ -7,23 +7,23 @@
 mean_imp_col(obj, subset = NULL, cores = 1)
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix.}
 
-\item{subset}{Character. Vector of column names or integer vector of column
-indices specifying which columns to impute.}
+\item{subset}{Optional character or integer vector specifying columns to
+impute. If \code{NULL}, all columns are imputed.}
 
-\item{cores}{Integer. Number of cores to use for parallel computation. Defaults to \code{1}.}
+\item{cores}{Integer. Number of cores to use for parallel computation.
+Defaults to \code{1}.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing values
-in the specified columns replaced by column means.
+A numeric matrix of the same dimensions as \code{obj}, with missing
+values in the selected columns replaced by column means.
 }
 \description{
 Impute missing values in a matrix by replacing them with the mean of their
 respective columns.
 }
 \examples{
-# Create example matrix with missing values
 mat <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9), nrow = 3)
 colnames(mat) <- c("A", "B", "C")
 mat
@@ -39,4 +39,5 @@ imputed_subset
 # Impute only specific columns by index
 imputed_idx <- mean_imp_col(mat, subset = c(1, 3))
 imputed_idx
+
 }

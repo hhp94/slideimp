@@ -5,6 +5,7 @@
 #include "svd_triplet.h"
 #include "imputed_value.h"
 #include "loc_timer.h"
+#include <limits>
 
 template <typename F>
 static inline void for_each_missing_in_col(arma::uword cidx,
@@ -307,9 +308,9 @@ Rcpp::List pca_imp_internal_cpp(
     const arma::uword miniter,
     arma::rowvec row_w,
     const double coeff_ridge,
-    const arma::uword warmup_iters = 50,
-    const double lobpcg_tol = 1e-8,
-    const arma::uword lobpcg_maxiter = 15)
+    const arma::uword warmup_iters,
+    const double lobpcg_tol,
+    const arma::uword lobpcg_maxiter)
 {
   LOC_TIMER_OBJ(pca_imp_gram);
   LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
@@ -337,10 +338,69 @@ Rcpp::List pca_imp_internal_cpp(
   {
     Rcpp::stop("eligible_idx is empty");
   }
-  if (ncp + 1 > std::min(nrX, n_elig))
+  if (row_w.n_elem != nrX)
+  {
+    Rcpp::stop("row_w length must equal n_rows(obj)");
+  }
+  if (eligible_idx.max() >= obj.n_cols)
+  {
+    Rcpp::stop("eligible_idx contains out-of-bounds column indices");
+  }
+
+  const arma::uword min_problem_dim = std::min(nrX, n_elig);
+  if (ncp >= min_problem_dim)
   {
     Rcpp::stop("ncp + 1 must be <= min(n_rows, n_eligible_cols)");
   }
+
+  // prevent nrX * n_elig overflow later.
+  if (n_elig != 0 && nrX > (std::numeric_limits<arma::uword>::max)() / n_elig)
+  {
+    Rcpp::stop("problem dimensions are too large");
+  }
+
+  // BLAS/LAPACK integer range guard
+  {
+    const arma::uword blas_max =
+        static_cast<arma::uword>((std::numeric_limits<arma::blas_int>::max)());
+
+    const arma::uword k_eig = regularized ? (ncp + 1) : ncp;
+    const arma::uword n_gram_check = (nrX >= n_elig) ? n_elig : nrX;
+
+    if (nrX > blas_max || n_elig > blas_max || ncp > blas_max || k_eig > blas_max || n_gram_check > blas_max)
+    {
+      Rcpp::stop("problem dimensions exceed BLAS/LAPACK integer range");
+    }
+
+    // EigSymWorkspace uses workspace minima 26*n and 10*n.
+    if (n_gram_check > blas_max / 26)
+    {
+      Rcpp::stop("problem dimension too large for LAPACK dsyevr workspace");
+    }
+
+    // LOBPCG internally solves small Rayleigh-Ritz problems up to ~3*k_eig.
+    if (lobpcg_maxiter > 0)
+    {
+      const long double rr_dim = 3.0L * static_cast<long double>(k_eig);
+      const long double dsyevd_lwork = 1.0L + 6.0L * rr_dim + 2.0L * rr_dim * rr_dim;
+      const long double dsyevd_liwork = 3.0L + 5.0L * rr_dim;
+
+      if (rr_dim > static_cast<long double>(blas_max) ||
+          dsyevd_lwork > static_cast<long double>(blas_max) ||
+          dsyevd_liwork > static_cast<long double>(blas_max))
+      {
+        Rcpp::stop("ncp too large for LOBPCG internal LAPACK workspace");
+      }
+    }
+
+    const arma::uword int_max = static_cast<arma::uword>((std::numeric_limits<int>::max)());
+
+    if (warmup_iters > int_max || lobpcg_maxiter > int_max)
+    {
+      Rcpp::stop("LOBPCG iteration controls exceed int range");
+    }
+  }
+
   if (!row_w.is_finite())
   {
     Rcpp::stop("row_w must be finite");
@@ -349,6 +409,7 @@ Rcpp::List pca_imp_internal_cpp(
   {
     Rcpp::stop("row_w must be non-negative");
   }
+
   const double row_w_sum = arma::accu(row_w);
   if (!(row_w_sum > 0.0))
   {
@@ -731,22 +792,29 @@ Rcpp::List pca_imp_internal_cpp(
     iters_done = nb_iter;
 #endif
 
-    double criterion;
-    if (!std::isfinite(old))
-    {
-      criterion = std::numeric_limits<double>::infinity();
-    }
-    else
-    {
-      const double denom = std::max({1.0, std::abs(old), std::abs(objective)});
-      criterion = std::abs(objective - old) / denom;
-    }
+    // missMDA convergence test:
+    //
+    // criterion <- abs(1 - objective / old)
+    // old <- objective
+    //
+    // missMDA increments nb.iter before testing `nb.iter > 5`.
+    // Since `nb_iter` here is the number of completed iterations,
+    // `nb_iter >= miniter` with default miniter = 5 reproduces that behavior.
+    const double criterion = std::abs(1.0 - objective / old);
     old = objective;
 
-    if (criterion < threshold && nb_iter >= miniter)
+    if (!std::isnan(criterion))
     {
-      break;
+      if (criterion < threshold && nb_iter >= miniter)
+      {
+        break;
+      }
+      if (objective < threshold && nb_iter >= miniter)
+      {
+        break;
+      }
     }
+
     if (nb_iter >= maxiter)
     {
       Rcpp::warning("Stopped after " + std::to_string(maxiter) + " iterations");
@@ -806,16 +874,19 @@ Rcpp::List pca_imp_internal_cpp(
       const arma::uword j_local = miss_cols_idx[ci];
       const double ej = scale ? et[j_local] : 1.0;
       const double mj = mean_p[j_local];
-      const double orig_col_1based =
-          static_cast<double>(eligible_idx_perm[j_local] + 1);
-      const arma::uword off = j_local * nrX;
-      const double *fx = fxp + off;
+      const double orig_col_1based = static_cast<double>(eligible_idx_perm[j_local] + 1);
+
+      // missMDA::imputePCA() returns completeObs using the final Xhat at
+      // missing positions, not the final fittedX. fittedX is still used above
+      // for the nb.init selection MSE.
+      const double *xh = Xhat.colptr(j_local);
+
       for_each_missing_in_col(ci, miss_rows_offsets, miss_rows_flat,
                               [&](arma::uword i)
                               {
                                 imputed_values(iv, 0) = static_cast<double>(i + 1);
                                 imputed_values(iv, 1) = orig_col_1based;
-                                imputed_values(iv, 2) = fx[i] * ej + mj;
+                                imputed_values(iv, 2) = xh[i] * ej + mj;
                                 ++iv;
                               });
     }
@@ -851,6 +922,9 @@ Rcpp::List pca_imp_internal_cpp(
 #else
   return Rcpp::List::create(
       Rcpp::Named("imputed_values") = imputed_values,
-      Rcpp::Named("mse") = mse);
+      Rcpp::Named("mse") = mse,
+      Rcpp::Named("n_dsyevr") = hyb_ctx.n_dsyevr,
+      Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
+      Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad);
 #endif
 }

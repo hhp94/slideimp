@@ -1,60 +1,171 @@
-#' Impute Numeric Matrix with PCA Imputation
+#' LOBPCG Eigensolver Control Options
 #'
-#' Impute missing values in a numeric matrix using (regularized) iterative PCA.
+#' Construct a validated list of control options for the LOBPCG eigensolver
+#' used by [pca_imp()]. Most users do not need to call this directly.
 #'
-#' @details
-#' This algorithm is based on the original `missMDA::imputePCA` function and is
-#' optimized for tall or wide numeric matrices.
+#' @param warmup_iters Integer. Number of warm-up iterations before the main
+#'   LOBPCG solve. Must be non-negative.
+#' @param tol Numeric. Convergence tolerance for the LOBPCG eigensolver. Must
+#'   be non-negative and finite.
+#' @param maxiter Integer. Maximum number of LOBPCG iterations. Must be
+#'   non-negative. Setting `maxiter = 0` disables LOBPCG and uses the exact
+#'   solver instead.
 #'
-#' @inheritParams knn_imp
-#' @param ncp Integer. Number of components used to predict the missing entries.
-#' @param scale Logical. If `TRUE` (default), variables are scaled to have
-#'   unit variance.
-#' @param method Character. Either `"regularized"` (default) or `"EM"`.
-#' @param coeff.ridge Numeric. Ridge regularization coefficient (default is 1).
-#'   Only used if `method = "regularized"`. Values < 1 regularize less (closer
-#'   to EM); values > 1 regularize more (closer to mean imputation).
-#' @param row.w Row weights (internally normalized to sum to 1). Can be one of:
-#'   * `NULL` (default): All rows weighted equally.
-#'   * A numeric vector: Custom positive weights of length `nrow(obj)`.
-#'   * `"n_miss"`: Rows with more missing values receive lower weight.
-#' @param threshold Numeric. The threshold for assessing convergence.
-#' @param seed Integer. Random number generator seed.
-#' @param nb.init Integer. Number of random initializations. The first
-#'   initialization is always mean imputation.
-#' @param maxiter Integer. Maximum number of iterations for the algorithm.
-#' @param miniter Integer. Minimum number of iterations for the algorithm.
-#'
-#' @inherit knn_imp return
-#'
-#' @section Performance tip for Windows users:
-#' `pca_imp()` relies heavily on linear algebra (SVD). On Windows the
-#' default BLAS that ships with R is quite slow. You can get a big speedup by
-#' swapping it for OpenBLAS:
-#'
-#' - Follow this short guide: https://github.com/david-cortes/R-openblas-in-windows
-#' - After swapping, restart R and re-run your code.
-#'
-#' On machines with multi-threaded BLAS you may also want to set
-#' `pin_blas = TRUE` (in `tune_imp()` / `group_imp()`) to avoid
-#' thread thrashing when running in parallel with `mirai`.
-#'
-#' @references
-#' Josse, J. & Husson, F. (2013). Handling missing values in exploratory
-#' multivariate data analysis methods. Journal de la SFdS. 153 (2), pp. 79-99.
-#'
-#' Josse, J. and Husson, F. (2016). missMDA: A Package for Handling Missing
-#' Values in Multivariate Data Analysis. Journal of Statistical Software,
-#' 70 (1), pp 1-31. \doi{10.18637/jss.v070.i01}
-#'
-#' @author Francois Husson and Julie Josse (original `missMDA` implementation).
+#' @returns A named list of class `"slideimp_lobpcg_control"` containing
+#' `warmup_iters`, `tol`, and `maxiter`.
 #'
 #' @examples
+#' # Use all defaults
+#' lobpcg_control()
+#'
+#' # Override a single option
+#' lobpcg_control(maxiter = 50)
+#'
+#' # Disable LOBPCG and use the exact solver
+#' lobpcg_control(maxiter = 0)
+#'
+#' # Pass directly to pca_imp()
+#' set.seed(123)
+#' obj <- sim_mat(10, 10)$input
+#' pca_imp(obj, ncp = 2, lobpcg_control = lobpcg_control(tol = 1e-9))
+#'
+#' # Or use a named list
+#' pca_imp(obj, ncp = 2, lobpcg_control = list(maxiter = 0))
+#'
+#' @export
+lobpcg_control <- function(warmup_iters = 10L, tol = 1e-9, maxiter = 20) {
+  checkmate::assert_int(
+    warmup_iters,
+    lower = 0L,
+    .var.name = "warmup_iters"
+  )
+  checkmate::assert_number(
+    tol,
+    lower = 0,
+    finite = TRUE,
+    .var.name = "tol"
+  )
+  checkmate::assert_int(
+    maxiter,
+    lower = 0L,
+    .var.name = "maxiter"
+  )
+  structure(
+    list(
+      warmup_iters = as.integer(warmup_iters),
+      tol = as.numeric(tol),
+      maxiter = as.integer(maxiter)
+    ),
+    class = "slideimp_lobpcg_control"
+  )
+}
+
+#' Validated a LOBPCG Control Object
+#'
+#' @description
+#' Internal helper that accepts `NULL`, a `"slideimp_lobpcg_control"` object,
+#' or a (partial) named list, and returns a fully validated control object.
+#' Used by [pca_imp()] to normalize the `lobpcg_control` argument before
+#' dispatching to the C++ backend.
+#'
+#' @param x `NULL`, a `"slideimp_lobpcg_control"` object, or a named list.
+#'
+#' @return A `"slideimp_lobpcg_control"` object.
+#'
+#' @keywords internal
+#' @noRd
+new_lobpcg_control <- function(x) {
+  if (is.null(x)) {
+    return(lobpcg_control())
+  }
+  if (inherits(x, "slideimp_lobpcg_control")) {
+    return(x)
+  }
+  if (!is.list(x)) {
+    cli::cli_abort(
+      "{.arg lobpcg_control} must be {.code NULL}, a list, or created by {.fn lobpcg_control}."
+    )
+  }
+  if (length(x) > 0L && (is.null(names(x)) || any(!nzchar(names(x))))) {
+    cli::cli_abort("{.arg lobpcg_control} must be a named list.")
+  }
+  allowed <- names(formals(lobpcg_control))
+  unknown <- setdiff(names(x), allowed)
+  if (length(unknown) > 0L) {
+    cli::cli_abort(c(
+      "{cli::qty(length(unknown))}Unknown LOBPCG control option{?s}: {fmt_trunc(unknown, 10)}.",
+      "i" = "Allowed options are: {.arg {allowed}}."
+    ))
+  }
+  do.call(lobpcg_control, x)
+}
+
+#' PCA Imputation for Numeric Matrices
+#'
+#' Impute missing values in a numeric matrix using regularized or
+#' expectation-maximization PCA imputation.
+#'
+#' @details
+#' This algorithm is based on `missMDA::imputePCA()` and is optimized for tall
+#' or wide numeric matrices.
+#'
+#' @param obj A numeric matrix with samples in rows and features in columns.
+#' @param ncp Integer. Number of principal components used to predict missing
+#'   entries.
+#' @param scale Logical. If `TRUE`, columns are scaled to unit variance.
+#' @param method Character. PCA imputation method: either `"regularized"` or
+#'   `"EM"`.
+#' @param coeff.ridge Numeric. Ridge regularization coefficient. Only used when
+#'   `method = "regularized"`. Values less than `1` regularize less, moving
+#'   closer to EM PCA. Values greater than `1` regularize more, moving closer
+#'   to mean imputation.
+#' @param row.w Row weights, internally normalized to sum to `1`. Can be:
+#'   * `NULL`: all rows are weighted equally.
+#'   * A numeric vector of positive weights with length `nrow(obj)`.
+#'   * `"n_miss"`: rows with more missing values receive lower weight.
+#' @param threshold Numeric. Convergence threshold.
+#' @param seed Integer, numeric, or `NULL`. Random seed for reproducibility.
+#' @param nb.init Integer. Number of random initializations. The first
+#'   initialization is always mean imputation.
+#' @param maxiter Integer. Maximum number of iterations.
+#' @param miniter Integer. Minimum number of iterations.
+#' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
+#'   created by [lobpcg_control()]. A plain named list is also accepted. If
+#'   `NULL`, default control options are used.
+#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
+#'   proportion greater than `colmax` are not imputed.
+#' @param post_imp Logical. If `TRUE`, replace any remaining missing values
+#'   with column means after PCA imputation.
+#' @param na_check Logical. If `TRUE`, check whether the result still contains
+#'   missing values.
+#'
+#' @returns A numeric matrix of the same dimensions as `obj`, with missing
+#' values imputed. The returned object has class `slideimp_results`.
+#'
+#' @section Performance tip:
+#' `pca_imp()` relies heavily on linear algebra. On Windows, the default BLAS
+#' shipped with R may be slow for large matrices. Advanced users can replace
+#' it with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+#'
+#' @references
+#' Josse J, Husson F (2013). Handling missing values in exploratory
+#' multivariate data analysis methods. *Journal de la SFdS*, 153(2), 79-99.
+#'
+#' Josse J, Husson F (2016). missMDA: A Package for Handling Missing Values in
+#' Multivariate Data Analysis. *Journal of Statistical Software*, 70(1), 1-31.
+#' \doi{10.18637/jss.v070.i01}
+#'
+#' @author Francois Husson and Julie Josse, for the original `missMDA`
+#' implementation.
+#'
+#' @examples
+#' set.seed(123)
 #' obj <- sim_mat(10, 10)$input
 #' sum(is.na(obj))
 #' obj[1:4, 1:4]
-#' # Randomly initialize missing values 5 times (1st time is mean).
-#' pca_imp(obj, ncp = 2, nb.init = 5)
+#'
+#' # Randomly initialize missing values 5 times. The first initialization is mean imputation.
+#' pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 #'
 #' @export
 pca_imp <- function(
@@ -69,6 +180,7 @@ pca_imp <- function(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
   na_check = TRUE
@@ -100,6 +212,7 @@ pca_imp <- function(
   }
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
+  lobpcg_control <- new_lobpcg_control(lobpcg_control)
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   checkmate::assert_flag(na_check, .var.name = "na_check")
@@ -183,7 +296,10 @@ pca_imp <- function(
       maxiter = maxiter,
       miniter = miniter,
       row_w = row.w,
-      coeff_ridge = coeff.ridge
+      coeff_ridge = coeff.ridge,
+      warmup_iters = lobpcg_control$warmup_iters,
+      lobpcg_tol = lobpcg_control$tol,
+      lobpcg_maxiter = lobpcg_control$maxiter
     )
     cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {
@@ -203,7 +319,7 @@ pca_imp <- function(
   }
 
   return(
-    as_slideimp_results(
+    new_slideimp_results(
       obj,
       "pca",
       fallback = FALSE,

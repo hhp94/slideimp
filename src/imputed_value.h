@@ -4,7 +4,7 @@
 #include <RcppArmadillo.h>
 #include <cstdint>
 #include <vector>
-#include <cmath>           // std::isinf (used by stop_on_inf)
+#include <cmath> // std::isinf (used by stop_on_inf)
 
 // single source of truth for the mask storage type
 using mask_t = uint8_t;
@@ -31,6 +31,106 @@ struct GroupLayout
     arma::uword complete_start() const { return n_imp + n_mni; }
     arma::uword n_working() const { return n_imp + n_mni + n_complete; }
 };
+
+static inline void stop_on_inf(const arma::mat &obj)
+{
+    const arma::uword n_rows = obj.n_rows;
+    const arma::uword n_cols = obj.n_cols;
+
+    for (arma::uword c = 0; c < n_cols; ++c)
+    {
+        const double *col = obj.colptr(c);
+        for (arma::uword r = 0; r < n_rows; ++r)
+        {
+            if (std::isinf(col[r]))
+            {
+                Rcpp::stop(
+                    std::string("Infinite value found at row ") +
+                    std::to_string(r + 1) +
+                    ", column " +
+                    std::to_string(c + 1) +
+                    ". Infinite values are not supported.");
+            }
+        }
+    }
+}
+
+static inline void validate_knn_inputs(
+    const arma::mat &obj,
+    const arma::uword k,
+    const arma::uvec &grp_impute,
+    const arma::uvec &grp_miss_no_imp,
+    const arma::uvec &grp_complete,
+    const int method,
+    const double dist_pow)
+{
+    if (obj.n_rows == 0)
+    {
+        Rcpp::stop("obj must have at least one row.");
+    }
+
+    if (obj.n_cols < 2)
+    {
+        Rcpp::stop("obj must have at least two columns.");
+    }
+
+    if (k == 0)
+    {
+        Rcpp::stop("k must be >= 1.");
+    }
+
+    if (method != 0 && method != 1)
+    {
+        Rcpp::stop("Invalid method: 0=Euclidean, 1=Manhattan.");
+    }
+
+    if (!std::isfinite(dist_pow) || dist_pow < 0.0)
+    {
+        Rcpp::stop("dist_pow must be finite and >= 0.");
+    }
+
+    auto check_group = [&](const arma::uvec &g, const char *name)
+    {
+        for (arma::uword i = 0; i < g.n_elem; ++i)
+        {
+            if (g(i) >= obj.n_cols)
+            {
+                Rcpp::stop(
+                    std::string(name) +
+                    " contains out-of-bounds column index " +
+                    std::to_string(g(i)) +
+                    ". obj has " +
+                    std::to_string(obj.n_cols) +
+                    " columns.");
+            }
+        }
+    };
+
+    check_group(grp_impute, "grp_impute");
+    check_group(grp_miss_no_imp, "grp_miss_no_imp");
+    check_group(grp_complete, "grp_complete");
+
+    const arma::uword n_working =
+        grp_impute.n_elem + grp_miss_no_imp.n_elem + grp_complete.n_elem;
+
+    if (grp_impute.n_elem > 0)
+    {
+        if (n_working < 2)
+        {
+            Rcpp::stop("Need at least one candidate neighbor column.");
+        }
+
+        if (k > n_working - 1)
+        {
+            Rcpp::stop(
+                std::string("k = ") +
+                std::to_string(k) +
+                " exceeds available candidate columns = " +
+                std::to_string(n_working - 1) +
+                ".");
+        }
+    }
+}
 
 // n_col_valid: per-column valid-entry counts for the masked region
 // (groups 1+2). Populated by the caller during the copy-with-mask pass,
@@ -59,24 +159,5 @@ void impute_column_values(
     const arma::uvec &rows_to_impute,
     const arma::mat &obj,
     const arma::uvec &grp_complete);
+
 #endif
-
-static inline void stop_on_inf(const arma::mat &obj)
-{
-    const arma::uword n_rows = obj.n_rows;
-    const arma::uword n_cols = obj.n_cols;
-
-    for (arma::uword c = 0; c < n_cols; ++c)
-    {
-        const double *col = obj.colptr(c);
-        for (arma::uword r = 0; r < n_rows; ++r)
-        {
-            if (std::isinf(col[r]))
-            {
-                Rcpp::stop("Infinite value found at row %u, column %u. "
-                           "Infinite values are not supported.",
-                           r + 1, c + 1);
-            }
-        }
-    }
-}

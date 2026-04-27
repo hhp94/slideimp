@@ -16,7 +16,7 @@
 \item{...}{Not used.}
 }
 \value{
-Invisible \code{x}.
+\code{x}, invisibly.
 }
 \description{
 Print the output of \code{\link[=sim_mat]{sim_mat()}}.

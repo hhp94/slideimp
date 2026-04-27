@@ -1,62 +1,63 @@
-#' K-Nearest Neighbor Imputation for Numeric Matrices
+#' K-Nearest Neighbors Imputation for Numeric Matrices
 #'
-#' Impute missing values in a numeric matrix using k-nearest neighbors (K-NN).
+#' Impute missing values in a numeric matrix using k-nearest neighbors
+#' (K-NN).
 #'
 #' @details
-#' This function performs imputation **column-wise** (using rows as
-#' observations).
+#' `knn_imp()` performs imputation column-wise, treating rows as observations
+#' and columns as features.
 #'
 #' When `dist_pow > 0`, imputed values are computed as distance-weighted
-#' averages where weights are inverse distances raised to the power of
-#' `dist_pow`.
+#' averages. Weights are inverse distances raised to the power of `dist_pow`.
 #'
-#' The `tree` parameter (when `TRUE`) uses a ball tree for faster neighbor search
-#' via `{mlpack}` but **requires pre-filling** missing values with column means.
-#' This can introduce bias when missingness is high.
+#' If `tree = TRUE`, nearest neighbors are found with a ball tree via the
+#' `mlpack` package. This can be faster for some large, low-missingness data
+#' sets, but it requires initially filling missing values with column means,
+#' which can introduce bias when missingness is high.
 #'
-#' @section Performance Optimization:
-#' - **`tree = FALSE`** (default, brute-force K-NN): Always safe and usually
-#'   faster for small to moderate data or high-dimensional cases.
-#' - **`tree = TRUE`** (ball tree K-NN): Only use when imputation run time
-#' becomes prohibitive and missingness is low (<5% missing).
-#' - **Subset imputation**: Use the `subset` parameter for efficiency when only
-#' specific columns need imputation (e.g., epigenetic clock CpGs).
+#' @section Performance optimization:
+#' - `tree = FALSE` uses brute-force K-NN. This is always safe and is often
+#'   faster for small to moderate data sets or high-dimensional data.
+#' - `tree = TRUE` uses ball-tree K-NN. Consider this only when run time is
+#'   prohibitive and missingness is low, for example less than 5%.
+#' - Use `subset` when only specific columns need imputation.
 #'
-#' @param obj A numeric matrix with **samples in rows** and **features in columns**.
-#' @param k Integer. Number of nearest neighbors for imputation. `10` is a good
-#' starting point.
-#' @param colmax Numeric. A number from `0` to `1`. Threshold of column-wise missing
-#' data rate above which imputation is skipped.
-#' @param method Character. Either "euclidean" (default) or "manhattan".
-#' Distance metric for nearest neighbor calculation.
-#' @param cores Integer. Number of cores to use for parallel computation. Defaults to `1`.
-#' @param post_imp Boolean. Whether to impute remaining missing values (those
-#' that failed imputation) using column means.
-#' @param subset Character. Vector of column names or integer vector of column
-#' indices specifying which columns to impute.
-#' @param dist_pow Numeric. The amount of penalization for further away nearest
-#' neighbors in the weighted average. `dist_pow = 0` (default) is the simple
-#' average of the nearest neighbors.
-#' @param tree Logical. `FALSE` (default) uses brute-force K-NN. `TRUE` uses
-#' `mlpack` ball tree K-NN.
-#' @param .progress Boolean. Show imputation progress.
-#' @param na_check Boolean. Check for leftover `NA` values in the results or not
-#' (internal use).
+#' @param obj A numeric matrix with samples in rows and features in columns.
+#' @param k Integer. Number of nearest neighbors to use for imputation.
+#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
+#'   proportion greater than `colmax` are not imputed.
+#' @param method Character. Distance metric for nearest-neighbor calculation:
+#'   either `"euclidean"` or `"manhattan"`.
+#' @param cores Integer. Number of cores to use for parallel computation.
+#'   Defaults to `1`.
+#' @param post_imp Logical. If `TRUE`, replace any remaining missing values
+#'   with column means after K-NN imputation.
+#' @param subset Optional character or integer vector specifying columns to
+#'   impute. If `NULL`, all eligible columns are imputed.
+#' @param dist_pow Numeric. Power used to penalize more distant neighbors in
+#'   the weighted average. `dist_pow = 0` gives an unweighted average of the
+#'   nearest neighbors.
+#' @param tree Logical. If `FALSE`, use brute-force K-NN. If `TRUE`, use
+#'   ball-tree K-NN via `mlpack`.
+#' @param na_check Logical. If `TRUE`, check whether the result still contains
+#'   missing values.
+#' @param .progress Logical. If `TRUE`, show imputation progress.
 #'
-#' @returns A numeric matrix of the same dimensions as `obj` with missing
-#' values imputed.
+#' @returns A numeric matrix of the same dimensions as `obj`, with missing
+#' values imputed. The returned object has class `slideimp_results`.
 #'
 #' @references
 #' Troyanskaya O, Cantor M, Sherlock G, Brown P, Hastie T, Tibshirani R,
-#' Botstein D, Altman RB (2001).
-#' Missing value estimation methods for DNA microarrays.
-#' Bioinformatics 17(6): 520-525.
+#' Botstein D, Altman RB (2001). Missing value estimation methods for DNA
+#' microarrays. *Bioinformatics*, 17(6), 520-525.
+#' \doi{10.1093/bioinformatics/17.6.520}
 #'
 #' @examples
-#' # Basic K-NN imputation
+#' set.seed(123)
 #' obj <- sim_mat(20, 20, perc_col_na = 1)$input
 #' sum(is.na(obj))
-#' result <- knn_imp(obj, k = 10)
+#'
+#' result <- knn_imp(obj, k = 10, .progress = FALSE)
 #' result
 #'
 #' @export
@@ -184,7 +185,7 @@ knn_imp <- function(
   }
 
   return(
-    as_slideimp_results(
+    new_slideimp_results(
       obj,
       "knn",
       fallback = FALSE,

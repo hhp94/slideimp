@@ -2,7 +2,7 @@
 % Please edit documentation in R/tune_imp.R
 \name{tune_imp}
 \alias{tune_imp}
-\title{Tune Parameters for Imputation Methods}
+\title{Tune Imputation Method Parameters}
 \usage{
 tune_imp(
   obj,
@@ -24,149 +24,133 @@ tune_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix.}
 
-\item{parameters}{A data.frame specifying parameter combinations to tune,
-where each column represents a parameter accepted by \code{.f} (excluding
-\code{obj}). List columns are supported for complex parameters. Duplicate
-rows are automatically removed. \code{NULL} is treated as tuning the function
-with its default parameters.}
+\item{parameters}{A \code{data.frame} specifying parameter combinations to tune.
+Each column should be a parameter accepted by \code{.f}, excluding \code{obj}.
+List-columns are supported for complex parameters. Duplicate rows are
+removed. \code{NULL} is treated as a single parameter set with no additional
+arguments, which is useful for functions whose required arguments all have
+defaults.}
 
 \item{.f}{Either \code{"knn_imp"}, \code{"pca_imp"}, \code{"slide_imp"}, or a custom
-function specifying the imputation method to tune.}
+imputation function.}
 
-\item{na_loc}{Optional. Pre-defined missing value locations to bypass
-random NA injection with \code{\link[=sample_na_loc]{sample_na_loc()}}. Accepted formats include:
-\itemize{
-\item A two-column integer matrix (row, column indices).
-\item A numeric vector of linear locations.
-\item A list where each element is one of the above formats (one per
-repetition).
-}}
+\item{na_loc}{Optional predefined missing-value locations. Accepted formats
+are a two-column integer matrix of row and column indices, a numeric vector
+of linear positions, or a list whose elements are either of those formats.}
 
-\item{num_na}{Integer. Total number of missing values to inject per
-repetition. If supplied, \code{n_cols} is computed automatically and
-missing values are distributed as evenly as possible, using \code{n_rows}
-as the base size (\code{num_na} must be at least \code{n_rows}). If omitted
-but \code{n_cols} is supplied, the total injected is \code{n_cols * n_rows}.
-If \code{num_na}, \code{n_cols}, and \code{na_loc} are all \code{NULL}, \code{\link[=tune_imp]{tune_imp()}}
-defaults to roughly 5\% of total cells, capped at 500.
-\code{\link[=sample_na_loc]{sample_na_loc()}} has no default. Ignored in \code{\link[=tune_imp]{tune_imp()}} when
-\code{na_loc} is supplied.}
+\item{num_na}{Integer or \code{NULL}. Total number of missing values to inject per
+repetition. If supplied, \code{n_cols} is derived from \code{num_na} and \code{n_rows},
+and missing values are distributed as evenly as possible across columns.
+Ignored when \code{na_loc} is supplied.}
 
-\item{n_reps}{Integer. Number of repetitions for random NA injection
-(default \code{1}).}
+\item{n_reps}{Integer. Number of repetitions for random missing-value
+injection.}
 
-\item{n_cols}{Integer. The number of columns to receive injected \code{NA} per
-repetition. Ignored when \code{num_na} is supplied (in which case \code{n_cols}
-is derived as \code{num_na \%/\% n_rows}). Must be provided if \code{num_na} is
-\code{NULL}. Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.}
+\item{n_cols}{Integer or \code{NULL}. Number of columns to receive injected
+missing values per repetition. Must be supplied when both \code{num_na} and
+\code{na_loc} are \code{NULL}, unless \code{\link[=tune_imp]{tune_imp()}} chooses its automatic default.
+Ignored when \code{num_na} or \code{na_loc} is supplied.}
 
-\item{n_rows}{Integer. The target number of \code{NA} values per column
-(default \code{2L}).
-\itemize{
-\item When \code{num_na} is supplied: used as the base size. Most columns
-receive exactly \code{n_rows} missing values; \code{num_na \%\% n_rows} columns
-receive one extra. If there's only one column, it receives all
-the remainder.
-\item When \code{num_na} is \code{NULL}: every selected column receives exactly
-\code{n_rows} \code{NA}.
-Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.
-}}
+\item{n_rows}{Integer. Target number of missing values to inject per selected
+column. Ignored when \code{na_loc} is supplied.}
 
-\item{rowmax, colmax}{Numbers between 0 and 1. NA injection cannot create
-rows/columns with a higher proportion of missing values than these
-thresholds.}
+\item{rowmax}{Numeric scalar between \code{0} and \code{1}. Random injection cannot
+create rows with a missing-data proportion greater than \code{rowmax}.}
+
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Random injection cannot
+create columns with a missing-data proportion greater than \code{colmax}.}
 
 \item{na_col_subset}{Optional integer or character vector restricting which
-columns of \code{obj} are eligible for NA injection.
-\itemize{
-\item If \code{NULL} (default): all columns are eligible.
-\item If character: values must exist in \code{colnames(obj)}.
-\item If integer/numeric: values must be valid 1-based column indices.
-The vector must be unique and must contain at least \code{n_cols} columns
-(or the number derived from \code{num_na}).
-Ignored in \code{\link[=tune_imp]{tune_imp()}} when \code{na_loc} is supplied.
-}}
+columns are eligible for random missing-value injection. Ignored when
+\code{na_loc} is supplied.}
 
 \item{max_attempts}{Integer. Maximum number of resampling attempts per
-repetition before giving up due to row-budget exhaustion (default \code{100}).}
+repetition before giving up.}
 
-\item{.progress}{Logical. Show a progress bar during tuning
-(default \code{TRUE}).}
+\item{.progress}{Logical. If \code{TRUE}, show progress during tuning.}
 
-\item{cores}{Controls the number of cores to parallelize over for K-NN
-and sliding-window K-NN imputation with \code{RcppThread}. For other methods, use
-\code{mirai::daemons()} instead.}
+\item{cores}{Integer. Number of cores to use for K-NN and sliding-window
+K-NN imputation. For other methods, use \code{mirai::daemons()}.}
 
-\item{location}{Required only for \code{slide_imp}. Numeric vector of column
-locations.}
+\item{location}{Numeric vector of column locations. Required when
+\code{.f = "slide_imp"}.}
 
-\item{pin_blas}{Logical. Pin BLAS threads to 1 during parallel tuning
-(default \code{FALSE}).}
+\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 during parallel
+tuning to reduce thread contention.}
 }
 \value{
 A \code{data.frame} of class \code{slideimp_tune} containing:
 \itemize{
-\item \code{...}: All columns originally provided in \code{parameters}.
-\item \code{param_set}: An integer ID for the unique parameter combination.
-\item \code{rep_id}: An integer indicating the repetition index.
-\item \code{result}: A nested list-column where each element is a data.frame
-containing \code{truth} (original values) and \code{estimate} (imputed values).
-\item \code{error}: A character column containing the error message if the
+\item columns originally provided in \code{parameters};
+\item \code{param_set}, an integer ID for each unique parameter combination;
+\item \code{rep_id}, an integer repetition index;
+\item \code{result}, a list-column where each element is a data frame containing
+\code{truth} and \code{estimate} columns;
+\item \code{error}, a character column containing the error message if the
 iteration failed, otherwise \code{NA}.
 }
 }
 \description{
-Tunes hyperparameters for imputation methods such as \code{\link[=slide_imp]{slide_imp()}},
-\code{\link[=knn_imp]{knn_imp()}}, \code{\link[=pca_imp]{pca_imp()}}, or user-supplied custom functions by repeated
-cross-validation. For \code{\link[=group_imp]{group_imp()}}, tune \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}} on
-a single group.
+Tune imputation-method parameters by repeatedly masking observed values,
+imputing them, and comparing the imputed values with the original values.
 }
 \details{
-The function supports tuning for built-in methods (\code{"slide_imp"},
-\code{"knn_imp"}, \code{"pca_imp"}) or custom functions provided via \code{.f}.
+Built-in methods can be selected by passing \code{.f = "knn_imp"},
+\code{.f = "pca_imp"}, or \code{.f = "slide_imp"}. A custom function can also be
+supplied. Custom functions must accept \code{obj} as their first argument and
+return a numeric matrix with the same dimensions as \code{obj}.
 
-When \code{.f} is a character string, the columns in \code{parameters} are validated
-against the chosen method's requirements:
+When \code{.f} is a character string, columns in \code{parameters} are validated
+against the selected method:
 \itemize{
-\item \code{"knn_imp"}: requires \code{k} in \code{parameters}
-\item \code{"pca_imp"}: requires \code{ncp} in \code{parameters}
-\item \code{"slide_imp"}: requires \code{window_size}, \code{overlap_size}, and
-\code{min_window_n}, plus exactly one of \code{k} or \code{ncp}
+\item \code{"knn_imp"} requires \code{k}.
+\item \code{"pca_imp"} requires \code{ncp}.
+\item \code{"slide_imp"} requires \code{window_size}, \code{overlap_size}, and \code{min_window_n},
+plus exactly one of \code{k} or \code{ncp}.
 }
 
-When \code{.f} is a custom function, the columns in \code{parameters} must
-correspond to the arguments of \code{.f} (excluding the \code{obj} argument). The
-custom function must accept \code{obj} (a numeric matrix) as its first argument
-and return a numeric matrix of identical dimensions.
+To tune parameters for grouped imputation, tune \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}}
+on representative groups, then pass the selected parameters to \code{\link[=group_imp]{group_imp()}}.
 
-Tuning results can be evaluated using the \code{yardstick} package or
-\code{\link[=compute_metrics]{compute_metrics()}}.
+Tuning results can be summarized with \code{\link[=compute_metrics]{compute_metrics()}} or evaluated with
+external packages such as \code{yardstick}.
 }
 \section{Parallelization}{
 
 \itemize{
-\item \strong{K-NN}: use the \code{cores} argument. If \code{mirai::daemons()} are active,
-\code{cores} is automatically set to \code{1} to avoid nested parallelism.
-\item \strong{PCA}: use \code{mirai::daemons()} instead of \code{cores}.
+\item K-NN: use the \code{cores} argument. If \code{mirai::daemons()} are active, \code{cores}
+is automatically set to \code{1} to avoid nested parallelism.
+\item PCA: use \code{mirai::daemons()} instead of \code{cores}.
 }
 
-On Linux with threaded BLAS like OpenBLAS/MKL, set \code{pin_blas = TRUE} when running
-parallel PCA imputation to prevent BLAS threads and \code{mirai} workers competing for cores.
+When running PCA imputation in parallel with \code{mirai}, set \code{pin_blas = TRUE}
+in \code{\link[=tune_imp]{tune_imp()}} or \code{\link[=group_imp]{group_imp()}} to prevent BLAS threads from
+oversubscribing CPU cores. This relies on \code{RhpcBLASctl} and works with
+OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
+\code{pin_blas = TRUE} may have no effect on macOS.
 }
 
 \examples{
-# Setup example data. Increase `num_na` (500) and `n_reps` (10-30) in real
-# analyses
+set.seed(123)
+
+# Increase num_na and n_reps for real analyses.
 obj <- sim_mat(10, 50)$input
 
-# 1. Tune K-NN imputation with random NA injection
+# Tune K-NN imputation with random missing-value injection
 params_knn <- data.frame(k = c(2, 4))
-results <- tune_imp(obj, params_knn, .f = "knn_imp", n_reps = 1, num_na = 10)
+results <- tune_imp(
+  obj,
+  params_knn,
+  .f = "knn_imp",
+  n_reps = 1,
+  num_na = 10,
+  .progress = FALSE
+)
 compute_metrics(results)
 
-# 2. Tune with fixed NA positions
+# Tune with fixed missing-value positions
 na_positions <- list(
   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2),
   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)
@@ -176,21 +160,30 @@ results_fixed <- tune_imp(
   obj,
   data.frame(k = 2),
   .f = "knn_imp",
-  na_loc = na_positions
+  na_loc = na_positions,
+  .progress = FALSE
 )
 
-# 3. Custom imputation function
+# Custom imputation function
 custom_fill <- function(obj, val = 0) {
   obj[is.na(obj)] <- val
   obj
 }
-tune_imp(obj, data.frame(val = c(0, 1)), .f = custom_fill, num_na = 10)
+
+tune_imp(
+  obj,
+  data.frame(val = c(0, 1)),
+  .f = custom_fill,
+  num_na = 10,
+  .progress = FALSE
+)
+
 \dontshow{if (interactive() && requireNamespace("mirai", quietly = TRUE)) withAutoprint(\{ # examplesIf}
-# 4. Parallel tuning (requires mirai package)
+# Parallel tuning with mirai
 mirai::daemons(2)
+
 parameters_custom <- data.frame(mean = c(0, 1), sd = c(1, 1))
 
-# Define a simple custom function for illustration
 custom_imp <- function(obj, mean, sd) {
   na_pos <- is.na(obj)
   obj[na_pos] <- stats::rnorm(sum(na_pos), mean = mean, sd = sd)
@@ -198,9 +191,14 @@ custom_imp <- function(obj, mean, sd) {
 }
 
 results_p <- tune_imp(
-  obj, parameters_custom,
-  .f = custom_imp, n_reps = 1, num_na = 10
+  obj,
+  parameters_custom,
+  .f = custom_imp,
+  n_reps = 1,
+  num_na = 10,
+  .progress = FALSE
 )
-mirai::daemons(0) # Close workers
+
+mirai::daemons(0)
 \dontshow{\}) # examplesIf}
 }

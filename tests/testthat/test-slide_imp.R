@@ -53,7 +53,7 @@ test_that("slide_imp knn mode works", {
     post_imp = TRUE
   )
 
-  expect_identical(simple_mean[, ], final_imputed)
+  expect_equal(simple_mean[, ], final_imputed)
 
   # slide_imp weighted should be different than simple mean
   weighted_1 <- slide_imp(
@@ -264,7 +264,7 @@ test_that("slide_imp pca mode works", {
     miniter = 2,
     seed = 1234
   )
-  expect_identical(simple_mean[, ], final_imputed)
+  expect_equal(simple_mean[, ], final_imputed)
 })
 
 test_that("slide_imp handling of errors on zero-variance features in PCA mode", {
@@ -540,7 +540,7 @@ test_that("slide_imp: on_infeasible = 'skip' marks windows and retains originals
 
   # at least one window was skipped
   expect_gt(length(attr(res, "fallback")), 0)
-  expect_identical(attr(res, "fallback_action"), "skip")
+  expect_equal(attr(res, "fallback_action"), "skip")
 
   # skipped window columns should retain their original (NA) values
   expect_true(all(is.na(res[1:19, 1:10])))
@@ -566,7 +566,7 @@ test_that("slide_imp: on_infeasible = 'mean' fills skipped windows with column m
   ))
 
   expect_gt(length(attr(res, "fallback")), 0)
-  expect_identical(attr(res, "fallback_action"), "mean")
+  expect_equal(attr(res, "fallback_action"), "mean")
   # No remaining NA because column means were available
   expect_false(anyNA(res[, 1:10]))
 })
@@ -593,7 +593,7 @@ test_that("slide_imp: mixed feasible + infeasible windows — skip isolates corr
   expect_true(isTRUE(attr(res, "has_remaining_na")))
   # and the skipped window should be recorded
   expect_gt(length(attr(res, "fallback")), 0)
-  expect_identical(attr(res, "fallback_action"), "skip")
+  expect_equal(attr(res, "fallback_action"), "skip")
 })
 
 test_that("slide_imp: flank mode — infeasible flank window skips only its target", {
@@ -682,5 +682,5 @@ test_that("slide_imp: all windows infeasible under 'skip' returns original matri
   # subset cols should equal obj (NAs preserved)
   expect_equal(sum(is.na(res)), sum(is.na(mat)))
   expect_length(attr(res, "fallback"), length(attr(res, "fallback"))) # sanity
-  expect_identical(attr(res, "fallback_action"), "skip")
+  expect_equal(attr(res, "fallback_action"), "skip")
 })

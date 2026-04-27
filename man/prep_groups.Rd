@@ -14,77 +14,59 @@ prep_groups(
 )
 }
 \arguments{
-\item{obj_cn}{Character vector of column names from the data matrix
-(e.g., \code{colnames(obj)}). Every element must appear in \code{group$feature} unless
-\code{allow_unmapped = TRUE}.}
+\item{obj_cn}{Character vector of column names from the data matrix, usually
+\code{colnames(obj)}.}
 
-\item{group}{Specification of how features should be grouped for
-imputation. Accepts three formats:
-\itemize{
-\item \code{character}: string naming a supported Illumina platform; see the Note
-section.
-\item \code{data.frame} (Long format):
-\itemize{
-\item \code{group}: Column identifying the group for each feature.
-\item \code{feature}: Character column of individual feature names.
-}
-\item \code{data.frame} (List-column format):
-\itemize{
-\item \code{feature}: List-column of character vectors to impute. A row is a group.
-\item \code{aux}: (Optional) List-column of auxiliary names used for
-context.
-\item \code{parameters}: (Optional) List-column of group-specific
-parameter lists.
-}
-}}
+\item{group}{Grouping specification. See the \code{group} argument of
+\code{\link[=group_imp]{group_imp()}} for supported formats.}
 
-\item{subset}{Character vector of feature names to impute (default
-\code{NULL} means impute all features). Must be a subset of \code{obj_cn}
-(\code{colnames(obj)}) and must appear in at least one group's
-\code{feature}. Features in a group but not in \code{subset} are demoted to
-auxiliary columns for that group. Groups left with zero features
-after demotion are dropped with a message.}
+\item{subset}{Optional character vector of feature names to impute. If
+supplied, features not in \code{subset} are demoted to auxiliary columns within
+their groups.}
 
-\item{min_group_size}{Integer or \code{NULL}. Minimum column count
-(features + aux) per group. Groups smaller than this are padded
-with randomly sampled columns from \code{obj}. Passed to \code{\link[=prep_groups]{prep_groups()}}
-internally.}
+\item{min_group_size}{Integer or \code{NULL}. Minimum total number of columns
+per group, counting both features and auxiliary columns. Groups smaller
+than this are padded with randomly sampled columns from \code{obj_cn}. If
+\code{NULL} or \code{0}, no padding is performed.}
 
-\item{allow_unmapped}{Logical. If \code{FALSE}, every column in
-\code{colnames(obj)} must appear in \code{group}. If \code{TRUE}, columns with
-no group assignment are left untouched (neither imputed nor used
-as auxiliary columns) and a message is issued instead of an error.}
+\item{allow_unmapped}{Logical. If \code{FALSE}, every element of \code{obj_cn} must
+appear in \code{group} as either a feature or an auxiliary column. If \code{TRUE},
+unmapped columns are allowed and left untouched by \code{\link[=group_imp]{group_imp()}}.}
 
-\item{seed}{Numeric or \code{NULL}. Random seed for reproducibility.}
+\item{seed}{Integer, numeric, or \code{NULL}. Random seed used when padding small
+groups.}
 }
 \value{
 A \code{data.frame} of class \code{slideimp_tbl} containing:
 \itemize{
-\item \code{group}: Original group labels (if provided) or sequential group labels.
-\item \code{feature}: A list-column of character vectors (feature names).
-\item \code{aux}: A list-column of character vectors (auxiliary names).
-\item \code{parameters}: A list-column of per-group configuration lists.
+\item \code{group}: original group labels, if provided, or sequential group labels.
+\item \code{feature}: a list-column of character vectors containing feature names.
+\item \code{aux}: a list-column of character vectors containing auxiliary names.
+\item \code{parameters}: a list-column of per-group configuration lists.
 }
 }
 \description{
 Normalize and validate a grouping specification for use with \code{\link[=group_imp]{group_imp()}}.
-Converts long-format or canonical list-column input into a validated
-\code{slideimp_tbl}, enforcing set relationships, pruning dropped columns,
-and optionally padding small groups.
 }
 \details{
-\subsection{Set Validation}{
+\code{prep_groups()} converts long-format or list-column group specifications
+into a validated \code{slideimp_tbl}, enforces feature and auxiliary-column set
+relationships, prunes dropped columns, and optionally pads small groups.
 
-Let \eqn{A} = \code{obj_cn} and \eqn{B} = the union of all feature and auxiliary
-names in \code{group}. The function enforces \eqn{A \subseteq B}: every column in
-the matrix must appear somewhere in the manifest.
-\itemize{
-\item \verb{Pruning:} Elements in \eqn{B} but not in \eqn{A} (e.g., QC-dropped probes)
-are silently pruned from each group.
-\item \verb{Dropping:} Groups left with zero features after pruning are
-removed entirely with a diagnostic message.
+Let \eqn{A} be \code{obj_cn} and \eqn{B} be the union of all feature and
+auxiliary names in \code{group}. When \code{allow_unmapped = FALSE}, the function
+enforces \eqn{A \subseteq B}: every matrix column must appear somewhere in
+the grouping specification.
+
+Elements in \eqn{B} but not in \eqn{A}, such as previously dropped probes,
+are pruned from each group. Groups left with zero features after pruning or
+subset demotion are removed with a diagnostic message.
 }
-}
+\examples{
+sim <- sim_mat(n = 10, p = 20)
+prepped <- prep_groups(colnames(sim$input), sim$col_group)
+prepped
+
 }
 \seealso{
 \code{\link[=group_imp]{group_imp()}}

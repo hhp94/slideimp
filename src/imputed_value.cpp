@@ -1,6 +1,9 @@
 #include "imputed_value.h"
 #include <cmath>
 #include <algorithm>
+#include <limits>
+#include <string>
+#include <utility>
 
 // -----------------------------------------------------------------------------
 // initialize_result_matrix
@@ -20,23 +23,82 @@ arma::mat initialize_result_matrix(
     arma::uvec &col_offsets,
     std::vector<arma::uvec> &rows_to_impute_vec)
 {
-    const arma::uword n_col_result = 3; // column 1, 2 are row, col. 3 is value
+    const arma::uword n_col_result = 3; // row, col, value
     const arma::uword n_imp = layout.n_imp;
+    const arma::uword mask_n_rows = nmiss_masked.n_rows;
+
+    col_offsets.reset();
+    rows_to_impute_vec.clear();
 
     if (n_imp == 0)
     {
         return arma::mat(0, n_col_result);
     }
 
-    // per-column missing counts derived from the pre-computed valid counts
-    const arma::uword mask_n_rows = nmiss_masked.n_rows;
-    arma::uvec n_col_miss(n_imp);
-    for (arma::uword i = 0; i < n_imp; ++i)
+    // basic shape checks before any colptr()/operator() access.
+    if (nmiss_masked.n_cols < n_imp)
     {
-        n_col_miss(i) = mask_n_rows - n_col_valid(i);
+        Rcpp::stop(
+            std::string("initialize_result_matrix: nmiss_masked has too few columns. Expected at least ") +
+            std::to_string(n_imp) +
+            ", got " +
+            std::to_string(nmiss_masked.n_cols) +
+            ".");
     }
 
-    arma::uword sum_missing = arma::accu(n_col_miss);
+    if (grp_impute.n_elem < n_imp)
+    {
+        Rcpp::stop(
+            std::string("initialize_result_matrix: grp_impute has too few elements. Expected at least ") +
+            std::to_string(n_imp) +
+            ", got " +
+            std::to_string(grp_impute.n_elem) +
+            ".");
+    }
+
+    if (n_col_valid.n_elem < n_imp)
+    {
+        Rcpp::stop(
+            std::string("initialize_result_matrix: n_col_valid has too few elements. Expected at least ") +
+            std::to_string(n_imp) +
+            ", got " +
+            std::to_string(n_col_valid.n_elem) +
+            ".");
+    }
+
+    arma::uvec n_col_miss(n_imp);
+
+    col_offsets.set_size(n_imp + 1);
+    col_offsets(0) = 0;
+
+    arma::uword sum_missing = 0;
+
+    for (arma::uword i = 0; i < n_imp; ++i)
+    {
+        if (n_col_valid(i) > mask_n_rows)
+        {
+            Rcpp::stop(
+                std::string("initialize_result_matrix: n_col_valid exceeds number of rows at column ") +
+                std::to_string(i) +
+                ". n_col_valid = " +
+                std::to_string(n_col_valid(i)) +
+                ", n_rows = " +
+                std::to_string(mask_n_rows) +
+                ".");
+        }
+
+        const arma::uword n_miss_i = mask_n_rows - n_col_valid(i);
+        n_col_miss(i) = n_miss_i;
+
+        if (n_miss_i > std::numeric_limits<arma::uword>::max() - sum_missing)
+        {
+            Rcpp::stop("initialize_result_matrix: missing-value count overflow.");
+        }
+
+        sum_missing += n_miss_i;
+        col_offsets(i + 1) = sum_missing;
+    }
+
     if (sum_missing == 0)
     {
         return arma::mat(0, n_col_result);
@@ -45,44 +107,55 @@ arma::mat initialize_result_matrix(
     arma::mat result(sum_missing, n_col_result);
     result.fill(arma::datum::nan);
 
-    col_offsets.set_size(n_imp + 1);
-    col_offsets.fill(arma::fill::zeros);
-    col_offsets.subvec(1, n_imp) = arma::cumsum(n_col_miss);
-
     rows_to_impute_vec.resize(n_imp);
 
     for (arma::uword i = 0; i < n_imp; ++i)
     {
-        // Group 1 lives at local positions [0, n_imp) in nmiss_masked.
         const mask_t *col_ptr = nmiss_masked.colptr(i);
         const arma::uword n_miss_i = n_col_miss(i);
 
         arma::uvec rows(n_miss_i);
         arma::uword w = 0;
+
         for (arma::uword r = 0; r < mask_n_rows; ++r)
         {
             if (col_ptr[r] == 0)
             {
+                // critical safety check: do not write past rows.
+                if (w >= n_miss_i)
+                {
+                    Rcpp::stop(
+                        std::string("initialize_result_matrix: n_col_valid inconsistent with nmiss_masked at column ") +
+                        std::to_string(i) +
+                        ". More missing rows found than expected.");
+                }
+
                 rows(w++) = r;
             }
         }
-        // sanity: caller-supplied n_col_valid must agree with the mask it
-        // was computed from. cheap (off hot path, called once per impute).
+
         if (w != n_miss_i)
         {
             Rcpp::stop(
-                "initialize_result_matrix: n_col_valid inconsistent with "
-                "nmiss_masked at column %u (expected %u missing, found %u)",
-                i, n_miss_i, w);
+                std::string("initialize_result_matrix: n_col_valid inconsistent with nmiss_masked at column ") +
+                std::to_string(i) +
+                ". Expected " +
+                std::to_string(n_miss_i) +
+                " missing rows, found " +
+                std::to_string(w) +
+                ".");
         }
+
         rows_to_impute_vec[i] = std::move(rows);
 
         const arma::uvec &rows_ref = rows_to_impute_vec[i];
         const arma::uword orig_col_1based = grp_impute(i) + 1;
+        const arma::uword offset = col_offsets(i);
 
         for (arma::uword r = 0; r < rows_ref.n_elem; ++r)
         {
-            const arma::uword res_row = col_offsets(i) + r;
+            const arma::uword res_row = offset + r;
+
             result(res_row, 0) = rows_ref(r) + 1; // 1-based row
             result(res_row, 1) = orig_col_1based; // original 1-based column
         }

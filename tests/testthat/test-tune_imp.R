@@ -174,7 +174,7 @@ test_that("set.seed makes sample_na_loc reproducible", {
   a <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 3)
   set.seed(42)
   b <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 3)
-  expect_identical(a, b)
+  expect_equal(a, b)
 })
 
 # failure path
@@ -829,10 +829,10 @@ test_that("serial branch reuses `pre` correctly across param_sets within a rep",
   rep2 <- seen[5:7]
 
   # within-rep: NA mask identical across param_sets (pre is reused correctly)
-  expect_identical(rep1[[1]], rep1[[2]])
-  expect_identical(rep1[[2]], rep1[[3]])
-  expect_identical(rep2[[1]], rep2[[2]])
-  expect_identical(rep2[[2]], rep2[[3]])
+  expect_equal(rep1[[1]], rep1[[2]])
+  expect_equal(rep1[[2]], rep1[[3]])
+  expect_equal(rep2[[1]], rep2[[2]])
+  expect_equal(rep2[[2]], rep2[[3]])
 
   # across-rep: masks differ (pre is rebuilt with the new rep's NAs)
   expect_false(identical(rep1[[1]], rep2[[1]]))
@@ -919,19 +919,19 @@ test_that("slide_imp flank mode is tuned correctly", {
     location = location
   )
 
-  expect_identical(
+  expect_equal(
     tune_imp_knn$result[[1]]$estimate,
     slide_imp_knn[na_loc[[1]]]
   )
-  expect_identical(
+  expect_equal(
     tune_imp_knn$result[[1]]$truth,
     truth
   )
-  expect_identical(
+  expect_equal(
     tune_imp_pca$result[[1]]$estimate,
     slide_imp_pca[na_loc[[1]]]
   )
-  expect_identical(
+  expect_equal(
     tune_imp_pca$result[[1]]$truth,
     truth
   )

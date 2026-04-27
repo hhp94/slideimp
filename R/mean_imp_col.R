@@ -3,13 +3,16 @@
 #' Impute missing values in a matrix by replacing them with the mean of their
 #' respective columns.
 #'
-#' @inheritParams knn_imp
+#' @param obj A numeric matrix.
+#' @param subset Optional character or integer vector specifying columns to
+#'   impute. If `NULL`, all columns are imputed.
+#' @param cores Integer. Number of cores to use for parallel computation.
+#'   Defaults to `1`.
 #'
-#' @returns A numeric matrix of the same dimensions as `obj` with missing values
-#' in the specified columns replaced by column means.
+#' @returns A numeric matrix of the same dimensions as `obj`, with missing
+#' values in the selected columns replaced by column means.
 #'
 #' @examples
-#' # Create example matrix with missing values
 #' mat <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9), nrow = 3)
 #' colnames(mat) <- c("A", "B", "C")
 #' mat
@@ -25,6 +28,7 @@
 #' # Impute only specific columns by index
 #' imputed_idx <- mean_imp_col(mat, subset = c(1, 3))
 #' imputed_idx
+#'
 #' @export
 mean_imp_col <- function(obj, subset = NULL, cores = 1) {
   # pre-cond

@@ -9,22 +9,21 @@
 \arguments{
 \item{x}{A \code{slideimp_tbl} object.}
 
-\item{n}{Number of rows to show. Defaults to 10.}
+\item{n}{Number of rows to show. If \code{NULL}, a default is used.}
 
 \item{...}{Not used.}
 }
 \value{
-Invisible \code{x}.
+\code{x}, invisibly.
 }
 \description{
-Print \code{slideimp_tbl} objects (which inherit \code{data.frame}) with nicer looking
-list-columns (similar to \code{tibble}).
+Print \code{slideimp_tbl} objects, which inherit from \code{data.frame}, with compact
+display of list-columns.
 }
 \examples{
-mat <- sim_mat(n = 10, p = 500)
-set.seed(1234)
-results <- tune_imp(mat$input, parameters = data.frame(k = 5), .f = "knn_imp")
-class(results)
-print(results)
+sim <- sim_mat(n = 10, p = 20)
+tbl <- prep_groups(colnames(sim$input), sim$col_group)
+class(tbl)
+print(tbl)
 
 }

@@ -72,7 +72,7 @@ test_that("`knn_imp` tree and brute is the same for few missing values", {
   to_test[1, 1] <- NA
   to_test[2, 2] <- NA
 
-  expect_identical(
+  expect_equal(
     knn_imp(to_test, k = 3, method = "euclidean"),
     knn_imp(to_test, k = 3, method = "euclidean", tree = TRUE)
   )

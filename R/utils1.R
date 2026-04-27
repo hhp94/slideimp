@@ -18,6 +18,8 @@ scratch <- function() {
 }
 
 dump_roxygen2 <- function(output_file = "roxygen2.txt", dir = "R/") {
-  cmd <- paste0('rg -n "^#\'|^[a-zA-Z0-9_\\.]+ <- function" ', dir, " > ", output_file)
-  cat(cmd)
+  cat(sprintf(
+    "rg -nU --multiline-dotall \"^#'|^[a-zA-Z0-9_\\.]+ <- function\\(.*?\\) ?\\{\" %s > %s\n",
+    dir, output_file
+  ))
 }

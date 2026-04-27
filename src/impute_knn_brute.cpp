@@ -135,6 +135,7 @@ inline double calc_distance_raw_complete(
         const double diff = target_ptr[r] - other_ptr[r];
         dist += target_nmiss[r] * Metric::accumulate(diff);
     }
+    // n_valid guaranteed to be larger than zero by the all NA column scanner.
     return dist / n_valid;
 }
 
@@ -329,10 +330,8 @@ arma::mat impute_knn_brute(
     int cores = 1,
     const bool pb = false)
 {
-    if (method != 0 && method != 1)
-    {
-        throw std::invalid_argument("Invalid method: 0=Euclid, 1=Manhattan");
-    }
+    validate_knn_inputs(
+        obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow);
     stop_on_inf(obj);
     GroupLayout layout{grp_impute.n_elem, grp_miss_no_imp.n_elem, grp_complete.n_elem};
     const arma::uword n_rows = obj.n_rows;

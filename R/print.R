@@ -1,21 +1,23 @@
 #' Print a `slideimp_results` Object
 #'
-#' Print the output of [knn_imp()], [pca_imp()], [group_imp()], [slide_imp()].
+#' Print the output of [knn_imp()], [pca_imp()], [group_imp()], or
+#' [slide_imp()].
 #'
 #' @param x A `slideimp_results` object.
 #' @param n Number of rows to print.
-#' @param p Number of cols to print.
+#' @param p Number of columns to print.
 #' @param ... Not used.
 #'
-#' @returns Invisible `x`.
+#' @returns `x`, invisibly.
 #'
 #' @examples
 #' set.seed(1234)
 #' mat <- sim_mat(n = 10, p = 10)
-#' result <- knn_imp(mat$input, k = 5)
+#' result <- knn_imp(mat$input, k = 5, .progress = FALSE)
 #' class(result)
 #' print(result, n = 6, p = 6)
 #'
+#' @method print slideimp_results
 #' @export
 print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   imp_method <- toupper(attr(x, "imp_method"))
@@ -23,7 +25,7 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   fallback <- attr(x, "fallback")
   fallback_action <- attr(x, "fallback_action")
 
-  # Header
+  # header
   if (!is.null(metacaller)) {
     cat("Method: ", metacaller, " (", imp_method, " imputation)\n", sep = "")
   } else {
@@ -31,7 +33,7 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   }
   cat("Dimensions: ", nrow(x), " x ", ncol(x), "\n", sep = "")
 
-  # Fallback note
+  # fallback note
   if (!is.null(metacaller) && length(fallback) > 0L) {
     unit <- if (identical(metacaller, "slide_imp")) "window" else "group"
     action <- if (is.null(fallback_action)) {
@@ -52,13 +54,13 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
     )
   }
 
-  # Remaining NA note
+  # remaining NA note
   if (isTRUE(attr(x, "has_remaining_na"))) {
     cat("Note: requested columns still contain NA values\n")
   }
   cat("\n")
 
-  # Preview
+  # preview
   n_show <- min(n, nrow(x))
   p_show <- min(p, ncol(x))
   print(x[seq_len(n_show), seq_len(p_show), drop = FALSE], ...)
@@ -80,7 +82,7 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
 #' @param p Number of columns of `input` to show.
 #' @param ... Not used.
 #'
-#' @returns Invisible `x`.
+#' @returns `x`, invisibly.
 #'
 #' @examples
 #' set.seed(123)
@@ -88,6 +90,7 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
 #' class(sim_data)
 #' print(sim_data)
 #'
+#' @method print slideimp_sim
 #' @export
 print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
   # $col_group
@@ -130,22 +133,22 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
 
 #' Print a `slideimp_tbl` Object
 #'
-#' Print `slideimp_tbl` objects (which inherit `data.frame`) with nicer looking
-#' list-columns (similar to `tibble`).
+#' Print `slideimp_tbl` objects, which inherit from `data.frame`, with compact
+#' display of list-columns.
 #'
 #' @param x A `slideimp_tbl` object.
-#' @param n Number of rows to show. Defaults to 10.
+#' @param n Number of rows to show. If `NULL`, a default is used.
 #' @param ... Not used.
 #'
-#' @returns Invisible `x`.
+#' @returns `x`, invisibly.
 #'
 #' @examples
-#' mat <- sim_mat(n = 10, p = 500)
-#' set.seed(1234)
-#' results <- tune_imp(mat$input, parameters = data.frame(k = 5), .f = "knn_imp")
-#' class(results)
-#' print(results)
+#' sim <- sim_mat(n = 10, p = 20)
+#' tbl <- prep_groups(colnames(sim$input), sim$col_group)
+#' class(tbl)
+#' print(tbl)
 #'
+#' @method print slideimp_tbl
 #' @export
 print.slideimp_tbl <- function(x, n = NULL, ...) {
   if (is.null(n)) n <- 10L

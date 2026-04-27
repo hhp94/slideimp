@@ -2,7 +2,7 @@
 % Please edit documentation in R/slide_imp.R
 \name{slide_imp}
 \alias{slide_imp}
-\title{Sliding Window K-NN or PCA Imputation}
+\title{Sliding-Window K-NN or PCA Imputation}
 \usage{
 slide_imp(
   obj,
@@ -19,11 +19,13 @@ slide_imp(
   ncp = NULL,
   scale = TRUE,
   coeff.ridge = 1,
+  threshold = 1e-06,
   seed = NULL,
   row.w = NULL,
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  lobpcg_control = NULL,
   method = NULL,
   .progress = TRUE,
   colmax = 0.9,
@@ -33,140 +35,136 @@ slide_imp(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with \strong{samples in rows} and \strong{features in columns}.}
+\item{obj}{A numeric matrix with samples in rows and features in columns.}
 
 \item{location}{A sorted numeric vector of length \code{ncol(obj)} giving the
-position of each column (e.g., genomic coordinates). Used to define
-sliding windows.}
+position of each column, such as genomic coordinates.}
 
-\item{window_size}{Window width in the same units as \code{location}.}
+\item{window_size}{Numeric. Window width in the same units as \code{location}.}
 
-\item{overlap_size}{Overlap between consecutive windows in the same units
-as \code{location}. Must be less than \code{window_size}. Default is \code{0}. Ignored
-when \code{flank = TRUE}.}
+\item{overlap_size}{Numeric. Overlap between consecutive windows in the
+same units as \code{location}. Must be less than \code{window_size}. Ignored when
+\code{flank = TRUE}.}
 
-\item{flank}{Logical. If \code{TRUE}, instead of sliding windows across the
-whole matrix, one window of width \code{window_size} is created flanking each feature
-listed in \code{subset}. In this mode \code{overlap_size} is ignored. Requires \code{subset} to be
-provided. Default = \code{FALSE}.}
+\item{flank}{Logical. If \code{FALSE}, imputation uses sliding windows across the
+full matrix. If \code{TRUE}, one window of width \code{window_size} is created for
+each feature listed in \code{subset}; \code{overlap_size} is ignored. \code{subset} must
+be supplied when \code{flank = TRUE}.}
 
-\item{min_window_n}{Minimum number of columns a window must contain to be
-imputed. Windows smaller than this are not imputed. \code{k} and \code{ncp} must also
-be smaller than \code{min_window_n}.}
+\item{min_window_n}{Integer. Minimum number of columns a window must contain
+to be imputed. \code{k} and \code{ncp} must be smaller than \code{min_window_n}.}
 
-\item{subset}{Character. Vector of column names or integer vector of column
-indices specifying which columns to impute.}
+\item{subset}{Optional character or integer vector specifying columns to
+impute. If \code{NULL}, all eligible columns are imputed. Required when
+\code{flank = TRUE}.}
 
 \item{dry_run}{Logical. If \code{TRUE}, skip imputation and return a
-\code{slideimp_tbl} object of the windows that \emph{would} be used (after all dropping
-rules). \code{k}/\code{ncp} are not required in this mode. Columns: \code{start}, \code{end},
-\code{window_n}, plus \code{subset_local} (list-column of local subset indices) when
-\code{flank = FALSE}, or \code{target} and \code{subset_local} when \code{flank = TRUE}.
-Default = \code{FALSE}.}
+\code{slideimp_tbl} describing the windows that would be used after all
+filtering rules are applied. In this mode, \code{k} and \code{ncp} are not required.}
 
-\item{k}{Integer. Number of nearest neighbors for imputation. \code{10} is a good
-starting point.}
+\item{k}{Integer or \code{NULL}. Number of nearest neighbors for K-NN imputation.
+Supply \code{k} to use K-NN imputation.}
 
-\item{cores}{Integer. Number of cores to use for parallel computation. Defaults to \code{1}.}
+\item{cores}{Integer. Number of cores to use for K-NN imputation.}
 
-\item{dist_pow}{Numeric. The amount of penalization for further away nearest
-neighbors in the weighted average. \code{dist_pow = 0} (default) is the simple
-average of the nearest neighbors.}
+\item{dist_pow}{Numeric. K-NN distance-weighting power. If \code{0}, use an
+unweighted average of nearest neighbors.}
 
-\item{ncp}{Integer. Number of components used to predict the missing entries.}
+\item{ncp}{Integer or \code{NULL}. Number of components for PCA imputation.
+Supply \code{ncp} to use PCA imputation.}
 
-\item{scale}{Logical. If \code{TRUE} (default), variables are scaled to have
-unit variance.}
+\item{scale}{Logical. For PCA imputation, whether to scale columns to unit
+variance.}
 
-\item{coeff.ridge}{Numeric. Ridge regularization coefficient (default is 1).
-Only used if \code{method = "regularized"}. Values < 1 regularize less (closer
-to EM); values > 1 regularize more (closer to mean imputation).}
+\item{coeff.ridge}{Numeric. Ridge regularization coefficient for regularized
+PCA imputation.}
 
-\item{seed}{Integer. Random number generator seed.}
+\item{threshold}{Numeric. Convergence threshold for PCA imputation.}
 
-\item{row.w}{Row weights (internally normalized to sum to 1). Can be one of:
-\itemize{
-\item \code{NULL} (default): All rows weighted equally.
-\item A numeric vector: Custom positive weights of length \code{nrow(obj)}.
-\item \code{"n_miss"}: Rows with more missing values receive lower weight.
-}}
+\item{seed}{Integer, numeric, or \code{NULL}. Random seed for PCA initialization.}
 
-\item{nb.init}{Integer. Number of random initializations. The first
-initialization is always mean imputation.}
+\item{row.w}{Row weights for PCA imputation, or \code{NULL}. See \code{\link[=pca_imp]{pca_imp()}}.}
 
-\item{maxiter}{Integer. Maximum number of iterations for the algorithm.}
+\item{nb.init}{Integer. Number of PCA random initializations.}
 
-\item{miniter}{Integer. Minimum number of iterations for the algorithm.}
+\item{maxiter}{Integer. Maximum number of PCA iterations.}
 
-\item{method}{For K-NN imputation: distance metric to use (\code{"euclidean"} or \code{"manhattan"}).
-For PCA imputation: regularization imputation algorithm (\code{"regularized"} or \code{"EM"}).}
+\item{miniter}{Integer. Minimum number of PCA iterations.}
 
-\item{.progress}{Show progress bar (default = \code{TRUE}).}
+\item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
+created by \code{\link[=lobpcg_control]{lobpcg_control()}}, or \code{NULL}.}
 
-\item{colmax}{Numeric. A number from \code{0} to \code{1}. Threshold of column-wise missing
-data rate above which imputation is skipped.}
+\item{method}{Character or \code{NULL}. For K-NN imputation, one of
+\code{"euclidean"} or \code{"manhattan"}. For PCA imputation, one of
+\code{"regularized"} or \code{"EM"}. If \code{NULL}, the corresponding backend default
+is used.}
 
-\item{post_imp}{Boolean. Whether to impute remaining missing values (those
-that failed imputation) using column means.}
+\item{.progress}{Logical. If \code{TRUE}, show progress.}
 
-\item{na_check}{Boolean. Check for leftover \code{NA} values in the results or not
-(internal use).}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
+proportion greater than \code{colmax} are not imputed.}
 
-\item{on_infeasible}{Character, one of \code{"error"} (default on
-\code{group_imp()}), \code{"skip"}, or \code{"mean"} (default on \code{slide_imp()}).
-Controls behaviour when a group is infeasible for imputation,
-e.g., \code{k}/\code{ncp} exceeds the number of usable columns after
-applying \code{colmax}, or all subset columns in the group exceed
+\item{post_imp}{Logical. If \code{TRUE}, replace any remaining missing values
+with column means after imputation.}
+
+\item{na_check}{Logical. If \code{TRUE}, check whether the result still contains
+missing values.}
+
+\item{on_infeasible}{Character. One of \code{"skip"}, \code{"error"}, or \code{"mean"}.
+Controls behavior when a window is infeasible for imputation, for example
+when \code{k} or \code{ncp} exceeds the number of usable columns after applying
 \code{colmax}.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj} with missing values
-imputed. When \code{dry_run = TRUE}, returns a \code{data.frame} of class \code{slideimp_tbl}
-with columns \code{start}, \code{end}, \code{window_n}, plus \code{subset_local} (and \code{target}
-when \code{flank = TRUE}).
+A numeric matrix of the same dimensions as \code{obj}, with missing
+values imputed. The returned object has class \code{slideimp_results}.
+
+When \code{dry_run = TRUE}, returns a \code{data.frame} of class \code{slideimp_tbl} with
+columns \code{start}, \code{end}, and \code{window_n}, plus \code{subset_local} and, when
+\code{flank = TRUE}, \code{target}.
 }
 \description{
-Performs sliding window K-NN or PCA imputation of large numeric matrices column-wise. This
-method assumes that columns are meaningfully sorted by \code{location}.
+Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
+columns are meaningfully ordered.
 }
 \details{
-The sliding window approach divides the input matrix into smaller segments
+The sliding-window approach divides the input matrix into smaller segments
 based on \code{location} values and applies imputation to each window
-independently. Values in overlapping areas are averaged across windows to
+independently. Values in overlapping regions are averaged across windows to
 produce the final imputed result.
 
 Two windowing modes are supported:
 \itemize{
-\item \code{flank = FALSE} (default): Greedily partitions the
-\code{location} vector into windows of width \code{window_size} with the requested
-\code{overlap_size} between consecutive windows.
-\item \code{flank = TRUE}: Creates one window per feature
-in \code{subset} that exactly flanks that specific feature using the supplied
-\code{window_size}.
+\item \code{flank = FALSE}: greedily partition \code{location} into windows of width
+\code{window_size} with the requested \code{overlap_size} between consecutive
+windows.
+\item \code{flank = TRUE}: create one window per feature in \code{subset}, centered on
+that feature using the supplied \code{window_size}.
 }
 
-Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, \code{ncp} and related
-arguments for \code{\link[=pca_imp]{pca_imp()}}.
+Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, or \code{ncp} and related
+arguments to use \code{\link[=pca_imp]{pca_imp()}}.
 }
 \examples{
-# Generate sample data with missing values with 20 samples and 100 columns
-# where the column order is sorted (i.e., by genomic position)
 set.seed(1234)
+
+# Example data with 20 samples and 100 ordered columns
 beta_matrix <- sim_mat(20, 100)$input
 location <- 1:100
 
-# It's very useful to first perform a dry run to examine the calculated windows
-windows_statistics <- slide_imp(
+# First perform a dry run to inspect the calculated windows
+window_statistics <- slide_imp(
   beta_matrix,
   location = location,
   window_size = 50,
   overlap_size = 10,
   min_window_n = 10,
-  dry_run = TRUE
+  dry_run = TRUE,
+  .progress = FALSE
 )
-windows_statistics
+window_statistics
 
-# Sliding Window K-NN imputation by specifying `k` (sliding windows)
+# Sliding-window K-NN imputation
 imputed_knn <- slide_imp(
   beta_matrix,
   location = location,
@@ -174,24 +172,23 @@ imputed_knn <- slide_imp(
   window_size = 50,
   overlap_size = 10,
   min_window_n = 10,
-  scale = FALSE # This argument belongs to PCA imputation and will be ignored
+  .progress = FALSE
 )
 imputed_knn
 
-# Sliding Window PCA imputation by specifying `ncp` (sliding windows)
-pca_knn <- slide_imp(
+# Sliding-window PCA imputation
+imputed_pca <- slide_imp(
   beta_matrix,
   location = location,
   ncp = 2,
   window_size = 50,
   overlap_size = 10,
-  min_window_n = 10
+  min_window_n = 10,
+  .progress = FALSE
 )
-pca_knn
+imputed_pca
 
-# Sliding Window K-NN imputation with flanking windows (flank = TRUE)
-# Only the columns listed in `subset` are imputed; each uses its own
-# centered window of width `window_size`.
+# K-NN imputation with flanking windows
 imputed_flank <- slide_imp(
   beta_matrix,
   location = location,
@@ -199,7 +196,8 @@ imputed_flank <- slide_imp(
   window_size = 30,
   flank = TRUE,
   subset = c(10, 30, 70),
-  min_window_n = 5
+  min_window_n = 5,
+  .progress = FALSE
 )
 imputed_flank
 

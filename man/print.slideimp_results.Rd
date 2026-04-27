@@ -11,20 +11,21 @@
 
 \item{n}{Number of rows to print.}
 
-\item{p}{Number of cols to print.}
+\item{p}{Number of columns to print.}
 
 \item{...}{Not used.}
 }
 \value{
-Invisible \code{x}.
+\code{x}, invisibly.
 }
 \description{
-Print the output of \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=pca_imp]{pca_imp()}}, \code{\link[=group_imp]{group_imp()}}, \code{\link[=slide_imp]{slide_imp()}}.
+Print the output of \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=pca_imp]{pca_imp()}}, \code{\link[=group_imp]{group_imp()}}, or
+\code{\link[=slide_imp]{slide_imp()}}.
 }
 \examples{
 set.seed(1234)
 mat <- sim_mat(n = 10, p = 10)
-result <- knn_imp(mat$input, k = 5)
+result <- knn_imp(mat$input, k = 5, .progress = FALSE)
 class(result)
 print(result, n = 6, p = 6)
 

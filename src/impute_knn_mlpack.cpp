@@ -1,15 +1,15 @@
 #include "imputed_value.h"
 
 // parallelism
-#include <RcppThread.h>     // RcppThread::parallelFor
+#include <RcppThread.h> // RcppThread::parallelFor
 
 // mlpack
 #include <mlpack.h>
 #include <mlpack/methods/neighbor_search/neighbor_search.hpp>
 
 // standard library
-#include <cmath>            // std::isnan
-#include <cstring>          // std::memcpy
+#include <cmath>   // std::isnan
+#include <cstring> // std::memcpy
 #include <stdexcept>
 
 // [[Rcpp::export]]
@@ -23,6 +23,8 @@ arma::mat impute_knn_mlpack(
     const double dist_pow,
     int cores = 1)
 {
+    validate_knn_inputs(
+        obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow);
     stop_on_inf(obj);
     GroupLayout layout{grp_impute.n_elem, grp_miss_no_imp.n_elem, grp_complete.n_elem};
     const arma::uword n_rows = obj.n_rows;
@@ -133,7 +135,11 @@ arma::mat impute_knn_mlpack(
         layout.n_imp,
         [&](arma::uword i)
         {
-            arma::uword actual_neighbors = std::min(k, resultingNeighbors.n_rows - 1);
+            if (resultingNeighbors.n_rows <= 1)
+            {
+                return;
+            }
+            const arma::uword actual_neighbors = std::min<arma::uword>(k, resultingNeighbors.n_rows - 1);
             if (actual_neighbors == 0)
             {
                 return;
