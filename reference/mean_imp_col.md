@@ -13,27 +13,26 @@ mean_imp_col(obj, subset = NULL, cores = 1)
 
 - obj:
 
-  A numeric matrix with **samples in rows** and **features in columns**.
+  A numeric matrix.
 
 - subset:
 
-  Character. Vector of column names or integer vector of column indices
-  specifying which columns to impute.
+  Optional character or integer vector specifying columns to impute. If
+  `NULL`, all columns are imputed.
 
 - cores:
 
-  Integer. Number of cores for K-NN parallelization (OpenMP). On macOS,
-  OpenMP may need additional compiler configuration.
+  Integer. Number of cores to use for parallel computation. Defaults to
+  `1`.
 
 ## Value
 
-A numeric matrix of the same dimensions as `obj` with missing values in
-the specified columns replaced by column means.
+A numeric matrix of the same dimensions as `obj`, with missing values in
+the selected columns replaced by column means.
 
 ## Examples
 
 ``` r
-# Create example matrix with missing values
 mat <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9), nrow = 3)
 colnames(mat) <- c("A", "B", "C")
 mat

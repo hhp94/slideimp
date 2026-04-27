@@ -1,7 +1,6 @@
-# Calculate Matrix Column Variance
+# Calculate Matrix Column Variances
 
-`col_vars` computes the sample variance for each column of a numeric
-matrix.
+Computes the sample variance for each column of a numeric matrix.
 
 ## Usage
 
@@ -17,39 +16,42 @@ col_vars(mat, cores = 1)
 
 - cores:
 
-  Number of cores to use for parallel computation. Defaults to 1.
+  Integer. Number of cores to use for parallel computation. Defaults to
+  `1`.
 
 ## Value
 
-`col_vars` returns a named numeric vector of column variances.
+A numeric vector of column variances, named when `mat` has column names.
 
 ## Details
 
-Variances for columns with one unique value after dropping `NA` are set
-to `NA`.
+Columns with fewer than two distinct non-missing values are assigned
+`NA`.
 
 ## Examples
 
 ``` r
+set.seed(123)
 mat <- matrix(rnorm(4 * 10), ncol = 4)
 mat[1, 1] <- NA
 mat[1:8, 2] <- NA
 mat[1:9, 3] <- NA
 mat[, 4] <- NA
 mat
-#>               [,1]       [,2]    [,3] [,4]
-#>  [1,]           NA         NA      NA   NA
-#>  [2,]  0.255317055         NA      NA   NA
-#>  [3,] -2.437263611         NA      NA   NA
-#>  [4,] -0.005571287         NA      NA   NA
-#>  [5,]  0.621552721         NA      NA   NA
-#>  [6,]  1.148411606         NA      NA   NA
-#>  [7,] -1.821817661         NA      NA   NA
-#>  [8,] -0.247325302         NA      NA   NA
-#>  [9,] -0.244199607  0.5429963      NA   NA
-#> [10,] -0.282705449 -0.9140748 -1.5124   NA
+#>              [,1]       [,2]     [,3] [,4]
+#>  [1,]          NA         NA       NA   NA
+#>  [2,] -0.23017749         NA       NA   NA
+#>  [3,]  1.55870831         NA       NA   NA
+#>  [4,]  0.07050839         NA       NA   NA
+#>  [5,]  0.12928774         NA       NA   NA
+#>  [6,]  1.71506499         NA       NA   NA
+#>  [7,]  0.46091621         NA       NA   NA
+#>  [8,] -1.26506123         NA       NA   NA
+#>  [9,] -0.68685285  0.7013559       NA   NA
+#> [10,] -0.44566197 -0.4727914 1.253815   NA
+
 col_vars(mat)
-#> [1] 1.277663 1.061528       NA       NA
+#> [1] 0.9673957 0.6893110        NA        NA
 apply(mat, 2, var, na.rm = TRUE)
-#> [1] 1.277663 1.061528       NA       NA
+#> [1] 0.9673957 0.6893110        NA        NA
 ```

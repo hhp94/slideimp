@@ -71,9 +71,9 @@ pca_tune <- tune_imp(
   na_loc = na_loc,
   parameters = data.frame(ncp = 10)
 )
-#> Tuning pca_imp
+#> Tuning `pca_imp()`
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 
 knn_tune <- tune_imp(
@@ -82,9 +82,9 @@ knn_tune <- tune_imp(
   na_loc = na_loc,
   parameters = data.frame(k = 10)
 )
-#> Tuning knn_imp
+#> Tuning `knn_imp()`
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 
 rnorm_tune <- tune_imp(
@@ -95,7 +95,7 @@ rnorm_tune <- tune_imp(
 )
 #> Tuning custom function
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 ```
 
@@ -195,8 +195,8 @@ group_imp_df
 
 ``` r
 knn_results <- group_imp(obj, group = group_imp_df, cores = 4, k = 10)
-#> Imputing 3 group(s) using KNN.
-#> Running Mode: parallel (OpenMP within groups)...
+#> Imputing 3 groups using KNN.
+#> Running mode: threaded (4 cores)
 print(knn_results, p = 4)
 #> Method: group_imp (KNN imputation)
 #> Dimensions: 20 x 50
@@ -208,8 +208,7 @@ print(knn_results, p = 4)
 #> sample4 0.40710170 0.4094603 0.3228294 0.2529592
 #> sample5 0.73113251 0.4108405 0.6385945 0.4472338
 #> sample6 0.48993078 0.4950764 0.6553896 0.6737998
-#> 
-#> # Showing [1:6, 1:4] of full matrix
+#> # Showing 6 of 20 rows and 4 of 50 columns
 ```
 
 ## Sliding Window Imputation for WGBS/EM-seq Data with `slide_imp()`
@@ -305,12 +304,11 @@ tune_slide_pca <- tune_imp(
   n_reps = 2,
   location = locations
 )
-#> Tuning slide_imp
+#> Tuning `slide_imp()`
 #> Step 1/2: Resolving NA locations
 #> ℹ Using default `num_na` = 500 (~5% of cells).
 #>   Increase for more reliability or decrease if missing is dense.
-#> Running Mode: sequential...
-#> 
+#> Running mode: sequential
 #> Step 2/2: Tuning
 
 metrics <- compute_metrics(tune_slide_pca)
@@ -385,8 +383,7 @@ slide_imp(
 #> S4 0.69444444 0.2846154 0.04347826 0.7636364 0.9595960 0.54621849
 #> S5 0.83505155 0.5777778 0.47517730        NA 0.7368421 0.21666667
 #> S6 0.26612903 0.3451327 0.53072626 0.5000000 0.6465517 0.37288136
-#> 
-#> # Showing [1:6, 1:6] of full matrix
+#> # Showing 6 of 10 rows and 6 of 1000 columns
 ```
 
 ### Subset and Flanking Mode

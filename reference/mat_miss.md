@@ -1,7 +1,7 @@
-# Column or Row Missing Count (or Proportion)
+# Column or Row Missing Counts and Proportions
 
-Calculate the number (or proportion) of missing values per column or per
-row of a numeric matrix without realizing the full mask matrix.
+Calculate the number or proportion of missing values per column or per
+row of a numeric matrix without allocating a full logical mask matrix.
 
 ## Usage
 
@@ -17,18 +17,18 @@ mat_miss(obj, col = TRUE, prop = FALSE)
 
 - col:
 
-  Logical. If `TRUE` (default), compute per-column statistics; if
-  `FALSE`, compute per-row statistics.
+  Logical. If `TRUE`, compute per-column statistics. If `FALSE`, compute
+  per-row statistics.
 
 - prop:
 
-  Logical. If `FALSE` (default), return raw missing counts; if `TRUE`,
-  return missing proportion.
+  Logical. If `FALSE`, return missing-value counts. If `TRUE`, return
+  missing-value proportions.
 
 ## Value
 
-A named numeric vector of either the column or row missing count or
-proportion.
+A named numeric vector containing missing-value counts or proportions
+for columns or rows.
 
 ## Examples
 
@@ -40,15 +40,15 @@ mat
 #> [2,]   NA   NA    8
 #> [3,]    3    6    9
 
-# column missing counts (default)
+# Column missing counts
 mat_miss(mat)
 #> [1] 1 1 1
 
-# row missing counts
+# Row missing counts
 mat_miss(mat, col = FALSE)
 #> [1] 1 2 0
 
-# column missing proportions
+# Column missing proportions
 mat_miss(mat, prop = TRUE)
 #> [1] 0.3333333 0.3333333 0.3333333
 ```

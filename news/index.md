@@ -1,6 +1,32 @@
 # Changelog
 
-## slideimp (development version)
+## slideimp 1.0.1
+
+### Breaking changes
+
+- [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
+  no longer uses the cache; the `use_cache` argument has been removed.
+- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  now runs the warm-start LOBPCG solver by default. Use
+  `lobpcg_control(maxiter = 0)` to go back to the full `dsyevr` solver.
+
+### Minor improvements and fixes
+
+- [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
+  now uses [RcppThread](https://github.com/tnagler/RcppThread) instead
+  of OpenMP for macOS support.
+
+- [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
+  now infers the subset from `na_loc` to speed up tuning for
+  [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
+  and
+  [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md).
+
+- [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
+  is now an S3 generic instead of using the register-on-load pattern
+  with `{slideimp.extra}`.
+
+- Fixed CRAN ATLAS numerical tolerance check.
 
 ## slideimp 1.0.0
 

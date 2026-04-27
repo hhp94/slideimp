@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9001</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -40,7 +40,21 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="slideimp-development-version">slideimp (development version)<a class="anchor" aria-label="anchor" href="#slideimp-development-version"></a></h2>
+<h2 class="pkg-version" data-toc-text="1.0.1" id="slideimp-101">slideimp 1.0.1<a class="anchor" aria-label="anchor" href="#slideimp-101"></a></h2>
+<div class="section level3">
+<h3 id="breaking-changes-1-0-1">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-1-0-1"></a></h3>
+<ul><li>
+<code><a href="../reference/knn_imp.html">knn_imp()</a></code> no longer uses the cache; the <code>use_cache</code> argument has been removed.</li>
+<li>
+<code><a href="../reference/pca_imp.html">pca_imp()</a></code> now runs the warm-start LOBPCG solver by default. Use <code>lobpcg_control(maxiter = 0)</code> to go back to the full <code>dsyevr</code> solver.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="minor-improvements-and-fixes-1-0-1">Minor improvements and fixes<a class="anchor" aria-label="anchor" href="#minor-improvements-and-fixes-1-0-1"></a></h3>
+<ul><li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> now uses <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a> instead of OpenMP for macOS support.</p></li>
+<li><p><code><a href="../reference/tune_imp.html">tune_imp()</a></code> now infers the subset from <code>na_loc</code> to speed up tuning for <code><a href="../reference/knn_imp.html">knn_imp()</a></code> and <code><a href="../reference/slide_imp.html">slide_imp()</a></code>.</p></li>
+<li><p><code><a href="../reference/prep_groups.html">prep_groups()</a></code> is now an S3 generic instead of using the register-on-load pattern with <code>{slideimp.extra}</code>.</p></li>
+<li><p>Fixed CRAN ATLAS numerical tolerance check.</p></li>
+</ul></div>
 </div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="1.0.0" id="slideimp-100">slideimp 1.0.0<a class="anchor" aria-label="anchor" href="#slideimp-100"></a></h2><p class="text-muted">CRAN release: 2026-04-16</p>

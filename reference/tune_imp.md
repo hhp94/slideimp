@@ -1,15 +1,8 @@
-# Tune Parameters for Imputation Methods
+# Tune Imputation Method Parameters
 
-Tunes hyperparameters for imputation methods such as
-[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
-[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md),
-[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md), or
-user-supplied custom functions by repeated cross-validation. For
-[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md),
-tune
-[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) or
-[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md) on
-a single group.
+Tune imputation-method parameters by repeatedly masking observed values,
+imputing them, and comparing the imputed values with the original
+values.
 
 ## Usage
 
@@ -38,196 +31,184 @@ tune_imp(
 
 - obj:
 
-  A numeric matrix with **samples in rows** and **features in columns**.
+  A numeric matrix.
 
 - parameters:
 
-  A data.frame specifying parameter combinations to tune, where each
-  column represents a parameter accepted by `.f` (excluding `obj`). List
-  columns are supported for complex parameters. Duplicate rows are
-  automatically removed. `NULL` is treated as tuning the function with
-  its default parameters.
+  A `data.frame` specifying parameter combinations to tune. Each column
+  should be a parameter accepted by `.f`, excluding `obj`. List-columns
+  are supported for complex parameters. Duplicate rows are removed.
+  `NULL` is treated as a single parameter set with no additional
+  arguments, which is useful for functions whose required arguments all
+  have defaults.
 
 - .f:
 
-  Either `"knn_imp"`, `"pca_imp"`, `"slide_imp"`, or a custom function
-  specifying the imputation method to tune.
+  Either `"knn_imp"`, `"pca_imp"`, `"slide_imp"`, or a custom imputation
+  function.
 
 - na_loc:
 
-  Optional. Pre-defined missing value locations to bypass random NA
-  injection with
-  [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md).
-  Accepted formats include:
-
-  - A two-column integer matrix (row, column indices).
-
-  - A numeric vector of linear locations.
-
-  - A list where each element is one of the above formats (one per
-    repetition).
+  Optional predefined missing-value locations. Accepted formats are a
+  two-column integer matrix of row and column indices, a numeric vector
+  of linear positions, or a list whose elements are either of those
+  formats.
 
 - num_na:
 
-  Integer. Total number of missing values to inject per repetition. If
-  supplied, `n_cols` is computed automatically and missing values are
-  distributed as evenly as possible, using `n_rows` as the base size
-  (`num_na` must be at least `n_rows`). If omitted but `n_cols` is
-  supplied, the total injected is `n_cols * n_rows`. If `num_na`,
-  `n_cols`, and `na_loc` are all `NULL`, `tune_imp()` defaults to
-  roughly 5% of total cells, capped at 500.
-  [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md)
-  has no default. Ignored in `tune_imp()` when `na_loc` is supplied.
+  Integer or `NULL`. Total number of missing values to inject per
+  repetition. If supplied, `n_cols` is derived from `num_na` and
+  `n_rows`, and missing values are distributed as evenly as possible
+  across columns. Ignored when `na_loc` is supplied.
 
 - n_reps:
 
-  Integer. Number of repetitions for random NA injection (default `1`).
+  Integer. Number of repetitions for random missing-value injection.
 
 - n_cols:
 
-  Integer. The number of columns to receive injected `NA` per
-  repetition. Ignored when `num_na` is supplied (in which case `n_cols`
-  is derived as `num_na %/% n_rows`). Must be provided if `num_na` is
-  `NULL`. Ignored in `tune_imp()` when `na_loc` is supplied.
+  Integer or `NULL`. Number of columns to receive injected missing
+  values per repetition. Must be supplied when both `num_na` and
+  `na_loc` are `NULL`, unless `tune_imp()` chooses its automatic
+  default. Ignored when `num_na` or `na_loc` is supplied.
 
 - n_rows:
 
-  Integer. The target number of `NA` values per column (default `2L`).
+  Integer. Target number of missing values to inject per selected
+  column. Ignored when `na_loc` is supplied.
 
-  - When `num_na` is supplied: used as the base size. Most columns
-    receive exactly `n_rows` missing values; `num_na %% n_rows` columns
-    receive one extra. If there's only one column, it receives all the
-    remainder.
+- rowmax:
 
-  - When `num_na` is `NULL`: every selected column receives exactly
-    `n_rows` `NA`. Ignored in `tune_imp()` when `na_loc` is supplied.
+  Numeric scalar between `0` and `1`. Random injection cannot create
+  rows with a missing-data proportion greater than `rowmax`.
 
-- rowmax, colmax:
+- colmax:
 
-  Numbers between 0 and 1. NA injection cannot create rows/columns with
-  a higher proportion of missing values than these thresholds.
+  Numeric scalar between `0` and `1`. Random injection cannot create
+  columns with a missing-data proportion greater than `colmax`.
 
 - na_col_subset:
 
-  Optional integer or character vector restricting which columns of
-  `obj` are eligible for NA injection.
-
-  - If `NULL` (default): all columns are eligible.
-
-  - If character: values must exist in `colnames(obj)`.
-
-  - If integer/numeric: values must be valid 1-based column indices. The
-    vector must be unique and must contain at least `n_cols` columns (or
-    the number derived from `num_na`). Ignored in `tune_imp()` when
-    `na_loc` is supplied.
+  Optional integer or character vector restricting which columns are
+  eligible for random missing-value injection. Ignored when `na_loc` is
+  supplied.
 
 - max_attempts:
 
   Integer. Maximum number of resampling attempts per repetition before
-  giving up due to row-budget exhaustion (default `100`).
+  giving up.
 
 - .progress:
 
-  Logical. Show a progress bar during tuning (default `TRUE`).
+  Logical. If `TRUE`, show progress during tuning.
 
 - cores:
 
-  Controls the number of cores to parallelize over for K-NN and
-  sliding-window K-NN imputation with OpenMP. For other methods, use
-  [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
-  instead.
+  Integer. Number of cores to use for K-NN and sliding-window K-NN
+  imputation. For other methods, use
+  [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html).
 
 - location:
 
-  Required only for `slide_imp`. Numeric vector of column locations.
+  Numeric vector of column locations. Required when `.f = "slide_imp"`.
 
 - pin_blas:
 
-  Logical. Pin BLAS threads to 1 during parallel tuning (default
-  `FALSE`).
+  Logical. If `TRUE`, pin BLAS threads to 1 during parallel tuning to
+  reduce thread contention.
 
 ## Value
 
 A `data.frame` of class `slideimp_tune` containing:
 
-- `...`: All columns originally provided in `parameters`.
+- columns originally provided in `parameters`;
 
-- `param_set`: An integer ID for the unique parameter combination.
+- `param_set`, an integer ID for each unique parameter combination;
 
-- `rep_id`: An integer indicating the repetition index.
+- `rep_id`, an integer repetition index;
 
-- `result`: A nested list-column where each element is a data.frame
-  containing `truth` (original values) and `estimate` (imputed values).
+- `result`, a list-column where each element is a data frame containing
+  `truth` and `estimate` columns;
 
-- `error`: A character column containing the error message if the
+- `error`, a character column containing the error message if the
   iteration failed, otherwise `NA`.
 
 ## Details
 
-The function supports tuning for built-in methods (`"slide_imp"`,
-`"knn_imp"`, `"pca_imp"`) or custom functions provided via `.f`.
+Built-in methods can be selected by passing `.f = "knn_imp"`,
+`.f = "pca_imp"`, or `.f = "slide_imp"`. A custom function can also be
+supplied. Custom functions must accept `obj` as their first argument and
+return a numeric matrix with the same dimensions as `obj`.
 
-When `.f` is a character string, the columns in `parameters` are
-validated against the chosen method's requirements:
+When `.f` is a character string, columns in `parameters` are validated
+against the selected method:
 
-- `"knn_imp"`: requires `k` in `parameters`
+- `"knn_imp"` requires `k`.
 
-- `"pca_imp"`: requires `ncp` in `parameters`
+- `"pca_imp"` requires `ncp`.
 
-- `"slide_imp"`: requires `window_size`, `overlap_size`, and
-  `min_window_n`, plus exactly one of `k` or `ncp`
+- `"slide_imp"` requires `window_size`, `overlap_size`, and
+  `min_window_n`, plus exactly one of `k` or `ncp`.
 
-When `.f` is a custom function, the columns in `parameters` must
-correspond to the arguments of `.f` (excluding the `obj` argument). The
-custom function must accept `obj` (a numeric matrix) as its first
-argument and return a numeric matrix of identical dimensions.
+To tune parameters for grouped imputation, tune
+[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) or
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md) on
+representative groups, then pass the selected parameters to
+[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
 
-Tuning results can be evaluated using the `yardstick` package or
-[`compute_metrics()`](https://hhp94.github.io/slideimp/reference/compute_metrics.md).
+Tuning results can be summarized with
+[`compute_metrics()`](https://hhp94.github.io/slideimp/reference/compute_metrics.md)
+or evaluated with external packages such as `yardstick`.
 
 ## Parallelization
 
-- **K-NN**: use the `cores` argument (requires OpenMP). If
+- K-NN: use the `cores` argument. If
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
-  are active, `cores` is automatically set to 1 to avoid nested
+  are active, `cores` is automatically set to `1` to avoid nested
   parallelism.
 
-- **PCA**: use
+- PCA: use
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
   instead of `cores`.
 
-On macOS, OpenMP is typically unavailable and `cores` falls back to
-
-1.  Use
-    [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
-    for parallelization instead.
-
-On Linux with OpenBLAS or MKL, set `pin_blas = TRUE` when running
-parallel PCA to prevent BLAS threads and `mirai` workers competing for
-cores.
+When running PCA imputation in parallel with `mirai`, set
+`pin_blas = TRUE` in `tune_imp()` or
+[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
+to prevent BLAS threads from oversubscribing CPU cores. This relies on
+`RhpcBLASctl` and works with OpenBLAS and MKL (typical on Linux, and on
+Windows after an OpenBLAS swap). `pin_blas = TRUE` may have no effect on
+macOS.
 
 ## Examples
 
 ``` r
-# Setup example data. Increase `num_na` (500) and `n_reps` (10-30) in real
-# analyses
+set.seed(123)
+
+# Increase num_na and n_reps for real analyses.
 obj <- sim_mat(10, 50)$input
 
-# 1. Tune K-NN imputation with random NA injection
+# Tune K-NN imputation with random missing-value injection
 params_knn <- data.frame(k = c(2, 4))
-results <- tune_imp(obj, params_knn, .f = "knn_imp", n_reps = 1, num_na = 10)
-#> Tuning knn_imp
+results <- tune_imp(
+  obj,
+  params_knn,
+  .f = "knn_imp",
+  n_reps = 1,
+  num_na = 10,
+  .progress = FALSE
+)
+#> Tuning `knn_imp()`
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 compute_metrics(results)
-#>   k param_set rep_id error  n n_miss .metric .estimator .estimate
-#> 1 2         1      1  <NA> 10      0     mae   standard 0.1744917
-#> 2 2         1      1  <NA> 10      0    rmse   standard 0.2441705
-#> 3 4         2      1  <NA> 10      0     mae   standard 0.1528578
-#> 4 4         2      1  <NA> 10      0    rmse   standard 0.2000098
+#>   k .progress param_set rep_id error  n n_miss .metric .estimator .estimate
+#> 1 2     FALSE         1      1  <NA> 10      0     mae   standard 0.2075860
+#> 2 2     FALSE         1      1  <NA> 10      0    rmse   standard 0.2841912
+#> 3 4     FALSE         2      1  <NA> 10      0     mae   standard 0.1829599
+#> 4 4     FALSE         2      1  <NA> 10      0    rmse   standard 0.2202581
 
-# 2. Tune with fixed NA positions
+# Tune with fixed missing-value positions
 na_positions <- list(
   matrix(c(1, 2, 3, 1, 1, 1), ncol = 2),
   matrix(c(2, 3, 4, 2, 2, 2), ncol = 2)
@@ -237,33 +218,42 @@ results_fixed <- tune_imp(
   obj,
   data.frame(k = 2),
   .f = "knn_imp",
-  na_loc = na_positions
+  na_loc = na_positions,
+  .progress = FALSE
 )
-#> Tuning knn_imp
+#> Tuning `knn_imp()`
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 
-# 3. Custom imputation function
+# Custom imputation function
 custom_fill <- function(obj, val = 0) {
   obj[is.na(obj)] <- val
   obj
 }
-tune_imp(obj, data.frame(val = c(0, 1)), .f = custom_fill, num_na = 10)
+
+tune_imp(
+  obj,
+  data.frame(val = c(0, 1)),
+  .f = custom_fill,
+  num_na = 10,
+  .progress = FALSE
+)
 #> Tuning custom function
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 #> # slideimp table: 2 x 5
 #>  val param_set rep_id        result error
 #>    0         1      1 <df [10 x 2]>  <NA>
 #>    1         2      1 <df [10 x 2]>  <NA>
+
 if (FALSE) { # interactive() && requireNamespace("mirai", quietly = TRUE)
-# 4. Parallel tuning (requires mirai package)
+# Parallel tuning with mirai
 mirai::daemons(2)
+
 parameters_custom <- data.frame(mean = c(0, 1), sd = c(1, 1))
 
-# Define a simple custom function for illustration
 custom_imp <- function(obj, mean, sd) {
   na_pos <- is.na(obj)
   obj[na_pos] <- stats::rnorm(sum(na_pos), mean = mean, sd = sd)
@@ -271,9 +261,14 @@ custom_imp <- function(obj, mean, sd) {
 }
 
 results_p <- tune_imp(
-  obj, parameters_custom,
-  .f = custom_imp, n_reps = 1, num_na = 10
+  obj,
+  parameters_custom,
+  .f = custom_imp,
+  n_reps = 1,
+  num_na = 10,
+  .progress = FALSE
 )
-mirai::daemons(0) # Close workers
+
+mirai::daemons(0)
 }
 ```
