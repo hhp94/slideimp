@@ -346,23 +346,16 @@ resolve_na_loc <- function(
 #'   repetition. If supplied, `n_cols` is derived from `num_na` and `n_rows`,
 #'   and missing values are distributed as evenly as possible across columns.
 #'   Ignored when `na_loc` is supplied.
-#' @param n_reps Integer. Number of repetitions for random missing-value
-#'   injection.
 #' @param n_cols Integer or `NULL`. Number of columns to receive injected
 #'   missing values per repetition. Must be supplied when both `num_na` and
 #'   `na_loc` are `NULL`, unless [tune_imp()] chooses its automatic default.
 #'   Ignored when `num_na` or `na_loc` is supplied.
 #' @param n_rows Integer. Target number of missing values to inject per selected
 #'   column. Ignored when `na_loc` is supplied.
-#' @param rowmax Numeric scalar between `0` and `1`. Random injection cannot
-#'   create rows with a missing-data proportion greater than `rowmax`.
-#' @param colmax Numeric scalar between `0` and `1`. Random injection cannot
-#'   create columns with a missing-data proportion greater than `colmax`.
 #' @param na_col_subset Optional integer or character vector restricting which
 #'   columns are eligible for random missing-value injection. Ignored when
 #'   `na_loc` is supplied.
-#' @param max_attempts Integer. Maximum number of resampling attempts per
-#'   repetition before giving up.
+#' @inheritParams sample_na_loc
 #' @param .progress Logical. If `TRUE`, show progress during tuning.
 #' @param cores Integer. Number of cores to use for K-NN and sliding-window
 #'   K-NN imputation. For other methods, use `mirai::daemons()`.
@@ -392,6 +385,8 @@ resolve_na_loc <- function(
 #' external packages such as `yardstick`.
 #'
 #' @inheritSection group_imp Parallelization
+#'
+#' @inheritSection pca_imp Performance tips
 #'
 #' @returns A `data.frame` of class `slideimp_tune` containing:
 #'   - columns originally provided in `parameters`;
@@ -564,7 +559,7 @@ tune_imp <- function(
           "dist_pow",
           # pca branch
           "scale", "coeff.ridge", "threshold", "row.w",
-          "seed", "nb.init", "maxiter", "miniter", "lobpcg_control",
+          "seed", "nb.init", "maxiter", "miniter", "lobpcg_control", "solver",
           # suppressed
           ".progress"
         )

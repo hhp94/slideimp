@@ -27,6 +27,7 @@ group_imp(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
+  solver = NULL,
   lobpcg_control = NULL,
   pin_blas = FALSE,
   na_check = TRUE,
@@ -75,52 +76,54 @@ imputation, use \code{mirai::daemons()} to parallelize across groups.}
 per group, counting both features and auxiliary columns. Groups smaller
 than this are padded with randomly sampled columns from \code{obj}.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}, or \code{NULL}. Columns with a
-missing-data proportion greater than \code{colmax} are not imputed. If \code{NULL},
-the backend default is used unless overridden by \code{group$parameters}.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
+proportion greater than \code{colmax} are not imputed.}
 
 \item{post_imp}{Logical or \code{NULL}. If \code{TRUE}, replace any remaining missing
 values with column means after imputation. If \code{NULL}, the backend default
 is used unless overridden by \code{group$parameters}.}
 
-\item{dist_pow}{Numeric or \code{NULL}. K-NN distance-weighting power. If \code{0},
-use an unweighted average of nearest neighbors. If \code{NULL}, the backend
-default is used unless overridden by \code{group$parameters}.}
+\item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
+the weighted average. \code{dist_pow = 0} gives an unweighted average of the
+nearest neighbors.}
 
-\item{tree}{Logical or \code{NULL}. For K-NN imputation, if \code{FALSE}, use
-brute-force K-NN; if \code{TRUE}, use ball-tree K-NN via \code{mlpack}. If \code{NULL},
-the backend default is used unless overridden by \code{group$parameters}.}
+\item{tree}{Logical. If \code{FALSE}, use brute-force K-NN. If \code{TRUE}, use
+ball-tree K-NN via \code{mlpack}.}
 
-\item{scale}{Logical or \code{NULL}. For PCA imputation, whether to scale columns
-to unit variance. If \code{NULL}, the backend default is used unless overridden
-by \code{group$parameters}.}
+\item{scale}{Logical. If \code{TRUE}, columns are scaled to unit variance.}
 
-\item{coeff.ridge}{Numeric or \code{NULL}. Ridge regularization coefficient for
-regularized PCA imputation. If \code{NULL}, the backend default is used unless
-overridden by \code{group$parameters}.}
+\item{coeff.ridge}{Numeric. Ridge regularization coefficient. Only used when
+\code{method = "regularized"}. Values less than \code{1} regularize less, moving
+closer to EM PCA. Values greater than \code{1} regularize more, moving closer
+to mean imputation.}
 
-\item{threshold}{Numeric or \code{NULL}. Convergence threshold for PCA imputation.
-If \code{NULL}, the backend default is used unless overridden by
-\code{group$parameters}.}
+\item{threshold}{Numeric. Convergence threshold.}
 
-\item{row.w}{Row weights for PCA imputation, or \code{NULL}. See \code{\link[=pca_imp]{pca_imp()}}.}
+\item{row.w}{Row weights, internally normalized to sum to \code{1}. Can be:
+\itemize{
+\item \code{NULL}: all rows are weighted equally.
+\item A numeric vector of positive weights with length \code{nrow(obj)}.
+\item \code{"n_miss"}: rows with more missing values receive lower weight.
+}}
 
 \item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.}
 
-\item{nb.init}{Integer or \code{NULL}. Number of PCA random initializations. If
-\code{NULL}, the backend default is used unless overridden by
-\code{group$parameters}.}
+\item{nb.init}{Integer. Number of random initializations. The first
+initialization is always mean imputation.}
 
-\item{maxiter}{Integer or \code{NULL}. Maximum number of PCA iterations. If
-\code{NULL}, the backend default is used unless overridden by
-\code{group$parameters}.}
+\item{maxiter}{Integer. Maximum number of iterations.}
 
-\item{miniter}{Integer or \code{NULL}. Minimum number of PCA iterations. If
-\code{NULL}, the backend default is used unless overridden by
-\code{group$parameters}.}
+\item{miniter}{Integer. Minimum number of iterations.}
+
+\item{solver}{Character. Eigensolver selection. One of \code{"auto"}, \code{"dsyevr"},
+or \code{"lobpcg"}. \code{"dsyevr"} uses the exact solver. \code{"lobpcg"} uses the
+iterative LOBPCG solver. If \code{"auto"}, LOBPCG is used when the smaller input
+dimension is at least 500 and \code{ncp <= 50}; otherwise the exact solver is
+used.}
 
 \item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
-created by \code{\link[=lobpcg_control]{lobpcg_control()}}, or \code{NULL}.}
+created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. If
+\code{NULL}, defaults are chosen according to \code{solver}.}
 
 \item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 to reduce
 contention when using parallel PCA on systems linked with multithreaded
@@ -153,6 +156,10 @@ Group-specific parameters in \code{group$parameters} take priority over global
 arguments. Global arguments fill in any missing values. All groups must use
 the same imputation method.
 
+For method-specific arguments inherited from \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}},
+\code{NULL} means the backend default is used unless overridden by
+\code{group$parameters}.
+
 Per-group \code{k} is capped at the number of usable columns in the group minus
 one. Per-group \code{ncp} is capped at the maximum feasible number of PCA
 components for that group's submatrix. A warning is issued when capping
@@ -177,6 +184,31 @@ in \code{\link[=tune_imp]{tune_imp()}} or \code{\link[=group_imp]{group_imp()}} 
 oversubscribing CPU cores. This relies on \code{RhpcBLASctl} and works with
 OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 \code{pin_blas = TRUE} may have no effect on macOS.
+}
+
+\section{Performance tips}{
+
+\code{pca_imp()} relies heavily on linear algebra. On Windows, the default BLAS
+shipped with R may be slow for large matrices. Advanced users can replace
+it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+
+PCA imputation speed depends on the eigensolver selected by \code{solver} and the
+convergence threshold \code{threshold}. The exact solver is selected with
+\code{solver = "dsyevr"}. The iterative LOBPCG solver is selected with
+\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, uses a conservative
+internal rule.
+
+For large or approximately low-rank genomic matrices, it can be useful to
+benchmark \code{solver = "dsyevr"} against \code{solver = "lobpcg"} on a representative
+subset, such as chromosome 22, before tuning accuracy-related parameters such
+as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+
+The default \code{threshold = 1e-6} is conservative. In some genomic datasets,
+\code{threshold = 1e-5} can be faster while giving very similar imputed values.
+Check this on a representative subset before using the relaxed threshold in a
+full analysis.
+
+See the pkgdown article "Speeding up PCA imputation" for a full workflow.
 }
 
 \examples{

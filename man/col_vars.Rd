@@ -4,16 +4,16 @@
 \alias{col_vars}
 \title{Calculate Matrix Column Variances}
 \usage{
-col_vars(mat, cores = 1)
+col_vars(obj, cores = 1)
 }
 \arguments{
-\item{mat}{A numeric matrix.}
+\item{obj}{A numeric matrix.}
 
 \item{cores}{Integer. Number of cores to use for parallel computation.
 Defaults to \code{1}.}
 }
 \value{
-A numeric vector of column variances, named when \code{mat} has column
+A numeric vector of column variances, named when \code{obj} has column
 names.
 }
 \description{
@@ -24,13 +24,13 @@ Columns with fewer than two distinct non-missing values are assigned \code{NA}.
 }
 \examples{
 set.seed(123)
-mat <- matrix(rnorm(4 * 10), ncol = 4)
-mat[1, 1] <- NA
-mat[1:8, 2] <- NA
-mat[1:9, 3] <- NA
-mat[, 4] <- NA
-mat
+obj <- matrix(rnorm(4 * 10), ncol = 4)
+obj[1, 1] <- NA
+obj[1:8, 2] <- NA
+obj[1:9, 3] <- NA
+obj[, 4] <- NA
+obj
 
-col_vars(mat)
-apply(mat, 2, var, na.rm = TRUE)
+col_vars(obj)
+apply(obj, 2, var, na.rm = TRUE)
 }

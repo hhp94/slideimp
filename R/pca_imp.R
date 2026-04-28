@@ -74,30 +74,71 @@ lobpcg_control <- function(warmup_iters = 10L, tol = 1e-9, maxiter = 20) {
 #'
 #' @keywords internal
 #' @noRd
-new_lobpcg_control <- function(x) {
+new_lobpcg_control <- function(
+  x,
+  n = NULL,
+  p = NULL,
+  ncp = NULL,
+  solver = c("auto", "dsyevr", "lobpcg")
+) {
+  solver <- match.arg(solver)
+
+  # force exact solver. This overrides any lobpcg_control supplied.
+  if (solver == "dsyevr") {
+    return(lobpcg_control(maxiter = 0L))
+  }
+
+  # if no explicit LOBPCG control was supplied, resolve from solver.
   if (is.null(x)) {
-    return(lobpcg_control())
+    if (solver == "lobpcg") {
+      return(lobpcg_control())
+    }
+    # solver == "auto"
+    # Preserve old internal behavior if dimensions are not supplied, but pca_imp()
+    # should always call this with n, p, and ncp.
+    if (is.null(n) || is.null(p) || is.null(ncp)) {
+      return(lobpcg_control())
+    }
+    m <- min(n - 1L, p)
+    use_lobpcg <- m >= 500L && ncp <= 50L
+    return(if (use_lobpcg) lobpcg_control() else lobpcg_control(maxiter = 0L))
   }
+
+  # validate an already-created control object.
   if (inherits(x, "slideimp_lobpcg_control")) {
-    return(x)
+    out <- x
+  } else {
+    if (!is.list(x)) {
+      cli::cli_abort(
+        "{.arg lobpcg_control} must be {.code NULL}, a list, or created by {.fn lobpcg_control}."
+      )
+    }
+
+    if (length(x) > 0L && (is.null(names(x)) || any(!nzchar(names(x))))) {
+      cli::cli_abort("{.arg lobpcg_control} must be a named list.")
+    }
+
+    allowed <- names(formals(lobpcg_control))
+    unknown <- setdiff(names(x), allowed)
+    if (length(unknown) > 0L) {
+      cli::cli_abort(c(
+        "{cli::qty(length(unknown))}Unknown LOBPCG control option{?s}: {fmt_trunc(unknown, 10)}.",
+        "i" = "Allowed options are: {.arg {allowed}}."
+      ))
+    }
+
+    out <- do.call(lobpcg_control, x)
   }
-  if (!is.list(x)) {
-    cli::cli_abort(
-      "{.arg lobpcg_control} must be {.code NULL}, a list, or created by {.fn lobpcg_control}."
-    )
-  }
-  if (length(x) > 0L && (is.null(names(x)) || any(!nzchar(names(x))))) {
-    cli::cli_abort("{.arg lobpcg_control} must be a named list.")
-  }
-  allowed <- names(formals(lobpcg_control))
-  unknown <- setdiff(names(x), allowed)
-  if (length(unknown) > 0L) {
+
+  # if user explicitly requested LOBPCG, maxiter = 0 is contradictory.
+  if (solver == "lobpcg" && out$maxiter == 0L) {
     cli::cli_abort(c(
-      "{cli::qty(length(unknown))}Unknown LOBPCG control option{?s}: {fmt_trunc(unknown, 10)}.",
-      "i" = "Allowed options are: {.arg {allowed}}."
+      "{.arg solver} is {.val lobpcg}, but {.arg lobpcg_control$maxiter} is 0.",
+      "i" = "Use {.code solver = 'dsyevr'} for the exact solver, or set {.arg maxiter} > 0."
     ))
   }
-  do.call(lobpcg_control, x)
+
+  out
 }
 
 #' PCA Imputation for Numeric Matrices
@@ -129,9 +170,14 @@ new_lobpcg_control <- function(x) {
 #'   initialization is always mean imputation.
 #' @param maxiter Integer. Maximum number of iterations.
 #' @param miniter Integer. Minimum number of iterations.
+#' @param solver Character. Eigensolver selection. One of `"auto"`, `"dsyevr"`,
+#'   or `"lobpcg"`. `"dsyevr"` uses the exact solver. `"lobpcg"` uses the
+#'   iterative LOBPCG solver. If `"auto"`, LOBPCG is used when the smaller input
+#'   dimension is at least 500 and `ncp <= 50`; otherwise the exact solver is
+#'   used.
 #' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
 #'   created by [lobpcg_control()]. A plain named list is also accepted. If
-#'   `NULL`, default control options are used.
+#'   `NULL`, defaults are chosen according to `solver`.
 #' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
 #'   proportion greater than `colmax` are not imputed.
 #' @param post_imp Logical. If `TRUE`, replace any remaining missing values
@@ -142,10 +188,28 @@ new_lobpcg_control <- function(x) {
 #' @returns A numeric matrix of the same dimensions as `obj`, with missing
 #' values imputed. The returned object has class `slideimp_results`.
 #'
-#' @section Performance tip:
+#' @section Performance tips:
 #' `pca_imp()` relies heavily on linear algebra. On Windows, the default BLAS
 #' shipped with R may be slow for large matrices. Advanced users can replace
 #' it with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+#'
+#' PCA imputation speed depends on the eigensolver selected by `solver` and the
+#' convergence threshold `threshold`. The exact solver is selected with
+#' `solver = "dsyevr"`. The iterative LOBPCG solver is selected with
+#' `solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
+#' internal rule.
+#'
+#' For large or approximately low-rank genomic matrices, it can be useful to
+#' benchmark `solver = "dsyevr"` against `solver = "lobpcg"` on a representative
+#' subset, such as chromosome 22, before tuning accuracy-related parameters such
+#' as `ncp`, `coeff.ridge`, `window_size`, or `overlap_size`.
+#'
+#' The default `threshold = 1e-6` is conservative. In some genomic datasets,
+#' `threshold = 1e-5` can be faster while giving very similar imputed values.
+#' Check this on a representative subset before using the relaxed threshold in a
+#' full analysis.
+#'
+#' See the pkgdown article "Speeding up PCA imputation" for a full workflow.
 #'
 #' @references
 #' Josse J, Husson F (2013). Handling missing values in exploratory
@@ -180,6 +244,7 @@ pca_imp <- function(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  solver = c("auto", "dsyevr", "lobpcg"),
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
@@ -212,7 +277,14 @@ pca_imp <- function(
   }
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
-  lobpcg_control <- new_lobpcg_control(lobpcg_control)
+  solver <- match.arg(solver)
+  lobpcg_control <- new_lobpcg_control(
+    lobpcg_control,
+    n = nrow(obj),
+    p = ncol(obj),
+    ncp = ncp,
+    solver = solver
+  )
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   checkmate::assert_flag(na_check, .var.name = "na_check")

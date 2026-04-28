@@ -1,17 +1,24 @@
-# slideimp 1.0.1
+# slideimp 1.1.0
 
 ## Breaking changes
 
-* `knn_imp()` no longer uses the cache; the `use_cache` argument has been removed.
-* `pca_imp()` now runs the warm-start LOBPCG solver by default. Use `lobpcg_control(maxiter = 0)` to go back to the full `dsyevr` solver.
+* `knn_imp()` no longer caches pair-wise distances. The `use_cache` argument has been removed.
+
+## New features
+
+* `pca_imp()` gains support for the LOBPCG eigensolver, selected via the new `solver` argument and tuned with `lobpcg_control()`.
 
 ## Minor improvements and fixes
 
-* `knn_imp()` now uses `{RcppThread}` instead of OpenMP for macOS support.
-* `tune_imp()` now infers the subset from `na_loc` to speed up tuning for `knn_imp()` and `slide_imp()`.
-* `prep_groups()` is now an S3 generic instead of using the register-on-load pattern with `{slideimp.extra}`.
+* `knn_imp()` now uses `{RcppThread}` instead of OpenMP, enabling parallelism on macOS.
 
-* Fixed CRAN ATLAS numerical tolerance check.
+* `tune_imp()` now infers the subset from `na_loc`, speeding up tuning for `knn_imp()` and `slide_imp()`.
+
+* `prep_groups()` is now an S3 generic, replacing the previous register-on-load pattern with `{slideimp.extra}`.
+
+* New article describing how to speed up PCA imputation by choosing `solver` and `threshold`.
+
+* Fixed numerical tolerance check failure on CRAN's ATLAS configuration.
 
 # slideimp 1.0.0
 

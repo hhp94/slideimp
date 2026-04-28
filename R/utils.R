@@ -153,7 +153,7 @@ check_pin_blas <- function(pin_blas) {
     allowed = c(
       "ncp", "scale", "method", "coeff.ridge", "row.w",
       "threshold", "seed", "nb.init", "maxiter", "miniter",
-      "lobpcg_control", "colmax", "post_imp"
+      "lobpcg_control", "solver", "colmax", "post_imp"
     )
   )
 )

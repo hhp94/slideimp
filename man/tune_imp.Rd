@@ -45,8 +45,7 @@ repetition. If supplied, \code{n_cols} is derived from \code{num_na} and \code{n
 and missing values are distributed as evenly as possible across columns.
 Ignored when \code{na_loc} is supplied.}
 
-\item{n_reps}{Integer. Number of repetitions for random missing-value
-injection.}
+\item{n_reps}{Integer. Number of independent repetitions.}
 
 \item{n_cols}{Integer or \code{NULL}. Number of columns to receive injected
 missing values per repetition. Must be supplied when both \code{num_na} and
@@ -56,11 +55,11 @@ Ignored when \code{num_na} or \code{na_loc} is supplied.}
 \item{n_rows}{Integer. Target number of missing values to inject per selected
 column. Ignored when \code{na_loc} is supplied.}
 
-\item{rowmax}{Numeric scalar between \code{0} and \code{1}. Random injection cannot
-create rows with a missing-data proportion greater than \code{rowmax}.}
+\item{rowmax}{Numeric scalar between \code{0} and \code{1}. Maximum allowed
+missing-data proportion per row after injection.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}. Random injection cannot
-create columns with a missing-data proportion greater than \code{colmax}.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Maximum allowed
+missing-data proportion per column after injection.}
 
 \item{na_col_subset}{Optional integer or character vector restricting which
 columns are eligible for random missing-value injection. Ignored when
@@ -130,6 +129,31 @@ in \code{\link[=tune_imp]{tune_imp()}} or \code{\link[=group_imp]{group_imp()}} 
 oversubscribing CPU cores. This relies on \code{RhpcBLASctl} and works with
 OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 \code{pin_blas = TRUE} may have no effect on macOS.
+}
+
+\section{Performance tips}{
+
+\code{pca_imp()} relies heavily on linear algebra. On Windows, the default BLAS
+shipped with R may be slow for large matrices. Advanced users can replace
+it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+
+PCA imputation speed depends on the eigensolver selected by \code{solver} and the
+convergence threshold \code{threshold}. The exact solver is selected with
+\code{solver = "dsyevr"}. The iterative LOBPCG solver is selected with
+\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, uses a conservative
+internal rule.
+
+For large or approximately low-rank genomic matrices, it can be useful to
+benchmark \code{solver = "dsyevr"} against \code{solver = "lobpcg"} on a representative
+subset, such as chromosome 22, before tuning accuracy-related parameters such
+as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+
+The default \code{threshold = 1e-6} is conservative. In some genomic datasets,
+\code{threshold = 1e-5} can be faster while giving very similar imputed values.
+Check this on a representative subset before using the relaxed threshold in a
+full analysis.
+
+See the pkgdown article "Speeding up PCA imputation" for a full workflow.
 }
 
 \examples{

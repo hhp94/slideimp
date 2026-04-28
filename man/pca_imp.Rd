@@ -16,6 +16,7 @@ pca_imp(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  solver = c("auto", "dsyevr", "lobpcg"),
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
@@ -56,9 +57,15 @@ initialization is always mean imputation.}
 
 \item{miniter}{Integer. Minimum number of iterations.}
 
+\item{solver}{Character. Eigensolver selection. One of \code{"auto"}, \code{"dsyevr"},
+or \code{"lobpcg"}. \code{"dsyevr"} uses the exact solver. \code{"lobpcg"} uses the
+iterative LOBPCG solver. If \code{"auto"}, LOBPCG is used when the smaller input
+dimension is at least 500 and \code{ncp <= 50}; otherwise the exact solver is
+used.}
+
 \item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
 created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. If
-\code{NULL}, default control options are used.}
+\code{NULL}, defaults are chosen according to \code{solver}.}
 
 \item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
 proportion greater than \code{colmax} are not imputed.}
@@ -81,11 +88,29 @@ expectation-maximization PCA imputation.
 This algorithm is based on \code{missMDA::imputePCA()} and is optimized for tall
 or wide numeric matrices.
 }
-\section{Performance tip}{
+\section{Performance tips}{
 
 \code{pca_imp()} relies heavily on linear algebra. On Windows, the default BLAS
 shipped with R may be slow for large matrices. Advanced users can replace
 it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+
+PCA imputation speed depends on the eigensolver selected by \code{solver} and the
+convergence threshold \code{threshold}. The exact solver is selected with
+\code{solver = "dsyevr"}. The iterative LOBPCG solver is selected with
+\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, uses a conservative
+internal rule.
+
+For large or approximately low-rank genomic matrices, it can be useful to
+benchmark \code{solver = "dsyevr"} against \code{solver = "lobpcg"} on a representative
+subset, such as chromosome 22, before tuning accuracy-related parameters such
+as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+
+The default \code{threshold = 1e-6} is conservative. In some genomic datasets,
+\code{threshold = 1e-5} can be faster while giving very similar imputed values.
+Check this on a representative subset before using the relaxed threshold in a
+full analysis.
+
+See the pkgdown article "Speeding up PCA imputation" for a full workflow.
 }
 
 \examples{

@@ -61,7 +61,6 @@ MSA_beta_matrix[1:4, 1:4]
 ``` r
 library(slideimp.extra)
 library(slideimp)
-library(mirai)
 
 imputed <- group_imp(
   obj = MSA_beta_matrix,
@@ -70,7 +69,8 @@ imputed <- group_imp(
   .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
 # Found cleaned manifest for 'MSA'
-# Groups 24 dropped: no features remaining after matching obj columns.
+# ! 1 group dropped: no features remaining after matching `obj_cn`.
+# ℹ Dropped group indices: 24
 # Imputing 25 groups using PCA.
 # Running mode: sequential
 
@@ -100,6 +100,10 @@ print(imputed, n = 4, p = 4)
 
 ### Performance tips
 
+- **PCA performance tuning:** for guidance on choosing `threshold`,
+  `solver`, configuring `lobpcg_control`, and using `{mirai}`/BLAS
+  threading effectively, see [Speeding up PCA
+  imputation](articles/speeding-up-pca-imputation.html).
 - **Parallel PCA imputation with a threaded BLAS** (OpenBLAS or MKL):
   set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers don’t
   compete for cores. Requires `{RhpcBLASctl}`.
@@ -165,8 +169,7 @@ tune_knn <- tune_imp(
 #> Step 2/2: Tuning
 ```
 
-- Calculate errors using `compute_metrics()` or
-  [`{yardstick}`](https://github.com/tidymodels/yardstick) functions.
+- Calculate errors using `compute_metrics()` or `{yardstick}` functions.
 
 ``` r
 metrics <- compute_metrics(tune_knn)
@@ -199,8 +202,10 @@ sum_metrics[order(sum_metrics$.estimate.mean_error), ]
 #> 7  5        2    rmse          10            0.2101955         0.01884442
 ```
 
-- For K-NN without `{RcppThread}`, PCA imputation, and custom functions
-  (see vignette), set up parallelization with `mirai::daemons()`.
+- For PCA imputation and custom functions, set up parallelization with
+  `mirai::daemons()`. See “[Speeding up PCA
+  imputation](articles/speeding-up-pca-imputation.html)” for additional
+  PCA performance-tuning guidance.
 - **Note:** For machines with multi-threaded BLAS, turn on
   `pin_blas = TRUE` when tuning PCA imputation in parallel to avoid
   thrashing.

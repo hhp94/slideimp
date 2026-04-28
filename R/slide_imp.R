@@ -51,27 +51,13 @@ find_overlap_regions <- function(start, end) {
 #'   filtering rules are applied. In this mode, `k` and `ncp` are not required.
 #' @param k Integer or `NULL`. Number of nearest neighbors for K-NN imputation.
 #'   Supply `k` to use K-NN imputation.
-#' @param cores Integer. Number of cores to use for K-NN imputation.
-#' @param dist_pow Numeric. K-NN distance-weighting power. If `0`, use an
-#'   unweighted average of nearest neighbors.
 #' @param ncp Integer or `NULL`. Number of components for PCA imputation.
 #'   Supply `ncp` to use PCA imputation.
-#' @param scale Logical. For PCA imputation, whether to scale columns to unit
-#'   variance.
-#' @param coeff.ridge Numeric. Ridge regularization coefficient for regularized
-#'   PCA imputation.
-#' @param threshold Numeric. Convergence threshold for PCA imputation.
-#' @param seed Integer, numeric, or `NULL`. Random seed for PCA initialization.
-#' @param row.w Row weights for PCA imputation, or `NULL`. See [pca_imp()].
-#' @param nb.init Integer. Number of PCA random initializations.
-#' @param maxiter Integer. Maximum number of PCA iterations.
-#' @param miniter Integer. Minimum number of PCA iterations.
-#' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
-#'   created by [lobpcg_control()], or `NULL`.
 #' @param method Character or `NULL`. For K-NN imputation, one of
 #'   `"euclidean"` or `"manhattan"`. For PCA imputation, one of
 #'   `"regularized"` or `"EM"`. If `NULL`, the corresponding backend default
 #'   is used.
+#' @param cores Integer. Number of cores to use for K-NN imputation.
 #' @param .progress Logical. If `TRUE`, show progress.
 #' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
 #'   proportion greater than `colmax` are not imputed.
@@ -83,6 +69,8 @@ find_overlap_regions <- function(start, end) {
 #'   Controls behavior when a window is infeasible for imputation, for example
 #'   when `k` or `ncp` exceeds the number of usable columns after applying
 #'   `colmax`.
+#' @inheritParams knn_imp
+#' @inheritParams pca_imp
 #'
 #' @details
 #' The sliding-window approach divides the input matrix into smaller segments
@@ -100,6 +88,8 @@ find_overlap_regions <- function(start, end) {
 #'
 #' Specify `k` and related arguments to use [knn_imp()], or `ncp` and related
 #' arguments to use [pca_imp()].
+#'
+#' @inheritSection pca_imp Performance tips
 #'
 #' @returns A numeric matrix of the same dimensions as `obj`, with missing
 #' values imputed. The returned object has class `slideimp_results`.
@@ -188,6 +178,7 @@ slide_imp <- function(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  solver = c("auto", "dsyevr", "lobpcg"),
   lobpcg_control = NULL,
   # Shared
   method = NULL,
@@ -240,12 +231,14 @@ slide_imp <- function(
     checkmate::assert_int(k, lower = 1L, upper = min_window_n - 1L, null.ok = FALSE, .var.name = "k")
   } else if (!dry_run && imp_method == "pca") {
     method <- if (is.null(method)) "regularized" else match.arg(method, c("regularized", "EM"))
+    solver <- match.arg(solver)
     checkmate::assert_int(ncp,
       lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
       .var.name = "ncp"
     )
-    # other pca arguments are checked in pca_imp to avoid brittleness
-    lobpcg_control <- new_lobpcg_control(lobpcg_control)
+    # Other PCA arguments, including lobpcg_control, are checked in pca_imp().
+    # Do not resolve lobpcg_control here; pca_imp() needs the actual window size
+    # to apply solver = "auto" correctly per window.
   }
 
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
@@ -383,7 +376,7 @@ slide_imp <- function(
             obj = sub_mat, ncp = ncp, scale = scale, method = method,
             coeff.ridge = coeff.ridge, threshold = threshold, seed = seed,
             nb.init = nb.init, maxiter = maxiter, miniter = miniter,
-            row.w = row.w, lobpcg_control = lobpcg_control,
+            row.w = row.w, lobpcg_control = lobpcg_control, solver = solver,
             na_check = FALSE, colmax = colmax, post_imp = post_imp
           )
         }

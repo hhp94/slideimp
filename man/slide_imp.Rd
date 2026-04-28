@@ -25,6 +25,7 @@ slide_imp(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  solver = c("auto", "dsyevr", "lobpcg"),
   lobpcg_control = NULL,
   method = NULL,
   .progress = TRUE,
@@ -67,32 +68,47 @@ Supply \code{k} to use K-NN imputation.}
 
 \item{cores}{Integer. Number of cores to use for K-NN imputation.}
 
-\item{dist_pow}{Numeric. K-NN distance-weighting power. If \code{0}, use an
-unweighted average of nearest neighbors.}
+\item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
+the weighted average. \code{dist_pow = 0} gives an unweighted average of the
+nearest neighbors.}
 
 \item{ncp}{Integer or \code{NULL}. Number of components for PCA imputation.
 Supply \code{ncp} to use PCA imputation.}
 
-\item{scale}{Logical. For PCA imputation, whether to scale columns to unit
-variance.}
+\item{scale}{Logical. If \code{TRUE}, columns are scaled to unit variance.}
 
-\item{coeff.ridge}{Numeric. Ridge regularization coefficient for regularized
-PCA imputation.}
+\item{coeff.ridge}{Numeric. Ridge regularization coefficient. Only used when
+\code{method = "regularized"}. Values less than \code{1} regularize less, moving
+closer to EM PCA. Values greater than \code{1} regularize more, moving closer
+to mean imputation.}
 
-\item{threshold}{Numeric. Convergence threshold for PCA imputation.}
+\item{threshold}{Numeric. Convergence threshold.}
 
-\item{seed}{Integer, numeric, or \code{NULL}. Random seed for PCA initialization.}
+\item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.}
 
-\item{row.w}{Row weights for PCA imputation, or \code{NULL}. See \code{\link[=pca_imp]{pca_imp()}}.}
+\item{row.w}{Row weights, internally normalized to sum to \code{1}. Can be:
+\itemize{
+\item \code{NULL}: all rows are weighted equally.
+\item A numeric vector of positive weights with length \code{nrow(obj)}.
+\item \code{"n_miss"}: rows with more missing values receive lower weight.
+}}
 
-\item{nb.init}{Integer. Number of PCA random initializations.}
+\item{nb.init}{Integer. Number of random initializations. The first
+initialization is always mean imputation.}
 
-\item{maxiter}{Integer. Maximum number of PCA iterations.}
+\item{maxiter}{Integer. Maximum number of iterations.}
 
-\item{miniter}{Integer. Minimum number of PCA iterations.}
+\item{miniter}{Integer. Minimum number of iterations.}
+
+\item{solver}{Character. Eigensolver selection. One of \code{"auto"}, \code{"dsyevr"},
+or \code{"lobpcg"}. \code{"dsyevr"} uses the exact solver. \code{"lobpcg"} uses the
+iterative LOBPCG solver. If \code{"auto"}, LOBPCG is used when the smaller input
+dimension is at least 500 and \code{ncp <= 50}; otherwise the exact solver is
+used.}
 
 \item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
-created by \code{\link[=lobpcg_control]{lobpcg_control()}}, or \code{NULL}.}
+created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. If
+\code{NULL}, defaults are chosen according to \code{solver}.}
 
 \item{method}{Character or \code{NULL}. For K-NN imputation, one of
 \code{"euclidean"} or \code{"manhattan"}. For PCA imputation, one of
@@ -145,6 +161,31 @@ that feature using the supplied \code{window_size}.
 Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, or \code{ncp} and related
 arguments to use \code{\link[=pca_imp]{pca_imp()}}.
 }
+\section{Performance tips}{
+
+\code{pca_imp()} relies heavily on linear algebra. On Windows, the default BLAS
+shipped with R may be slow for large matrices. Advanced users can replace
+it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+
+PCA imputation speed depends on the eigensolver selected by \code{solver} and the
+convergence threshold \code{threshold}. The exact solver is selected with
+\code{solver = "dsyevr"}. The iterative LOBPCG solver is selected with
+\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, uses a conservative
+internal rule.
+
+For large or approximately low-rank genomic matrices, it can be useful to
+benchmark \code{solver = "dsyevr"} against \code{solver = "lobpcg"} on a representative
+subset, such as chromosome 22, before tuning accuracy-related parameters such
+as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+
+The default \code{threshold = 1e-6} is conservative. In some genomic datasets,
+\code{threshold = 1e-5} can be faster while giving very similar imputed values.
+Check this on a representative subset before using the relaxed threshold in a
+full analysis.
+
+See the pkgdown article "Speeding up PCA imputation" for a full workflow.
+}
+
 \examples{
 set.seed(1234)
 

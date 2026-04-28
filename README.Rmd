@@ -83,7 +83,6 @@ MSA_beta_matrix[1:4, 1:4]
 ```{r, eval = F}
 library(slideimp.extra)
 library(slideimp)
-library(mirai)
 
 imputed <- group_imp(
   obj = MSA_beta_matrix,
@@ -92,14 +91,15 @@ imputed <- group_imp(
   .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
 # Found cleaned manifest for 'MSA'
-# Groups 24 dropped: no features remaining after matching obj columns.
+# ! 1 group dropped: no features remaining after matching `obj_cn`.
+# ℹ Dropped group indices: 24
 # Imputing 25 groups using PCA.
 # Running mode: sequential
 
 print(imputed, n = 4, p = 4)
 # Method: group_imp (PCA imputation)
 # Dimensions: 20 x 281797
-#
+# 
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
@@ -115,6 +115,7 @@ print(imputed, n = 4, p = 4)
 
 ### Performance tips
 
+- **PCA performance tuning:** for guidance on choosing `threshold`, `solver`, configuring `lobpcg_control`, and using `{mirai}`/BLAS threading effectively, see [Speeding up PCA imputation](articles/speeding-up-pca-imputation.html).
 - **Parallel PCA imputation with a threaded BLAS** (OpenBLAS or MKL): set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers don't compete for cores. Requires `{RhpcBLASctl}`.
 - **Parallel K-NN imputation:** use the `cores` argument (`{RcppThread}`'s `parallelFor`) instead of `{mirai}`. If you only need clock CpGs, pass `subset` to skip all other probes.
 - **Faster PCA imputation on Windows machines** *(optional, advanced):* R on Windows ships with a reference BLAS that's slow for dense linear algebra. Swapping it for OpenBLAS can significantly speed up the PCA imputation - see [this community guide](https://github.com/david-cortes/R-openblas-in-windows).
@@ -158,7 +159,7 @@ tune_knn <- tune_imp(
 )
 ```
 
-* Calculate errors using `compute_metrics()` or [`{yardstick}`](https://github.com/tidymodels/yardstick) functions.
+* Calculate errors using `compute_metrics()` or `{yardstick}` functions.
 ```{r}
 metrics <- compute_metrics(tune_knn)
 
@@ -181,7 +182,7 @@ sum_metrics <- do.call(
 sum_metrics[order(sum_metrics$.estimate.mean_error), ]
 ```
 
-* For K-NN without `{RcppThread}`, PCA imputation, and custom functions (see vignette), set up parallelization with `mirai::daemons()`.
+* For PCA imputation and custom functions, set up parallelization with `mirai::daemons()`. See "[Speeding up PCA imputation](articles/speeding-up-pca-imputation.html)" for additional PCA performance-tuning guidance.
 * **Note:** For machines with multi-threaded BLAS, turn on `pin_blas = TRUE` when tuning PCA imputation in parallel to avoid thrashing.
 
 ```{r, eval = F}

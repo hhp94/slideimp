@@ -17,21 +17,29 @@ prep_groups(
 \item{obj_cn}{Character vector of column names from the data matrix, usually
 \code{colnames(obj)}.}
 
-\item{group}{Grouping specification. See the \code{group} argument of
-\code{\link[=group_imp]{group_imp()}} for supported formats.}
+\item{group}{Specification of how features should be grouped for imputation.
+Accepted formats are:
+\itemize{
+\item A character scalar naming a supported Illumina platform; see Note.
+\item A long-format \code{data.frame} with columns \code{group} and \code{feature}.
+\item A list-column \code{data.frame} with a \code{feature} list-column. Optional
+list-columns are \code{aux}, for auxiliary feature names, and \code{parameters},
+for group-specific parameter lists.
+}}
 
 \item{subset}{Optional character vector of feature names to impute. If
-supplied, features not in \code{subset} are demoted to auxiliary columns within
-their groups.}
+\code{NULL}, all grouped features are imputed. Features in a group but not in
+\code{subset} are demoted to auxiliary columns for that group. Groups left with
+zero features after demotion are dropped with a message.}
 
 \item{min_group_size}{Integer or \code{NULL}. Minimum total number of columns
 per group, counting both features and auxiliary columns. Groups smaller
 than this are padded with randomly sampled columns from \code{obj_cn}. If
 \code{NULL} or \code{0}, no padding is performed.}
 
-\item{allow_unmapped}{Logical. If \code{FALSE}, every element of \code{obj_cn} must
-appear in \code{group} as either a feature or an auxiliary column. If \code{TRUE},
-unmapped columns are allowed and left untouched by \code{\link[=group_imp]{group_imp()}}.}
+\item{allow_unmapped}{Logical. If \code{FALSE}, every column in \code{colnames(obj)}
+must appear in \code{group}. If \code{TRUE}, columns with no group assignment are
+left untouched and are not used as auxiliary columns.}
 
 \item{seed}{Integer, numeric, or \code{NULL}. Random seed used when padding small
 groups.}

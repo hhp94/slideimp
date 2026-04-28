@@ -149,18 +149,11 @@ group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
 #'
 #' @param obj_cn Character vector of column names from the data matrix, usually
 #'   `colnames(obj)`.
-#' @param group Grouping specification. See the `group` argument of
-#'   [group_imp()] for supported formats.
-#' @param subset Optional character vector of feature names to impute. If
-#'   supplied, features not in `subset` are demoted to auxiliary columns within
-#'   their groups.
+#' @inheritParams group_imp
 #' @param min_group_size Integer or `NULL`. Minimum total number of columns
 #'   per group, counting both features and auxiliary columns. Groups smaller
 #'   than this are padded with randomly sampled columns from `obj_cn`. If
 #'   `NULL` or `0`, no padding is performed.
-#' @param allow_unmapped Logical. If `FALSE`, every element of `obj_cn` must
-#'   appear in `group` as either a feature or an auxiliary column. If `TRUE`,
-#'   unmapped columns are allowed and left untouched by [group_imp()].
 #' @param seed Integer, numeric, or `NULL`. Random seed used when padding small
 #'   groups.
 #'
@@ -219,24 +212,28 @@ prep_groups <- function(
 
   # Step 1: Normalize input format ----
   if ("group" %in% names(group) && inherits(group$feature, "character")) {
-    stopifnot("`NA` is not allowed in `group$group`" = !anyNA(group$group))
+    if (anyNA(group$group)) {
+      cli::cli_abort("{.code NA} is not allowed in {.code group$group}.")
+    }
+
     checkmate::assert_character(
       group$feature,
       any.missing = FALSE, unique = TRUE,
       .var.name = "group$feature"
     )
+
     if (is.numeric(group$group) && !checkmate::test_integerish(group$group)) {
-      warning(
-        "Non-integer numeric 'group$group' values detected. ",
-        "The `group` column is used to group the features in the `feature` ",
-        "column. Did you mean to use integer or character labels?"
-      )
+      cli::cli_warn(c(
+        "Non-integer numeric {.code group$group} values detected.",
+        "i" = "The {.field group} column is used to group the features in the {.field feature} column.",
+        "i" = "Did you mean to use integer or character labels?"
+      ))
     }
+
     group <- collapse::fsummarize(
       collapse::fgroup_by(group, group),
       feature = list(feature)
     )
-    # group$group <- NULL
   } else if (inherits(group$feature, "character")) {
     cli::cli_abort(c(
       "{.arg group} has a character {.field feature} column but no {.field group} column.",
@@ -294,10 +291,9 @@ prep_groups <- function(
         "i" = "If you are sure {.arg group} is correct and want to leave these columns untouched, set {.code allow_unmapped = TRUE}."
       ))
     } else {
-      message(paste0(
-        length(not_in_B), " column(s) in `obj` have no matching entry in `group` ",
-        "and will be left untouched: ",
-        fmt_trunc(not_in_B), "."
+      cli::cli_inform(c(
+        "!" = "{length(not_in_B)} column{?s} in {.arg obj} {?has/have} no matching entry in {.arg group} and will be left untouched.",
+        "i" = "{fmt_trunc(not_in_B)}"
       ))
     }
   }
@@ -320,10 +316,13 @@ prep_groups <- function(
   # Step 3: Prune empty groups ----
   empty <- lengths(group$feature) == 0L
   if (any(empty)) {
-    message(
-      "Groups ", paste(which(empty), collapse = ", "),
-      " dropped: no features remaining after matching obj columns."
-    )
+    dropped <- which(empty)
+
+    cli::cli_inform(c(
+      "!" = "{length(dropped)} group{?s} dropped: no features remaining after matching {.arg obj_cn}.",
+      "i" = "Dropped group indices: {paste(dropped, collapse = ', ')}"
+    ))
+
     group <- group[!empty, , drop = FALSE]
     rownames(group) <- NULL
   }
@@ -364,10 +363,13 @@ prep_groups <- function(
       cli::cli_abort("No groups have features to impute after applying {.arg subset}.")
     }
     if (any(!keep)) {
-      message(
-        "Groups ", paste(which(!keep), collapse = ", "),
-        " dropped: no features remaining after applying subset."
-      )
+      dropped <- which(!keep)
+
+      cli::cli_inform(c(
+        "!" = "{length(dropped)} group{?s} dropped: no features remaining after applying {.arg subset}.",
+        "i" = "Dropped group indices: {paste(dropped, collapse = ', ')}"
+      ))
+
       group <- group[keep, , drop = FALSE]
       rownames(group) <- NULL
     }
@@ -444,49 +446,19 @@ prep_groups <- function(
 #' @param min_group_size Integer or `NULL`. Minimum total number of columns
 #'   per group, counting both features and auxiliary columns. Groups smaller
 #'   than this are padded with randomly sampled columns from `obj`.
-#' @param colmax Numeric scalar between `0` and `1`, or `NULL`. Columns with a
-#'   missing-data proportion greater than `colmax` are not imputed. If `NULL`,
-#'   the backend default is used unless overridden by `group$parameters`.
 #' @param post_imp Logical or `NULL`. If `TRUE`, replace any remaining missing
 #'   values with column means after imputation. If `NULL`, the backend default
 #'   is used unless overridden by `group$parameters`.
-#' @param dist_pow Numeric or `NULL`. K-NN distance-weighting power. If `0`,
-#'   use an unweighted average of nearest neighbors. If `NULL`, the backend
-#'   default is used unless overridden by `group$parameters`.
-#' @param tree Logical or `NULL`. For K-NN imputation, if `FALSE`, use
-#'   brute-force K-NN; if `TRUE`, use ball-tree K-NN via `mlpack`. If `NULL`,
-#'   the backend default is used unless overridden by `group$parameters`.
-#' @param scale Logical or `NULL`. For PCA imputation, whether to scale columns
-#'   to unit variance. If `NULL`, the backend default is used unless overridden
-#'   by `group$parameters`.
-#' @param coeff.ridge Numeric or `NULL`. Ridge regularization coefficient for
-#'   regularized PCA imputation. If `NULL`, the backend default is used unless
-#'   overridden by `group$parameters`.
-#' @param threshold Numeric or `NULL`. Convergence threshold for PCA imputation.
-#'   If `NULL`, the backend default is used unless overridden by
-#'   `group$parameters`.
-#' @param row.w Row weights for PCA imputation, or `NULL`. See [pca_imp()].
 #' @param seed Integer, numeric, or `NULL`. Random seed for reproducibility.
-#' @param nb.init Integer or `NULL`. Number of PCA random initializations. If
-#'   `NULL`, the backend default is used unless overridden by
-#'   `group$parameters`.
-#' @param maxiter Integer or `NULL`. Maximum number of PCA iterations. If
-#'   `NULL`, the backend default is used unless overridden by
-#'   `group$parameters`.
-#' @param miniter Integer or `NULL`. Minimum number of PCA iterations. If
-#'   `NULL`, the backend default is used unless overridden by
-#'   `group$parameters`.
-#' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
-#'   created by [lobpcg_control()], or `NULL`.
 #' @param pin_blas Logical. If `TRUE`, pin BLAS threads to 1 to reduce
 #'   contention when using parallel PCA on systems linked with multithreaded
 #'   BLAS.
-#' @param na_check Logical. If `TRUE`, check whether the result still contains
-#'   missing values.
 #' @param on_infeasible Character. One of `"error"`, `"skip"`, or `"mean"`.
 #'   Controls behavior when a group is infeasible for imputation, for example
 #'   when `k` or `ncp` exceeds the number of usable columns after applying
 #'   `colmax`.
+#' @inheritParams knn_imp
+#' @inheritParams pca_imp
 #'
 #' @details
 #' `group_imp()` performs K-NN or PCA imputation on feature groups
@@ -499,6 +471,10 @@ prep_groups <- function(
 #' Group-specific parameters in `group$parameters` take priority over global
 #' arguments. Global arguments fill in any missing values. All groups must use
 #' the same imputation method.
+#'
+#' For method-specific arguments inherited from [knn_imp()] or [pca_imp()],
+#' `NULL` means the backend default is used unless overridden by
+#' `group$parameters`.
 #'
 #' Per-group `k` is capped at the number of usable columns in the group minus
 #' one. Per-group `ncp` is capped at the maximum feasible number of PCA
@@ -515,6 +491,8 @@ prep_groups <- function(
 #' oversubscribing CPU cores. This relies on `RhpcBLASctl` and works with
 #' OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 #' `pin_blas = TRUE` may have no effect on macOS.
+#'
+#' @inheritSection pca_imp Performance tips
 #'
 #' @note
 #' A character scalar can be passed to `group` to name a supported Illumina
@@ -587,6 +565,7 @@ group_imp <- function(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
+  solver = NULL,
   lobpcg_control = NULL,
   pin_blas = FALSE,
   na_check = TRUE,
@@ -600,6 +579,9 @@ group_imp <- function(
   check_finite(obj)
   checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
   on_infeasible <- match.arg(on_infeasible)
+  if (!is.null(solver)) {
+    solver <- match.arg(solver, c("auto", "dsyevr", "lobpcg"))
+  }
   cn <- colnames(obj)
   rn <- rownames(obj)
   attributes(obj) <- list(dim = dim(obj))
@@ -630,7 +612,7 @@ group_imp <- function(
     dist_pow = dist_pow, tree = tree, ncp = ncp, scale = scale,
     coeff.ridge = coeff.ridge, threshold = threshold, row.w = row.w,
     seed = seed, nb.init = nb.init, maxiter = maxiter, miniter = miniter,
-    lobpcg_control = lobpcg_control
+    lobpcg_control = lobpcg_control, solver = solver
   )
   global_params <- global_params[!vapply(global_params, is.null, logical(1))]
 
@@ -777,6 +759,7 @@ group_imp <- function(
   })
 
   imp_fn <- if (is_knn_mode) knn_imp else pca_imp
+  group_ids <- group$group
 
   if (parallelize) {
     cli::cli_inform("Running mode: {.strong mirai}")
@@ -816,14 +799,20 @@ group_imp <- function(
           RhpcBLASctl::blas_set_num_threads(1)
           RhpcBLASctl::omp_set_num_threads(1)
         }
+
         src <- bigmemory::attach.big.matrix(big_obj_desc)
         dst <- bigmemory::attach.big.matrix(big_out_desc)
         sub_mat <- src[, indices[[i]]$col_idx, drop = FALSE]
+
         imputed <- tryCatch(
           suppressMessages(do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))),
           slideimp_infeasible = function(e) {
             switch(on_infeasible,
-              error = stop(e),
+              error = cli::cli_abort(c(
+                "Group {group_ids[[i]]} is infeasible for imputation.",
+                "x" = conditionMessage(e),
+                "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
+              ), parent = e),
               skip = structure(sub_mat, fallback = TRUE),
               mean = structure(
                 mean_imp_col(sub_mat, subset = indices[[i]]$features_idx_local),
@@ -832,6 +821,7 @@ group_imp <- function(
             )
           }
         )
+
         dst[, out_ranges[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
         return(isTRUE(attr(imputed, "fallback")))
       },
@@ -842,7 +832,8 @@ group_imp <- function(
       params = params,
       pin_blas = pin_blas,
       out_ranges = out_ranges,
-      on_infeasible = on_infeasible
+      on_infeasible = on_infeasible,
+      group_ids = group_ids
     )
     m <- mirai::mirai_map(iter, crated_fn)
     fallback_flags <- unlist(m[.progress = .progress])
@@ -852,11 +843,16 @@ group_imp <- function(
     fallback_flags <- logical(length(iter))
     for (i in iter) {
       sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
+
       imputed <- tryCatch(
         suppressMessages(do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))),
         slideimp_infeasible = function(e) {
           switch(on_infeasible,
-            error = stop(e),
+            error = cli::cli_abort(c(
+              "Group {group_ids[[i]]} is infeasible for imputation.",
+              "x" = conditionMessage(e),
+              "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
+            ), parent = e),
             skip = structure(sub_mat, fallback = TRUE),
             mean = structure(
               mean_imp_col(sub_mat, subset = indices[[i]]$features_idx_local),
@@ -865,6 +861,7 @@ group_imp <- function(
           )
         }
       )
+
       obj[, feat_splits[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
       fallback_flags[i] <- isTRUE(attr(imputed, "fallback"))
       if (.progress) cli::cli_progress_update(id = pb)

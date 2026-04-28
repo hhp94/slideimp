@@ -16,7 +16,7 @@
 //  sign-canonicalized; P is left as the post-RR search direction (not
 //  orthonormal, not orth X), entry-time cleanup handles it.
 //  - On converged == false, state is left untouched; caller must fall back
-//  to the exact solver (dsyver_) and re-seed.
+//  to the exact solver (dsyevr_) and re-seed.
 //
 // P invariant (committed state):
 //  X is orthonormal and sign-canonical. P has the right shape (n x k);
