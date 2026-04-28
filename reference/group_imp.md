@@ -28,6 +28,7 @@ group_imp(
   nb.init = NULL,
   maxiter = NULL,
   miniter = NULL,
+  solver = NULL,
   lobpcg_control = NULL,
   pin_blas = FALSE,
   na_check = TRUE,
@@ -103,10 +104,8 @@ group_imp(
 
 - colmax:
 
-  Numeric scalar between `0` and `1`, or `NULL`. Columns with a
-  missing-data proportion greater than `colmax` are not imputed. If
-  `NULL`, the backend default is used unless overridden by
-  `group$parameters`.
+  Numeric scalar between `0` and `1`. Columns with a missing-data
+  proportion greater than `colmax` are not imputed.
 
 - post_imp:
 
@@ -116,38 +115,39 @@ group_imp(
 
 - dist_pow:
 
-  Numeric or `NULL`. K-NN distance-weighting power. If `0`, use an
-  unweighted average of nearest neighbors. If `NULL`, the backend
-  default is used unless overridden by `group$parameters`.
+  Numeric. Power used to penalize more distant neighbors in the weighted
+  average. `dist_pow = 0` gives an unweighted average of the nearest
+  neighbors.
 
 - tree:
 
-  Logical or `NULL`. For K-NN imputation, if `FALSE`, use brute-force
-  K-NN; if `TRUE`, use ball-tree K-NN via `mlpack`. If `NULL`, the
-  backend default is used unless overridden by `group$parameters`.
+  Logical. If `FALSE`, use brute-force K-NN. If `TRUE`, use ball-tree
+  K-NN via `mlpack`.
 
 - scale:
 
-  Logical or `NULL`. For PCA imputation, whether to scale columns to
-  unit variance. If `NULL`, the backend default is used unless
-  overridden by `group$parameters`.
+  Logical. If `TRUE`, columns are scaled to unit variance.
 
 - coeff.ridge:
 
-  Numeric or `NULL`. Ridge regularization coefficient for regularized
-  PCA imputation. If `NULL`, the backend default is used unless
-  overridden by `group$parameters`.
+  Numeric. Ridge regularization coefficient. Only used when
+  `method = "regularized"`. Values less than `1` regularize less, moving
+  closer to EM PCA. Values greater than `1` regularize more, moving
+  closer to mean imputation.
 
 - threshold:
 
-  Numeric or `NULL`. Convergence threshold for PCA imputation. If
-  `NULL`, the backend default is used unless overridden by
-  `group$parameters`.
+  Numeric. Convergence threshold.
 
 - row.w:
 
-  Row weights for PCA imputation, or `NULL`. See
-  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
+  Row weights, internally normalized to sum to `1`. Can be:
+
+  - `NULL`: all rows are weighted equally.
+
+  - A numeric vector of positive weights with length `nrow(obj)`.
+
+  - `"n_miss"`: rows with more missing values receive lower weight.
 
 - seed:
 
@@ -155,24 +155,31 @@ group_imp(
 
 - nb.init:
 
-  Integer or `NULL`. Number of PCA random initializations. If `NULL`,
-  the backend default is used unless overridden by `group$parameters`.
+  Integer. Number of random initializations. The first initialization is
+  always mean imputation.
 
 - maxiter:
 
-  Integer or `NULL`. Maximum number of PCA iterations. If `NULL`, the
-  backend default is used unless overridden by `group$parameters`.
+  Integer. Maximum number of iterations.
 
 - miniter:
 
-  Integer or `NULL`. Minimum number of PCA iterations. If `NULL`, the
-  backend default is used unless overridden by `group$parameters`.
+  Integer. Minimum number of iterations.
+
+- solver:
+
+  Character. Eigensolver selection. One of `"auto"`, `"dsyevr"`, or
+  `"lobpcg"`. `"dsyevr"` uses the exact solver. `"lobpcg"` uses the
+  iterative LOBPCG solver. If `"auto"`, LOBPCG is used when the smaller
+  input dimension is at least 500 and `ncp <= 50`; otherwise the exact
+  solver is used.
 
 - lobpcg_control:
 
   A list of LOBPCG eigensolver control options, usually created by
-  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md),
-  or `NULL`.
+  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
+  A plain named list is also accepted. If `NULL`, defaults are chosen
+  according to `solver`.
 
 - pin_blas:
 
@@ -210,6 +217,12 @@ Group-specific parameters in `group$parameters` take priority over
 global arguments. Global arguments fill in any missing values. All
 groups must use the same imputation method.
 
+For method-specific arguments inherited from
+[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) or
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md),
+`NULL` means the backend default is used unless overridden by
+`group$parameters`.
+
 Per-group `k` is capped at the number of usable columns in the group
 minus one. Per-group `ncp` is capped at the maximum feasible number of
 PCA components for that group's submatrix. A warning is issued when
@@ -240,6 +253,33 @@ or `group_imp()` to prevent BLAS threads from oversubscribing CPU cores.
 This relies on `RhpcBLASctl` and works with OpenBLAS and MKL (typical on
 Linux, and on Windows after an OpenBLAS swap). `pin_blas = TRUE` may
 have no effect on macOS.
+
+## Performance tips
+
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+relies heavily on linear algebra. On Windows, the default BLAS shipped
+with R may be slow for large matrices. Advanced users can replace it
+with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+
+PCA imputation speed depends on the eigensolver selected by `solver` and
+the convergence threshold `threshold`. The exact solver is selected with
+`solver = "dsyevr"`. The iterative LOBPCG solver is selected with
+`solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
+internal rule.
+
+For large or approximately low-rank genomic matrices, it can be useful
+to benchmark `solver = "dsyevr"` against `solver = "lobpcg"` on a
+representative subset, such as chromosome 22, before tuning
+accuracy-related parameters such as `ncp`, `coeff.ridge`, `window_size`,
+or `overlap_size`.
+
+The default `threshold = 1e-6` is conservative. In some genomic
+datasets, `threshold = 1e-5` can be faster while giving very similar
+imputed values. Check this on a representative subset before using the
+relaxed threshold in a full analysis.
+
+See the pkgdown article "Speeding up PCA imputation" for a full
+workflow.
 
 ## See also
 

@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9001</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -33,6 +33,12 @@
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="articles/slideimp.html">Get started</a></li>
 <li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
+<li><a class="dropdown-item" href="articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  </ul>
+</li>
 <li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
@@ -96,7 +102,6 @@
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va">slideimp.extra</span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a></span><span class="op">)</span></span>
-<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mirai.r-lib.org" class="external-link">mirai</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">imputed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/group_imp.html">group_imp</a></span><span class="op">(</span></span>
 <span>  obj <span class="op">=</span> <span class="va">MSA_beta_matrix</span>,</span>
@@ -105,7 +110,8 @@
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- turn on to monitor progress of longer running jobs</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co"># Found cleaned manifest for 'MSA'</span></span>
-<span><span class="co"># Groups 24 dropped: no features remaining after matching obj columns.</span></span>
+<span><span class="co"># ! 1 group dropped: no features remaining after matching `obj_cn`.</span></span>
+<span><span class="co"># ℹ Dropped group indices: 24</span></span>
 <span><span class="co"># Imputing 25 groups using PCA.</span></span>
 <span><span class="co"># Running mode: sequential</span></span>
 <span></span>
@@ -132,6 +138,8 @@
 <h3 id="performance-tips">Performance tips<a class="anchor" aria-label="anchor" href="#performance-tips"></a>
 </h3>
 <ul>
+<li>
+<strong>PCA performance tuning:</strong> for guidance on choosing <code>threshold</code>, <code>solver</code>, configuring <code>lobpcg_control</code>, and using <a href="https://mirai.r-lib.org" class="external-link">mirai</a>/BLAS threading effectively, see <a href="articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>.</li>
 <li>
 <strong>Parallel PCA imputation with a threaded BLAS</strong> (OpenBLAS or MKL): set <code>pin_blas = TRUE</code> so BLAS threads and <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers don’t compete for cores. Requires <a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a>.</li>
 <li>
@@ -186,7 +194,7 @@
 <span><span class="co">#&gt; Running mode: threaded (8 cores)</span></span>
 <span><span class="co">#&gt; Step 2/2: Tuning</span></span></code></pre></div>
 <ul>
-<li>Calculate errors using <code><a href="reference/compute_metrics.html">compute_metrics()</a></code> or <a href="https://github.com/tidymodels/yardstick" class="external-link"><code>{yardstick}</code></a> functions.</li>
+<li>Calculate errors using <code><a href="reference/compute_metrics.html">compute_metrics()</a></code> or <a href="https://github.com/tidymodels/yardstick" class="external-link">yardstick</a> functions.</li>
 </ul>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">metrics</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">tune_knn</span><span class="op">)</span></span>
@@ -218,7 +226,7 @@
 <span><span class="co">#&gt; 5  5        1    rmse          10            0.2081833         0.01949624</span></span>
 <span><span class="co">#&gt; 7  5        2    rmse          10            0.2101955         0.01884442</span></span></code></pre></div>
 <ul>
-<li>For K-NN without <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a>, PCA imputation, and custom functions (see vignette), set up parallelization with <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code>.</li>
+<li>For PCA imputation and custom functions, set up parallelization with <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code>. See “<a href="articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>” for additional PCA performance-tuning guidance.</li>
 <li>
 <strong>Note:</strong> For machines with multi-threaded BLAS, turn on <code>pin_blas = TRUE</code> when tuning PCA imputation in parallel to avoid thrashing.</li>
 </ul>

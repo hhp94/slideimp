@@ -25,15 +25,23 @@ prep_groups(
 
 - group:
 
-  Grouping specification. See the `group` argument of
-  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-  for supported formats.
+  Specification of how features should be grouped for imputation.
+  Accepted formats are:
+
+  - A character scalar naming a supported Illumina platform; see Note.
+
+  - A long-format `data.frame` with columns `group` and `feature`.
+
+  - A list-column `data.frame` with a `feature` list-column. Optional
+    list-columns are `aux`, for auxiliary feature names, and
+    `parameters`, for group-specific parameter lists.
 
 - subset:
 
-  Optional character vector of feature names to impute. If supplied,
-  features not in `subset` are demoted to auxiliary columns within their
-  groups.
+  Optional character vector of feature names to impute. If `NULL`, all
+  grouped features are imputed. Features in a group but not in `subset`
+  are demoted to auxiliary columns for that group. Groups left with zero
+  features after demotion are dropped with a message.
 
 - min_group_size:
 
@@ -44,10 +52,9 @@ prep_groups(
 
 - allow_unmapped:
 
-  Logical. If `FALSE`, every element of `obj_cn` must appear in `group`
-  as either a feature or an auxiliary column. If `TRUE`, unmapped
-  columns are allowed and left untouched by
-  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
+  Logical. If `FALSE`, every column in `colnames(obj)` must appear in
+  `group`. If `TRUE`, columns with no group assignment are left
+  untouched and are not used as auxiliary columns.
 
 - seed:
 

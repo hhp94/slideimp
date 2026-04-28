@@ -27,6 +27,7 @@ slide_imp(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  solver = c("auto", "dsyevr", "lobpcg"),
   lobpcg_control = NULL,
   method = NULL,
   .progress = TRUE,
@@ -93,8 +94,9 @@ slide_imp(
 
 - dist_pow:
 
-  Numeric. K-NN distance-weighting power. If `0`, use an unweighted
-  average of nearest neighbors.
+  Numeric. Power used to penalize more distant neighbors in the weighted
+  average. `dist_pow = 0` gives an unweighted average of the nearest
+  neighbors.
 
 - ncp:
 
@@ -103,44 +105,60 @@ slide_imp(
 
 - scale:
 
-  Logical. For PCA imputation, whether to scale columns to unit
-  variance.
+  Logical. If `TRUE`, columns are scaled to unit variance.
 
 - coeff.ridge:
 
-  Numeric. Ridge regularization coefficient for regularized PCA
-  imputation.
+  Numeric. Ridge regularization coefficient. Only used when
+  `method = "regularized"`. Values less than `1` regularize less, moving
+  closer to EM PCA. Values greater than `1` regularize more, moving
+  closer to mean imputation.
 
 - threshold:
 
-  Numeric. Convergence threshold for PCA imputation.
+  Numeric. Convergence threshold.
 
 - seed:
 
-  Integer, numeric, or `NULL`. Random seed for PCA initialization.
+  Integer, numeric, or `NULL`. Random seed for reproducibility.
 
 - row.w:
 
-  Row weights for PCA imputation, or `NULL`. See
-  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
+  Row weights, internally normalized to sum to `1`. Can be:
+
+  - `NULL`: all rows are weighted equally.
+
+  - A numeric vector of positive weights with length `nrow(obj)`.
+
+  - `"n_miss"`: rows with more missing values receive lower weight.
 
 - nb.init:
 
-  Integer. Number of PCA random initializations.
+  Integer. Number of random initializations. The first initialization is
+  always mean imputation.
 
 - maxiter:
 
-  Integer. Maximum number of PCA iterations.
+  Integer. Maximum number of iterations.
 
 - miniter:
 
-  Integer. Minimum number of PCA iterations.
+  Integer. Minimum number of iterations.
+
+- solver:
+
+  Character. Eigensolver selection. One of `"auto"`, `"dsyevr"`, or
+  `"lobpcg"`. `"dsyevr"` uses the exact solver. `"lobpcg"` uses the
+  iterative LOBPCG solver. If `"auto"`, LOBPCG is used when the smaller
+  input dimension is at least 500 and `ncp <= 50`; otherwise the exact
+  solver is used.
 
 - lobpcg_control:
 
   A list of LOBPCG eigensolver control options, usually created by
-  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md),
-  or `NULL`.
+  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
+  A plain named list is also accepted. If `NULL`, defaults are chosen
+  according to `solver`.
 
 - method:
 
@@ -202,6 +220,33 @@ Specify `k` and related arguments to use
 [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md), or
 `ncp` and related arguments to use
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
+
+## Performance tips
+
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+relies heavily on linear algebra. On Windows, the default BLAS shipped
+with R may be slow for large matrices. Advanced users can replace it
+with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+
+PCA imputation speed depends on the eigensolver selected by `solver` and
+the convergence threshold `threshold`. The exact solver is selected with
+`solver = "dsyevr"`. The iterative LOBPCG solver is selected with
+`solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
+internal rule.
+
+For large or approximately low-rank genomic matrices, it can be useful
+to benchmark `solver = "dsyevr"` against `solver = "lobpcg"` on a
+representative subset, such as chromosome 22, before tuning
+accuracy-related parameters such as `ncp`, `coeff.ridge`, `window_size`,
+or `overlap_size`.
+
+The default `threshold = 1e-6` is conservative. In some genomic
+datasets, `threshold = 1e-5` can be faster while giving very similar
+imputed values. Check this on a representative subset before using the
+relaxed threshold in a full analysis.
+
+See the pkgdown article "Speeding up PCA imputation" for a full
+workflow.
 
 ## Examples
 

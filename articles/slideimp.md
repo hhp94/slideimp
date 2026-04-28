@@ -32,8 +32,8 @@ obj[1:4, 1:4]
   [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md).
   To specify just certain columns (i.e., clock CpGs), provide the
   `na_col_subset` argument.
-  - `na_loc` has 5 elements (5 repeats) where each row stores the row
-    and column index of a missing value.
+  - `na_loc` has 5 elements, one for each repeat. Each element is a
+    matrix whose rows store the row and column index of a missing value.
 
 ``` r
 na_loc <- sample_na_loc(obj, n_cols = 200, n_rows = 5, n_reps = 5)
@@ -53,8 +53,9 @@ na_loc[[1]][1:6, ]
   method, since the cross-validation missing values are the same for all
   methods.
 - **Note**: The custom function requires the first argument to be `obj`,
-  must return an object of the same dimensions, and all subsequent
-  arguments must match the column names of the `parameters` data.frame.
+  must return an object with the same dimensions as `obj`, and all
+  subsequent arguments must match the column names of the `parameters`
+  data frame.
 
 ``` r
 # This custom function imputes missing values with random normal values and takes
@@ -123,14 +124,14 @@ mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
   for advanced features such as group-wise parameters and padding of
   small groups with random features from other groups.
   [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
-  returns a list-column data.frame with:
+  returns a list-column data frame with:
   - `features`: **required** - a list-column where each element is a
     character vector of variable names to be imputed together.
   - `aux`: **optional** - auxiliary variables to include in each group.
     These are only used to augment the imputation quality of features
-    and are not imputed themselves. If one group is too small (e.g.,
-    chrM), `aux` is used to pad the group by randomly drawing samples
-    from other groups to meet `min_group_size`.
+    and are not imputed themselves. If one group is too small,
+    e.g. `chrM`, `aux` is used to pad the group by randomly drawing
+    features from other groups to meet `min_group_size`.
   - `parameters`: **optional** - group-specific imputation parameters.
 - First we simulate data from 2 groups. We then create `group3` with
   only 1 feature to show how `min_group_size` pads it using the `aux`

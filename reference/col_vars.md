@@ -5,12 +5,12 @@ Computes the sample variance for each column of a numeric matrix.
 ## Usage
 
 ``` r
-col_vars(mat, cores = 1)
+col_vars(obj, cores = 1)
 ```
 
 ## Arguments
 
-- mat:
+- obj:
 
   A numeric matrix.
 
@@ -21,7 +21,7 @@ col_vars(mat, cores = 1)
 
 ## Value
 
-A numeric vector of column variances, named when `mat` has column names.
+A numeric vector of column variances, named when `obj` has column names.
 
 ## Details
 
@@ -32,12 +32,12 @@ Columns with fewer than two distinct non-missing values are assigned
 
 ``` r
 set.seed(123)
-mat <- matrix(rnorm(4 * 10), ncol = 4)
-mat[1, 1] <- NA
-mat[1:8, 2] <- NA
-mat[1:9, 3] <- NA
-mat[, 4] <- NA
-mat
+obj <- matrix(rnorm(4 * 10), ncol = 4)
+obj[1, 1] <- NA
+obj[1:8, 2] <- NA
+obj[1:9, 3] <- NA
+obj[, 4] <- NA
+obj
 #>              [,1]       [,2]     [,3] [,4]
 #>  [1,]          NA         NA       NA   NA
 #>  [2,] -0.23017749         NA       NA   NA
@@ -50,8 +50,8 @@ mat
 #>  [9,] -0.68685285  0.7013559       NA   NA
 #> [10,] -0.44566197 -0.4727914 1.253815   NA
 
-col_vars(mat)
+col_vars(obj)
 #> [1] 0.9673957 0.6893110        NA        NA
-apply(mat, 2, var, na.rm = TRUE)
+apply(obj, 2, var, na.rm = TRUE)
 #> [1] 0.9673957 0.6893110        NA        NA
 ```

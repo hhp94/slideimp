@@ -18,6 +18,7 @@ pca_imp(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
+  solver = c("auto", "dsyevr", "lobpcg"),
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
@@ -82,12 +83,20 @@ pca_imp(
 
   Integer. Minimum number of iterations.
 
+- solver:
+
+  Character. Eigensolver selection. One of `"auto"`, `"dsyevr"`, or
+  `"lobpcg"`. `"dsyevr"` uses the exact solver. `"lobpcg"` uses the
+  iterative LOBPCG solver. If `"auto"`, LOBPCG is used when the smaller
+  input dimension is at least 500 and `ncp <= 50`; otherwise the exact
+  solver is used.
+
 - lobpcg_control:
 
   A list of LOBPCG eigensolver control options, usually created by
   [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
-  A plain named list is also accepted. If `NULL`, default control
-  options are used.
+  A plain named list is also accepted. If `NULL`, defaults are chosen
+  according to `solver`.
 
 - colmax:
 
@@ -115,12 +124,32 @@ This algorithm is based on
 [`missMDA::imputePCA()`](https://rdrr.io/pkg/missMDA/man/imputePCA.html)
 and is optimized for tall or wide numeric matrices.
 
-## Performance tip
+## Performance tips
 
 `pca_imp()` relies heavily on linear algebra. On Windows, the default
 BLAS shipped with R may be slow for large matrices. Advanced users can
 replace it with
 [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+
+PCA imputation speed depends on the eigensolver selected by `solver` and
+the convergence threshold `threshold`. The exact solver is selected with
+`solver = "dsyevr"`. The iterative LOBPCG solver is selected with
+`solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
+internal rule.
+
+For large or approximately low-rank genomic matrices, it can be useful
+to benchmark `solver = "dsyevr"` against `solver = "lobpcg"` on a
+representative subset, such as chromosome 22, before tuning
+accuracy-related parameters such as `ncp`, `coeff.ridge`, `window_size`,
+or `overlap_size`.
+
+The default `threshold = 1e-6` is conservative. In some genomic
+datasets, `threshold = 1e-5` can be faster while giving very similar
+imputed values. Check this on a representative subset before using the
+relaxed threshold in a full analysis.
+
+See the pkgdown article "Speeding up PCA imputation" for a full
+workflow.
 
 ## References
 

@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9001</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -17,6 +17,10 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/slideimp.html">Get started</a></li>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -69,6 +73,7 @@
 <span>  nb.init <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  maxiter <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  miniter <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  solver <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  lobpcg_control <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  pin_blas <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  na_check <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -140,9 +145,8 @@ than this are padded with randomly sampled columns from <code>obj</code>.</p></d
 
 
 <dt id="arg-colmax">colmax<a class="anchor" aria-label="anchor" href="#arg-colmax"></a></dt>
-<dd><p>Numeric scalar between <code>0</code> and <code>1</code>, or <code>NULL</code>. Columns with a
-missing-data proportion greater than <code>colmax</code> are not imputed. If <code>NULL</code>,
-the backend default is used unless overridden by <code>group$parameters</code>.</p></dd>
+<dd><p>Numeric scalar between <code>0</code> and <code>1</code>. Columns with a missing-data
+proportion greater than <code>colmax</code> are not imputed.</p></dd>
 
 
 <dt id="arg-post-imp">post_imp<a class="anchor" aria-label="anchor" href="#arg-post-imp"></a></dt>
@@ -152,37 +156,36 @@ is used unless overridden by <code>group$parameters</code>.</p></dd>
 
 
 <dt id="arg-dist-pow">dist_pow<a class="anchor" aria-label="anchor" href="#arg-dist-pow"></a></dt>
-<dd><p>Numeric or <code>NULL</code>. K-NN distance-weighting power. If <code>0</code>,
-use an unweighted average of nearest neighbors. If <code>NULL</code>, the backend
-default is used unless overridden by <code>group$parameters</code>.</p></dd>
+<dd><p>Numeric. Power used to penalize more distant neighbors in
+the weighted average. <code>dist_pow = 0</code> gives an unweighted average of the
+nearest neighbors.</p></dd>
 
 
 <dt id="arg-tree">tree<a class="anchor" aria-label="anchor" href="#arg-tree"></a></dt>
-<dd><p>Logical or <code>NULL</code>. For K-NN imputation, if <code>FALSE</code>, use
-brute-force K-NN; if <code>TRUE</code>, use ball-tree K-NN via <code>mlpack</code>. If <code>NULL</code>,
-the backend default is used unless overridden by <code>group$parameters</code>.</p></dd>
+<dd><p>Logical. If <code>FALSE</code>, use brute-force K-NN. If <code>TRUE</code>, use
+ball-tree K-NN via <code>mlpack</code>.</p></dd>
 
 
 <dt id="arg-scale">scale<a class="anchor" aria-label="anchor" href="#arg-scale"></a></dt>
-<dd><p>Logical or <code>NULL</code>. For PCA imputation, whether to scale columns
-to unit variance. If <code>NULL</code>, the backend default is used unless overridden
-by <code>group$parameters</code>.</p></dd>
+<dd><p>Logical. If <code>TRUE</code>, columns are scaled to unit variance.</p></dd>
 
 
 <dt id="arg-coeff-ridge">coeff.ridge<a class="anchor" aria-label="anchor" href="#arg-coeff-ridge"></a></dt>
-<dd><p>Numeric or <code>NULL</code>. Ridge regularization coefficient for
-regularized PCA imputation. If <code>NULL</code>, the backend default is used unless
-overridden by <code>group$parameters</code>.</p></dd>
+<dd><p>Numeric. Ridge regularization coefficient. Only used when
+<code>method = "regularized"</code>. Values less than <code>1</code> regularize less, moving
+closer to EM PCA. Values greater than <code>1</code> regularize more, moving closer
+to mean imputation.</p></dd>
 
 
 <dt id="arg-threshold">threshold<a class="anchor" aria-label="anchor" href="#arg-threshold"></a></dt>
-<dd><p>Numeric or <code>NULL</code>. Convergence threshold for PCA imputation.
-If <code>NULL</code>, the backend default is used unless overridden by
-<code>group$parameters</code>.</p></dd>
+<dd><p>Numeric. Convergence threshold.</p></dd>
 
 
 <dt id="arg-row-w">row.w<a class="anchor" aria-label="anchor" href="#arg-row-w"></a></dt>
-<dd><p>Row weights for PCA imputation, or <code>NULL</code>. See <code><a href="pca_imp.html">pca_imp()</a></code>.</p></dd>
+<dd><p>Row weights, internally normalized to sum to <code>1</code>. Can be:</p><ul><li><p><code>NULL</code>: all rows are weighted equally.</p></li>
+<li><p>A numeric vector of positive weights with length <code>nrow(obj)</code>.</p></li>
+<li><p><code>"n_miss"</code>: rows with more missing values receive lower weight.</p></li>
+</ul></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>
@@ -190,26 +193,30 @@ If <code>NULL</code>, the backend default is used unless overridden by
 
 
 <dt id="arg-nb-init">nb.init<a class="anchor" aria-label="anchor" href="#arg-nb-init"></a></dt>
-<dd><p>Integer or <code>NULL</code>. Number of PCA random initializations. If
-<code>NULL</code>, the backend default is used unless overridden by
-<code>group$parameters</code>.</p></dd>
+<dd><p>Integer. Number of random initializations. The first
+initialization is always mean imputation.</p></dd>
 
 
 <dt id="arg-maxiter">maxiter<a class="anchor" aria-label="anchor" href="#arg-maxiter"></a></dt>
-<dd><p>Integer or <code>NULL</code>. Maximum number of PCA iterations. If
-<code>NULL</code>, the backend default is used unless overridden by
-<code>group$parameters</code>.</p></dd>
+<dd><p>Integer. Maximum number of iterations.</p></dd>
 
 
 <dt id="arg-miniter">miniter<a class="anchor" aria-label="anchor" href="#arg-miniter"></a></dt>
-<dd><p>Integer or <code>NULL</code>. Minimum number of PCA iterations. If
-<code>NULL</code>, the backend default is used unless overridden by
-<code>group$parameters</code>.</p></dd>
+<dd><p>Integer. Minimum number of iterations.</p></dd>
+
+
+<dt id="arg-solver">solver<a class="anchor" aria-label="anchor" href="#arg-solver"></a></dt>
+<dd><p>Character. Eigensolver selection. One of <code>"auto"</code>, <code>"dsyevr"</code>,
+or <code>"lobpcg"</code>. <code>"dsyevr"</code> uses the exact solver. <code>"lobpcg"</code> uses the
+iterative LOBPCG solver. If <code>"auto"</code>, LOBPCG is used when the smaller input
+dimension is at least 500 and <code>ncp &lt;= 50</code>; otherwise the exact solver is
+used.</p></dd>
 
 
 <dt id="arg-lobpcg-control">lobpcg_control<a class="anchor" aria-label="anchor" href="#arg-lobpcg-control"></a></dt>
 <dd><p>A list of LOBPCG eigensolver control options, usually
-created by <code><a href="lobpcg_control.html">lobpcg_control()</a></code>, or <code>NULL</code>.</p></dd>
+created by <code><a href="lobpcg_control.html">lobpcg_control()</a></code>. A plain named list is also accepted. If
+<code>NULL</code>, defaults are chosen according to <code>solver</code>.</p></dd>
 
 
 <dt id="arg-pin-blas">pin_blas<a class="anchor" aria-label="anchor" href="#arg-pin-blas"></a></dt>
@@ -245,6 +252,9 @@ related arguments to use PCA imputation. If both <code>k</code> and <code>ncp</c
 <p>Group-specific parameters in <code>group$parameters</code> take priority over global
 arguments. Global arguments fill in any missing values. All groups must use
 the same imputation method.</p>
+<p>For method-specific arguments inherited from <code><a href="knn_imp.html">knn_imp()</a></code> or <code><a href="pca_imp.html">pca_imp()</a></code>,
+<code>NULL</code> means the backend default is used unless overridden by
+<code>group$parameters</code>.</p>
 <p>Per-group <code>k</code> is capped at the number of usable columns in the group minus
 one. Per-group <code>ncp</code> is capped at the maximum feasible number of PCA
 components for that group's submatrix. A warning is issued when capping
@@ -269,6 +279,28 @@ in <code><a href="tune_imp.html">tune_imp()</a></code> or <code>group_imp()</cod
 oversubscribing CPU cores. This relies on <code>RhpcBLASctl</code> and works with
 OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 <code>pin_blas = TRUE</code> may have no effect on macOS.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="performance-tips">Performance tips<a class="anchor" aria-label="anchor" href="#performance-tips"></a></h2>
+
+
+<p><code><a href="pca_imp.html">pca_imp()</a></code> relies heavily on linear algebra. On Windows, the default BLAS
+shipped with R may be slow for large matrices. Advanced users can replace
+it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">OpenBLAS</a>.</p>
+<p>PCA imputation speed depends on the eigensolver selected by <code>solver</code> and the
+convergence threshold <code>threshold</code>. The exact solver is selected with
+<code>solver = "dsyevr"</code>. The iterative LOBPCG solver is selected with
+<code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, uses a conservative
+internal rule.</p>
+<p>For large or approximately low-rank genomic matrices, it can be useful to
+benchmark <code>solver = "dsyevr"</code> against <code>solver = "lobpcg"</code> on a representative
+subset, such as chromosome 22, before tuning accuracy-related parameters such
+as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <code>overlap_size</code>.</p>
+<p>The default <code>threshold = 1e-6</code> is conservative. In some genomic datasets,
+<code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
+Check this on a representative subset before using the relaxed threshold in a
+full analysis.</p>
+<p>See the pkgdown article "Speeding up PCA imputation" for a full workflow.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

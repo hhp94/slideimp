@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9001</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -17,6 +17,10 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/slideimp.html">Get started</a></li>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -66,14 +70,20 @@
 
 
 <dt id="arg-group">group<a class="anchor" aria-label="anchor" href="#arg-group"></a></dt>
-<dd><p>Grouping specification. See the <code>group</code> argument of
-<code><a href="group_imp.html">group_imp()</a></code> for supported formats.</p></dd>
+<dd><p>Specification of how features should be grouped for imputation.
+Accepted formats are:</p><ul><li><p>A character scalar naming a supported Illumina platform; see Note.</p></li>
+<li><p>A long-format <code>data.frame</code> with columns <code>group</code> and <code>feature</code>.</p></li>
+<li><p>A list-column <code>data.frame</code> with a <code>feature</code> list-column. Optional
+list-columns are <code>aux</code>, for auxiliary feature names, and <code>parameters</code>,
+for group-specific parameter lists.</p></li>
+</ul></dd>
 
 
 <dt id="arg-subset">subset<a class="anchor" aria-label="anchor" href="#arg-subset"></a></dt>
 <dd><p>Optional character vector of feature names to impute. If
-supplied, features not in <code>subset</code> are demoted to auxiliary columns within
-their groups.</p></dd>
+<code>NULL</code>, all grouped features are imputed. Features in a group but not in
+<code>subset</code> are demoted to auxiliary columns for that group. Groups left with
+zero features after demotion are dropped with a message.</p></dd>
 
 
 <dt id="arg-min-group-size">min_group_size<a class="anchor" aria-label="anchor" href="#arg-min-group-size"></a></dt>
@@ -84,9 +94,9 @@ than this are padded with randomly sampled columns from <code>obj_cn</code>. If
 
 
 <dt id="arg-allow-unmapped">allow_unmapped<a class="anchor" aria-label="anchor" href="#arg-allow-unmapped"></a></dt>
-<dd><p>Logical. If <code>FALSE</code>, every element of <code>obj_cn</code> must
-appear in <code>group</code> as either a feature or an auxiliary column. If <code>TRUE</code>,
-unmapped columns are allowed and left untouched by <code><a href="group_imp.html">group_imp()</a></code>.</p></dd>
+<dd><p>Logical. If <code>FALSE</code>, every column in <code>colnames(obj)</code>
+must appear in <code>group</code>. If <code>TRUE</code>, columns with no group assignment are
+left untouched and are not used as auxiliary columns.</p></dd>
 
 
 <dt id="arg-seed">seed<a class="anchor" aria-label="anchor" href="#arg-seed"></a></dt>

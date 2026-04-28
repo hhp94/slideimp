@@ -9,7 +9,7 @@ expectation-maximization PCA imputation."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9001</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -19,6 +19,10 @@ expectation-maximization PCA imputation."></head><body>
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/slideimp.html">Get started</a></li>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -61,6 +65,7 @@ expectation-maximization PCA imputation.</p>
 <span>  nb.init <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  maxiter <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  miniter <span class="op">=</span> <span class="fl">5</span>,</span>
+<span>  solver <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"dsyevr"</span>, <span class="st">"lobpcg"</span><span class="op">)</span>,</span>
 <span>  lobpcg_control <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  colmax <span class="op">=</span> <span class="fl">0.9</span>,</span>
 <span>  post_imp <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -125,10 +130,18 @@ initialization is always mean imputation.</p></dd>
 <dd><p>Integer. Minimum number of iterations.</p></dd>
 
 
+<dt id="arg-solver">solver<a class="anchor" aria-label="anchor" href="#arg-solver"></a></dt>
+<dd><p>Character. Eigensolver selection. One of <code>"auto"</code>, <code>"dsyevr"</code>,
+or <code>"lobpcg"</code>. <code>"dsyevr"</code> uses the exact solver. <code>"lobpcg"</code> uses the
+iterative LOBPCG solver. If <code>"auto"</code>, LOBPCG is used when the smaller input
+dimension is at least 500 and <code>ncp &lt;= 50</code>; otherwise the exact solver is
+used.</p></dd>
+
+
 <dt id="arg-lobpcg-control">lobpcg_control<a class="anchor" aria-label="anchor" href="#arg-lobpcg-control"></a></dt>
 <dd><p>A list of LOBPCG eigensolver control options, usually
 created by <code><a href="lobpcg_control.html">lobpcg_control()</a></code>. A plain named list is also accepted. If
-<code>NULL</code>, default control options are used.</p></dd>
+<code>NULL</code>, defaults are chosen according to <code>solver</code>.</p></dd>
 
 
 <dt id="arg-colmax">colmax<a class="anchor" aria-label="anchor" href="#arg-colmax"></a></dt>
@@ -157,12 +170,26 @@ values imputed. The returned object has class <code>slideimp_results</code>.</p>
 or wide numeric matrices.</p>
     </div>
     <div class="section level2">
-    <h2 id="performance-tip">Performance tip<a class="anchor" aria-label="anchor" href="#performance-tip"></a></h2>
+    <h2 id="performance-tips">Performance tips<a class="anchor" aria-label="anchor" href="#performance-tips"></a></h2>
 
 
 <p><code>pca_imp()</code> relies heavily on linear algebra. On Windows, the default BLAS
 shipped with R may be slow for large matrices. Advanced users can replace
 it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">OpenBLAS</a>.</p>
+<p>PCA imputation speed depends on the eigensolver selected by <code>solver</code> and the
+convergence threshold <code>threshold</code>. The exact solver is selected with
+<code>solver = "dsyevr"</code>. The iterative LOBPCG solver is selected with
+<code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, uses a conservative
+internal rule.</p>
+<p>For large or approximately low-rank genomic matrices, it can be useful to
+benchmark <code>solver = "dsyevr"</code> against <code>solver = "lobpcg"</code> on a representative
+subset, such as chromosome 22, before tuning accuracy-related parameters such
+as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <code>overlap_size</code>.</p>
+<p>The default <code>threshold = 1e-6</code> is conservative. In some genomic datasets,
+<code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
+Check this on a representative subset before using the relaxed threshold in a
+full analysis.</p>
+<p>See the pkgdown article "Speeding up PCA imputation" for a full workflow.</p>
     </div>
     <div class="section level2">
     <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>

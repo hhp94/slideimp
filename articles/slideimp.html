@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0.9001</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,6 +31,12 @@
       <ul class="navbar-nav me-auto">
 <li class="active nav-item"><a class="nav-link" href="../articles/slideimp.html">Get started</a></li>
 <li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
+<li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  </ul>
+</li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
@@ -98,8 +104,9 @@ specify just certain columns (i.e., clock CpGs), provide the
 <code>na_col_subset</code> argument.
 <ul>
 <li>
-<code>na_loc</code> has 5 elements (5 repeats) where each row stores
-the row and column index of a missing value.</li>
+<code>na_loc</code> has 5 elements, one for each repeat. Each
+element is a matrix whose rows store the row and column index of a
+missing value.</li>
 </ul>
 </li>
 </ul>
@@ -121,9 +128,9 @@ method, since the cross-validation missing values are the same for all
 methods.</li>
 <li>
 <strong>Note</strong>: The custom function requires the first
-argument to be <code>obj</code>, must return an object of the same
-dimensions, and all subsequent arguments must match the column names of
-the <code>parameters</code> data.frame.</li>
+argument to be <code>obj</code>, must return an object with the same
+dimensions as <code>obj</code>, and all subsequent arguments must match
+the column names of the <code>parameters</code> data frame.</li>
 </ul>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># This custom function imputes missing values with random normal values and takes</span></span>
@@ -192,8 +199,8 @@ and PCA imputation.</li>
 which maps <code>colnames(obj)</code> to groups. This can be created up
 front with <code><a href="../reference/prep_groups.html">prep_groups()</a></code> for advanced features such as
 group-wise parameters and padding of small groups with random features
-from other groups. <code><a href="../reference/prep_groups.html">prep_groups()</a></code> returns a list-column
-data.frame with:
+from other groups. <code><a href="../reference/prep_groups.html">prep_groups()</a></code> returns a list-column data
+frame with:
 <ul>
 <li>
 <code>features</code>: <strong>required</strong> - a list-column
@@ -203,8 +210,8 @@ together.</li>
 <code>aux</code>: <strong>optional</strong> - auxiliary variables to
 include in each group. These are only used to augment the imputation
 quality of features and are not imputed themselves. If one group is too
-small (e.g., chrM), <code>aux</code> is used to pad the group by
-randomly drawing samples from other groups to meet
+small, e.g. <code>chrM</code>, <code>aux</code> is used to pad the group
+by randomly drawing features from other groups to meet
 <code>min_group_size</code>.</li>
 <li>
 <code>parameters</code>: <strong>optional</strong> - group-specific
