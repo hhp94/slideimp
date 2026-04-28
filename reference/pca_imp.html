@@ -65,7 +65,7 @@ expectation-maximization PCA imputation.</p>
 <span>  nb.init <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  maxiter <span class="op">=</span> <span class="fl">1000</span>,</span>
 <span>  miniter <span class="op">=</span> <span class="fl">5</span>,</span>
-<span>  solver <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"dsyevr"</span>, <span class="st">"lobpcg"</span><span class="op">)</span>,</span>
+<span>  solver <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"auto"</span>, <span class="st">"exact"</span>, <span class="st">"lobpcg"</span><span class="op">)</span>,</span>
 <span>  lobpcg_control <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  colmax <span class="op">=</span> <span class="fl">0.9</span>,</span>
 <span>  post_imp <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -131,10 +131,10 @@ initialization is always mean imputation.</p></dd>
 
 
 <dt id="arg-solver">solver<a class="anchor" aria-label="anchor" href="#arg-solver"></a></dt>
-<dd><p>Character. Eigensolver selection. One of <code>"auto"</code>, <code>"dsyevr"</code>,
-or <code>"lobpcg"</code>. <code>"dsyevr"</code> uses the exact solver. <code>"lobpcg"</code> uses the
+<dd><p>Character. Eigensolver selection. One of <code>"auto"</code>, <code>"exact"</code>,
+or <code>"lobpcg"</code>. <code>"exact"</code> uses the exact solver. <code>"lobpcg"</code> uses the
 iterative LOBPCG solver. If <code>"auto"</code>, LOBPCG is used when the smaller input
-dimension is at least 500 and <code>ncp &lt;= 50</code>; otherwise the exact solver is
+dimension is at least 500 and <code>ncp &lt;= 50</code>; otherwise, the exact solver is
 used.</p></dd>
 
 
@@ -178,18 +178,19 @@ shipped with R may be slow for large matrices. Advanced users can replace
 it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">OpenBLAS</a>.</p>
 <p>PCA imputation speed depends on the eigensolver selected by <code>solver</code> and the
 convergence threshold <code>threshold</code>. The exact solver is selected with
-<code>solver = "dsyevr"</code>. The iterative LOBPCG solver is selected with
+<code>solver = "exact"</code>. The iterative LOBPCG solver is selected with
 <code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, uses a conservative
 internal rule.</p>
 <p>For large or approximately low-rank genomic matrices, it can be useful to
-benchmark <code>solver = "dsyevr"</code> against <code>solver = "lobpcg"</code> on a representative
+benchmark <code>solver = "exact"</code> against <code>solver = "lobpcg"</code> on a representative
 subset, such as chromosome 22, before tuning accuracy-related parameters such
 as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <code>overlap_size</code>.</p>
-<p>The default <code>threshold = 1e-6</code> is conservative. In some genomic datasets,
+<p>The default <code>threshold = 1e-6</code> is conservative. In many genomic datasets,
 <code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
 Check this on a representative subset before using the relaxed threshold in a
 full analysis.</p>
-<p>See the pkgdown article "Speeding up PCA imputation" for a full workflow.</p>
+<p>See the pkgdown article <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">"Speeding up PCA imputation"</a>
+for a full workflow.</p>
     </div>
     <div class="section level2">
     <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>

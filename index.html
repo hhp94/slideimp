@@ -76,7 +76,7 @@
 <p>You can install the development version of <a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> with:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pkg_install.html" class="external-link">pkg_install</a></span><span class="op">(</span><span class="st">"hhp94/slideimp"</span><span class="op">)</span></span></code></pre></div>
-<p>You can install the optional <a href="https://github.com/hhp94/slideimp.extra" class="external-link"><code>{slideimp.extra}</code></a> package (which provides lightweight Illumina manifests) with:</p>
+<p>You can install the optional <a href="https://github.com/hhp94/slideimp.extra" class="external-link"><code>slideimp.extra</code></a> package (which provides lightweight Illumina manifests) with:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pkg_install.html" class="external-link">pkg_install</a></span><span class="op">(</span><span class="st">"hhp94/slideimp.extra"</span><span class="op">)</span></span></code></pre></div>
 </div>
@@ -130,7 +130,7 @@
 </h3>
 <ul>
 <li>
-<code><a href="reference/group_imp.html">group_imp()</a></code> fails with unmapped probes: your matrix likely contains <a href="https://bioconductor.org/packages/release/bioc/html/sesame.html" class="external-link"><code>{sesame}</code></a> generated control probes (prefixed <code>ctl_</code>) or you picked the wrong manifest (<code>"EPICv2"</code> vs. <code>"EPICv2_deduped"</code>). Check the manifest, remove <code>"ctl"</code> probes with <code>obj &lt;- obj[, !grepl("^ctl", colnames(obj))]</code>, or pass <code>allow_unmapped = TRUE</code> to bypass.</li>
+<code><a href="reference/group_imp.html">group_imp()</a></code> fails with unmapped probes: your matrix likely contains <a href="https://bioconductor.org/packages/release/bioc/html/sesame.html" class="external-link"><code>sesame</code></a> generated control probes (prefixed <code>ctl_</code>) or you picked the wrong manifest (<code>"EPICv2"</code> vs. <code>"EPICv2_deduped"</code>). Check the manifest, remove <code>"ctl"</code> probes with <code>obj &lt;- obj[, !grepl("^ctl", colnames(obj))]</code>, or pass <code>allow_unmapped = TRUE</code> to bypass.</li>
 <li>Impute the MSA or EPICv2 data <strong>with</strong> the duplicated probes, then dedup with <code>slideimp.extra::dedup_matrix()</code>.</li>
 </ul>
 </div>
@@ -139,7 +139,7 @@
 </h3>
 <ul>
 <li>
-<strong>PCA performance tuning:</strong> for guidance on choosing <code>threshold</code>, <code>solver</code>, configuring <code>lobpcg_control</code>, and using <a href="https://mirai.r-lib.org" class="external-link">mirai</a>/BLAS threading effectively, see <a href="articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>.</li>
+<strong>PCA performance tuning:</strong> for guidance on choosing <code>threshold</code>, <code>solver</code>, configuring <code>lobpcg_control</code>, and using <a href="https://mirai.r-lib.org" class="external-link">mirai</a>/BLAS threading effectively, see <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>.</li>
 <li>
 <strong>Parallel PCA imputation with a threaded BLAS</strong> (OpenBLAS or MKL): set <code>pin_blas = TRUE</code> so BLAS threads and <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers don’t compete for cores. Requires <a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a>.</li>
 <li>
@@ -226,7 +226,7 @@
 <span><span class="co">#&gt; 5  5        1    rmse          10            0.2081833         0.01949624</span></span>
 <span><span class="co">#&gt; 7  5        2    rmse          10            0.2101955         0.01884442</span></span></code></pre></div>
 <ul>
-<li>For PCA imputation and custom functions, set up parallelization with <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code>. See “<a href="articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>” for additional PCA performance-tuning guidance.</li>
+<li>For PCA imputation and custom functions, set up parallelization with <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code>. See <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a> for additional PCA performance-tuning guidance.</li>
 <li>
 <strong>Note:</strong> For machines with multi-threaded BLAS, turn on <code>pin_blas = TRUE</code> when tuning PCA imputation in parallel to avoid thrashing.</li>
 </ul>
@@ -383,7 +383,7 @@
 <li>
 <code><a href="reference/group_imp.html">group_imp()</a></code>: Parallelizable group-wise (e.g., by chromosomes or column clusters) K-NN or PCA imputation with optional auxiliary features and group-wise parameters. The <code>group</code> argument supports:
 <ul>
-<li>Choices such as <code>"EPICv2"</code> or <code>"MSA"</code> (requires the <a href="https://github.com/hhp94/slideimp.extra" class="external-link"><code>{slideimp.extra}</code></a> package).</li>
+<li>Choices such as <code>"EPICv2"</code> or <code>"MSA"</code> (requires the <a href="https://github.com/hhp94/slideimp.extra" class="external-link"><code>slideimp.extra</code></a> package).</li>
 <li>(Basic): a <code>data.frame</code> containing a <code>feature</code> column (character strings of feature names) and a <code>group</code> column (defining the group).</li>
 <li>(Advanced): use <code><a href="reference/prep_groups.html">prep_groups()</a></code> to create groups based on a mapping data.frame (i.e., Illumina manifests) with custom group-wise parameters.</li>
 </ul>
@@ -393,7 +393,7 @@
 <li>
 <code><a href="reference/tune_imp.html">tune_imp()</a></code>: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.</li>
 <li>
-<code><a href="reference/knn_imp.html">knn_imp()</a></code>: Full-matrix K-NN imputation with multi-core parallelization, <a href="https://mlpack.org/" class="external-link"><code>{mlpack}</code></a> KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).</li>
+<code><a href="reference/knn_imp.html">knn_imp()</a></code>: Full-matrix K-NN imputation with multi-core parallelization, <a href="https://mlpack.org/" class="external-link"><code>mlpack</code></a> KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).</li>
 <li>
 <code><a href="reference/pca_imp.html">pca_imp()</a></code>: Optimized version of <a href="http://factominer.free.fr/missMDA/PCA.html" class="external-link"><code>missMDA::imputePCA()</code></a> for high-dimensional numeric matrices.</li>
 <li>
