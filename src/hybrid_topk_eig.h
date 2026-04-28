@@ -75,10 +75,10 @@ struct HybridEigContext
   arma::mat X_prev;
   int warmup_iters = 10; // controlled by hyb_ctx context
 
-  int n_dsyevr = 0;
+  int n_exact = 0;
   int n_lobpcg_ok = 0;
   int n_lobpcg_bad = 0;
-  std::vector<int> path_log; // 0=dsyevr_direct, 1=lobpcg_ok, 2=dsyevr_fallback
+  std::vector<int> path_log; // 0=exact_direct, 1=lobpcg_ok, 2=exact_fallback
   std::vector<int> reason_log;
   std::vector<int> lobpcg_iter_log;
   std::vector<int> lobpcg_fail_iter_log;
@@ -183,7 +183,7 @@ inline bool hybrid_topk_eig(arma::vec &eigvals,
     return false;
   }
 
-  ++ctx.n_dsyevr;
+  ++ctx.n_exact;
 
   if (attempted_lobpcg)
   {

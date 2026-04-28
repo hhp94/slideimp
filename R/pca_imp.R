@@ -79,12 +79,12 @@ new_lobpcg_control <- function(
   n = NULL,
   p = NULL,
   ncp = NULL,
-  solver = c("auto", "dsyevr", "lobpcg")
+  solver = c("auto", "exact", "lobpcg")
 ) {
   solver <- match.arg(solver)
 
   # force exact solver. This overrides any lobpcg_control supplied.
-  if (solver == "dsyevr") {
+  if (solver == "exact") {
     return(lobpcg_control(maxiter = 0L))
   }
 
@@ -134,7 +134,7 @@ new_lobpcg_control <- function(
   if (solver == "lobpcg" && out$maxiter == 0L) {
     cli::cli_abort(c(
       "{.arg solver} is {.val lobpcg}, but {.arg lobpcg_control$maxiter} is 0.",
-      "i" = "Use {.code solver = 'dsyevr'} for the exact solver, or set {.arg maxiter} > 0."
+      "i" = "Use {.code solver = 'exact'} for the exact solver, or set {.arg maxiter} > 0."
     ))
   }
 
@@ -170,10 +170,10 @@ new_lobpcg_control <- function(
 #'   initialization is always mean imputation.
 #' @param maxiter Integer. Maximum number of iterations.
 #' @param miniter Integer. Minimum number of iterations.
-#' @param solver Character. Eigensolver selection. One of `"auto"`, `"dsyevr"`,
-#'   or `"lobpcg"`. `"dsyevr"` uses the exact solver. `"lobpcg"` uses the
+#' @param solver Character. Eigensolver selection. One of `"auto"`, `"exact"`,
+#'   or `"lobpcg"`. `"exact"` uses the exact solver. `"lobpcg"` uses the
 #'   iterative LOBPCG solver. If `"auto"`, LOBPCG is used when the smaller input
-#'   dimension is at least 500 and `ncp <= 50`; otherwise the exact solver is
+#'   dimension is at least 500 and `ncp <= 50`; otherwise, the exact solver is
 #'   used.
 #' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
 #'   created by [lobpcg_control()]. A plain named list is also accepted. If
@@ -195,21 +195,22 @@ new_lobpcg_control <- function(
 #'
 #' PCA imputation speed depends on the eigensolver selected by `solver` and the
 #' convergence threshold `threshold`. The exact solver is selected with
-#' `solver = "dsyevr"`. The iterative LOBPCG solver is selected with
+#' `solver = "exact"`. The iterative LOBPCG solver is selected with
 #' `solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
 #' internal rule.
 #'
 #' For large or approximately low-rank genomic matrices, it can be useful to
-#' benchmark `solver = "dsyevr"` against `solver = "lobpcg"` on a representative
+#' benchmark `solver = "exact"` against `solver = "lobpcg"` on a representative
 #' subset, such as chromosome 22, before tuning accuracy-related parameters such
 #' as `ncp`, `coeff.ridge`, `window_size`, or `overlap_size`.
 #'
-#' The default `threshold = 1e-6` is conservative. In some genomic datasets,
+#' The default `threshold = 1e-6` is conservative. In many genomic datasets,
 #' `threshold = 1e-5` can be faster while giving very similar imputed values.
 #' Check this on a representative subset before using the relaxed threshold in a
 #' full analysis.
 #'
-#' See the pkgdown article "Speeding up PCA imputation" for a full workflow.
+#' See the pkgdown article ["Speeding up PCA imputation"](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
+#' for a full workflow.
 #'
 #' @references
 #' Josse J, Husson F (2013). Handling missing values in exploratory
@@ -244,7 +245,7 @@ pca_imp <- function(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
-  solver = c("auto", "dsyevr", "lobpcg"),
+  solver = c("auto", "exact", "lobpcg"),
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,

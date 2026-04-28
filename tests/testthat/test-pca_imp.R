@@ -395,7 +395,7 @@ test_that("LOBPCG enabled during warmup matches disabled exact path", {
   # warmup_iters > pca_iters means LOBPCG is never attempted
   expect_equal(got$n_lobpcg_ok, 0L)
   expect_equal(got$n_lobpcg_bad, 0L)
-  expect_equal(got$n_dsyevr, pca_iters)
+  expect_equal(got$n_exact, pca_iters)
 })
 
 test_that("LOBPCG enabled agrees with exact eigensolver branch", {
@@ -433,19 +433,19 @@ test_that("LOBPCG enabled agrees with exact eigensolver branch", {
     expect_equal(dim(got$mat), dim(ref$mat))
     expect_lt(max_abs_diff(got$mat, ref$mat), 1e-4)
 
-    # ref: LOBPCG disabled, every iter is dsyevr
+    # ref: LOBPCG disabled, every iter is exact
     expect_equal(ref$n_lobpcg_ok, 0L)
     expect_equal(ref$n_lobpcg_bad, 0L)
-    expect_equal(ref$n_dsyevr, pca_iters)
+    expect_equal(ref$n_exact, pca_iters)
 
-    # got: warmup iters use dsyevr, rest should converge via LOBPCG
+    # got: warmup iters use exact, rest should converge via LOBPCG
     expect_equal(got$n_lobpcg_bad, 0L)
-    expect_equal(got$n_dsyevr, warmup)
+    expect_equal(got$n_exact, warmup)
     expect_equal(got$n_lobpcg_ok, pca_iters - warmup)
   }
 })
 
-test_that("LOBPCG fallback to dsyevr still produces correct result", {
+test_that("LOBPCG fallback to exact still produces correct result", {
   set.seed(1234)
   x <- sim_mat(60, 30)$input
   pca_iters <- 10L
@@ -459,7 +459,7 @@ test_that("LOBPCG fallback to dsyevr still produces correct result", {
     )
   )
   # tol below machine precision + maxiter = 1 forces LOBPCG to fail every
-  # post-warmup iteration, exercising the dsyevr fallback path.
+  # post-warmup iteration, exercising the exact fallback path.
   expect_warning(
     got <- run_pca_fixed_iters(
       x,
@@ -475,8 +475,8 @@ test_that("LOBPCG fallback to dsyevr still produces correct result", {
   expect_false(anyNA(got$mat))
   expect_lt(max_abs_diff(got$mat, ref$mat), 1e-4)
 
-  # every post-warmup iter should attempt LOBPCG, fail, fall back to dsyevr
+  # every post-warmup iter should attempt LOBPCG, fail, fall back to exact
   expect_equal(got$n_lobpcg_ok, 0L)
   expect_equal(got$n_lobpcg_bad, pca_iters - warmup)
-  expect_equal(got$n_dsyevr, pca_iters) # warmup + fallbacks
+  expect_equal(got$n_exact, pca_iters) # warmup + fallbacks
 })

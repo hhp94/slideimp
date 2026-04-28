@@ -911,7 +911,7 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::Named("eigval_hist") = eigval_hist,
       Rcpp::Named("obj_hist") = obj_hist,
       Rcpp::Named("subspace_cos_hist") = subspace_cos_hist,
-      Rcpp::Named("n_dsyevr") = hyb_ctx.n_dsyevr,
+      Rcpp::Named("n_exact") = hyb_ctx.n_exact,
       Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
       Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad,
       Rcpp::Named("eig_path") = hyb_ctx.path_log,
@@ -923,7 +923,7 @@ Rcpp::List pca_imp_internal_cpp(
   return Rcpp::List::create(
       Rcpp::Named("imputed_values") = imputed_values,
       Rcpp::Named("mse") = mse,
-      Rcpp::Named("n_dsyevr") = hyb_ctx.n_dsyevr,
+      Rcpp::Named("n_exact") = hyb_ctx.n_exact,
       Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
       Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad);
 #endif

@@ -26,7 +26,7 @@ pak::pkg_install("hhp94/slideimp")
 ```
 
 You can install the optional
-[`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) package
+[`slideimp.extra`](https://github.com/hhp94/slideimp.extra) package
 (which provides lightweight Illumina manifests) with:
 
 ``` r
@@ -89,7 +89,7 @@ print(imputed, n = 4, p = 4)
 ### Troubleshooting tips
 
 - `group_imp()` fails with unmapped probes: your matrix likely contains
-  [`{sesame}`](https://bioconductor.org/packages/release/bioc/html/sesame.html)
+  [`sesame`](https://bioconductor.org/packages/release/bioc/html/sesame.html)
   generated control probes (prefixed `ctl_`) or you picked the wrong
   manifest (`"EPICv2"` vs. `"EPICv2_deduped"`). Check the manifest,
   remove `"ctl"` probes with
@@ -103,7 +103,7 @@ print(imputed, n = 4, p = 4)
 - **PCA performance tuning:** for guidance on choosing `threshold`,
   `solver`, configuring `lobpcg_control`, and using `{mirai}`/BLAS
   threading effectively, see [Speeding up PCA
-  imputation](articles/speeding-up-pca-imputation.html).
+  imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html).
 - **Parallel PCA imputation with a threaded BLAS** (OpenBLAS or MKL):
   set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers don’t
   compete for cores. Requires `{RhpcBLASctl}`.
@@ -203,9 +203,9 @@ sum_metrics[order(sum_metrics$.estimate.mean_error), ]
 ```
 
 - For PCA imputation and custom functions, set up parallelization with
-  `mirai::daemons()`. See “[Speeding up PCA
-  imputation](articles/speeding-up-pca-imputation.html)” for additional
-  PCA performance-tuning guidance.
+  `mirai::daemons()`. See [Speeding up PCA
+  imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
+  for additional PCA performance-tuning guidance.
 - **Note:** For machines with multi-threaded BLAS, turn on
   `pin_blas = TRUE` when tuning PCA imputation in parallel to avoid
   thrashing.
@@ -373,7 +373,7 @@ slide_imp(
   column clusters) K-NN or PCA imputation with optional auxiliary
   features and group-wise parameters. The `group` argument supports:
   - Choices such as `"EPICv2"` or `"MSA"` (requires the
-    [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra)
+    [`slideimp.extra`](https://github.com/hhp94/slideimp.extra)
     package).
   - (Basic): a `data.frame` containing a `feature` column (character
     strings of feature names) and a `group` column (defining the group).
@@ -386,10 +386,10 @@ slide_imp(
 - `tune_imp()`: Parallelizable hyperparameter tuning with repeated
   cross-validation; works with built-in or custom imputation functions.
 - `knn_imp()`: Full-matrix K-NN imputation with multi-core
-  parallelization, [`{mlpack}`](https://mlpack.org/) KD/Ball-Tree
-  nearest neighbor implementation (for data with very low missing rates
-  and extremely high dimensions), and optional subset imputation (ideal
-  for epigenetic clock calculations).
+  parallelization, [`mlpack`](https://mlpack.org/) KD/Ball-Tree nearest
+  neighbor implementation (for data with very low missing rates and
+  extremely high dimensions), and optional subset imputation (ideal for
+  epigenetic clock calculations).
 - `pca_imp()`: Optimized version of
   [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
   for high-dimensional numeric matrices.

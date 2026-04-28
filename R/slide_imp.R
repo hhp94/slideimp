@@ -178,7 +178,7 @@ slide_imp <- function(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
-  solver = c("auto", "dsyevr", "lobpcg"),
+  solver = c("auto", "exact", "lobpcg"),
   lobpcg_control = NULL,
   # Shared
   method = NULL,

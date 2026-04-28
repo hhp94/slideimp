@@ -580,7 +580,7 @@ group_imp <- function(
   checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
   on_infeasible <- match.arg(on_infeasible)
   if (!is.null(solver)) {
-    solver <- match.arg(solver, c("auto", "dsyevr", "lobpcg"))
+    solver <- match.arg(solver, c("auto", "exact", "lobpcg"))
   }
   cn <- colnames(obj)
   rn <- rownames(obj)
