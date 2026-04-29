@@ -8,19 +8,20 @@
   no longer caches pair-wise distances. The `use_cache` argument has
   been removed.
 
+### New features
+
 - [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-  gained a `clamp` argument to bound imputed values, e.g. `c(0, 1)` for
+  gained a `solver` argument to select the LOBPCG eigensolver,
+  configured via the new
+  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md)
+  helper.
+
+- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  gained a `clamp` argument to bound imputed values, e.g. `c(0, 1)` for
   methylation beta values. Also threaded through
   [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
   and
   [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
-
-### New features
-
-- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-  gains support for the LOBPCG eigensolver, selected via the new
-  `solver` argument and tuned with
-  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
 
 ### Minor improvements and fixes
 
