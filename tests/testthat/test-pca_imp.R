@@ -9,7 +9,7 @@ test_that("same results as imputePCA", {
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 1, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0),
+    solver = "exact",
     colmax = 1
   )
   expect_equal(r1$completeObs, r2[, ])
@@ -22,7 +22,7 @@ test_that("same results as imputePCA", {
   r4 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = row.w, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3$completeObs, r4[, ])
 
@@ -34,7 +34,7 @@ test_that("same results as imputePCA", {
   r2_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 10, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1_t$completeObs, r2_t[, ])
 
@@ -46,7 +46,7 @@ test_that("same results as imputePCA", {
   r4_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3_t$completeObs, r4_t[, ])
 })
@@ -62,7 +62,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 10, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1$completeObs, r2[, ])
 
@@ -77,7 +77,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r4 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = row.w, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3$completeObs, r4[, ])
 
@@ -89,7 +89,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r2_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 10, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1_t$completeObs, r2_t[, ])
 
@@ -101,7 +101,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r4_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3_t$completeObs, r4_t[, ])
 })
@@ -118,7 +118,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 10, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1$completeObs, r2[, ])
 
@@ -130,7 +130,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r4 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = row.w, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3$completeObs, r4[, ])
 
@@ -142,7 +142,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r2_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 10, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1_t$completeObs, r2_t[, ])
 
@@ -154,7 +154,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r4_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3_t$completeObs, r4_t[, ])
 })
@@ -191,7 +191,7 @@ test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights",
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = "n_miss", seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1$completeObs, r2[, ])
 
@@ -199,7 +199,7 @@ test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights",
   r3 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = expected_w, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r2, r3)
 })

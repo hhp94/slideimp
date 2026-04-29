@@ -8,8 +8,9 @@
 #' @param tol Numeric. Convergence tolerance for the LOBPCG eigensolver. Must
 #'   be non-negative and finite.
 #' @param maxiter Integer. Maximum number of LOBPCG iterations. Must be
-#'   non-negative. Setting `maxiter = 0` disables LOBPCG and uses the exact
-#'   solver instead.
+#'   non-negative. In [pca_imp()], `maxiter` must be positive when
+#'   `solver = "auto"` or `solver = "lobpcg"`. Use `solver = "exact"` to force
+#'   the exact solver.
 #'
 #' @returns A named list of class `"slideimp_lobpcg_control"` containing
 #' `warmup_iters`, `tol`, and `maxiter`.
@@ -21,8 +22,8 @@
 #' # Override a single option
 #' lobpcg_control(maxiter = 50)
 #'
-#' # Disable LOBPCG and use the exact solver
-#' lobpcg_control(maxiter = 0)
+#' # Force the exact solver from pca_imp()
+#' pca_imp(obj, ncp = 2, solver = "exact")
 #'
 #' # Pass directly to pca_imp()
 #' set.seed(123)
@@ -30,7 +31,7 @@
 #' pca_imp(obj, ncp = 2, lobpcg_control = lobpcg_control(tol = 1e-9))
 #'
 #' # Or use a named list
-#' pca_imp(obj, ncp = 2, lobpcg_control = list(maxiter = 0))
+#' pca_imp(obj, ncp = 2, lobpcg_control = list(maxiter = 50))
 #'
 #' @export
 lobpcg_control <- function(warmup_iters = 10L, tol = 1e-9, maxiter = 20) {
@@ -74,37 +75,19 @@ lobpcg_control <- function(warmup_iters = 10L, tol = 1e-9, maxiter = 20) {
 #'
 #' @keywords internal
 #' @noRd
-new_lobpcg_control <- function(
-  x,
-  n = NULL,
-  p = NULL,
-  ncp = NULL,
-  solver = c("auto", "exact", "lobpcg")
-) {
+new_lobpcg_control <- function(x, solver = c("auto", "exact", "lobpcg")) {
   solver <- match.arg(solver)
-
   # force exact solver. This overrides any lobpcg_control supplied.
   if (solver == "exact") {
     return(lobpcg_control(maxiter = 0L))
   }
-
-  # if no explicit LOBPCG control was supplied, resolve from solver.
+  # if no explicit LOBPCG control was supplied, use defaults.
+  # for solver = "auto", maxiter must remain positive so the C++ backend can
+  # actually probe the LOBPCG branch.
   if (is.null(x)) {
-    if (solver == "lobpcg") {
-      return(lobpcg_control())
-    }
-    # solver == "auto"
-    # Preserve old internal behavior if dimensions are not supplied, but pca_imp()
-    # should always call this with n, p, and ncp.
-    if (is.null(n) || is.null(p) || is.null(ncp)) {
-      return(lobpcg_control())
-    }
-    m <- min(n - 1L, p)
-    use_lobpcg <- m >= 500L && ncp <= 50L
-    return(if (use_lobpcg) lobpcg_control() else lobpcg_control(maxiter = 0L))
+    return(lobpcg_control())
   }
-
-  # validate an already-created control object.
+  # validate an already created control object.
   if (inherits(x, "slideimp_lobpcg_control")) {
     out <- x
   } else {
@@ -113,11 +96,9 @@ new_lobpcg_control <- function(
         "{.arg lobpcg_control} must be {.code NULL}, a list, or created by {.fn lobpcg_control}."
       )
     }
-
     if (length(x) > 0L && (is.null(names(x)) || any(!nzchar(names(x))))) {
       cli::cli_abort("{.arg lobpcg_control} must be a named list.")
     }
-
     allowed <- names(formals(lobpcg_control))
     unknown <- setdiff(names(x), allowed)
     if (length(unknown) > 0L) {
@@ -126,19 +107,24 @@ new_lobpcg_control <- function(
         "i" = "Allowed options are: {.arg {allowed}}."
       ))
     }
-
     out <- do.call(lobpcg_control, x)
   }
-
-  # if user explicitly requested LOBPCG, maxiter = 0 is contradictory.
-  if (solver == "lobpcg" && out$maxiter == 0L) {
+  if (solver %in% c("auto", "lobpcg") && out$maxiter == 0L) {
     cli::cli_abort(c(
-      "{.arg solver} is {.val lobpcg}, but {.arg lobpcg_control$maxiter} is 0.",
+      "{.arg lobpcg_control$maxiter} is 0, but {.arg solver} is {.val {solver}}.",
       "i" = "Use {.code solver = 'exact'} for the exact solver, or set {.arg maxiter} > 0."
     ))
   }
-
   out
+}
+
+#' @noRd
+#' @keywords internal
+pca_imp_solver <- function(x) {
+  list(
+    requested = attr(x, "solver_requested"),
+    chosen = attr(x, "solver_chosen")
+  )
 }
 
 #' PCA Imputation for Numeric Matrices
@@ -172,12 +158,14 @@ new_lobpcg_control <- function(
 #' @param miniter Integer. Minimum number of iterations.
 #' @param solver Character. Eigensolver selection. One of `"auto"`, `"exact"`,
 #'   or `"lobpcg"`. `"exact"` uses the exact solver. `"lobpcg"` uses the
-#'   iterative LOBPCG solver. If `"auto"`, LOBPCG is used when the smaller input
-#'   dimension is at least 500 and `ncp <= 50`; otherwise, the exact solver is
-#'   used.
+#'   iterative LOBPCG solver with exact fallback. `"auto"` performs a short
+#'   timed probe chooses LOBPCG only if it is clearly faster than the exact
+#'   solver. When `nb.init > 1`, the auto choice from the first initialization
+#'   is reused for subsequent initializations.
 #' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
-#'   created by [lobpcg_control()]. A plain named list is also accepted. If
-#'   `NULL`, defaults are chosen according to `solver`.
+#'   created by [lobpcg_control()]. A plain named list is also accepted. Ignored
+#'   when `solver = "exact"`. When `solver = "auto"` or `solver = "lobpcg"`,
+#'   `lobpcg_control$maxiter` must be positive.
 #' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
 #'   proportion greater than `colmax` are not imputed.
 #' @param post_imp Logical. If `TRUE`, replace any remaining missing values
@@ -196,8 +184,8 @@ new_lobpcg_control <- function(
 #' PCA imputation speed depends on the eigensolver selected by `solver` and the
 #' convergence threshold `threshold`. The exact solver is selected with
 #' `solver = "exact"`. The iterative LOBPCG solver is selected with
-#' `solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
-#' internal rule.
+#' `solver = "lobpcg"`. The default, `solver = "auto"`, performs a short timed
+#' probe chooses LOBPCG only when it is clearly faster.
 #'
 #' For large or approximately low-rank genomic matrices, it can be useful to
 #' benchmark `solver = "exact"` against `solver = "lobpcg"` on a representative
@@ -278,14 +266,15 @@ pca_imp <- function(
   }
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
+  # solver resolves
   solver <- match.arg(solver)
-  lobpcg_control <- new_lobpcg_control(
-    lobpcg_control,
-    n = nrow(obj),
-    p = ncol(obj),
-    ncp = ncp,
-    solver = solver
+  lobpcg_control <- new_lobpcg_control(lobpcg_control, solver = solver)
+  solver_code <- switch(solver,
+    exact = 0L,
+    lobpcg = 1L,
+    auto = 2L
   )
+
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   checkmate::assert_flag(na_check, .var.name = "na_check")
@@ -350,14 +339,29 @@ pca_imp <- function(
     row.w[row.w < 1e-10] <- 1e-10
   }
 
-  # iterate over initializations; C++ only returns the imputed triples + mse,
-  # not the reconstructed matrix.
   init_obj <- Inf
   best_imputed <- NULL
+
+  # solver_chosen codes:
+  #   0 = forced exact
+  #   1 = forced lobpcg/hybrid
+  #   2 = auto had no reason/opportunity to choose. Treat as exact
+  #   3 = auto chose exact
+  #   4 = auto chose lobpcg
+  locked_solver <- NULL
+  resolved_solver_code <- switch(solver,
+    exact = 0L,
+    lobpcg = 1L,
+    auto = NA_integer_
+  )
+
   for (i in seq_len(nb.init)) {
     if (!is.null(seed)) {
       set.seed(seed * (i - 1L)) # exactly as missMDA does
     }
+
+    solver_code_i <- if (is.null(locked_solver)) solver_code else locked_solver
+
     res.impute <- pca_imp_internal_cpp(
       obj = obj,
       eligible_idx = as.integer(eligible_idx - 1L),
@@ -370,10 +374,22 @@ pca_imp <- function(
       miniter = miniter,
       row_w = row.w,
       coeff_ridge = coeff.ridge,
+      solver = solver_code_i,
       warmup_iters = lobpcg_control$warmup_iters,
       lobpcg_tol = lobpcg_control$tol,
       lobpcg_maxiter = lobpcg_control$maxiter
     )
+
+    # after the auto probe, select a solver for the rest of the inits.
+    if (solver == "auto" && i == 1L) {
+      chosen <- as.integer(res.impute$solver_chosen)
+      if (length(chosen) != 1L || is.na(chosen)) {
+        chosen <- 2L
+      }
+      locked_solver <- if (chosen %in% c(1L, 4L)) 1L else 0L
+      resolved_solver_code <- locked_solver
+    }
+
     cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {
       # res.impute$imputed_values: N_miss x 3 matrix of
@@ -383,21 +399,15 @@ pca_imp <- function(
     }
   }
 
-  # column/row indices returned by C++ are already original-matrix indices,
-  imp_indices <- cbind(best_imputed[, 1], best_imputed[, 2])
-  obj[imp_indices] <- best_imputed[, 3]
-
-  if (post_imp) {
-    obj <- mean_imp_col(obj)
-  }
-
-  return(
-    new_slideimp_results(
-      obj,
-      "pca",
-      fallback = FALSE,
-      post_imp = post_imp,
-      na_check = na_check
-    )
+  solver_chosen <- if (resolved_solver_code == 1L) "lobpcg" else "exact"
+  out <- new_slideimp_results(
+    obj,
+    "pca",
+    fallback = FALSE,
+    post_imp = post_imp,
+    na_check = na_check
   )
+  attr(out, "solver_requested") <- solver
+  attr(out, "solver_chosen") <- solver_chosen
+  return(out)
 }

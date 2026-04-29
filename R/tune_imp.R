@@ -389,11 +389,11 @@ resolve_na_loc <- function(
 #' @inheritSection pca_imp Performance tips
 #'
 #' @returns A `data.frame` of class `slideimp_tune` containing:
-#'   - columns originally provided in `parameters`;
-#'   - `param_set`, an integer ID for each unique parameter combination;
-#'   - `rep_id`, an integer repetition index;
+#'   - columns originally provided in `parameters`
+#'   - `param_set`, an integer ID for each unique parameter combination
+#'   - `rep_id`, an integer repetition index
 #'   - `result`, a list-column where each element is a data frame containing
-#'     `truth` and `estimate` columns;
+#'     `truth` and `estimate` columns
 #'   - `error`, a character column containing the error message if the
 #'     iteration failed, otherwise `NA`.
 #'

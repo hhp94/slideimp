@@ -44,7 +44,8 @@ LinkingTo:
     Rcpp,
     RcppArmadillo,
     RcppEnsmallen,
-    RcppThread
+    RcppThread,
+    rcpptimer
 VignetteBuilder: 
     knitr
 Config/testthat/edition: 3

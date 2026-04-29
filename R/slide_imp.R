@@ -236,8 +236,8 @@ slide_imp <- function(
       lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
       .var.name = "ncp"
     )
-    # Other PCA arguments, including lobpcg_control, are checked in pca_imp().
-    # Do not resolve lobpcg_control here; pca_imp() needs the actual window size
+    # other PCA arguments, including lobpcg_control, are checked in pca_imp().
+    # Do not resolve lobpcg_control here. `pca_imp()` needs the actual window size
     # to apply solver = "auto" correctly per window.
   }
 
@@ -340,11 +340,18 @@ slide_imp <- function(
   }
 
   # Sliding Imputation ----
-  result <- matrix(
-    0,
-    nrow = nrow(obj), ncol = ncol(obj),
-    dimnames = list(rownames(obj), colnames(obj))
-  )
+  result <- obj
+
+  copy_max_bytes <- 500 * 1024^2
+  copy_max_cols_per_chunk <- as.integer(copy_max_bytes %/% (max(1L, nrow(result)) * 8))
+  copy_col_chunk <- min(10000L, max(1L, copy_max_cols_per_chunk))
+
+  if (length(subset) > 0L) {
+    for (s in seq(1L, length(subset), by = copy_col_chunk)) {
+      e <- min(s + copy_col_chunk - 1L, length(subset))
+      result[, subset[s:e]] <- 0
+    }
+  }
 
   if (.progress) {
     message("Step 1/2: Imputing")
@@ -355,6 +362,11 @@ slide_imp <- function(
   # meta data
   fallback_flags <- logical(length(start))
   skipped_flags <- logical(length(start))
+
+  # for PCA with solver = "auto", let the first successful PCA window choose
+  # the concrete solver, then reuse that solver for the remaining windows.
+  pca_solver_current <- if (imp_method == "pca") solver else NULL
+  pca_solver_lock_window <- NA
   for (i in seq_along(start)) {
     if (.progress && (i %% n_steps == 0 || i == n_windows || i == 1)) {
       message(sprintf(" Processing window %d of %d", i, n_windows))
@@ -376,7 +388,7 @@ slide_imp <- function(
             obj = sub_mat, ncp = ncp, scale = scale, method = method,
             coeff.ridge = coeff.ridge, threshold = threshold, seed = seed,
             nb.init = nb.init, maxiter = maxiter, miniter = miniter,
-            row.w = row.w, lobpcg_control = lobpcg_control, solver = solver,
+            row.w = row.w, lobpcg_control = lobpcg_control, solver = pca_solver_current,
             na_check = FALSE, colmax = colmax, post_imp = post_imp
           )
         }
@@ -396,15 +408,28 @@ slide_imp <- function(
     fallback_flags[i] <- isTRUE(attr(imputed_window, "fallback"))
     skipped_flags[i] <- isTRUE(attr(imputed_window, "skipped"))
 
+    if (
+      imp_method == "pca" && solver == "auto" && pca_solver_current == "auto" &&
+        !fallback_flags[i]
+    ) {
+      chosen_solver <- attr(imputed_window, "solver_chosen", exact = TRUE)
+      if (
+        is.character(chosen_solver) && length(chosen_solver) == 1L && chosen_solver %in% c("exact", "lobpcg")
+      ) {
+        pca_solver_current <- chosen_solver
+        pca_solver_lock_window <- i
+      }
+    }
+
     if (skipped_flags[i]) {
       next
     }
 
-    if (flank) {
-      local_idx <- subset_list[[i]]
-      result[, window_cols[local_idx]] <- result[, window_cols[local_idx]] + imputed_window[, local_idx]
-    } else {
-      result[, window_cols] <- result[, window_cols] + imputed_window
+    local_idx <- subset_list[[i]]
+
+    if (length(local_idx) > 0L) {
+      global_idx <- window_cols[local_idx]
+      result[, global_idx] <- result[, global_idx, drop = FALSE] + imputed_window[, local_idx, drop = FALSE]
     }
   }
 
@@ -414,18 +439,20 @@ slide_imp <- function(
 
   if (flank) {
     # in flank mode each target column is imputed exactly once, no averaging needed.
-    # columns not targeted by any surviving window get original values.
+    # Columns not targeted by any surviving window, or skipped, get original values.
     skipped_targets <- target_cols[skipped_flags]
     uncovered <- union(setdiff(subset, target_cols), skipped_targets)
+
     if (length(uncovered) > 0) {
-      result[, uncovered] <- obj[, uncovered]
+      for (s in seq(1L, length(uncovered), by = copy_col_chunk)) {
+        e <- min(s + copy_col_chunk - 1L, length(uncovered))
+        cols <- uncovered[s:e]
+        result[, cols] <- obj[, cols, drop = FALSE]
+      }
+
       if (.progress) {
         message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
       }
-    }
-    non_subset <- setdiff(seq_len(ncol(obj)), subset)
-    if (length(non_subset) > 0) {
-      result[, non_subset] <- obj[, non_subset]
     }
   } else {
     counts_vec <- overlap$counts_vec
@@ -439,15 +466,22 @@ slide_imp <- function(
         counts_vec[cols_i] <- counts_vec[cols_i] - 1L
       }
     }
-    # average only where multiple windows overlap
-    gt_1_idx <- which(counts_vec > 1)
+    # average only target columns where multiple non-skipped windows overlap.
+    target_counts <- counts_vec[subset]
+
+    gt_1_idx <- subset[target_counts > 1L]
     if (length(gt_1_idx) > 0) {
       result[, gt_1_idx] <- sweep(result[, gt_1_idx, drop = FALSE], 2, counts_vec[gt_1_idx], "/")
     }
-    # restore original values for columns not covered by any window
-    uncovered <- which(counts_vec == 0)
+
+    # restore original values for target columns not covered by any non-skipped window.
+    uncovered <- subset[target_counts == 0L]
     if (length(uncovered) > 0) {
-      result[, uncovered] <- obj[, uncovered]
+      for (s in seq(1L, length(uncovered), by = copy_col_chunk)) {
+        e <- min(s + copy_col_chunk - 1L, length(uncovered))
+        cols <- uncovered[s:e]
+        result[, cols] <- obj[, cols, drop = FALSE]
+      }
       if (.progress) {
         message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
       }
@@ -463,11 +497,8 @@ slide_imp <- function(
     }
     has_remaining_na <- FALSE
     if (length(imputed_cols) > 0L) {
-      max_bytes <- 500 * 1024^2
-      max_cols_per_chunk <- as.integer(max_bytes %/% (nrow(result) * 8))
-      chunk <- min(10000L, max(1L, max_cols_per_chunk))
-      for (s in seq(1L, length(imputed_cols), by = chunk)) {
-        e <- min(s + chunk - 1L, length(imputed_cols))
+      for (s in seq(1L, length(imputed_cols), by = copy_col_chunk)) {
+        e <- min(s + copy_col_chunk - 1L, length(imputed_cols))
         if (anyNA(result[, imputed_cols[s:e], drop = FALSE])) {
           has_remaining_na <- TRUE
           break
@@ -487,5 +518,15 @@ slide_imp <- function(
   attr(result, "has_remaining_na") <- has_remaining_na
   attr(result, "flank") <- flank
   attr(result, "post_imp") <- post_imp
+  if (imp_method == "pca") {
+    attr(result, "solver_requested") <- solver
+    attr(result, "solver_chosen") <- if (solver == "auto") {
+      if (is.na(pca_solver_lock_window)) NA else pca_solver_current
+    } else {
+      solver
+    }
+    attr(result, "solver_lock_window") <- pca_solver_lock_window
+  }
+
   result
 }

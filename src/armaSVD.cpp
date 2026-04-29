@@ -308,6 +308,7 @@ Rcpp::List pca_imp_internal_cpp(
     const arma::uword miniter,
     arma::rowvec row_w,
     const double coeff_ridge,
+    const int solver,
     const arma::uword warmup_iters,
     const double lobpcg_tol,
     const arma::uword lobpcg_maxiter)
@@ -334,6 +335,19 @@ Rcpp::List pca_imp_internal_cpp(
   {
     Rcpp::stop("ncp must be >= 1");
   }
+  if (solver < 0 || solver > 2)
+  {
+    Rcpp::stop("solver must be 0 (exact), 1 (lobpcg), or 2 (auto)");
+  }
+
+  const bool solver_auto = (solver == 2);
+  const bool lobpcg_requested = (solver != 0);
+
+  if (lobpcg_requested && lobpcg_maxiter == 0)
+  {
+    Rcpp::stop("lobpcg_maxiter must be >= 1 when solver is 1 (lobpcg) or 2 (auto)");
+  }
+
   if (n_elig == 0)
   {
     Rcpp::stop("eligible_idx is empty");
@@ -379,7 +393,8 @@ Rcpp::List pca_imp_internal_cpp(
     }
 
     // LOBPCG internally solves small Rayleigh-Ritz problems up to ~3*k_eig.
-    if (lobpcg_maxiter > 0)
+    // only apply this guard when the requested solver can actually use LOBPCG.
+    if (lobpcg_requested && lobpcg_maxiter > 0)
     {
       const long double rr_dim = 3.0L * static_cast<long double>(k_eig);
       const long double dsyevd_lwork = 1.0L + 6.0L * rr_dim + 2.0L * rr_dim * rr_dim;
@@ -395,9 +410,23 @@ Rcpp::List pca_imp_internal_cpp(
 
     const arma::uword int_max = static_cast<arma::uword>((std::numeric_limits<int>::max)());
 
-    if (warmup_iters > int_max || lobpcg_maxiter > int_max)
+    if (lobpcg_requested)
     {
-      Rcpp::stop("LOBPCG iteration controls exceed int range");
+      if (warmup_iters > int_max || lobpcg_maxiter > int_max)
+      {
+        Rcpp::stop("LOBPCG iteration controls exceed int range");
+      }
+
+      if (solver_auto)
+      {
+        const arma::uword auto_probe =
+            static_cast<arma::uword>(HYB_AUTO_N_PROBE_ITER_DEFAULT);
+
+        if (warmup_iters > int_max - auto_probe)
+        {
+          Rcpp::stop("warmup_iters + auto probe iterations exceed int range");
+        }
+      }
     }
   }
 
@@ -661,9 +690,12 @@ Rcpp::List pca_imp_internal_cpp(
 
   HybridEigContext hyb_ctx;
   hyb_ctx.eig_ws = &eig_ws;
-  hyb_ctx.warmup_iters = static_cast<int>(warmup_iters);
+  hyb_ctx.solver_mode = static_cast<HybridSolverMode>(solver);
+  hyb_ctx.warmup_iters = lobpcg_requested ? static_cast<int>(warmup_iters) : 0;
   hyb_ctx.lobpcg_opt.tol = lobpcg_tol;
-  hyb_ctx.lobpcg_opt.maxiter = static_cast<int>(lobpcg_maxiter);
+  hyb_ctx.lobpcg_opt.maxiter = lobpcg_requested ? static_cast<int>(lobpcg_maxiter) : 0;
+  hyb_ctx.auto_n_probe_iter = HYB_AUTO_N_PROBE_ITER_DEFAULT;
+  hyb_ctx.auto_margin = HYB_AUTO_MARGIN_DEFAULT;
 #if PCA_IMP_DIAGNOSTICS
   hyb_ctx.path_log.assign(maxiter, HYB_NOT_RUN);
   hyb_ctx.reason_log.assign(maxiter, HYB_REASON_NOT_RUN);
@@ -692,6 +724,10 @@ Rcpp::List pca_imp_internal_cpp(
 
   for (arma::uword nb_iter = 1;; ++nb_iter)
   {
+    if (nb_iter % 5 == 0)
+    {
+      Rcpp::checkUserInterrupt();
+    }
     LOC_TIC(pca_imp_gram, "restandardize");
     impute_restandardize_dispatch(
         scale,
@@ -908,12 +944,18 @@ Rcpp::List pca_imp_internal_cpp(
   return Rcpp::List::create(
       Rcpp::Named("imputed_values") = imputed_values,
       Rcpp::Named("mse") = mse,
+      Rcpp::Named("solver_chosen") = hyb_ctx.solver_chosen_code(),
       Rcpp::Named("eigval_hist") = eigval_hist,
       Rcpp::Named("obj_hist") = obj_hist,
       Rcpp::Named("subspace_cos_hist") = subspace_cos_hist,
       Rcpp::Named("n_exact") = hyb_ctx.n_exact,
       Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
       Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad,
+      Rcpp::Named("auto_n_probe_iter") = hyb_ctx.auto_n_probe_iter,
+      Rcpp::Named("auto_exact_n") = hyb_ctx.auto_exact_n,
+      Rcpp::Named("auto_lobpcg_n") = hyb_ctx.auto_lobpcg_n,
+      Rcpp::Named("auto_exact_mean_sec") = hyb_ctx.auto_exact_mean_sec(),
+      Rcpp::Named("auto_lobpcg_mean_sec") = hyb_ctx.auto_lobpcg_mean_sec(),
       Rcpp::Named("eig_path") = hyb_ctx.path_log,
       Rcpp::Named("eig_reason") = hyb_ctx.reason_log,
       Rcpp::Named("eig_lobpcg_iter") = hyb_ctx.lobpcg_iter_log,
@@ -923,6 +965,7 @@ Rcpp::List pca_imp_internal_cpp(
   return Rcpp::List::create(
       Rcpp::Named("imputed_values") = imputed_values,
       Rcpp::Named("mse") = mse,
+      Rcpp::Named("solver_chosen") = hyb_ctx.solver_chosen_code(),
       Rcpp::Named("n_exact") = hyb_ctx.n_exact,
       Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
       Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad);

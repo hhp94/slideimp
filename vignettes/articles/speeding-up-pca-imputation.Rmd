@@ -13,7 +13,6 @@ knitr::opts_chunk$set(
 library(slideimp)
 ```
 
-
 # Tips to speed up PCA imputation
 
 `pca_imp()` is the PCA imputation workhorse used by `slide_imp()`, `tune_imp()`, and `group_imp()` whenever PCA imputation is requested. This article describes how to make PCA imputation faster by choosing the convergence threshold, the PCA eigensolver, and a parallel backend with `{mirai}`.
@@ -42,7 +41,7 @@ However, for large genomic matrices, runtime can depend strongly on two argument
   - The default is `threshold = 1e-6`, matching the conservative behavior of `{missMDA}`.
   - For many genomic matrices, `threshold = 1e-5` can be much faster while producing very similar imputed values.
 * `solver`: the eigensolver used inside `pca_imp()`.
-  - `solver = "auto"` uses an internal rule to choose a solver.
+  - `solver = "auto"` runs a short timed probe of both solvers and picks the faster one.
   - `solver = "exact"` forces the exact solver.
   - `solver = "lobpcg"` forces the iterative LOBPCG solver.
 
@@ -55,9 +54,12 @@ However, for large genomic matrices, runtime can depend strongly on two argument
 
 The exact solver is robust and often fast for small to moderate matrices. The iterative LOBPCG solver can be faster for large or approximately low-rank genomic matrices, especially when only a small number of principal components is needed.
 
-The default `solver = "auto"` rule is intentionally conservative. It usually uses LOBPCG only when the smaller matrix dimension is large and `ncp` is modest. However, many genomic datasets are approximately low-rank, so `solver = "lobpcg"` can sometimes be faster even when the matrix is smaller than the automatic cutoff.
+The default `solver = "auto"` runs a small number of probe iterations of each solver at the start of the run, measures wall-clock time, and picks LOBPCG only if it is clearly faster than the exact solver. This decision is data-dependent and is made per call.
 
-Because solver speed is data-dependent, the safest approach is to time both solvers on a representative subset before running the full analysis, especially `tune_imp()`.
+For most users, `solver = "auto"` is a good default. Manual benchmarking is still useful in two situations:
+
+* Before a long `tune_imp()` run, where amortizing the probe overhead across many calls matters less than knowing the right solver up front.
+* When you suspect the auto choice is wrong (for example, very large or very low-rank matrices where LOBPCG should clearly win, or very small windows where the exact solver should clearly win).
 
 ## Recommended workflow
 
@@ -83,7 +85,7 @@ mean(is.na(obj_probe))
 
 ## Time solver and threshold settings
 
-First, choose a small `ncp` for the speed probe. This does not need to be the final `ncp`; the goal is to identify whether the exact or iterative solver is faster on this kind of data. We use a relaxed `threshold = 1e-5` to keep the probe quick. Both solvers stop at the same convergence criterion, so their relative timing is representative.
+First, choose a small `ncp` for the speed probe. This does not need to be the final `ncp`. The goal is to identify whether the exact or iterative solver is faster on this kind of data. We use a relaxed `threshold = 1e-5` to keep the probe quick. Both solvers stop at the same convergence criterion, so their relative timing is representative.
 
 ```{r}
 ncp_probe <- 5
@@ -124,7 +126,7 @@ compute_metrics(res)
 
 If `threshold = 1e-5` changes cross-validation error or imputed values more than expected, use the more conservative `threshold = 1e-6`.
 
-If `solver = "lobpcg"` is not clearly faster on the representative subset, force the exact solver with `solver = "exact"`.
+If neither solver is clearly faster on the representative subset, `solver = "auto"` is fine. If one solver is clearly faster, force it explicitly to skip the auto probe overhead.
 
 ## Use the chosen settings with `tune_imp()`
 
@@ -162,7 +164,7 @@ aggregate(
 
 The same idea applies when tuning sliding-window PCA imputation. First choose the speed settings on a representative subset, then include those fixed settings in the `parameters` data frame while tuning window and PCA parameters.
 
-`slide_imp()` typically operates on small windows with few samples, so the `"exact"` solver is usually the better default.
+`slide_imp()` typically operates on small windows with few samples, so the `"exact"` solver is usually the better default. Forcing `solver = "exact"` also avoids paying the auto probe cost on every window.
 
 ```{r}
 beta_matrix <- obj_probe # We treat `obj_probe` as a slide_imp() input instead
@@ -229,7 +231,7 @@ tune_pca <- tune_imp(
   obj = obj_probe,
   .f = "pca_imp",
   parameters = params,
-  n_reps = 1, 
+  n_reps = 1,
   .progress = FALSE # <- `TRUE` to monitor longer running jobs
 )
 
@@ -279,12 +281,12 @@ mirai::daemons(0)
 
 ## Practical recommendations
 
-* Start with `solver = "auto"` unless PCA imputation is slow.
-* If PCA imputation is slow, benchmark `solver = "exact"` against `solver = "lobpcg"` on a representative subset.
+* Start with `solver = "auto"` unless PCA imputation is slow or you are about to run many calls (e.g., with `tune_imp()`) where the per-call probe overhead adds up.
+* If PCA imputation is slow, benchmark `solver = "exact"` against `solver = "lobpcg"` on a representative subset and force the winner.
 * Try `threshold = 1e-5` or higher, depending on your error tolerance.
 * Keep `threshold = 1e-5` only if it produces similar imputed values or similar cross-validation error.
 * LOBPCG is most likely to help when the matrix is large, approximately low-rank, and `ncp` is small.
-* If LOBPCG is not clearly faster, use `solver = "exact"`.
+* For `slide_imp()`, force `solver = "exact"`. Windows are usually small enough that exact wins, and forcing it avoids the per-window probe.
 * Choose speed settings first, then tune accuracy-related parameters such as `ncp`, `coeff.ridge`, and `window_size`.
 * If running PCA imputation sequentially, BLAS multi-threading may help, and `pin_blas` is unnecessary.
 * If running many PCA imputations in parallel with `{mirai}`, use `pin_blas = TRUE`.
