@@ -66,6 +66,7 @@ imputed <- group_imp(
   obj = MSA_beta_matrix,
   group = "MSA", # <- this feature requires the `slideimp.extra` package
   ncp = 10, # <- change to `k` for K-NN imputation
+  clamp = c(0, 1), # <- PCA imputation can generate values outside of `c(0, 1)`
   .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
 # Found cleaned manifest for 'MSA'
@@ -100,21 +101,22 @@ print(imputed, n = 4, p = 4)
 
 ### Performance tips
 
-- **PCA performance tuning:** for guidance on choosing `threshold`,
-  `solver`, configuring `lobpcg_control`, and using `{mirai}`/BLAS
-  threading effectively, see [Speeding up PCA
+- For PCA performance tuning, including guidance on choosing
+  `threshold`, selecting `solver`, configuring `lobpcg_control`, and
+  using `{mirai}` or BLAS threading effectively, see [Speeding up PCA
   imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html).
-- **Parallel PCA imputation with a threaded BLAS** (OpenBLAS or MKL):
-  set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers don’t
-  compete for cores. Requires `{RhpcBLASctl}`.
-- **Faster PCA imputation on Windows machines** *(optional, advanced):*
-  R on Windows ships with a reference BLAS that’s slow for dense linear
-  algebra. Swapping it for OpenBLAS can significantly speed up the PCA
-  imputation - see [this community
+- For PCA imputation of bounded data, i.e., DNA methylation beta values,
+  use `clamp = c(0, 1)` to restrict PCA-imputed values to the valid
+  range.
+- For parallel PCA imputation with a threaded BLAS such as OpenBLAS or
+  MKL, set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers do
+  not compete for cores. This requires `{RhpcBLASctl}`.
+- For faster PCA imputation on Windows machines, advanced users can
+  replace R’s default reference BLAS with OpenBLAS. See [this community
   guide](https://github.com/david-cortes/R-openblas-in-windows).
-- **Parallel K-NN imputation:** use the `cores` argument
-  (`{RcppThread}`’s `parallelFor`) instead of `{mirai}`. If you only
-  need clock CpGs, pass `subset` to skip all other probes.
+- For parallel K-NN imputation, use the `cores` argument, which uses
+  `{RcppThread}`’s `parallelFor`, instead of `{mirai}`. If you only need
+  clock CpGs, pass `subset` to skip all other probes.
 
 ## Extended Workflow
 
@@ -384,7 +386,8 @@ slide_imp(
   high-dimensional numeric matrices (WGBS/EM-seq) with ordered features
   (i.e., by genomic position).
 - `tune_imp()`: Parallelizable hyperparameter tuning with repeated
-  cross-validation; works with built-in or custom imputation functions.
+  cross-validation that works with built-in or custom imputation
+  functions.
 - `knn_imp()`: Full-matrix K-NN imputation with multi-core
   parallelization, [`mlpack`](https://mlpack.org/) KD/Ball-Tree nearest
   neighbor implementation (for data with very low missing rates and

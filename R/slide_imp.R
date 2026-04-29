@@ -180,6 +180,7 @@ slide_imp <- function(
   miniter = 5,
   solver = c("auto", "exact", "lobpcg"),
   lobpcg_control = NULL,
+  clamp = NULL,
   # Shared
   method = NULL,
   .progress = TRUE,
@@ -390,7 +391,8 @@ slide_imp <- function(
             coeff.ridge = coeff.ridge, threshold = threshold, seed = seed,
             nb.init = nb.init, maxiter = maxiter, miniter = miniter,
             row.w = row.w, lobpcg_control = lobpcg_control, solver = pca_solver_current,
-            na_check = FALSE, colmax = colmax, post_imp = post_imp
+            na_check = FALSE, colmax = colmax, post_imp = post_imp,
+            clamp = clamp
           )
         }
       ),

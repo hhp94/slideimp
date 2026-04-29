@@ -560,6 +560,7 @@ tune_imp <- function(
           # pca branch
           "scale", "coeff.ridge", "threshold", "row.w",
           "seed", "nb.init", "maxiter", "miniter", "lobpcg_control", "solver",
+          "clamp",
           # suppressed
           ".progress"
         )

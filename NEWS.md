@@ -2,21 +2,31 @@
 
 ## Breaking changes
 
-* `knn_imp()` no longer caches pair-wise distances. The `use_cache` argument has been removed.
+* `knn_imp()` no longer caches pair-wise distances. The `use_cache` argument
+  has been removed.
 
 ## New features
 
-* `pca_imp()` gains support for the LOBPCG eigensolver, selected via the new `solver` argument and tuned with `lobpcg_control()`.
+* `pca_imp()` gained a `solver` argument to select the LOBPCG eigensolver,
+  configured via the new `lobpcg_control()` helper.
+
+* `pca_imp()` gained a `clamp` argument to bound imputed values, e.g.
+  `c(0, 1)` for methylation beta values. Also threaded through `slide_imp()`
+  and `group_imp()`.
 
 ## Minor improvements and fixes
 
-* `knn_imp()` now uses `{RcppThread}` instead of OpenMP, enabling parallelism on macOS.
+* `knn_imp()` now uses `{RcppThread}` instead of OpenMP, enabling parallelism
+  on macOS.
 
-* `tune_imp()` now infers the subset from `na_loc`, speeding up tuning for `knn_imp()` and `slide_imp()`.
+* `tune_imp()` now infers the subset from `na_loc`, speeding up tuning for
+  `knn_imp()` and `slide_imp()`.
 
-* `prep_groups()` is now an S3 generic, replacing the previous register-on-load pattern with `{slideimp.extra}`.
+* `prep_groups()` is now an S3 generic, replacing the previous register-on-load
+  pattern with `{slideimp.extra}`.
 
-* New article describing how to speed up PCA imputation by choosing `solver` and `threshold`.
+* New article describing how to speed up PCA imputation by choosing `solver`
+  and `threshold`.
 
 * Fixed numerical tolerance check failure on CRAN's ATLAS configuration.
 

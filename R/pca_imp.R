@@ -1,3 +1,59 @@
+#' Validate Clamp Bounds
+#'
+#' @param clamp `NULL` or a numeric vector of length 2.
+#' @param arg Argument name used in error messages.
+#'
+#' @return `NULL` or an unnamed numeric vector of length 2.
+#'
+#' @keywords internal
+#' @noRd
+resolve_clamp <- function(clamp, arg = "clamp") {
+  if (is.null(clamp)) {
+    return(NULL)
+  }
+
+  if (length(clamp) == 1L) {
+    cli::cli_abort(c(
+      "{.arg {arg}} must be a numeric vector of length 2: {.code c(lower, upper)}.",
+      "i" = "For upper-bound-only clamping, use {.code c(-Inf, upper)}.",
+      "i" = "For lower-bound-only clamping, use {.code c(lower, Inf)}."
+    ))
+  }
+
+  if (length(clamp) != 2L) {
+    cli::cli_abort(c(
+      "{.arg {arg}} must be a numeric vector of length 2: {.code c(lower, upper)}.",
+      "i" = "Use {.code NULL} for no clamping.",
+      "i" = "Use {.code c(-Inf, upper)} or {.code c(lower, Inf)} for one-sided clamping."
+    ))
+  }
+
+  if (anyNA(clamp)) {
+    cli::cli_abort(c(
+      "{.arg {arg}} cannot contain missing values.",
+      "i" = "Use {.code -Inf} or {.code Inf} for an open bound.",
+      "i" = "For example, use {.code c(-Inf, 1)} or {.code c(0, Inf)}, not {.code c(NA, 1)} or {.code c(0, NA)}."
+    ))
+  }
+
+  checkmate::assert_numeric(
+    clamp,
+    len = 2L,
+    any.missing = FALSE,
+    finite = FALSE,
+    null.ok = FALSE,
+    .var.name = arg
+  )
+
+  if (clamp[1L] > clamp[2L]) {
+    cli::cli_abort(
+      "{.arg {arg}} must be ordered as {.code c(lower, upper)} with lower <= upper."
+    )
+  }
+
+  return(unname(as.numeric(clamp)))
+}
+
 #' LOBPCG Eigensolver Control Options
 #'
 #' Construct a validated list of control options for the LOBPCG eigensolver
@@ -191,6 +247,11 @@ new_lobpcg_control <- function(
 #'   proportion greater than `colmax` are not imputed.
 #' @param post_imp Logical. If `TRUE`, replace any remaining missing values
 #'   with column means after PCA imputation.
+#' @param clamp Optional numeric vector of length 2 giving lower and upper bounds
+#'   for PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
+#'   methylation beta values. Use `c(lb, Inf)` for only lower bound clamping, or
+#'   `c(-Inf, ub)` for only upper bound clamping. Clamping is applied only to
+#'   values imputed by the PCA step, not to observed values.
 #' @param na_check Logical. If `TRUE`, check whether the result still contains
 #'   missing values.
 #'
@@ -259,7 +320,8 @@ pca_imp <- function(
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE
+  na_check = TRUE,
+  clamp = NULL
 ) {
   # pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
@@ -304,6 +366,7 @@ pca_imp <- function(
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   checkmate::assert_flag(na_check, .var.name = "na_check")
+  clamp <- resolve_clamp(clamp, arg = "clamp")
 
   # per-column missingnesss
   cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
@@ -318,13 +381,30 @@ pca_imp <- function(
 
   # eligibility: below colmax and non-degenerate variance
   obj_vars <- col_vars(obj)
-  eligible <- miss_rate < min(colmax, 1) &
+  eligible <- miss_rate <= min(colmax, 1) &
     !(obj_vars < .Machine$double.eps | is.na(obj_vars))
 
   n_elig <- sum(eligible)
-  cap <- min(nrow(obj) - 2L, n_elig - 1L)
-  row_bound <- nrow(obj) - 2L <= n_elig - 1L
+
+  max_ncp_rows <- nrow(obj) - 2L
+  max_ncp_cols <- n_elig - 1L
+  cap <- min(max_ncp_rows, max_ncp_cols)
+
+  if (cap < 1L) {
+    cli::cli_abort(
+      c(
+        "PCA imputation is infeasible with the current data and settings.",
+        "i" = "Number of rows: {nrow(obj)}.",
+        "i" = "Number of eligible columns: {n_elig}.",
+        "i" = "Relax {.arg colmax}, remove zero-variance columns, or use more rows/columns."
+      ),
+      class = "slideimp_infeasible"
+    )
+  }
+
   if (ncp > cap) {
+    row_bound <- max_ncp_rows <= max_ncp_cols
+
     cli::cli_abort(
       c(
         "{.arg ncp} ({ncp}) exceeds the maximum usable components ({cap}).",
@@ -351,7 +431,7 @@ pca_imp <- function(
 
   # solver = "auto" policy.
   #
-  # The eigensystem dimension is the Gram dimension used by the backend.
+  # the eigensystem dimension is the Gram dimension used by the backend.
   # LOBPCG is usually not worth probing for small eigensystems or when the
   # requested rank is a large fraction of the eigensystem dimension.
   k_eig <- as.integer(ncp + if (method == "regularized") 1L else 0L)
@@ -459,6 +539,13 @@ pca_imp <- function(
   # column/row indices returned by backend are already original-matrix indices.
   if (is.null(best_imputed) || nrow(best_imputed) == 0L) {
     cli::cli_abort("Internal error: PCA imputation produced no imputed values.")
+  }
+
+  if (!is.null(clamp)) {
+    best_imputed[, 3] <- pmin(
+      pmax(best_imputed[, 3], clamp[1L]),
+      clamp[2L]
+    )
   }
 
   imp_indices <- cbind(

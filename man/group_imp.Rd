@@ -29,6 +29,7 @@ group_imp(
   miniter = NULL,
   solver = NULL,
   lobpcg_control = NULL,
+  clamp = NULL,
   pin_blas = FALSE,
   na_check = TRUE,
   on_infeasible = c("error", "skip", "mean")
@@ -125,6 +126,12 @@ is reused for subsequent PCA initializations.}
 \item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
 created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. Ignored
 when \code{solver = "exact"}.}
+
+\item{clamp}{Optional numeric vector of length 2 giving lower and upper bounds
+for PCA-imputed values. Use \code{NULL} for no clamping. Use \code{c(0, 1)} for DNA
+methylation beta values. Use \code{c(lb, Inf)} for only lower bound clamping, or
+\code{c(-Inf, ub)} for only upper bound clamping. Clamping is applied only to
+values imputed by the PCA step, not to observed values.}
 
 \item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 to reduce
 contention when using parallel PCA on systems linked with multithreaded

@@ -320,6 +320,45 @@ test_that("pca_imp falls back to mean imputation when ncp > usable eligible colu
   )
 })
 
+test_that("pca_imp clamps imputed values to specified bounds", {
+  set.seed(1234)
+  to_test <- sim_mat(30, 8, perc_total_na = 0.1)$input
+  na_pos <- which(is.na(to_test), arr.ind = TRUE)
+  observed_mask <- !is.na(to_test)
+  observed_before <- to_test[observed_mask]
+
+  # lower bound far above any plausible imputation -> all imputed == 999
+  res_lo <- pca_imp(
+    to_test, ncp = 2, seed = 1234,
+    clamp = c(999, Inf), post_imp = FALSE
+  )
+  expect_true(all(res_lo[na_pos] == 999))
+  expect_equal(res_lo[observed_mask], observed_before)
+
+  # upper bound far below any plausible imputation -> all imputed == -999
+  res_hi <- pca_imp(
+    to_test, ncp = 2, seed = 1234,
+    clamp = c(-Inf, -999), post_imp = FALSE
+  )
+  expect_true(all(res_hi[na_pos] == -999))
+  expect_equal(res_hi[observed_mask], observed_before)
+})
+
+test_that("post_imp fills NAs in ineligible columns with column mean", {
+  set.seed(1234)
+  to_test <- sim_mat(30, 8, perc_total_na = 0.05)$input
+  to_test[1:28, 1] <- NA  # column 1 exceeds colmax = 0.9
+
+  res_with <- pca_imp(to_test, ncp = 2, seed = 1234, colmax = 0.9, post_imp = TRUE)
+  res_without <- pca_imp(to_test, ncp = 2, seed = 1234, colmax = 0.9, post_imp = FALSE)
+
+  expect_false(anyNA(res_with))
+  expect_true(anyNA(res_without[, 1]))
+  # filled values should equal column mean of remaining observed
+  filled <- res_with[is.na(to_test[, 1]), 1]
+  expect_true(all(filled == mean(to_test[, 1], na.rm = TRUE)))
+})
+
 test_that("pca_imp doesn't mess up the original object", {
   set.seed(1234)
   to_test <- sim_mat(30, 30, perc_total_na = 0.1, perc_col_na = 1)$input

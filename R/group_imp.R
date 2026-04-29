@@ -567,6 +567,7 @@ group_imp <- function(
   miniter = NULL,
   solver = NULL,
   lobpcg_control = NULL,
+  clamp = NULL,
   pin_blas = FALSE,
   na_check = TRUE,
   on_infeasible = c("error", "skip", "mean")
@@ -606,13 +607,13 @@ group_imp <- function(
     cli::cli_abort("Cannot specify both {.arg k} and {.arg ncp} as global parameters.")
   }
 
-  # Global fills gaps (group-wise wins)
+  # global fills gaps (group-wise wins)
   global_params <- list(
     k = k, method = method, colmax = colmax, post_imp = post_imp,
     dist_pow = dist_pow, tree = tree, ncp = ncp, scale = scale,
     coeff.ridge = coeff.ridge, threshold = threshold, row.w = row.w,
     seed = seed, nb.init = nb.init, maxiter = maxiter, miniter = miniter,
-    lobpcg_control = lobpcg_control, solver = solver
+    lobpcg_control = lobpcg_control, solver = solver, clamp = clamp
   )
   global_params <- global_params[!vapply(global_params, is.null, logical(1))]
 
@@ -623,7 +624,7 @@ group_imp <- function(
     p
   })
 
-  # Validate: each group has exactly one of k or ncp
+  # validate: each group has exactly one of k or ncp
   has_k <- vapply(group$parameters, \(p) "k" %in% names(p), logical(1))
   has_ncp <- vapply(group$parameters, \(p) "ncp" %in% names(p), logical(1))
 
@@ -652,7 +653,7 @@ group_imp <- function(
   is_knn_mode <- imp_method == "knn"
   reg <- .param_registry[[imp_method]]
 
-  # Validate method values
+  # validate method values
   valid_methods <- reg$methods
   bad_method <- vapply(group$parameters, function(p) {
     !is.null(p$method) && !(p$method %in% valid_methods)
@@ -666,7 +667,7 @@ group_imp <- function(
     ))
   }
 
-  # Validate parameter names
+  # validate parameter names
   all_param_names <- unique(unlist(lapply(group$parameters, names), use.names = FALSE))
 
   check_unknown_params(
@@ -675,7 +676,7 @@ group_imp <- function(
     arg = "group$parameters"
   )
 
-  # Cap per-group k/ncp
+  # cap per-group k/ncp
   group_size <- feat_lengths + aux_lengths
   required_param <- reg$required
 
@@ -706,7 +707,7 @@ group_imp <- function(
   )
 
   # Step 3: Imputation loop ----
-  # Column-index lookups
+  # column-index lookups
   iter <- seq_len(nrow(group))
 
   all_feats_vec <- unlist(group$feature)
@@ -727,7 +728,7 @@ group_imp <- function(
     prep_groups = group$feature
   )
 
-  # Parallelism resolution
+  # parallelism resolution
   parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
 
   if (is_knn_mode) {
@@ -746,7 +747,7 @@ group_imp <- function(
     cores <- 1
   }
 
-  # Build per-group call parameters
+  # build per-group call parameters
   params <- lapply(iter, function(i) {
     p <- group$parameters[[i]]
     p$na_check <- FALSE
@@ -769,7 +770,7 @@ group_imp <- function(
     cli::cli_inform("Running mode: {.strong sequential}")
   }
 
-  # Imputation
+  # imputation
   if (parallelize) {
     feat_cumsum <- cumsum(c(0L, feat_lengths))
     out_ranges <- lapply(iter, function(i) {

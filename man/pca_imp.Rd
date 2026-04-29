@@ -20,7 +20,8 @@ pca_imp(
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE
+  na_check = TRUE,
+  clamp = NULL
 )
 }
 \arguments{
@@ -76,6 +77,12 @@ with column means after PCA imputation.}
 
 \item{na_check}{Logical. If \code{TRUE}, check whether the result still contains
 missing values.}
+
+\item{clamp}{Optional numeric vector of length 2 giving lower and upper bounds
+for PCA-imputed values. Use \code{NULL} for no clamping. Use \code{c(0, 1)} for DNA
+methylation beta values. Use \code{c(lb, Inf)} for only lower bound clamping, or
+\code{c(-Inf, ub)} for only upper bound clamping. Clamping is applied only to
+values imputed by the PCA step, not to observed values.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj}, with missing
