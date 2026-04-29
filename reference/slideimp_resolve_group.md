@@ -3,7 +3,7 @@
 S3 generic for converting various group specifications into the
 canonical data.frame form expected by
 [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md).
-This generic exists only to allow `slideimp.extra` to register the
+This generic is exported only to allow `slideimp.extra` to register the
 character method.
 
 ## Usage

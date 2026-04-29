@@ -121,14 +121,14 @@ tune_imp(
 
 A `data.frame` of class `slideimp_tune` containing:
 
-- columns originally provided in `parameters`;
+- columns originally provided in `parameters`
 
-- `param_set`, an integer ID for each unique parameter combination;
+- `param_set`, an integer ID for each unique parameter combination
 
-- `rep_id`, an integer repetition index;
+- `rep_id`, an integer repetition index
 
 - `result`, a list-column where each element is a data frame containing
-  `truth` and `estimate` columns;
+  `truth` and `estimate` columns
 
 - `error`, a character column containing the error message if the
   iteration failed, otherwise `NA`.
@@ -189,8 +189,8 @@ with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
 PCA imputation speed depends on the eigensolver selected by `solver` and
 the convergence threshold `threshold`. The exact solver is selected with
 `solver = "exact"`. The iterative LOBPCG solver is selected with
-`solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
-internal rule.
+`solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
+timed probe chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful
 to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
@@ -203,8 +203,8 @@ datasets, `threshold = 1e-5` can be faster while giving very similar
 imputed values. Check this on a representative subset before using the
 relaxed threshold in a full analysis.
 
-See the pkgdown article ["Speeding up PCA
-imputation"](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
+See the pkgdown article [Speeding up PCA
+imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
 for a full workflow.
 
 ## Examples

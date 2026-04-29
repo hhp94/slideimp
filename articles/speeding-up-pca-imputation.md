@@ -57,7 +57,8 @@ arguments:
     while producing very similar imputed values.
 - `solver`: the eigensolver used inside
   [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
-  - `solver = "auto"` uses an internal rule to choose a solver.
+  - `solver = "auto"` runs a short timed probe of both solvers and picks
+    the faster one.
   - `solver = "exact"` forces the exact solver.
   - `solver = "lobpcg"` forces the iterative LOBPCG solver.
 
@@ -74,16 +75,21 @@ matrices. The iterative LOBPCG solver can be faster for large or
 approximately low-rank genomic matrices, especially when only a small
 number of principal components is needed.
 
-The default `solver = "auto"` rule is intentionally conservative. It
-usually uses LOBPCG only when the smaller matrix dimension is large and
-`ncp` is modest. However, many genomic datasets are approximately
-low-rank, so `solver = "lobpcg"` can sometimes be faster even when the
-matrix is smaller than the automatic cutoff.
+The default `solver = "auto"` runs a small number of probe iterations of
+each solver at the start of the run, measures wall-clock time, and picks
+LOBPCG only if it is clearly faster than the exact solver. This decision
+is data-dependent and is made per call.
 
-Because solver speed is data-dependent, the safest approach is to time
-both solvers on a representative subset before running the full
-analysis, especially
-[`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md).
+For most users, `solver = "auto"` is a good default. Manual benchmarking
+is still useful in two situations:
+
+- Before a long
+  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
+  run, where amortizing the probe overhead across many calls matters
+  less than knowing the right solver up front.
+- When you suspect the auto choice is wrong (for example, very large or
+  very low-rank matrices where LOBPCG should clearly win, or very small
+  windows where the exact solver should clearly win).
 
 ### Recommended workflow
 
@@ -121,7 +127,7 @@ mean(is.na(obj_probe))
 ### Time solver and threshold settings
 
 First, choose a small `ncp` for the speed probe. This does not need to
-be the final `ncp`; the goal is to identify whether the exact or
+be the final `ncp`. The goal is to identify whether the exact or
 iterative solver is faster on this kind of data. We use a relaxed
 `threshold = 1e-5` to keep the probe quick. Both solvers stop at the
 same convergence criterion, so their relative timing is representative.
@@ -153,7 +159,7 @@ iterative <- system.time(invisible(
 
 exact - iterative
 #>    user  system elapsed 
-#>  -0.007  -0.003  -0.002
+#>  -0.007  -0.004  -0.001
 ```
 
 Second, use
@@ -183,8 +189,9 @@ compute_metrics(res)
 If `threshold = 1e-5` changes cross-validation error or imputed values
 more than expected, use the more conservative `threshold = 1e-6`.
 
-If `solver = "lobpcg"` is not clearly faster on the representative
-subset, force the exact solver with `solver = "exact"`.
+If neither solver is clearly faster on the representative subset,
+`solver = "auto"` is fine. If one solver is clearly faster, force it
+explicitly to skip the auto probe overhead.
 
 ### Use the chosen settings with `tune_imp()`
 
@@ -244,7 +251,8 @@ PCA parameters.
 
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
 typically operates on small windows with few samples, so the `"exact"`
-solver is usually the better default.
+solver is usually the better default. Forcing `solver = "exact"` also
+avoids paying the auto probe cost on every window.
 
 ``` r
 beta_matrix <- obj_probe # We treat `obj_probe` as a slide_imp() input instead
@@ -340,7 +348,7 @@ tune_pca <- tune_imp(
   obj = obj_probe,
   .f = "pca_imp",
   parameters = params,
-  n_reps = 1, 
+  n_reps = 1,
   .progress = FALSE # <- `TRUE` to monitor longer running jobs
 )
 #> Tuning `pca_imp()`
@@ -421,15 +429,21 @@ macOS, depending on the BLAS implementation.
 
 ### Practical recommendations
 
-- Start with `solver = "auto"` unless PCA imputation is slow.
+- Start with `solver = "auto"` unless PCA imputation is slow or you are
+  about to run many calls (e.g., with
+  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md))
+  where the per-call probe overhead adds up.
 - If PCA imputation is slow, benchmark `solver = "exact"` against
-  `solver = "lobpcg"` on a representative subset.
+  `solver = "lobpcg"` on a representative subset and force the winner.
 - Try `threshold = 1e-5` or higher, depending on your error tolerance.
 - Keep `threshold = 1e-5` only if it produces similar imputed values or
   similar cross-validation error.
 - LOBPCG is most likely to help when the matrix is large, approximately
   low-rank, and `ncp` is small.
-- If LOBPCG is not clearly faster, use `solver = "exact"`.
+- For
+  [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
+  force `solver = "exact"`. Windows are usually small enough that exact
+  wins, and forcing it avoids the per-window probe.
 - Choose speed settings first, then tune accuracy-related parameters
   such as `ncp`, `coeff.ridge`, and `window_size`.
 - If running PCA imputation sequentially, BLAS multi-threading may help,

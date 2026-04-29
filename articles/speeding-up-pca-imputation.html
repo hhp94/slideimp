@@ -130,8 +130,8 @@ faster while producing very similar imputed values.</li>
 <code><a href="../reference/pca_imp.html">pca_imp()</a></code>.
 <ul>
 <li>
-<code>solver = "auto"</code> uses an internal rule to choose a
-solver.</li>
+<code>solver = "auto"</code> runs a short timed probe of both
+solvers and picks the faster one.</li>
 <li>
 <code>solver = "exact"</code> forces the exact solver.</li>
 <li>
@@ -154,15 +154,20 @@ solver.</li>
 matrices. The iterative LOBPCG solver can be faster for large or
 approximately low-rank genomic matrices, especially when only a small
 number of principal components is needed.</p>
-<p>The default <code>solver = "auto"</code> rule is intentionally
-conservative. It usually uses LOBPCG only when the smaller matrix
-dimension is large and <code>ncp</code> is modest. However, many genomic
-datasets are approximately low-rank, so <code>solver = "lobpcg"</code>
-can sometimes be faster even when the matrix is smaller than the
-automatic cutoff.</p>
-<p>Because solver speed is data-dependent, the safest approach is to
-time both solvers on a representative subset before running the full
-analysis, especially <code><a href="../reference/tune_imp.html">tune_imp()</a></code>.</p>
+<p>The default <code>solver = "auto"</code> runs a small number of probe
+iterations of each solver at the start of the run, measures wall-clock
+time, and picks LOBPCG only if it is clearly faster than the exact
+solver. This decision is data-dependent and is made per call.</p>
+<p>For most users, <code>solver = "auto"</code> is a good default.
+Manual benchmarking is still useful in two situations:</p>
+<ul>
+<li>Before a long <code><a href="../reference/tune_imp.html">tune_imp()</a></code> run, where amortizing the
+probe overhead across many calls matters less than knowing the right
+solver up front.</li>
+<li>When you suspect the auto choice is wrong (for example, very large
+or very low-rank matrices where LOBPCG should clearly win, or very small
+windows where the exact solver should clearly win).</li>
+</ul>
 </div>
 <div class="section level3">
 <h3 id="recommended-workflow">Recommended workflow<a class="anchor" aria-label="anchor" href="#recommended-workflow"></a>
@@ -202,7 +207,7 @@ the representative chromosome.</p>
 <h3 id="time-solver-and-threshold-settings">Time solver and threshold settings<a class="anchor" aria-label="anchor" href="#time-solver-and-threshold-settings"></a>
 </h3>
 <p>First, choose a small <code>ncp</code> for the speed probe. This does
-not need to be the final <code>ncp</code>; the goal is to identify
+not need to be the final <code>ncp</code>. The goal is to identify
 whether the exact or iterative solver is faster on this kind of data. We
 use a relaxed <code>threshold = 1e-5</code> to keep the probe quick.
 Both solvers stop at the same convergence criterion, so their relative
@@ -232,7 +237,7 @@ timing is representative.</p>
 <span></span>
 <span><span class="va">exact</span> <span class="op">-</span> <span class="va">iterative</span></span>
 <span><span class="co">#&gt;    user  system elapsed </span></span>
-<span><span class="co">#&gt;  -0.007  -0.003  -0.002</span></span></code></pre></div>
+<span><span class="co">#&gt;  -0.007  -0.004  -0.001</span></span></code></pre></div>
 <p>Second, use <code><a href="../reference/tune_imp.html">tune_imp()</a></code> to compare cross-validation error
 across <code>threshold</code> values. In this example, relaxing the
 threshold to <code>1e-5</code> did not meaningfully change the
@@ -256,9 +261,9 @@ error.</p>
 <p>If <code>threshold = 1e-5</code> changes cross-validation error or
 imputed values more than expected, use the more conservative
 <code>threshold = 1e-6</code>.</p>
-<p>If <code>solver = "lobpcg"</code> is not clearly faster on the
-representative subset, force the exact solver with
-<code>solver = "exact"</code>.</p>
+<p>If neither solver is clearly faster on the representative subset,
+<code>solver = "auto"</code> is fine. If one solver is clearly faster,
+force it explicitly to skip the auto probe overhead.</p>
 </div>
 <div class="section level3">
 <h3 id="use-the-chosen-settings-with-tune_imp">Use the chosen settings with <code>tune_imp()</code><a class="anchor" aria-label="anchor" href="#use-the-chosen-settings-with-tune_imp"></a>
@@ -318,7 +323,8 @@ those fixed settings in the <code>parameters</code> data frame while
 tuning window and PCA parameters.</p>
 <p><code><a href="../reference/slide_imp.html">slide_imp()</a></code> typically operates on small windows with few
 samples, so the <code>"exact"</code> solver is usually the better
-default.</p>
+default. Forcing <code>solver = "exact"</code> also avoids paying the
+auto probe cost on every window.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">beta_matrix</span> <span class="op">&lt;-</span> <span class="va">obj_probe</span> <span class="co"># We treat `obj_probe` as a slide_imp() input instead</span></span>
 <span><span class="va">locations</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span><span class="op">)</span></span>
@@ -404,7 +410,7 @@ such as <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <cod
 <span>  obj <span class="op">=</span> <span class="va">obj_probe</span>,</span>
 <span>  .f <span class="op">=</span> <span class="st">"pca_imp"</span>,</span>
 <span>  parameters <span class="op">=</span> <span class="va">params</span>,</span>
-<span>  n_reps <span class="op">=</span> <span class="fl">1</span>, </span>
+<span>  n_reps <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- `TRUE` to monitor longer running jobs</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; Tuning `pca_imp()`</span></span>
@@ -475,17 +481,20 @@ effect on macOS, depending on the BLAS implementation.</p>
 </h3>
 <ul>
 <li>Start with <code>solver = "auto"</code> unless PCA imputation is
-slow.</li>
+slow or you are about to run many calls (e.g., with
+<code><a href="../reference/tune_imp.html">tune_imp()</a></code>) where the per-call probe overhead adds up.</li>
 <li>If PCA imputation is slow, benchmark <code>solver = "exact"</code>
-against <code>solver = "lobpcg"</code> on a representative subset.</li>
+against <code>solver = "lobpcg"</code> on a representative subset and
+force the winner.</li>
 <li>Try <code>threshold = 1e-5</code> or higher, depending on your error
 tolerance.</li>
 <li>Keep <code>threshold = 1e-5</code> only if it produces similar
 imputed values or similar cross-validation error.</li>
 <li>LOBPCG is most likely to help when the matrix is large,
 approximately low-rank, and <code>ncp</code> is small.</li>
-<li>If LOBPCG is not clearly faster, use
-<code>solver = "exact"</code>.</li>
+<li>For <code><a href="../reference/slide_imp.html">slide_imp()</a></code>, force <code>solver = "exact"</code>.
+Windows are usually small enough that exact wins, and forcing it avoids
+the per-window probe.</li>
 <li>Choose speed settings first, then tune accuracy-related parameters
 such as <code>ncp</code>, <code>coeff.ridge</code>, and
 <code>window_size</code>.</li>

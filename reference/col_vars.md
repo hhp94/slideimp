@@ -1,6 +1,6 @@
 # Calculate Matrix Column Variances
 
-Computes the sample variance for each column of a numeric matrix.
+Compute the sample variance for each column of a numeric matrix.
 
 ## Usage
 
@@ -25,8 +25,7 @@ A numeric vector of column variances, named when `obj` has column names.
 
 ## Details
 
-Columns with fewer than two distinct non-missing values are assigned
-`NA`.
+Columns with fewer than two non-missing values are assigned `NA`.
 
 ## Examples
 

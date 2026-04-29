@@ -17,7 +17,7 @@ knn_imp(
   dist_pow = 0,
   tree = FALSE,
   na_check = TRUE,
-  .progress = TRUE
+  .progress = FALSE
 )
 ```
 

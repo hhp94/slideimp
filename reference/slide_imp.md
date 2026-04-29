@@ -149,16 +149,16 @@ slide_imp(
 
   Character. Eigensolver selection. One of `"auto"`, `"exact"`, or
   `"lobpcg"`. `"exact"` uses the exact solver. `"lobpcg"` uses the
-  iterative LOBPCG solver. If `"auto"`, LOBPCG is used when the smaller
-  input dimension is at least 500 and `ncp <= 50`; otherwise, the exact
-  solver is used.
+  iterative LOBPCG solver with exact fallback. `"auto"` performs a short
+  timed probe and chooses LOBPCG only if it is clearly faster than the
+  exact solver. When `nb.init > 1`, the auto choice from the first PCA
+  initialization is reused for subsequent PCA initializations.
 
 - lobpcg_control:
 
   A list of LOBPCG eigensolver control options, usually created by
   [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
-  A plain named list is also accepted. If `NULL`, defaults are chosen
-  according to `solver`.
+  A plain named list is also accepted. Ignored when `solver = "exact"`.
 
 - method:
 
@@ -178,7 +178,7 @@ slide_imp(
 - post_imp:
 
   Logical. If `TRUE`, replace any remaining missing values with column
-  means after imputation.
+  means after backend imputation.
 
 - na_check:
 
@@ -231,8 +231,8 @@ with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
 PCA imputation speed depends on the eigensolver selected by `solver` and
 the convergence threshold `threshold`. The exact solver is selected with
 `solver = "exact"`. The iterative LOBPCG solver is selected with
-`solver = "lobpcg"`. The default, `solver = "auto"`, uses a conservative
-internal rule.
+`solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
+timed probe chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful
 to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
@@ -245,8 +245,8 @@ datasets, `threshold = 1e-5` can be faster while giving very similar
 imputed values. Check this on a representative subset before using the
 relaxed threshold in a full analysis.
 
-See the pkgdown article ["Speeding up PCA
-imputation"](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
+See the pkgdown article [Speeding up PCA
+imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
 for a full workflow.
 
 ## Examples

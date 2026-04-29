@@ -194,15 +194,16 @@ initialization is always mean imputation.</p></dd>
 <dt id="arg-solver">solver<a class="anchor" aria-label="anchor" href="#arg-solver"></a></dt>
 <dd><p>Character. Eigensolver selection. One of <code>"auto"</code>, <code>"exact"</code>,
 or <code>"lobpcg"</code>. <code>"exact"</code> uses the exact solver. <code>"lobpcg"</code> uses the
-iterative LOBPCG solver. If <code>"auto"</code>, LOBPCG is used when the smaller input
-dimension is at least 500 and <code>ncp &lt;= 50</code>; otherwise, the exact solver is
-used.</p></dd>
+iterative LOBPCG solver with exact fallback. <code>"auto"</code> performs a short
+timed probe and chooses LOBPCG only if it is clearly faster than the exact
+solver. When <code>nb.init &gt; 1</code>, the auto choice from the first PCA initialization
+is reused for subsequent PCA initializations.</p></dd>
 
 
 <dt id="arg-lobpcg-control">lobpcg_control<a class="anchor" aria-label="anchor" href="#arg-lobpcg-control"></a></dt>
 <dd><p>A list of LOBPCG eigensolver control options, usually
-created by <code><a href="lobpcg_control.html">lobpcg_control()</a></code>. A plain named list is also accepted. If
-<code>NULL</code>, defaults are chosen according to <code>solver</code>.</p></dd>
+created by <code><a href="lobpcg_control.html">lobpcg_control()</a></code>. A plain named list is also accepted. Ignored
+when <code>solver = "exact"</code>.</p></dd>
 
 
 <dt id="arg-method">method<a class="anchor" aria-label="anchor" href="#arg-method"></a></dt>
@@ -223,7 +224,7 @@ proportion greater than <code>colmax</code> are not imputed.</p></dd>
 
 <dt id="arg-post-imp">post_imp<a class="anchor" aria-label="anchor" href="#arg-post-imp"></a></dt>
 <dd><p>Logical. If <code>TRUE</code>, replace any remaining missing values
-with column means after imputation.</p></dd>
+with column means after backend imputation.</p></dd>
 
 
 <dt id="arg-na-check">na_check<a class="anchor" aria-label="anchor" href="#arg-na-check"></a></dt>
@@ -270,8 +271,8 @@ it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="e
 <p>PCA imputation speed depends on the eigensolver selected by <code>solver</code> and the
 convergence threshold <code>threshold</code>. The exact solver is selected with
 <code>solver = "exact"</code>. The iterative LOBPCG solver is selected with
-<code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, uses a conservative
-internal rule.</p>
+<code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, performs a short timed
+probe chooses LOBPCG only when it is clearly faster.</p>
 <p>For large or approximately low-rank genomic matrices, it can be useful to
 benchmark <code>solver = "exact"</code> against <code>solver = "lobpcg"</code> on a representative
 subset, such as chromosome 22, before tuning accuracy-related parameters such
@@ -280,7 +281,8 @@ as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <cod
 <code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
 Check this on a representative subset before using the relaxed threshold in a
 full analysis.</p>
-<p>See the pkgdown article <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">"Speeding up PCA imputation"</a>
+<p>See the pkgdown article
+<a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>
 for a full workflow.</p>
     </div>
 

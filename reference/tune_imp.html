@@ -166,11 +166,11 @@ tuning to reduce thread contention.</p></dd>
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A <code>data.frame</code> of class <code>slideimp_tune</code> containing:</p><ul><li><p>columns originally provided in <code>parameters</code>;</p></li>
-<li><p><code>param_set</code>, an integer ID for each unique parameter combination;</p></li>
-<li><p><code>rep_id</code>, an integer repetition index;</p></li>
+    <p>A <code>data.frame</code> of class <code>slideimp_tune</code> containing:</p><ul><li><p>columns originally provided in <code>parameters</code></p></li>
+<li><p><code>param_set</code>, an integer ID for each unique parameter combination</p></li>
+<li><p><code>rep_id</code>, an integer repetition index</p></li>
 <li><p><code>result</code>, a list-column where each element is a data frame containing
-<code>truth</code> and <code>estimate</code> columns;</p></li>
+<code>truth</code> and <code>estimate</code> columns</p></li>
 <li><p><code>error</code>, a character column containing the error message if the
 iteration failed, otherwise <code>NA</code>.</p></li>
 </ul></div>
@@ -213,8 +213,8 @@ it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="e
 <p>PCA imputation speed depends on the eigensolver selected by <code>solver</code> and the
 convergence threshold <code>threshold</code>. The exact solver is selected with
 <code>solver = "exact"</code>. The iterative LOBPCG solver is selected with
-<code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, uses a conservative
-internal rule.</p>
+<code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, performs a short timed
+probe chooses LOBPCG only when it is clearly faster.</p>
 <p>For large or approximately low-rank genomic matrices, it can be useful to
 benchmark <code>solver = "exact"</code> against <code>solver = "lobpcg"</code> on a representative
 subset, such as chromosome 22, before tuning accuracy-related parameters such
@@ -223,7 +223,8 @@ as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <cod
 <code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
 Check this on a representative subset before using the relaxed threshold in a
 full analysis.</p>
-<p>See the pkgdown article <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">"Speeding up PCA imputation"</a>
+<p>See the pkgdown article
+<a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>
 for a full workflow.</p>
     </div>
 
