@@ -22,7 +22,8 @@ pca_imp(
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE
+  na_check = TRUE,
+  clamp = NULL
 )
 ```
 
@@ -111,6 +112,15 @@ pca_imp(
 - na_check:
 
   Logical. If `TRUE`, check whether the result still contains missing
+  values.
+
+- clamp:
+
+  Optional numeric vector of length 2 giving lower and upper bounds for
+  PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
+  methylation beta values. Use `c(lb, Inf)` for only lower bound
+  clamping, or `c(-Inf, ub)` for only upper bound clamping. Clamping is
+  applied only to values imputed by the PCA step, not to observed
   values.
 
 ## Value

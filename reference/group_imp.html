@@ -75,6 +75,7 @@
 <span>  miniter <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  solver <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  lobpcg_control <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  clamp <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  pin_blas <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  na_check <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  on_infeasible <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"error"</span>, <span class="st">"skip"</span>, <span class="st">"mean"</span><span class="op">)</span></span>
@@ -218,6 +219,14 @@ is reused for subsequent PCA initializations.</p></dd>
 <dd><p>A list of LOBPCG eigensolver control options, usually
 created by <code><a href="lobpcg_control.html">lobpcg_control()</a></code>. A plain named list is also accepted. Ignored
 when <code>solver = "exact"</code>.</p></dd>
+
+
+<dt id="arg-clamp">clamp<a class="anchor" aria-label="anchor" href="#arg-clamp"></a></dt>
+<dd><p>Optional numeric vector of length 2 giving lower and upper bounds
+for PCA-imputed values. Use <code>NULL</code> for no clamping. Use <code>c(0, 1)</code> for DNA
+methylation beta values. Use <code>c(lb, Inf)</code> for only lower bound clamping, or
+<code>c(-Inf, ub)</code> for only upper bound clamping. Clamping is applied only to
+values imputed by the PCA step, not to observed values.</p></dd>
 
 
 <dt id="arg-pin-blas">pin_blas<a class="anchor" aria-label="anchor" href="#arg-pin-blas"></a></dt>

@@ -107,6 +107,7 @@
 <span>  obj <span class="op">=</span> <span class="va">MSA_beta_matrix</span>,</span>
 <span>  group <span class="op">=</span> <span class="st">"MSA"</span>, <span class="co"># &lt;- this feature requires the `slideimp.extra` package</span></span>
 <span>  ncp <span class="op">=</span> <span class="fl">10</span>, <span class="co"># &lt;- change to `k` for K-NN imputation</span></span>
+<span>  clamp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span>, <span class="co"># &lt;- PCA imputation can generate values outside of `c(0, 1)`</span></span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- turn on to monitor progress of longer running jobs</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co"># Found cleaned manifest for 'MSA'</span></span>
@@ -138,14 +139,11 @@
 <h3 id="performance-tips">Performance tips<a class="anchor" aria-label="anchor" href="#performance-tips"></a>
 </h3>
 <ul>
-<li>
-<strong>PCA performance tuning:</strong> for guidance on choosing <code>threshold</code>, <code>solver</code>, configuring <code>lobpcg_control</code>, and using <a href="https://mirai.r-lib.org" class="external-link">mirai</a>/BLAS threading effectively, see <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>.</li>
-<li>
-<strong>Parallel PCA imputation with a threaded BLAS</strong> (OpenBLAS or MKL): set <code>pin_blas = TRUE</code> so BLAS threads and <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers don’t compete for cores. Requires <a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a>.</li>
-<li>
-<strong>Faster PCA imputation on Windows machines</strong> <em>(optional, advanced):</em> R on Windows ships with a reference BLAS that’s slow for dense linear algebra. Swapping it for OpenBLAS can significantly speed up the PCA imputation - see <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">this community guide</a>.</li>
-<li>
-<strong>Parallel K-NN imputation:</strong> use the <code>cores</code> argument (<a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a>’s <code>parallelFor</code>) instead of <a href="https://mirai.r-lib.org" class="external-link">mirai</a>. If you only need clock CpGs, pass <code>subset</code> to skip all other probes.</li>
+<li>For PCA performance tuning, including guidance on choosing <code>threshold</code>, selecting <code>solver</code>, configuring <code>lobpcg_control</code>, and using <a href="https://mirai.r-lib.org" class="external-link">mirai</a> or BLAS threading effectively, see <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>.</li>
+<li>For PCA imputation of bounded data, i.e., DNA methylation beta values, use <code>clamp = c(0, 1)</code> to restrict PCA-imputed values to the valid range.</li>
+<li>For parallel PCA imputation with a threaded BLAS such as OpenBLAS or MKL, set <code>pin_blas = TRUE</code> so BLAS threads and <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers do not compete for cores. This requires <a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a>.</li>
+<li>For faster PCA imputation on Windows machines, advanced users can replace R’s default reference BLAS with OpenBLAS. See <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">this community guide</a>.</li>
+<li>For parallel K-NN imputation, use the <code>cores</code> argument, which uses <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a>’s <code>parallelFor</code>, instead of <a href="https://mirai.r-lib.org" class="external-link">mirai</a>. If you only need clock CpGs, pass <code>subset</code> to skip all other probes.</li>
 </ul>
 </div>
 </div>
@@ -391,7 +389,7 @@
 <li>
 <code><a href="reference/slide_imp.html">slide_imp()</a></code>: Sliding window K-NN or PCA imputation for extremely high-dimensional numeric matrices (WGBS/EM-seq) with ordered features (i.e., by genomic position).</li>
 <li>
-<code><a href="reference/tune_imp.html">tune_imp()</a></code>: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.</li>
+<code><a href="reference/tune_imp.html">tune_imp()</a></code>: Parallelizable hyperparameter tuning with repeated cross-validation that works with built-in or custom imputation functions.</li>
 <li>
 <code><a href="reference/knn_imp.html">knn_imp()</a></code>: Full-matrix K-NN imputation with multi-core parallelization, <a href="https://mlpack.org/" class="external-link"><code>mlpack</code></a> KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).</li>
 <li>

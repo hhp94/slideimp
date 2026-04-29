@@ -47,8 +47,8 @@
 <h2 class="pkg-version" data-toc-text="1.1.0" id="slideimp-110">slideimp 1.1.0<a class="anchor" aria-label="anchor" href="#slideimp-110"></a></h2>
 <div class="section level3">
 <h3 id="breaking-changes-1-1-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-1-1-0"></a></h3>
-<ul><li>
-<code><a href="../reference/knn_imp.html">knn_imp()</a></code> no longer caches pair-wise distances. The <code>use_cache</code> argument has been removed.</li>
+<ul><li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> no longer caches pair-wise distances. The <code>use_cache</code> argument has been removed.</p></li>
+<li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> gained a <code>clamp</code> argument to bound imputed values, e.g. <code>c(0, 1)</code> for methylation beta values. Also threaded through <code><a href="../reference/slide_imp.html">slide_imp()</a></code> and <code><a href="../reference/group_imp.html">group_imp()</a></code>.</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="new-features-1-1-0">New features<a class="anchor" aria-label="anchor" href="#new-features-1-1-0"></a></h3>

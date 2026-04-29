@@ -159,7 +159,7 @@ iterative <- system.time(invisible(
 
 exact - iterative
 #>    user  system elapsed 
-#>  -0.007  -0.004  -0.001
+#>  -0.003  -0.008  -0.001
 ```
 
 Second, use

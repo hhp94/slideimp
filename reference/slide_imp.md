@@ -29,6 +29,7 @@ slide_imp(
   miniter = 5,
   solver = c("auto", "exact", "lobpcg"),
   lobpcg_control = NULL,
+  clamp = NULL,
   method = NULL,
   .progress = TRUE,
   colmax = 0.9,
@@ -159,6 +160,15 @@ slide_imp(
   A list of LOBPCG eigensolver control options, usually created by
   [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
   A plain named list is also accepted. Ignored when `solver = "exact"`.
+
+- clamp:
+
+  Optional numeric vector of length 2 giving lower and upper bounds for
+  PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
+  methylation beta values. Use `c(lb, Inf)` for only lower bound
+  clamping, or `c(-Inf, ub)` for only upper bound clamping. Clamping is
+  applied only to values imputed by the PCA step, not to observed
+  values.
 
 - method:
 

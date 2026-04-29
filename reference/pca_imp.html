@@ -69,7 +69,8 @@ expectation-maximization PCA imputation.</p>
 <span>  lobpcg_control <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  colmax <span class="op">=</span> <span class="fl">0.9</span>,</span>
 <span>  post_imp <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  na_check <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  na_check <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  clamp <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -158,6 +159,14 @@ with column means after PCA imputation.</p></dd>
 <dt id="arg-na-check">na_check<a class="anchor" aria-label="anchor" href="#arg-na-check"></a></dt>
 <dd><p>Logical. If <code>TRUE</code>, check whether the result still contains
 missing values.</p></dd>
+
+
+<dt id="arg-clamp">clamp<a class="anchor" aria-label="anchor" href="#arg-clamp"></a></dt>
+<dd><p>Optional numeric vector of length 2 giving lower and upper bounds
+for PCA-imputed values. Use <code>NULL</code> for no clamping. Use <code>c(0, 1)</code> for DNA
+methylation beta values. Use <code>c(lb, Inf)</code> for only lower bound clamping, or
+<code>c(-Inf, ub)</code> for only upper bound clamping. Clamping is applied only to
+values imputed by the PCA step, not to observed values.</p></dd>
 
 </dl></div>
     <div class="section level2">
