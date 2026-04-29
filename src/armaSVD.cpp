@@ -340,7 +340,6 @@ Rcpp::List pca_imp_internal_cpp(
     Rcpp::stop("solver must be 0 (exact), 1 (lobpcg), or 2 (auto)");
   }
 
-  const bool solver_auto = (solver == 2);
   const bool lobpcg_requested = (solver != 0);
 
   if (lobpcg_requested && lobpcg_maxiter == 0)
@@ -415,17 +414,6 @@ Rcpp::List pca_imp_internal_cpp(
       if (warmup_iters > int_max || lobpcg_maxiter > int_max)
       {
         Rcpp::stop("LOBPCG iteration controls exceed int range");
-      }
-
-      if (solver_auto)
-      {
-        const arma::uword auto_probe =
-            static_cast<arma::uword>(HYB_AUTO_N_PROBE_ITER_DEFAULT);
-
-        if (warmup_iters > int_max - auto_probe)
-        {
-          Rcpp::stop("warmup_iters + auto probe iterations exceed int range");
-        }
       }
     }
   }
@@ -695,6 +683,7 @@ Rcpp::List pca_imp_internal_cpp(
   hyb_ctx.lobpcg_opt.tol = lobpcg_tol;
   hyb_ctx.lobpcg_opt.maxiter = lobpcg_requested ? static_cast<int>(lobpcg_maxiter) : 0;
   hyb_ctx.auto_n_probe_iter = HYB_AUTO_N_PROBE_ITER_DEFAULT;
+  hyb_ctx.auto_min_exact_iter = HYB_AUTO_MIN_EXACT_ITER_DEFAULT;
   hyb_ctx.auto_margin = HYB_AUTO_MARGIN_DEFAULT;
 #if PCA_IMP_DIAGNOSTICS
   hyb_ctx.path_log.assign(maxiter, HYB_NOT_RUN);
@@ -952,6 +941,7 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
       Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad,
       Rcpp::Named("auto_n_probe_iter") = hyb_ctx.auto_n_probe_iter,
+      Rcpp::Named("auto_min_exact_iter") = hyb_ctx.auto_min_exact_iter,
       Rcpp::Named("auto_exact_n") = hyb_ctx.auto_exact_n,
       Rcpp::Named("auto_lobpcg_n") = hyb_ctx.auto_lobpcg_n,
       Rcpp::Named("auto_exact_mean_sec") = hyb_ctx.auto_exact_mean_sec(),

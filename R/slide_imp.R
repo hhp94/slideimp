@@ -62,7 +62,7 @@ find_overlap_regions <- function(start, end) {
 #' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
 #'   proportion greater than `colmax` are not imputed.
 #' @param post_imp Logical. If `TRUE`, replace any remaining missing values
-#'   with column means after imputation.
+#'   with column means after backend imputation.
 #' @param na_check Logical. If `TRUE`, check whether the result still contains
 #'   missing values.
 #' @param on_infeasible Character. One of `"skip"`, `"error"`, or `"mean"`.
@@ -236,9 +236,10 @@ slide_imp <- function(
       lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
       .var.name = "ncp"
     )
-    # other PCA arguments, including lobpcg_control, are checked in pca_imp().
-    # Do not resolve lobpcg_control here. `pca_imp()` needs the actual window size
-    # to apply solver = "auto" correctly per window.
+    # other PCA arguments, including `lobpcg_control`, are checked in pca_imp().
+    # do not resolve `lobpcg_control` here. The first successful PCA window needs
+    # the actual window size so pca_imp can apply solver = "auto". Its chosen
+    # concrete solver is then reused for later windows.
   }
 
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)

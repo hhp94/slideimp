@@ -117,13 +117,14 @@ initialization is always mean imputation.}
 
 \item{solver}{Character. Eigensolver selection. One of \code{"auto"}, \code{"exact"},
 or \code{"lobpcg"}. \code{"exact"} uses the exact solver. \code{"lobpcg"} uses the
-iterative LOBPCG solver. If \code{"auto"}, LOBPCG is used when the smaller input
-dimension is at least 500 and \code{ncp <= 50}; otherwise, the exact solver is
-used.}
+iterative LOBPCG solver with exact fallback. \code{"auto"} performs a short
+timed probe and chooses LOBPCG only if it is clearly faster than the exact
+solver. When \code{nb.init > 1}, the auto choice from the first PCA initialization
+is reused for subsequent PCA initializations.}
 
 \item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
-created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. If
-\code{NULL}, defaults are chosen according to \code{solver}.}
+created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. Ignored
+when \code{solver = "exact"}.}
 
 \item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 to reduce
 contention when using parallel PCA on systems linked with multithreaded
@@ -169,7 +170,7 @@ occurs.
 A character scalar can be passed to \code{group} to name a supported Illumina
 platform, such as \code{"EPICv2"} or \code{"EPICv2_deduped"}. This requires the
 optional \code{slideimp.extra} package to be installed. Supported platforms are
-listed in \code{slideimp.extra::slideimp_arrays}.
+listed in \code{slideimp_arrays} of the \code{slideimp.extra} package.
 }
 \section{Parallelization}{
 
@@ -195,8 +196,8 @@ it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
 PCA imputation speed depends on the eigensolver selected by \code{solver} and the
 convergence threshold \code{threshold}. The exact solver is selected with
 \code{solver = "exact"}. The iterative LOBPCG solver is selected with
-\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, uses a conservative
-internal rule.
+\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
+probe chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful to
 benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
@@ -208,7 +209,8 @@ The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 Check this on a representative subset before using the relaxed threshold in a
 full analysis.
 
-See the pkgdown article \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{"Speeding up PCA imputation"}
+See the pkgdown article
+\href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}
 for a full workflow.
 }
 

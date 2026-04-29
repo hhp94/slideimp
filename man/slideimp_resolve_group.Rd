@@ -23,7 +23,7 @@ passing to \code{\link[=prep_groups]{prep_groups()}}.
 \description{
 S3 generic for converting various group specifications into the
 canonical data.frame form expected by \code{\link[=prep_groups]{prep_groups()}}. This generic
-exists only to allow \code{slideimp.extra} to register the character method.
+is exported only to allow \code{slideimp.extra} to register the character method.
 }
 \examples{
 df <- data.frame(feature = c("cg1", "cg2"), group = c(1, 1))

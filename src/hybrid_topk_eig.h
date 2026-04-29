@@ -6,6 +6,7 @@
 
 #include <RcppArmadillo.h>
 #include <limits>
+#include <algorithm>
 #include "eig_sym_sel.h"
 #include "lobpcg_warm.h"
 
@@ -91,10 +92,12 @@ enum class HybridAutoProbe : int
   Lobpcg = 2
 };
 
-// v1 auto policy.
+// v2 auto policy.
 //
-// auto currently uses a fixed number of exact and LOBPCG probe calls.
-inline constexpr int HYB_AUTO_N_PROBE_ITER_DEFAULT = 10;
+// exact warmup iterations double as the exact timing probe.
+// Then auto runs a small number of LOBPCG probe calls.
+inline constexpr int HYB_AUTO_N_PROBE_ITER_DEFAULT = 5;
+inline constexpr int HYB_AUTO_MIN_EXACT_ITER_DEFAULT = 3;
 inline constexpr double HYB_AUTO_MARGIN_DEFAULT = 0.10;
 
 struct HybridEigContext
@@ -112,6 +115,7 @@ struct HybridEigContext
   HybridAutoProbe last_auto_probe = HybridAutoProbe::None;
 
   int auto_n_probe_iter = HYB_AUTO_N_PROBE_ITER_DEFAULT;
+  int auto_min_exact_iter = HYB_AUTO_MIN_EXACT_ITER_DEFAULT;
   double auto_margin = HYB_AUTO_MARGIN_DEFAULT;
 
   int auto_exact_n = 0;
@@ -131,7 +135,7 @@ struct HybridEigContext
 
   int auto_exact_target() const
   {
-    return warmup_iters + auto_n_probe_iter;
+    return std::max(warmup_iters, auto_min_exact_iter);
   }
 
   bool auto_timing_active() const

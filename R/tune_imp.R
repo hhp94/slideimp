@@ -153,7 +153,7 @@ sample_na_loc <- function(
   }
 
   # pre-injection state and global feasibility (checked across the full obj,
-  # since imputation uses all columns — untouched cols must also be healthy)
+  # since imputation uses all columns - untouched cols must also be healthy)
   not_na_mat <- !is.na(obj)
   max_allowed_col_miss <- floor(nrow(obj) * colmax)
   max_allowed_row_miss <- floor(ncol(obj) * rowmax)

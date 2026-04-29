@@ -279,7 +279,7 @@ slide_imp(
   * (Basic): a `data.frame` containing a `feature` column (character strings of feature names) and a `group` column (defining the group).
   * (Advanced): use `prep_groups()` to create groups based on a mapping data.frame (i.e., Illumina manifests) with custom group-wise parameters.
 * `slide_imp()`: Sliding window K-NN or PCA imputation for extremely high-dimensional numeric matrices (WGBS/EM-seq) with ordered features (i.e., by genomic position).
-* `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.
+* `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation that works with built-in or custom imputation functions.
 * `knn_imp()`: Full-matrix K-NN imputation with multi-core parallelization, [`mlpack`](https://mlpack.org/) KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).
 * `pca_imp()`: Optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrices.
 * `col_vars()` and `mean_imp_col()` provide fast column-wise variance and mean imputation using the high-performance `{RcppArmadillo}` backend with full `{RcppThread}` parallelization support.

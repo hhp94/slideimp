@@ -29,7 +29,7 @@ struct ManhattanMetric
 constexpr arma::uword GRAIN = 16;
 
 // -----------------------------------------------------------------------------
-// calc_distance_raw — Groups 1 & 2 (both target and other may have missing)
+// calc_distance_raw - Groups 1 & 2 (both target and other may have missing)
 // -----------------------------------------------------------------------------
 // Bound math (conservative but correct):
 //   final_dist >= partial_dist (all terms non-negative)
@@ -88,7 +88,7 @@ inline double calc_distance_raw(
 }
 
 // -----------------------------------------------------------------------------
-// calc_distance_raw_complete — Group 3 (other side fully observed)
+// calc_distance_raw_complete - Group 3 (other side fully observed)
 // -----------------------------------------------------------------------------
 // Bound math (exact): n_valid is known up front, so if
 //   partial_dist > worst_dist * n_valid
@@ -149,7 +149,7 @@ struct NeighborInfo
     NeighborInfo(double d, arma::uword i) : distance(d), index(i) {}
 };
 
-// fill phase: we just need any k neighbors — no ordering yet.
+// fill phase: we just need any k neighbors - no ordering yet.
 inline void insert_before_k(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
 {
     top_k.emplace_back(dist, idx);
@@ -172,7 +172,7 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
 }
 
 // -----------------------------------------------------------------------------
-// distance_vector_impl — templated body, fully monomorphized per Metric.
+// distance_vector_impl - templated body, fully monomorphized per Metric.
 // -----------------------------------------------------------------------------
 // Two phases:
 //  1. Fill: collect up to k candidates with no pruning (Bound=false).
@@ -384,7 +384,7 @@ arma::mat impute_knn_brute(
         copy_with_mask(layout.mni_start() + p, grp_miss_no_imp(p));
     }
 
-    // group 3: read directly from obj via grp_complete — no copy.
+    // group 3: read directly from obj via grp_complete - no copy.
     // n_valid_vec built directly from the group-1 portion of n_col_valid
     arma::vec n_valid_vec(layout.n_imp);
     for (arma::uword i = 0; i < layout.n_imp; ++i)

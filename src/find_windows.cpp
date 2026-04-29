@@ -35,7 +35,7 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
 
     // find next start: first index past i whose value >= cutoff.
     // When overlap == 0, cutoff == threshold, so x[m] < threshold for all m <= j,
-    // and we land on j + 1 — identical to non-overlapping behavior.
+    // and we land on j + 1 - identical to non-overlapping behavior.
     double cutoff = threshold - overlap;
     int next_i = i + 1; // guarantee forward progress
     while (next_i <= j && x[next_i] < cutoff)

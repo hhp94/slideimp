@@ -30,7 +30,7 @@ arma::mat impute_knn_mlpack(
     const arma::uword n_rows = obj.n_rows;
 
     // obj_reordered holds ALL three groups (mlpack needs one contiguous matrix
-    // for the ball tree). `nmiss_masked` covers only groups 1+2 — group 3 has no
+    // for the ball tree). `nmiss_masked` covers only groups 1+2 - group 3 has no
     // missing entries by construction.
     arma::mat obj_reordered(n_rows, layout.n_working());
     MaskMat nmiss_masked(n_rows, layout.n_masked());

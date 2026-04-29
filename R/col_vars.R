@@ -1,13 +1,13 @@
 #' Calculate Matrix Column Variances
 #'
-#' Computes the sample variance for each column of a numeric matrix.
+#' Compute the sample variance for each column of a numeric matrix.
 #'
 #' @param obj A numeric matrix.
 #' @param cores Integer. Number of cores to use for parallel computation.
 #'   Defaults to `1`.
 #'
 #' @details
-#' Columns with fewer than two distinct non-missing values are assigned `NA`.
+#' Columns with fewer than two non-missing values are assigned `NA`.
 #'
 #' @returns A numeric vector of column variances, named when `obj` has column
 #' names.

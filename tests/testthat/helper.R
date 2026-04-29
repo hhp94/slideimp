@@ -43,14 +43,47 @@ run_pca_fixed_iters <- function(x, ctrl, ncp = 3L, pca_iters = 14L) {
 #' Returns the completed matrix plus LOBPCG/exact counters.
 #'
 #' @noRd
-#' @noRd
-run_pca_fixed_iters <- function(x, ctrl, ncp = 3L, pca_iters = 14L) {
-  # mirror pca_imp() eligibility: drop all-NA columns and zero-variance columns
+run_pca_fixed_iters <- function(
+  x,
+  ctrl = lobpcg_control(),
+  ncp = 2L,
+  pca_iters = 10L,
+  solver = c("exact", "lobpcg", "auto"),
+  colmax = 1
+) {
+  ctrl <- new_lobpcg_control(
+    ctrl,
+    ncp = ncp,
+    n = nrow(x),
+    p = ncol(x),
+    solver = solver
+  )
+  solver_code <- switch(solver,
+    exact = 0L,
+    lobpcg = 1L,
+    auto = 2L
+  )
+  # mirror pca_imp() eligibility closely enough for fixed-iteration tests:
+  # drop columns above colmax and zero-/undefined-variance columns.
+  miss_rate <- mat_miss(x, col = TRUE, prop = TRUE)
 
-  miss_rate <- mat_miss(x, prop = TRUE)
   cv <- col_vars(x)
-  eligible <- miss_rate < 1 & !(is.na(cv) | cv < .Machine$double.eps)
-  eligible_idx <- which(eligible) - 1L
+
+  eligible <- miss_rate < min(colmax, 1) &
+    !(is.na(cv) | cv < .Machine$double.eps)
+
+  eligible_idx <- as.integer(which(eligible) - 1L)
+
+  if (length(eligible_idx) == 0L) {
+    cli::cli_abort("No eligible columns for PCA imputation.")
+  }
+
+  cap <- min(nrow(x) - 2L, length(eligible_idx) - 1L)
+  if (ncp > cap) {
+    cli::cli_abort(
+      "{.arg ncp} is too large for the eligible fixed-iteration test problem."
+    )
+  }
 
   res <- pca_imp_internal_cpp(
     obj = x,
@@ -64,14 +97,22 @@ run_pca_fixed_iters <- function(x, ctrl, ncp = 3L, pca_iters = 14L) {
     miniter = pca_iters,
     row_w = rep(1, nrow(x)),
     coeff_ridge = 1,
+    solver = solver_code,
     warmup_iters = ctrl$warmup_iters,
     lobpcg_tol = ctrl$tol,
     lobpcg_maxiter = ctrl$maxiter
   )
+
   iv <- res$imputed_values
-  x[cbind(iv[, 1], iv[, 2])] <- iv[, 3]
+
+  if (!is.null(iv) && nrow(iv) > 0L) {
+    x[cbind(as.integer(iv[, 1]), as.integer(iv[, 2]))] <- iv[, 3]
+  }
+
   list(
     mat = x,
+    solver = solver,
+    solver_chosen_code = res$solver_chosen,
     n_exact = res$n_exact,
     n_lobpcg_ok = res$n_lobpcg_ok,
     n_lobpcg_bad = res$n_lobpcg_bad

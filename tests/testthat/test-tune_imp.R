@@ -734,7 +734,7 @@ test_that("tune_imp works with custom function and NULL parameters", {
   set.seed(99)
   obj <- matrix(rnorm(150), nrow = 10, ncol = 15)
 
-  # a function with only `obj` — fills NAs with 0
+  # a function with only `obj` - fills NAs with 0
   zero_fill <- function(obj) {
     obj[is.na(obj)] <- 0
     return(obj)

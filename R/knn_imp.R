@@ -72,7 +72,7 @@ knn_imp <- function(
   dist_pow = 0,
   tree = FALSE,
   na_check = TRUE,
-  .progress = TRUE
+  .progress = FALSE
 ) {
   # Pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
