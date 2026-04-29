@@ -9,7 +9,7 @@ test_that("same results as imputePCA", {
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 1, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0),
+    solver = "exact",
     colmax = 1
   )
   expect_equal(r1$completeObs, r2[, ])
@@ -22,7 +22,7 @@ test_that("same results as imputePCA", {
   r4 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = row.w, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3$completeObs, r4[, ])
 
@@ -34,7 +34,7 @@ test_that("same results as imputePCA", {
   r2_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 10, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1_t$completeObs, r2_t[, ])
 
@@ -46,7 +46,7 @@ test_that("same results as imputePCA", {
   r4_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3_t$completeObs, r4_t[, ])
 })
@@ -62,7 +62,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 10, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1$completeObs, r2[, ])
 
@@ -77,7 +77,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r4 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = row.w, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3$completeObs, r4[, ])
 
@@ -89,7 +89,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r2_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 10, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1_t$completeObs, r2_t[, ])
 
@@ -101,7 +101,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   r4_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234, method = "EM",
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3_t$completeObs, r4_t[, ])
 })
@@ -118,7 +118,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 10, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1$completeObs, r2[, ])
 
@@ -130,7 +130,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r4 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = row.w, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3$completeObs, r4[, ])
 
@@ -142,7 +142,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r2_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 10, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1_t$completeObs, r2_t[, ])
 
@@ -154,7 +154,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   r4_t <- pca_imp(
     to_test_t,
     ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234, scale = FALSE,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r3_t$completeObs, r4_t[, ])
 })
@@ -191,7 +191,7 @@ test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights",
   r2 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = "n_miss", seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r1$completeObs, r2[, ])
 
@@ -199,7 +199,7 @@ test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights",
   r3 <- pca_imp(
     to_test,
     ncp = 2, nb.init = 5, row.w = expected_w, seed = 1234,
-    lobpcg_control = lobpcg_control(maxiter = 0)
+    solver = "exact"
   )
   expect_equal(r2, r3)
 })
@@ -233,7 +233,7 @@ test_that("pca_imp handles ineligible columns (high miss rate / zero variance) c
   set.seed(1234)
   to_test <- sim_mat(40, 12, perc_total_na = 0.25, perc_col_na = 0.6)$input
 
-  # Force ineligible columns:
+  # force ineligible columns:
   # - Column 1: miss_rate > colmax (0.925 > 0.9)
   to_test[1:37, 1] <- NA
   mean_1 <- mean(to_test[, 1], na.rm = TRUE)
@@ -290,7 +290,7 @@ test_that("pca_imp handles ineligible columns (high miss rate / zero variance) c
 test_that("pca_imp falls back to mean imputation when ncp > usable eligible columns", {
   set.seed(1234)
   to_test <- sim_mat(30, 8, perc_total_na = 0.1, perc_col_na = 0.3)$input
-  # This column will excceed colmax
+  # this column will excceed colmax
   to_test[1:29, 1] <- NA
   expect_no_error(res <- pca_imp(
     to_test,
@@ -300,13 +300,13 @@ test_that("pca_imp falls back to mean imputation when ncp > usable eligible colu
     colmax = 0.9,
     post_imp = FALSE
   ))
-  # Make most columns ineligible (all-NA)
+  # make most columns ineligible (all-NA)
   to_test[, 1:6] <- NA
   for (i in 1:6) {
     to_test[sample.int(30, size = 1), i] <- rnorm(1)
   }
 
-  # Only 2 eligible columns left -> ncp = 3 > min(28, 1) -> error (1 usable component)
+  # only 2 eligible columns left -> ncp = 3 > min(28, 1) -> error (1 usable component)
   expect_error(
     pca_imp(
       to_test,
@@ -363,36 +363,46 @@ test_that("Throw on Inf", {
   expect_error(pca_imp(to_test, ncp = 3), "Infinite")
 })
 
-test_that("LOBPCG enabled during warmup matches disabled exact path", {
+# lobpcg ----
+test_that("LOBPCG mode during warmup matches forced exact path", {
   set.seed(1234)
   x <- sim_mat(20, 80)$input
   pca_iters <- 12L
+
   expect_warning(
     ref <- run_pca_fixed_iters(
       x,
-      ctrl = lobpcg_control(maxiter = 0L, warmup_iters = 0L),
+      solver = "exact",
       pca_iters = pca_iters
-    )
+    ),
+    "Stopped after"
   )
+
   expect_warning(
     got <- run_pca_fixed_iters(
       x,
+      solver = "lobpcg",
       ctrl = lobpcg_control(
         maxiter = 50L,
         warmup_iters = pca_iters + 1L,
         tol = 1e-10
       ),
       pca_iters = pca_iters
-    )
+    ),
+    "Stopped after"
   )
+
   expect_false(anyNA(ref$mat))
   expect_false(anyNA(got$mat))
   expect_equal(dim(got$mat), dim(ref$mat))
 
-  # same numerical path (LOBPCG never triggered), so this should be tight.
+  # same numerical path: warmup_iters > pca_iters means LOBPCG never triggers.
   expect_lt(max_abs_diff(got$mat, ref$mat), 1e-10)
 
-  # warmup_iters > pca_iters means LOBPCG is never attempted
+  expect_equal(ref$n_lobpcg_ok, 0L)
+  expect_equal(ref$n_lobpcg_bad, 0L)
+  expect_equal(ref$n_exact, pca_iters)
+
   expect_equal(got$n_lobpcg_ok, 0L)
   expect_equal(got$n_lobpcg_bad, 0L)
   expect_equal(got$n_exact, pca_iters)
@@ -403,42 +413,51 @@ test_that("LOBPCG enabled agrees with exact eigensolver branch", {
     tall = c(80L, 25L),
     wide = c(25L, 80L)
   )
+
   set.seed(1234)
+
   for (case in cases) {
     n <- case[[1L]]
     p <- case[[2L]]
+
     x <- sim_mat(n, p)$input
     pca_iters <- 14L
     warmup <- 2L
+
     expect_warning(
       ref <- run_pca_fixed_iters(
         x,
-        ctrl = lobpcg_control(maxiter = 0L, warmup_iters = 0L),
+        solver = "exact",
         pca_iters = pca_iters
-      )
+      ),
+      "Stopped after"
     )
+
     expect_warning(
       got <- run_pca_fixed_iters(
         x,
+        solver = "lobpcg",
         ctrl = lobpcg_control(
           maxiter = 100L,
           warmup_iters = warmup,
           tol = 1e-8
         ),
         pca_iters = pca_iters
-      )
+      ),
+      "Stopped after"
     )
+
     expect_false(anyNA(ref$mat))
     expect_false(anyNA(got$mat))
     expect_equal(dim(got$mat), dim(ref$mat))
     expect_lt(max_abs_diff(got$mat, ref$mat), 1e-4)
 
-    # ref: LOBPCG disabled, every iter is exact
+    # forced exact: every iteration uses dsyevr.
     expect_equal(ref$n_lobpcg_ok, 0L)
     expect_equal(ref$n_lobpcg_bad, 0L)
     expect_equal(ref$n_exact, pca_iters)
 
-    # got: warmup iters use exact, rest should converge via LOBPCG
+    # LOBPCG: warmup iterations use exact, then LOBPCG should converge.
     expect_equal(got$n_lobpcg_bad, 0L)
     expect_equal(got$n_exact, warmup)
     expect_equal(got$n_lobpcg_ok, pca_iters - warmup)
@@ -454,29 +473,33 @@ test_that("LOBPCG fallback to exact still produces correct result", {
   expect_warning(
     ref <- run_pca_fixed_iters(
       x,
-      ctrl = lobpcg_control(maxiter = 0L, warmup_iters = 0L),
+      solver = "exact",
       pca_iters = pca_iters
-    )
+    ),
+    "Stopped after"
   )
+
   # tol below machine precision + maxiter = 1 forces LOBPCG to fail every
   # post-warmup iteration, exercising the exact fallback path.
   expect_warning(
     got <- run_pca_fixed_iters(
       x,
+      solver = "lobpcg",
       ctrl = lobpcg_control(
         maxiter = 1L,
         warmup_iters = warmup,
         tol = 1e-20
       ),
       pca_iters = pca_iters
-    )
+    ),
+    "Stopped after"
   )
 
   expect_false(anyNA(got$mat))
   expect_lt(max_abs_diff(got$mat, ref$mat), 1e-4)
 
-  # every post-warmup iter should attempt LOBPCG, fail, fall back to exact
+  # every post-warmup iteration should attempt LOBPCG, fail, then fall back to exact.
   expect_equal(got$n_lobpcg_ok, 0L)
   expect_equal(got$n_lobpcg_bad, pca_iters - warmup)
-  expect_equal(got$n_exact, pca_iters) # warmup + fallbacks
+  expect_equal(got$n_exact, pca_iters) # warmup exact + fallback exact
 })

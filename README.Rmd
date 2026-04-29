@@ -99,7 +99,7 @@ imputed <- group_imp(
 print(imputed, n = 4, p = 4)
 # Method: group_imp (PCA imputation)
 # Dimensions: 20 x 281797
-# 
+#
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
@@ -117,8 +117,8 @@ print(imputed, n = 4, p = 4)
 
 - **PCA performance tuning:** for guidance on choosing `threshold`, `solver`, configuring `lobpcg_control`, and using `{mirai}`/BLAS threading effectively, see [Speeding up PCA imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html).
 - **Parallel PCA imputation with a threaded BLAS** (OpenBLAS or MKL): set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers don't compete for cores. Requires `{RhpcBLASctl}`.
-- **Parallel K-NN imputation:** use the `cores` argument (`{RcppThread}`'s `parallelFor`) instead of `{mirai}`. If you only need clock CpGs, pass `subset` to skip all other probes.
 - **Faster PCA imputation on Windows machines** *(optional, advanced):* R on Windows ships with a reference BLAS that's slow for dense linear algebra. Swapping it for OpenBLAS can significantly speed up the PCA imputation - see [this community guide](https://github.com/david-cortes/R-openblas-in-windows).
+- **Parallel K-NN imputation:** use the `cores` argument (`{RcppThread}`'s `parallelFor`) instead of `{mirai}`. If you only need clock CpGs, pass `subset` to skip all other probes.
 
 ## Extended Workflow
 * We simulate DNA methylation (DNAm) microarray data from 2 chromosomes. All `{slideimp}` functions expect the input to be a numeric matrix where variables are stored in the columns.
@@ -220,7 +220,7 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
 
 ## Sliding Window Imputation
 * `slide_imp()` performs sliding window imputation. 
-* This function is **not** for Illumina DNAm microarrays; see `group_imp()`.
+* This function is **not** for Illumina DNAm microarrays. See `group_imp()`.
 * **Note:** 
   - DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run `slide_imp()` separately on each chromosome) before imputation. See the package vignette for more details.
   - See vignette for details about selecting `window_size` and `overlap_size` with `tune_imp()`.
@@ -279,7 +279,7 @@ slide_imp(
   * (Basic): a `data.frame` containing a `feature` column (character strings of feature names) and a `group` column (defining the group).
   * (Advanced): use `prep_groups()` to create groups based on a mapping data.frame (i.e., Illumina manifests) with custom group-wise parameters.
 * `slide_imp()`: Sliding window K-NN or PCA imputation for extremely high-dimensional numeric matrices (WGBS/EM-seq) with ordered features (i.e., by genomic position).
-* `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation; works with built-in or custom imputation functions.
+* `tune_imp()`: Parallelizable hyperparameter tuning with repeated cross-validation that works with built-in or custom imputation functions.
 * `knn_imp()`: Full-matrix K-NN imputation with multi-core parallelization, [`mlpack`](https://mlpack.org/) KD/Ball-Tree nearest neighbor implementation (for data with very low missing rates and extremely high dimensions), and optional subset imputation (ideal for epigenetic clock calculations).
 * `pca_imp()`: Optimized version of [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional numeric matrices.
 * `col_vars()` and `mean_imp_col()` provide fast column-wise variance and mean imputation using the high-performance `{RcppArmadillo}` backend with full `{RcppThread}` parallelization support.

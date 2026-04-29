@@ -14,8 +14,9 @@ LOBPCG solve. Must be non-negative.}
 be non-negative and finite.}
 
 \item{maxiter}{Integer. Maximum number of LOBPCG iterations. Must be
-non-negative. Setting \code{maxiter = 0} disables LOBPCG and uses the exact
-solver instead.}
+non-negative. In \code{\link[=pca_imp]{pca_imp()}}, \code{maxiter} must be positive when
+\code{solver = "auto"} or \code{solver = "lobpcg"}. Use \code{solver = "exact"} to force
+the exact solver.}
 }
 \value{
 A named list of class \code{"slideimp_lobpcg_control"} containing
@@ -26,21 +27,22 @@ Construct a validated list of control options for the LOBPCG eigensolver
 used by \code{\link[=pca_imp]{pca_imp()}}. Most users do not need to call this directly.
 }
 \examples{
+set.seed(123)
+obj <- sim_mat(10, 10)$input
+
 # Use all defaults
 lobpcg_control()
 
 # Override a single option
 lobpcg_control(maxiter = 50)
 
-# Disable LOBPCG and use the exact solver
-lobpcg_control(maxiter = 0)
+# Force the exact solver from pca_imp()
+pca_imp(obj, ncp = 2, solver = "exact")
 
 # Pass directly to pca_imp()
-set.seed(123)
-obj <- sim_mat(10, 10)$input
 pca_imp(obj, ncp = 2, lobpcg_control = lobpcg_control(tol = 1e-9))
 
 # Or use a named list
-pca_imp(obj, ncp = 2, lobpcg_control = list(maxiter = 0))
+pca_imp(obj, ncp = 2, lobpcg_control = list(maxiter = 50))
 
 }

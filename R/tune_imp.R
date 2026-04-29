@@ -153,7 +153,7 @@ sample_na_loc <- function(
   }
 
   # pre-injection state and global feasibility (checked across the full obj,
-  # since imputation uses all columns — untouched cols must also be healthy)
+  # since imputation uses all columns - untouched cols must also be healthy)
   not_na_mat <- !is.na(obj)
   max_allowed_col_miss <- floor(nrow(obj) * colmax)
   max_allowed_row_miss <- floor(ncol(obj) * rowmax)
@@ -389,11 +389,11 @@ resolve_na_loc <- function(
 #' @inheritSection pca_imp Performance tips
 #'
 #' @returns A `data.frame` of class `slideimp_tune` containing:
-#'   - columns originally provided in `parameters`;
-#'   - `param_set`, an integer ID for each unique parameter combination;
-#'   - `rep_id`, an integer repetition index;
+#'   - columns originally provided in `parameters`
+#'   - `param_set`, an integer ID for each unique parameter combination
+#'   - `rep_id`, an integer repetition index
 #'   - `result`, a list-column where each element is a data frame containing
-#'     `truth` and `estimate` columns;
+#'     `truth` and `estimate` columns
 #'   - `error`, a character column containing the error message if the
 #'     iteration failed, otherwise `NA`.
 #'

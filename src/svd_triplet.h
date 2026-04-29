@@ -2,6 +2,7 @@
 #define SVD_TRIPLET_H
 
 #include <RcppArmadillo.h>
+#include <chrono>
 #include "gram_ops.h"
 #include "eig_sym_sel.h"
 #include "hybrid_topk_eig.h"
@@ -40,13 +41,38 @@ inline void SVD_triplet(const arma::mat &Xhat,
   trace_val = arma::trace(AA_NxN);
 
   LOC_TIC(timer, "eig");
-  const bool ok = hyb_ctx
-                      ? hybrid_topk_eig(eigvals, eigvecs, AA_NxN, *hyb_ctx, outer_iter)
-                      : eig_sym_sel(eigvals, eigvecs, AA_NxN, eig_ws);
+
+  bool ok = false;
+
+  if (hyb_ctx)
+  {
+    if (hyb_ctx->auto_timing_active())
+    {
+      const auto t0 = std::chrono::steady_clock::now();
+
+      ok = hybrid_topk_eig(eigvals, eigvecs, AA_NxN, *hyb_ctx, outer_iter);
+
+      const auto t1 = std::chrono::steady_clock::now();
+
+      const double seconds = std::chrono::duration<double>(t1 - t0).count();
+
+      hyb_ctx->record_auto_probe_time(seconds);
+    }
+    else
+    {
+      ok = hybrid_topk_eig(eigvals, eigvecs, AA_NxN, *hyb_ctx, outer_iter);
+    }
+  }
+  else
+  {
+    ok = eig_sym_sel(eigvals, eigvecs, AA_NxN, eig_ws);
+  }
+
   if (!ok)
   {
     Rcpp::stop("`eig_sym_sel` failed to converge");
   }
+
   LOC_TOC(timer, "eig");
 
   const arma::uword ke = eigvals.n_elem;

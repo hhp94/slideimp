@@ -17,10 +17,10 @@ A numeric vector of column variances, named when \code{obj} has column
 names.
 }
 \description{
-Computes the sample variance for each column of a numeric matrix.
+Compute the sample variance for each column of a numeric matrix.
 }
 \details{
-Columns with fewer than two distinct non-missing values are assigned \code{NA}.
+Columns with fewer than two non-missing values are assigned \code{NA}.
 }
 \examples{
 set.seed(123)

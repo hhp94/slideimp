@@ -2,11 +2,11 @@
 #'
 #' S3 generic for converting various group specifications into the
 #' canonical data.frame form expected by [prep_groups()]. This generic
-#' exists only to allow `slideimp.extra` to register the character method.
+#' is exported only to allow `slideimp.extra` to register the character method.
 #'
 #' @param x A group specification. The base package provides a method for
 #' `data.frame`. `slideimp.extra` provides `character` for chip-name lookup.
-#' @return A data.frame with at least a `feature` column, suitable for
+#' @returns A data.frame with at least a `feature` column, suitable for
 #' passing to [prep_groups()].
 #'
 #' @examples
@@ -248,7 +248,7 @@ prep_groups <- function(
     unique = TRUE, .var.name = "group$feature"
   )
 
-  # Normalize aux — always present as a list of character vectors
+  # Normalize aux - always present as a list of character vectors
   if ("aux" %in% names(group)) {
     checkmate::assert_list(
       group$aux,
@@ -262,7 +262,7 @@ prep_groups <- function(
     group$aux <- replicate(nrow(group), character(0), simplify = FALSE)
   }
 
-  # Normalize parameters — always present as a list of lists
+  # Normalize parameters - always present as a list of lists
   if ("parameters" %in% names(group)) {
     checkmate::assert_list(
       group$parameters,
@@ -498,7 +498,7 @@ prep_groups <- function(
 #' A character scalar can be passed to `group` to name a supported Illumina
 #' platform, such as `"EPICv2"` or `"EPICv2_deduped"`. This requires the
 #' optional `slideimp.extra` package to be installed. Supported platforms are
-#' listed in `slideimp.extra::slideimp_arrays`.
+#' listed in `slideimp_arrays` of the `slideimp.extra` package.
 #'
 #' @returns A numeric matrix of the same dimensions as `obj`, with missing
 #' values imputed. The returned object has class `slideimp_results`.
@@ -589,7 +589,7 @@ group_imp <- function(
   # Step 1: Build canonical groups via prep_groups() ----
   # After this call, group$feature, group$aux, and group$parameters are all
   # guaranteed to exist as properly typed list-columns.
-  # subset is also handled here — non-subset features are demoted to aux.
+  # subset is also handled here - non-subset features are demoted to aux.
   group <- prep_groups(
     obj_cn = cn,
     group = group,

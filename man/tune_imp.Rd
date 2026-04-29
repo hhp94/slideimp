@@ -82,11 +82,11 @@ tuning to reduce thread contention.}
 \value{
 A \code{data.frame} of class \code{slideimp_tune} containing:
 \itemize{
-\item columns originally provided in \code{parameters};
-\item \code{param_set}, an integer ID for each unique parameter combination;
-\item \code{rep_id}, an integer repetition index;
+\item columns originally provided in \code{parameters}
+\item \code{param_set}, an integer ID for each unique parameter combination
+\item \code{rep_id}, an integer repetition index
 \item \code{result}, a list-column where each element is a data frame containing
-\code{truth} and \code{estimate} columns;
+\code{truth} and \code{estimate} columns
 \item \code{error}, a character column containing the error message if the
 iteration failed, otherwise \code{NA}.
 }
@@ -140,8 +140,8 @@ it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
 PCA imputation speed depends on the eigensolver selected by \code{solver} and the
 convergence threshold \code{threshold}. The exact solver is selected with
 \code{solver = "exact"}. The iterative LOBPCG solver is selected with
-\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, uses a conservative
-internal rule.
+\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
+probe chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful to
 benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
@@ -153,7 +153,8 @@ The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 Check this on a representative subset before using the relaxed threshold in a
 full analysis.
 
-See the pkgdown article \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{"Speeding up PCA imputation"}
+See the pkgdown article
+\href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}
 for a full workflow.
 }
 

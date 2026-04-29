@@ -61,7 +61,7 @@ test_that("group_imp() handles aux columns present in only some groups (padded)"
   meta <- to_test$col_group
 
   # move feature 1 into its own tiny group so padding is needed for that
-  # group only — the other groups will have zero aux columns.
+  # group only - the other groups will have zero aux columns.
   meta[1, "group"] <- "group3"
 
   prepped <- prep_groups(colnames(obj), group = meta, min_group_size = 10)
@@ -586,7 +586,7 @@ test_that("group_imp: on_infeasible = 'mean' fills with column means and flags g
   expect_false(anyNA(res[, 1:5]))
 })
 
-test_that("group_imp: mixed feasible + infeasible groups — only bad group falls back", {
+test_that("group_imp: mixed feasible + infeasible groups - only bad group falls back", {
   set.seed(1234)
   sim <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)
   mat <- sim$input

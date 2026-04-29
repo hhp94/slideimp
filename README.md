@@ -77,7 +77,7 @@ imputed <- group_imp(
 print(imputed, n = 4, p = 4)
 # Method: group_imp (PCA imputation)
 # Dimensions: 20 x 281797
-# 
+#
 #         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11
 # sample1       0.1517542       0.5023435      0.38354308       0.2067731
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
@@ -107,14 +107,14 @@ print(imputed, n = 4, p = 4)
 - **Parallel PCA imputation with a threaded BLAS** (OpenBLAS or MKL):
   set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers don’t
   compete for cores. Requires `{RhpcBLASctl}`.
-- **Parallel K-NN imputation:** use the `cores` argument
-  (`{RcppThread}`’s `parallelFor`) instead of `{mirai}`. If you only
-  need clock CpGs, pass `subset` to skip all other probes.
 - **Faster PCA imputation on Windows machines** *(optional, advanced):*
   R on Windows ships with a reference BLAS that’s slow for dense linear
   algebra. Swapping it for OpenBLAS can significantly speed up the PCA
   imputation - see [this community
   guide](https://github.com/david-cortes/R-openblas-in-windows).
+- **Parallel K-NN imputation:** use the `cores` argument
+  (`{RcppThread}`’s `parallelFor`) instead of `{mirai}`. If you only
+  need clock CpGs, pass `subset` to skip all other probes.
 
 ## Extended Workflow
 
@@ -263,7 +263,7 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
 ## Sliding Window Imputation
 
 - `slide_imp()` performs sliding window imputation.
-- This function is **not** for Illumina DNAm microarrays; see
+- This function is **not** for Illumina DNAm microarrays. See
   `group_imp()`.
 - **Note:**
   - DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run

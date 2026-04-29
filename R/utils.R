@@ -171,7 +171,7 @@ check_pin_blas <- function(pin_blas) {
 #' @param arg Character scalar used in error messages to identify the source of
 #'   the parameters.
 #'
-#' @return
+#' @returns
 #' Invisibly returns `NULL` if all parameter names are valid. Otherwise aborts
 #' with a formatted error message.
 #'

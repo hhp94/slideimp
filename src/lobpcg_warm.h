@@ -50,7 +50,8 @@ enum LOBPCGStatus
   LOBPCG_RESIDUAL_COLLAPSED = 3,
   LOBPCG_P_COLLAPSED = 4,
   LOBPCG_RR_FAILED = 5,
-  LOBPCG_MAXITER = 6
+  LOBPCG_MAXITER = 6,
+  LOBPCG_BAD_SEED = 7
 };
 
 struct LOBPCGResult
@@ -392,6 +393,18 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     {
       out.converged = true;
       ++it;
+      break;
+    }
+
+    // divergence guard: residual exploded well beyond what's possible
+    // for a normalized eigenvector candidate. ||A*x - l*x|| / ||A|| <= 2
+    // for any unit-norm x, so anything >> 2 means the iterate has lost
+    // orthonormality and is amplifying. 10 leave headroom for
+    // pathological mid-iteration excursions while still catching divergence.
+    if (out.max_rel_res > 10.0)
+    {
+      out.status = LOBPCG_BAD_SEED;
+      out.fail_iter = it;
       break;
     }
 
