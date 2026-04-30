@@ -6,9 +6,9 @@
 \alias{slideimp-package}
 \title{slideimp: Numeric Matrices K-NN and PCA Imputation}
 \description{
-Provides K-nearest neighbor, PCA, grouped, and sliding-window imputation
-methods for numeric matrices, with utilities for simulation and parameter
-tuning.
+Provides K-nearest-neighbor, PCA, grouped, and sliding-window imputation
+methods for numeric matrices, along with utilities for simulation and
+parameter tuning.
 }
 \seealso{
 Useful links:

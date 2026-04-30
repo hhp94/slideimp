@@ -33,7 +33,7 @@ removed. \code{NULL} is treated as a single parameter set with no additional
 arguments, which is useful for functions whose required arguments all have
 defaults.}
 
-\item{.f}{Either \code{"knn_imp"}, \code{"pca_imp"}, \code{"slide_imp"}, or a custom
+\item{.f}{One of \code{"knn_imp"}, \code{"pca_imp"}, or \code{"slide_imp"}, or a custom
 imputation function.}
 
 \item{na_loc}{Optional predefined missing-value locations. Accepted formats
@@ -49,7 +49,7 @@ Ignored when \code{na_loc} is supplied.}
 
 \item{n_cols}{Integer or \code{NULL}. Number of columns to receive injected
 missing values per repetition. Must be supplied when both \code{num_na} and
-\code{na_loc} are \code{NULL}, unless \code{\link[=tune_imp]{tune_imp()}} chooses its automatic default.
+\code{na_loc} are \code{NULL}, unless the automatic default applies.
 Ignored when \code{num_na} or \code{na_loc} is supplied.}
 
 \item{n_rows}{Integer. Target number of missing values to inject per selected
@@ -80,13 +80,13 @@ K-NN imputation. For other methods, use \code{mirai::daemons()}.}
 tuning to reduce thread contention.}
 }
 \value{
-A \code{data.frame} of class \code{slideimp_tune} containing:
+A data frame of class \code{slideimp_tune} containing:
 \itemize{
-\item columns originally provided in \code{parameters}
-\item \code{param_set}, an integer ID for each unique parameter combination
-\item \code{rep_id}, an integer repetition index
+\item columns originally provided in \code{parameters};
+\item \code{param_set}, an integer ID for each unique parameter combination;
+\item \code{rep_id}, an integer repetition index;
 \item \code{result}, a list-column where each element is a data frame containing
-\code{truth} and \code{estimate} columns
+\code{truth} and \code{estimate} columns;
 \item \code{error}, a character column containing the error message if the
 iteration failed, otherwise \code{NA}.
 }
@@ -113,13 +113,17 @@ plus exactly one of \code{k} or \code{ncp}.
 To tune parameters for grouped imputation, tune \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}}
 on representative groups, then pass the selected parameters to \code{\link[=group_imp]{group_imp()}}.
 
+The top-level \code{rowmax} and \code{colmax} arguments control random missing-value
+injection performed by \code{\link[=sample_na_loc]{sample_na_loc()}}. To tune or pass an imputation
+method's own \code{colmax} argument, include a \code{colmax} column in \code{parameters}.
+
 Tuning results can be summarized with \code{\link[=compute_metrics]{compute_metrics()}} or evaluated with
 external packages such as \code{yardstick}.
 }
 \section{Parallelization}{
 
 \itemize{
-\item K-NN: use the \code{cores} argument. If \code{mirai::daemons()} are active, \code{cores}
+\item K-NN: use the \code{cores} argument. If \code{mirai} daemons are active, \code{cores}
 is automatically set to \code{1} to avoid nested parallelism.
 \item PCA: use \code{mirai::daemons()} instead of \code{cores}.
 }
@@ -141,12 +145,12 @@ PCA imputation speed depends on the eigensolver selected by \code{solver} and th
 convergence threshold \code{threshold}. The exact solver is selected with
 \code{solver = "exact"}. The iterative LOBPCG solver is selected with
 \code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
-probe chooses LOBPCG only when it is clearly faster.
+probe and chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful to
 benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters such
-as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+subset, such as chromosome 22, before tuning accuracy-related parameters.
+For \code{slide_imp()}, this may include \code{window_size} and \code{overlap_size}.
 
 The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 \code{threshold = 1e-5} can be faster while giving very similar imputed values.
@@ -161,10 +165,11 @@ for a full workflow.
 \examples{
 set.seed(123)
 
-# Increase num_na and n_reps for real analyses.
+# Simulate some data
 obj <- sim_mat(10, 50)$input
 
-# Tune K-NN imputation with random missing-value injection
+# Tune K-NN imputation with random missing-value injection.
+# Use larger `num_na` and `n_reps` values for real analyses.
 params_knn <- data.frame(k = c(2, 4))
 results <- tune_imp(
   obj,

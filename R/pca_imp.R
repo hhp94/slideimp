@@ -210,11 +210,8 @@ new_lobpcg_control <- function(
 #' Impute missing values in a numeric matrix using regularized or
 #' expectation-maximization PCA imputation.
 #'
-#' @details
-#' This algorithm is based on `missMDA::imputePCA()` and is optimized for tall
-#' or wide numeric matrices.
+#' @inheritParams knn_imp
 #'
-#' @param obj A numeric matrix with samples in rows and features in columns.
 #' @param ncp Integer. Number of principal components used to predict missing
 #'   entries.
 #' @param scale Logical. If `TRUE`, columns are scaled to unit variance.
@@ -243,20 +240,18 @@ new_lobpcg_control <- function(
 #' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
 #'   created by [lobpcg_control()]. A plain named list is also accepted. Ignored
 #'   when `solver = "exact"`.
-#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
-#'   proportion greater than `colmax` are not imputed.
-#' @param post_imp Logical. If `TRUE`, replace any remaining missing values
-#'   with column means after PCA imputation.
 #' @param clamp Optional numeric vector of length 2 giving lower and upper bounds
 #'   for PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
 #'   methylation beta values. Use `c(lb, Inf)` for only lower bound clamping, or
 #'   `c(-Inf, ub)` for only upper bound clamping. Clamping is applied only to
 #'   values imputed by the PCA step, not to observed values.
-#' @param na_check Logical. If `TRUE`, check whether the result still contains
-#'   missing values.
 #'
 #' @returns A numeric matrix of the same dimensions as `obj`, with missing
 #' values imputed. The returned object has class `slideimp_results`.
+#'
+#' @details
+#' This algorithm is based on `missMDA::imputePCA()` and is optimized for tall
+#' or wide numeric matrices.
 #'
 #' @section Performance tips:
 #' `pca_imp()` relies heavily on linear algebra. On Windows, the default BLAS
@@ -267,12 +262,12 @@ new_lobpcg_control <- function(
 #' convergence threshold `threshold`. The exact solver is selected with
 #' `solver = "exact"`. The iterative LOBPCG solver is selected with
 #' `solver = "lobpcg"`. The default, `solver = "auto"`, performs a short timed
-#' probe chooses LOBPCG only when it is clearly faster.
+#' probe and chooses LOBPCG only when it is clearly faster.
 #'
 #' For large or approximately low-rank genomic matrices, it can be useful to
 #' benchmark `solver = "exact"` against `solver = "lobpcg"` on a representative
-#' subset, such as chromosome 22, before tuning accuracy-related parameters such
-#' as `ncp`, `coeff.ridge`, `window_size`, or `overlap_size`.
+#' subset, such as chromosome 22, before tuning accuracy-related parameters.
+#' For `slide_imp()`, this may include `window_size` and `overlap_size`.
 #'
 #' The default `threshold = 1e-6` is conservative. In many genomic datasets,
 #' `threshold = 1e-5` can be faster while giving very similar imputed values.
@@ -300,7 +295,8 @@ new_lobpcg_control <- function(
 #' sum(is.na(obj))
 #' obj[1:4, 1:4]
 #'
-#' # Randomly initialize missing values 5 times. The first initialization is mean imputation.
+#' # Randomly initialize missing values 5 times. The first initialization is
+#' # mean imputation.
 #' pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 #'
 #' @export

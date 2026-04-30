@@ -45,7 +45,7 @@ left untouched and are not used as auxiliary columns.}
 groups.}
 }
 \value{
-A \code{data.frame} of class \code{slideimp_tbl} containing:
+A data frame of class \code{slideimp_tbl} containing:
 \itemize{
 \item \code{group}: original group labels, if provided, or sequential group labels.
 \item \code{feature}: a list-column of character vectors containing feature names.
@@ -67,8 +67,8 @@ enforces \eqn{A \subseteq B}: every matrix column must appear somewhere in
 the grouping specification.
 
 Elements in \eqn{B} but not in \eqn{A}, such as previously dropped probes,
-are pruned from each group. Groups left with zero features after pruning or
-subset demotion are removed with a diagnostic message.
+are pruned from each group. Groups left with zero features after pruning
+are removed with a diagnostic message.
 }
 \examples{
 sim <- sim_mat(n = 10, p = 20)

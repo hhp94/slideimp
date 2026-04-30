@@ -9,31 +9,31 @@ mat_miss(obj, col = TRUE, prop = FALSE)
 \arguments{
 \item{obj}{A numeric matrix.}
 
-\item{col}{Logical. If \code{TRUE}, compute per-column statistics. If \code{FALSE},
-compute per-row statistics.}
+\item{col}{Logical. If \code{TRUE}, compute column-wise. If \code{FALSE},
+compute row-wise.}
 
 \item{prop}{Logical. If \code{FALSE}, return missing-value counts. If \code{TRUE},
 return missing-value proportions.}
 }
 \value{
-A named numeric vector containing missing-value counts or
-proportions for columns or rows.
+A numeric vector containing missing-value counts or proportions for
+columns or rows, named when the corresponding dimension names are present.
 }
 \description{
 Calculate the number or proportion of missing values per column or per row
 of a numeric matrix without allocating a full logical mask matrix.
 }
 \examples{
-mat <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)
-mat
+obj <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)
+obj
 
-# Column missing counts
-mat_miss(mat)
+# column missing counts
+mat_miss(obj)
 
-# Row missing counts
-mat_miss(mat, col = FALSE)
+# row missing counts
+mat_miss(obj, col = FALSE)
 
-# Column missing proportions
-mat_miss(mat, prop = TRUE)
+# column missing proportions
+mat_miss(obj, prop = TRUE)
 
 }

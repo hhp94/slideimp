@@ -1,7 +1,34 @@
-#' K-Nearest Neighbors Imputation for Numeric Matrices
+#' K-Nearest-Neighbor Imputation for Numeric Matrices
 #'
 #' Impute missing values in a numeric matrix using k-nearest neighbors
 #' (K-NN).
+#'
+#' @param obj A numeric matrix with samples in rows and features in columns.
+#' @param k Integer. Number of nearest neighbors to use for K-NN imputation.
+#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
+#'  proportion greater than `colmax` are excluded from the main imputation
+#'  method. Excluded columns are left unchanged unless `post_imp = TRUE`, in
+#'  which case remaining missing values are replaced by column means when
+#'  possible.
+#' @param method Character. K-NN imputation distance method: either `"euclidean"`
+#'  or `"manhattan"`.
+#' @param cores Integer. Number of cores to use for K-NN imputation. Defaults
+#'   to `1`.
+#' @param post_imp Logical. If `TRUE`, replace missing values remaining after
+#'  the main imputation method with column means when possible.
+#' @param subset Optional character or integer vector specifying columns to
+#'  target for imputation. If `NULL`, all eligible columns are targeted.
+#' @param dist_pow Numeric. Power used to penalize more distant neighbors in
+#'  the weighted average. `dist_pow = 0` gives an unweighted average of the
+#'  nearest neighbors.
+#' @param tree Logical. If `FALSE`, use brute-force K-NN. If `TRUE`, use
+#'  ball-tree K-NN via `mlpack`.
+#' @param na_check Logical. If `TRUE`, check whether the returned matrix still
+#'  contains missing values.
+#' @param .progress Logical. If `TRUE`, show imputation progress.
+#'
+#' @returns A numeric matrix of the same dimensions as `obj`, with missing
+#' values imputed. The returned object has class `slideimp_results`.
 #'
 #' @details
 #' `knn_imp()` performs imputation column-wise, treating rows as observations
@@ -15,36 +42,13 @@
 #' sets, but it requires initially filling missing values with column means,
 #' which can introduce bias when missingness is high.
 #'
-#' @section Performance optimization:
-#' - `tree = FALSE` uses brute-force K-NN. This is always safe and is often
-#'   faster for small to moderate data sets or high-dimensional data.
+#' @section K-NN performance optimization:
+#' - `tree = FALSE` uses brute-force K-NN. This avoids the initial mean-filling
+#'  step and is often faster for small to moderate datasets or high-dimensional
+#'  data.
 #' - `tree = TRUE` uses ball-tree K-NN. Consider this only when run time is
-#'   prohibitive and missingness is low, for example less than 5%.
+#'  prohibitive and missingness is low, for example less than 5%.
 #' - Use `subset` when only specific columns need imputation.
-#'
-#' @param obj A numeric matrix with samples in rows and features in columns.
-#' @param k Integer. Number of nearest neighbors to use for imputation.
-#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
-#'   proportion greater than `colmax` are not imputed.
-#' @param method Character. Distance metric for nearest-neighbor calculation:
-#'   either `"euclidean"` or `"manhattan"`.
-#' @param cores Integer. Number of cores to use for parallel computation.
-#'   Defaults to `1`.
-#' @param post_imp Logical. If `TRUE`, replace any remaining missing values
-#'   with column means after K-NN imputation.
-#' @param subset Optional character or integer vector specifying columns to
-#'   impute. If `NULL`, all eligible columns are imputed.
-#' @param dist_pow Numeric. Power used to penalize more distant neighbors in
-#'   the weighted average. `dist_pow = 0` gives an unweighted average of the
-#'   nearest neighbors.
-#' @param tree Logical. If `FALSE`, use brute-force K-NN. If `TRUE`, use
-#'   ball-tree K-NN via `mlpack`.
-#' @param na_check Logical. If `TRUE`, check whether the result still contains
-#'   missing values.
-#' @param .progress Logical. If `TRUE`, show imputation progress.
-#'
-#' @returns A numeric matrix of the same dimensions as `obj`, with missing
-#' values imputed. The returned object has class `slideimp_results`.
 #'
 #' @references
 #' Troyanskaya O, Cantor M, Sherlock G, Brown P, Hastie T, Tibshirani R,

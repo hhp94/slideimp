@@ -54,7 +54,9 @@ each feature listed in \code{subset}; \code{overlap_size} is ignored. \code{subs
 be supplied when \code{flank = TRUE}.}
 
 \item{min_window_n}{Integer. Minimum number of columns a window must contain
-to be imputed. \code{k} and \code{ncp} must be smaller than \code{min_window_n}.}
+to be considered for imputation. For non-dry runs, the selected \code{k} or
+\code{ncp} value must be feasible for the usable columns in each retained
+window after applying \code{colmax}.}
 
 \item{subset}{Optional character or integer vector specifying columns to
 impute. If \code{NULL}, all eligible columns are imputed. Required when
@@ -64,8 +66,7 @@ impute. If \code{NULL}, all eligible columns are imputed. Required when
 \code{slideimp_tbl} describing the windows that would be used after all
 filtering rules are applied. In this mode, \code{k} and \code{ncp} are not required.}
 
-\item{k}{Integer or \code{NULL}. Number of nearest neighbors for K-NN imputation.
-Supply \code{k} to use K-NN imputation.}
+\item{k}{Integer. Number of nearest neighbors to use for K-NN imputation.}
 
 \item{cores}{Integer. Number of cores to use for K-NN imputation.}
 
@@ -73,8 +74,8 @@ Supply \code{k} to use K-NN imputation.}
 the weighted average. \code{dist_pow = 0} gives an unweighted average of the
 nearest neighbors.}
 
-\item{ncp}{Integer or \code{NULL}. Number of components for PCA imputation.
-Supply \code{ncp} to use PCA imputation.}
+\item{ncp}{Integer. Number of principal components used to predict missing
+entries.}
 
 \item{scale}{Logical. If \code{TRUE}, columns are scaled to unit variance.}
 
@@ -123,16 +124,19 @@ values imputed by the PCA step, not to observed values.}
 \code{"regularized"} or \code{"EM"}. If \code{NULL}, the corresponding backend default
 is used.}
 
-\item{.progress}{Logical. If \code{TRUE}, show progress.}
+\item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 
 \item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are not imputed.}
+proportion greater than \code{colmax} are excluded from the main imputation
+method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
+which case remaining missing values are replaced by column means when
+possible.}
 
-\item{post_imp}{Logical. If \code{TRUE}, replace any remaining missing values
-with column means after backend imputation.}
+\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
+the main imputation method with column means when possible.}
 
-\item{na_check}{Logical. If \code{TRUE}, check whether the result still contains
-missing values.}
+\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
+contains missing values.}
 
 \item{on_infeasible}{Character. One of \code{"skip"}, \code{"error"}, or \code{"mean"}.
 Controls behavior when a window is infeasible for imputation, for example
@@ -140,11 +144,12 @@ when \code{k} or \code{ncp} exceeds the number of usable columns after applying
 \code{colmax}.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj}, with missing
-values imputed. The returned object has class \code{slideimp_results}.
+If \code{dry_run = FALSE}, a numeric matrix of the same dimensions as
+\code{obj}, with missing values imputed. The returned object has class
+\code{slideimp_results}.
 
-When \code{dry_run = TRUE}, returns a \code{data.frame} of class \code{slideimp_tbl} with
-columns \code{start}, \code{end}, and \code{window_n}, plus \code{subset_local} and, when
+If \code{dry_run = TRUE}, a data frame of class \code{slideimp_tbl} with columns
+\code{start}, \code{end}, and \code{window_n}, plus \code{subset_local} and, when
 \code{flank = TRUE}, \code{target}.
 }
 \description{
@@ -179,12 +184,12 @@ PCA imputation speed depends on the eigensolver selected by \code{solver} and th
 convergence threshold \code{threshold}. The exact solver is selected with
 \code{solver = "exact"}. The iterative LOBPCG solver is selected with
 \code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
-probe chooses LOBPCG only when it is clearly faster.
+probe and chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful to
 benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters such
-as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+subset, such as chromosome 22, before tuning accuracy-related parameters.
+For \code{slide_imp()}, this may include \code{window_size} and \code{overlap_size}.
 
 The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 \code{threshold = 1e-5} can be faster while giving very similar imputed values.

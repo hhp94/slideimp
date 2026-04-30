@@ -58,8 +58,8 @@ and sample metadata for rows, and can inject \code{NA} values into a specified
 proportion of matrix cells across a specified proportion of columns.
 }
 \details{
-Generate a numeric matrix, optional column and row metadata, and optionally
-injected missing values.
+Generate a numeric matrix with optional row and column metadata and added
+missing values.
 }
 \examples{
 set.seed(123)

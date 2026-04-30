@@ -4,26 +4,26 @@
 #' of a numeric matrix without allocating a full logical mask matrix.
 #'
 #' @param obj A numeric matrix.
-#' @param col Logical. If `TRUE`, compute per-column statistics. If `FALSE`,
-#'   compute per-row statistics.
+#' @param col Logical. If `TRUE`, compute column-wise. If `FALSE`,
+#'   compute row-wise.
 #' @param prop Logical. If `FALSE`, return missing-value counts. If `TRUE`,
 #'   return missing-value proportions.
 #'
-#' @returns A named numeric vector containing missing-value counts or
-#' proportions for columns or rows.
+#' @returns A numeric vector containing missing-value counts or proportions for
+#'   columns or rows, named when the corresponding dimension names are present.
 #'
 #' @examples
-#' mat <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)
-#' mat
+#' obj <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)
+#' obj
 #'
-#' # Column missing counts
-#' mat_miss(mat)
+#' # column missing counts
+#' mat_miss(obj)
 #'
-#' # Row missing counts
-#' mat_miss(mat, col = FALSE)
+#' # row missing counts
+#' mat_miss(obj, col = FALSE)
 #'
-#' # Column missing proportions
-#' mat_miss(mat, prop = TRUE)
+#' # column missing proportions
+#' mat_miss(obj, prop = TRUE)
 #'
 #' @export
 mat_miss <- function(obj, col = TRUE, prop = FALSE) {

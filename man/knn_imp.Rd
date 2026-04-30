@@ -2,7 +2,7 @@
 % Please edit documentation in R/knn_imp.R
 \name{knn_imp}
 \alias{knn_imp}
-\title{K-Nearest Neighbors Imputation for Numeric Matrices}
+\title{K-Nearest-Neighbor Imputation for Numeric Matrices}
 \usage{
 knn_imp(
   obj,
@@ -21,22 +21,25 @@ knn_imp(
 \arguments{
 \item{obj}{A numeric matrix with samples in rows and features in columns.}
 
-\item{k}{Integer. Number of nearest neighbors to use for imputation.}
+\item{k}{Integer. Number of nearest neighbors to use for K-NN imputation.}
 
 \item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are not imputed.}
+proportion greater than \code{colmax} are excluded from the main imputation
+method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
+which case remaining missing values are replaced by column means when
+possible.}
 
-\item{method}{Character. Distance metric for nearest-neighbor calculation:
-either \code{"euclidean"} or \code{"manhattan"}.}
+\item{method}{Character. K-NN imputation distance method: either \code{"euclidean"}
+or \code{"manhattan"}.}
 
-\item{cores}{Integer. Number of cores to use for parallel computation.
-Defaults to \code{1}.}
+\item{cores}{Integer. Number of cores to use for K-NN imputation. Defaults
+to \code{1}.}
 
-\item{post_imp}{Logical. If \code{TRUE}, replace any remaining missing values
-with column means after K-NN imputation.}
+\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
+the main imputation method with column means when possible.}
 
 \item{subset}{Optional character or integer vector specifying columns to
-impute. If \code{NULL}, all eligible columns are imputed.}
+target for imputation. If \code{NULL}, all eligible columns are targeted.}
 
 \item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
 the weighted average. \code{dist_pow = 0} gives an unweighted average of the
@@ -45,8 +48,8 @@ nearest neighbors.}
 \item{tree}{Logical. If \code{FALSE}, use brute-force K-NN. If \code{TRUE}, use
 ball-tree K-NN via \code{mlpack}.}
 
-\item{na_check}{Logical. If \code{TRUE}, check whether the result still contains
-missing values.}
+\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
+contains missing values.}
 
 \item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 }
@@ -70,11 +73,12 @@ If \code{tree = TRUE}, nearest neighbors are found with a ball tree via the
 sets, but it requires initially filling missing values with column means,
 which can introduce bias when missingness is high.
 }
-\section{Performance optimization}{
+\section{K-NN performance optimization}{
 
 \itemize{
-\item \code{tree = FALSE} uses brute-force K-NN. This is always safe and is often
-faster for small to moderate data sets or high-dimensional data.
+\item \code{tree = FALSE} uses brute-force K-NN. This avoids the initial mean-filling
+step and is often faster for small to moderate datasets or high-dimensional
+data.
 \item \code{tree = TRUE} uses ball-tree K-NN. Consider this only when run time is
 prohibitive and missingness is low, for example less than 5\%.
 \item Use \code{subset} when only specific columns need imputation.

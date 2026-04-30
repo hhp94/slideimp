@@ -30,7 +30,9 @@ find_overlap_regions <- function(start, end) {
 #' Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
 #' columns are meaningfully ordered.
 #'
-#' @param obj A numeric matrix with samples in rows and features in columns.
+#' @inheritParams knn_imp
+#' @inheritParams pca_imp
+#'
 #' @param location A sorted numeric vector of length `ncol(obj)` giving the
 #'   position of each column, such as genomic coordinates.
 #' @param window_size Numeric. Window width in the same units as `location`.
@@ -42,35 +44,24 @@ find_overlap_regions <- function(start, end) {
 #'   each feature listed in `subset`; `overlap_size` is ignored. `subset` must
 #'   be supplied when `flank = TRUE`.
 #' @param min_window_n Integer. Minimum number of columns a window must contain
-#'   to be imputed. `k` and `ncp` must be smaller than `min_window_n`.
+#'   to be considered for imputation. For non-dry runs, the selected `k` or
+#'   `ncp` value must be feasible for the usable columns in each retained
+#'   window after applying `colmax`.
 #' @param subset Optional character or integer vector specifying columns to
 #'   impute. If `NULL`, all eligible columns are imputed. Required when
 #'   `flank = TRUE`.
 #' @param dry_run Logical. If `TRUE`, skip imputation and return a
 #'   `slideimp_tbl` describing the windows that would be used after all
 #'   filtering rules are applied. In this mode, `k` and `ncp` are not required.
-#' @param k Integer or `NULL`. Number of nearest neighbors for K-NN imputation.
-#'   Supply `k` to use K-NN imputation.
-#' @param ncp Integer or `NULL`. Number of components for PCA imputation.
-#'   Supply `ncp` to use PCA imputation.
 #' @param method Character or `NULL`. For K-NN imputation, one of
 #'   `"euclidean"` or `"manhattan"`. For PCA imputation, one of
 #'   `"regularized"` or `"EM"`. If `NULL`, the corresponding backend default
 #'   is used.
 #' @param cores Integer. Number of cores to use for K-NN imputation.
-#' @param .progress Logical. If `TRUE`, show progress.
-#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
-#'   proportion greater than `colmax` are not imputed.
-#' @param post_imp Logical. If `TRUE`, replace any remaining missing values
-#'   with column means after backend imputation.
-#' @param na_check Logical. If `TRUE`, check whether the result still contains
-#'   missing values.
 #' @param on_infeasible Character. One of `"skip"`, `"error"`, or `"mean"`.
 #'   Controls behavior when a window is infeasible for imputation, for example
 #'   when `k` or `ncp` exceeds the number of usable columns after applying
 #'   `colmax`.
-#' @inheritParams knn_imp
-#' @inheritParams pca_imp
 #'
 #' @details
 #' The sliding-window approach divides the input matrix into smaller segments
@@ -91,12 +82,13 @@ find_overlap_regions <- function(start, end) {
 #'
 #' @inheritSection pca_imp Performance tips
 #'
-#' @returns A numeric matrix of the same dimensions as `obj`, with missing
-#' values imputed. The returned object has class `slideimp_results`.
+#' @returns If `dry_run = FALSE`, a numeric matrix of the same dimensions as
+#'   `obj`, with missing values imputed. The returned object has class
+#'   `slideimp_results`.
 #'
-#' When `dry_run = TRUE`, returns a `data.frame` of class `slideimp_tbl` with
-#' columns `start`, `end`, and `window_n`, plus `subset_local` and, when
-#' `flank = TRUE`, `target`.
+#'   If `dry_run = TRUE`, a data frame of class `slideimp_tbl` with columns
+#'   `start`, `end`, and `window_n`, plus `subset_local` and, when
+#'   `flank = TRUE`, `target`.
 #'
 #' @examples
 #' set.seed(1234)

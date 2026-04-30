@@ -337,7 +337,7 @@ resolve_na_loc <- function(
 #'   removed. `NULL` is treated as a single parameter set with no additional
 #'   arguments, which is useful for functions whose required arguments all have
 #'   defaults.
-#' @param .f Either `"knn_imp"`, `"pca_imp"`, `"slide_imp"`, or a custom
+#' @param .f One of `"knn_imp"`, `"pca_imp"`, or `"slide_imp"`, or a custom
 #'   imputation function.
 #' @param na_loc Optional predefined missing-value locations. Accepted formats
 #'   are a two-column integer matrix of row and column indices, a numeric vector
@@ -348,7 +348,7 @@ resolve_na_loc <- function(
 #'   Ignored when `na_loc` is supplied.
 #' @param n_cols Integer or `NULL`. Number of columns to receive injected
 #'   missing values per repetition. Must be supplied when both `num_na` and
-#'   `na_loc` are `NULL`, unless [tune_imp()] chooses its automatic default.
+#'   `na_loc` are `NULL`, unless the automatic default applies.
 #'   Ignored when `num_na` or `na_loc` is supplied.
 #' @param n_rows Integer. Target number of missing values to inject per selected
 #'   column. Ignored when `na_loc` is supplied.
@@ -381,6 +381,10 @@ resolve_na_loc <- function(
 #' To tune parameters for grouped imputation, tune [knn_imp()] or [pca_imp()]
 #' on representative groups, then pass the selected parameters to [group_imp()].
 #'
+#' The top-level `rowmax` and `colmax` arguments control random missing-value
+#' injection performed by [sample_na_loc()]. To tune or pass an imputation
+#' method's own `colmax` argument, include a `colmax` column in `parameters`.
+#'
 #' Tuning results can be summarized with [compute_metrics()] or evaluated with
 #' external packages such as `yardstick`.
 #'
@@ -388,22 +392,23 @@ resolve_na_loc <- function(
 #'
 #' @inheritSection pca_imp Performance tips
 #'
-#' @returns A `data.frame` of class `slideimp_tune` containing:
-#'   - columns originally provided in `parameters`
-#'   - `param_set`, an integer ID for each unique parameter combination
-#'   - `rep_id`, an integer repetition index
+#' @returns A data frame of class `slideimp_tune` containing:
+#'   - columns originally provided in `parameters`;
+#'   - `param_set`, an integer ID for each unique parameter combination;
+#'   - `rep_id`, an integer repetition index;
 #'   - `result`, a list-column where each element is a data frame containing
-#'     `truth` and `estimate` columns
+#'     `truth` and `estimate` columns;
 #'   - `error`, a character column containing the error message if the
 #'     iteration failed, otherwise `NA`.
 #'
 #' @examples
 #' set.seed(123)
 #'
-#' # Increase num_na and n_reps for real analyses.
+#' # Simulate some data
 #' obj <- sim_mat(10, 50)$input
 #'
-#' # Tune K-NN imputation with random missing-value injection
+#' # Tune K-NN imputation with random missing-value injection.
+#' # Use larger `num_na` and `n_reps` values for real analyses.
 #' params_knn <- data.frame(k = c(2, 4))
 #' results <- tune_imp(
 #'   obj,

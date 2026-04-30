@@ -70,13 +70,16 @@ created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list i
 when \code{solver = "exact"}.}
 
 \item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are not imputed.}
+proportion greater than \code{colmax} are excluded from the main imputation
+method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
+which case remaining missing values are replaced by column means when
+possible.}
 
-\item{post_imp}{Logical. If \code{TRUE}, replace any remaining missing values
-with column means after PCA imputation.}
+\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
+the main imputation method with column means when possible.}
 
-\item{na_check}{Logical. If \code{TRUE}, check whether the result still contains
-missing values.}
+\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
+contains missing values.}
 
 \item{clamp}{Optional numeric vector of length 2 giving lower and upper bounds
 for PCA-imputed values. Use \code{NULL} for no clamping. Use \code{c(0, 1)} for DNA
@@ -106,12 +109,12 @@ PCA imputation speed depends on the eigensolver selected by \code{solver} and th
 convergence threshold \code{threshold}. The exact solver is selected with
 \code{solver = "exact"}. The iterative LOBPCG solver is selected with
 \code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
-probe chooses LOBPCG only when it is clearly faster.
+probe and chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful to
 benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters such
-as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+subset, such as chromosome 22, before tuning accuracy-related parameters.
+For \code{slide_imp()}, this may include \code{window_size} and \code{overlap_size}.
 
 The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 \code{threshold = 1e-5} can be faster while giving very similar imputed values.
@@ -129,7 +132,8 @@ obj <- sim_mat(10, 10)$input
 sum(is.na(obj))
 obj[1:4, 1:4]
 
-# Randomly initialize missing values 5 times. The first initialization is mean imputation.
+# Randomly initialize missing values 5 times. The first initialization is
+# mean imputation.
 pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 
 }

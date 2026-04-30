@@ -23,21 +23,22 @@ values in the selected columns replaced by column means.
 Impute missing values in a matrix by replacing them with the mean of their
 respective columns.
 }
+\details{
+Columns with no observed values cannot be imputed by their column mean and
+are left unchanged.
+}
 \examples{
-mat <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9), nrow = 3)
-colnames(mat) <- c("A", "B", "C")
-mat
+obj <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9, NA, NA, NA), nrow = 3)
+colnames(obj) <- c("A", "B", "C", "D")
+obj
 
-# Impute missing values with column means
-imputed_mat <- mean_imp_col(mat)
-imputed_mat
+# impute missing values with column means
+mean_imp_col(obj)
 
-# Impute only specific columns by name
-imputed_subset <- mean_imp_col(mat, subset = c("A", "C"))
-imputed_subset
+# impute only specific columns by name
+mean_imp_col(obj, subset = c("A", "C"))
 
-# Impute only specific columns by index
-imputed_idx <- mean_imp_col(mat, subset = c(1, 3))
-imputed_idx
+# impute only specific columns by index
+mean_imp_col(obj, subset = c(1, 3))
 
 }

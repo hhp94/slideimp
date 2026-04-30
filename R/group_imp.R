@@ -1,19 +1,20 @@
-#' Resolve a group specification to a data.frame
+#' Resolve a Group Specification to a Data Frame
 #'
-#' S3 generic for converting various group specifications into the
-#' canonical data.frame form expected by [prep_groups()]. This generic
-#' is exported only to allow `slideimp.extra` to register the character method.
+#' Convert a group specification to the canonical data-frame form expected by
+#' [prep_groups()]. This S3 generic is exported so that extension packages,
+#' such as `slideimp.extra`, can register additional methods.
 #'
-#' @param x A group specification. The base package provides a method for
-#' `data.frame`. `slideimp.extra` provides `character` for chip-name lookup.
-#' @returns A data.frame with at least a `feature` column, suitable for
-#' passing to [prep_groups()].
+#' @param x A group specification. `slideimp` provides a method for
+#'   `data.frame` objects. The optional `slideimp.extra` package provides a
+#'   method for character platform names.
 #'
 #' @examples
 #' df <- data.frame(feature = c("cg1", "cg2"), group = c(1, 1))
 #' slideimp_resolve_group(df)
 #'
-#' @keywords internal
+#' @note
+#' This is primarily an extension hook for `slideimp.extra`.
+#'
 #' @export
 slideimp_resolve_group <- function(x) {
   UseMethod("slideimp_resolve_group")
@@ -164,10 +165,10 @@ group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
 #' the grouping specification.
 #'
 #' Elements in \eqn{B} but not in \eqn{A}, such as previously dropped probes,
-#' are pruned from each group. Groups left with zero features after pruning or
-#' subset demotion are removed with a diagnostic message.
+#' are pruned from each group. Groups left with zero features after pruning
+#' are removed with a diagnostic message.
 #'
-#' @returns A `data.frame` of class `slideimp_tbl` containing:
+#' @returns A data frame of class `slideimp_tbl` containing:
 #' * `group`: original group labels, if provided, or sequential group labels.
 #' * `feature`: a list-column of character vectors containing feature names.
 #' * `aux`: a list-column of character vectors containing auxiliary names.
@@ -415,7 +416,9 @@ prep_groups <- function(
 #'
 #' Perform K-NN or PCA imputation independently within feature groups.
 #'
-#' @param obj A numeric matrix with samples in rows and features in columns.
+#' @inheritParams knn_imp
+#' @inheritParams pca_imp
+#'
 #' @param group Specification of how features should be grouped for imputation.
 #'   Accepted formats are:
 #'
@@ -446,9 +449,6 @@ prep_groups <- function(
 #' @param min_group_size Integer or `NULL`. Minimum total number of columns
 #'   per group, counting both features and auxiliary columns. Groups smaller
 #'   than this are padded with randomly sampled columns from `obj`.
-#' @param post_imp Logical or `NULL`. If `TRUE`, replace any remaining missing
-#'   values with column means after imputation. If `NULL`, the backend default
-#'   is used unless overridden by `group$parameters`.
 #' @param seed Integer, numeric, or `NULL`. Random seed for reproducibility.
 #' @param pin_blas Logical. If `TRUE`, pin BLAS threads to 1 to reduce
 #'   contention when using parallel PCA on systems linked with multithreaded
@@ -457,12 +457,10 @@ prep_groups <- function(
 #'   Controls behavior when a group is infeasible for imputation, for example
 #'   when `k` or `ncp` exceeds the number of usable columns after applying
 #'   `colmax`.
-#' @inheritParams knn_imp
-#' @inheritParams pca_imp
 #'
 #' @details
 #' `group_imp()` performs K-NN or PCA imputation on feature groups
-#' independently, which can substantially reduce run time for large matrices.
+#' independently, which can substantially reduce runtime for large matrices.
 #'
 #' Specify `k` and related arguments to use K-NN imputation, or `ncp` and
 #' related arguments to use PCA imputation. If both `k` and `ncp` are `NULL`,
@@ -482,7 +480,7 @@ prep_groups <- function(
 #' occurs.
 #'
 #' @section Parallelization:
-#' * K-NN: use the `cores` argument. If `mirai::daemons()` are active, `cores`
+#' * K-NN: use the `cores` argument. If `mirai` daemons are active, `cores`
 #'   is automatically set to `1` to avoid nested parallelism.
 #' * PCA: use `mirai::daemons()` instead of `cores`.
 #'
@@ -498,7 +496,7 @@ prep_groups <- function(
 #' A character scalar can be passed to `group` to name a supported Illumina
 #' platform, such as `"EPICv2"` or `"EPICv2_deduped"`. This requires the
 #' optional `slideimp.extra` package to be installed. Supported platforms are
-#' listed in `slideimp_arrays` of the `slideimp.extra` package.
+#' listed in the `slideimp_arrays` object in the `slideimp.extra` package.
 #'
 #' @returns A numeric matrix of the same dimensions as `obj`, with missing
 #' values imputed. The returned object has class `slideimp_results`.

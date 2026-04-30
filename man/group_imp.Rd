@@ -78,11 +78,13 @@ per group, counting both features and auxiliary columns. Groups smaller
 than this are padded with randomly sampled columns from \code{obj}.}
 
 \item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are not imputed.}
+proportion greater than \code{colmax} are excluded from the main imputation
+method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
+which case remaining missing values are replaced by column means when
+possible.}
 
-\item{post_imp}{Logical or \code{NULL}. If \code{TRUE}, replace any remaining missing
-values with column means after imputation. If \code{NULL}, the backend default
-is used unless overridden by \code{group$parameters}.}
+\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
+the main imputation method with column means when possible.}
 
 \item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
 the weighted average. \code{dist_pow = 0} gives an unweighted average of the
@@ -137,8 +139,8 @@ values imputed by the PCA step, not to observed values.}
 contention when using parallel PCA on systems linked with multithreaded
 BLAS.}
 
-\item{na_check}{Logical. If \code{TRUE}, check whether the result still contains
-missing values.}
+\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
+contains missing values.}
 
 \item{on_infeasible}{Character. One of \code{"error"}, \code{"skip"}, or \code{"mean"}.
 Controls behavior when a group is infeasible for imputation, for example
@@ -154,7 +156,7 @@ Perform K-NN or PCA imputation independently within feature groups.
 }
 \details{
 \code{group_imp()} performs K-NN or PCA imputation on feature groups
-independently, which can substantially reduce run time for large matrices.
+independently, which can substantially reduce runtime for large matrices.
 
 Specify \code{k} and related arguments to use K-NN imputation, or \code{ncp} and
 related arguments to use PCA imputation. If both \code{k} and \code{ncp} are \code{NULL},
@@ -177,12 +179,12 @@ occurs.
 A character scalar can be passed to \code{group} to name a supported Illumina
 platform, such as \code{"EPICv2"} or \code{"EPICv2_deduped"}. This requires the
 optional \code{slideimp.extra} package to be installed. Supported platforms are
-listed in \code{slideimp_arrays} of the \code{slideimp.extra} package.
+listed in the \code{slideimp_arrays} object in the \code{slideimp.extra} package.
 }
 \section{Parallelization}{
 
 \itemize{
-\item K-NN: use the \code{cores} argument. If \code{mirai::daemons()} are active, \code{cores}
+\item K-NN: use the \code{cores} argument. If \code{mirai} daemons are active, \code{cores}
 is automatically set to \code{1} to avoid nested parallelism.
 \item PCA: use \code{mirai::daemons()} instead of \code{cores}.
 }
@@ -204,12 +206,12 @@ PCA imputation speed depends on the eigensolver selected by \code{solver} and th
 convergence threshold \code{threshold}. The exact solver is selected with
 \code{solver = "exact"}. The iterative LOBPCG solver is selected with
 \code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
-probe chooses LOBPCG only when it is clearly faster.
+probe and chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful to
 benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters such
-as \code{ncp}, \code{coeff.ridge}, \code{window_size}, or \code{overlap_size}.
+subset, such as chromosome 22, before tuning accuracy-related parameters.
+For \code{slide_imp()}, this may include \code{window_size} and \code{overlap_size}.
 
 The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 \code{threshold = 1e-5} can be faster while giving very similar imputed values.

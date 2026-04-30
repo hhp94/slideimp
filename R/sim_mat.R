@@ -1,7 +1,7 @@
 #' Simulate a Matrix with Metadata
 #'
-#' Generate a numeric matrix, optional column and row metadata, and optionally
-#' injected missing values.
+#' Generate a numeric matrix with optional row and column metadata and added
+#' missing values.
 #'
 #' @description
 #' `sim_mat()` generates random normal data with optional compound-symmetric

@@ -9,18 +9,20 @@
 #' @details
 #' Columns with fewer than two non-missing values are assigned `NA`.
 #'
-#' @returns A numeric vector of column variances, named when `obj` has column
-#' names.
+#' @returns A numeric vector of column variances, named if `obj` has column
+#'   names.
 #'
 #' @export
 #'
 #' @examples
 #' set.seed(123)
-#' obj <- matrix(rnorm(4 * 10), ncol = 4)
+#' obj <- matrix(rnorm(5 * 10), ncol = 5)
 #' obj[1, 1] <- NA
 #' obj[1:8, 2] <- NA
-#' obj[1:9, 3] <- NA
-#' obj[, 4] <- NA
+#' obj[1:8, 3] <- NA
+#' obj[9, 3] <- obj[10, 3]
+#' obj[1:9, 4] <- NA
+#' obj[, 5] <- NA
 #' obj
 #'
 #' col_vars(obj)
