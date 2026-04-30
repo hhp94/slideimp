@@ -10,6 +10,7 @@ The stable version of [slideimp](https://github.com/hhp94/slideimp) can
 be installed from CRAN using:
 
 ``` r
+
 install.packages("slideimp")
 ```
 
@@ -17,6 +18,7 @@ You can install the development version of
 [slideimp](https://github.com/hhp94/slideimp) with:
 
 ``` r
+
 pak::pkg_install("hhp94/slideimp")
 ```
 
@@ -25,6 +27,7 @@ You can install the optional
 (which provides lightweight Illumina manifests) with:
 
 ``` r
+
 pak::pkg_install("hhp94/slideimp.extra")
 ```
 
@@ -35,6 +38,7 @@ pak::pkg_install("hhp94/slideimp.extra")
   microarray. CpGs are in columns.
 
 ``` r
+
 dim(MSA_beta_matrix)
 # [1]     20 281797
 MSA_beta_matrix[1:4, 1:4]
@@ -54,6 +58,7 @@ MSA_beta_matrix[1:4, 1:4]
   instead, supply the `k` argument.
 
 ``` r
+
 library(slideimp.extra)
 library(slideimp)
 
@@ -125,6 +130,7 @@ print(imputed, n = 4, p = 4)
   columns.
 
 ``` r
+
 library(slideimp)
 set.seed(1234)
 sim_obj <- sim_mat(n = 20, p = 100, n_col_groups = 2)
@@ -155,6 +161,7 @@ group_df <- sim_obj$col_group
   [RcppThread](https://github.com/tnagler/RcppThread).
 
 ``` r
+
 knn_params <- expand.grid(k = c(5, 20), dist_pow = c(1, 2))
 group2_columns <- subset(group_df, group == "group2")
 group2_only <- obj[, group2_columns$feature]
@@ -178,6 +185,7 @@ tune_knn <- tune_imp(
   or [yardstick](https://github.com/tidymodels/yardstick) functions.
 
 ``` r
+
 metrics <- compute_metrics(tune_knn)
 
 # equivalently: dplyr::summarize(metrics, ..., .by = c(k, dist_pow, .metric))
@@ -218,6 +226,7 @@ sum_metrics[order(sum_metrics$.estimate.mean_error), ]
   thrashing.
 
 ``` r
+
 mirai::daemons(2) # 2 Cores
 
 # PCA imputation.
@@ -233,6 +242,7 @@ mirai::daemons(0) # Close daemons
   using the best parameters.
 
 ``` r
+
 knn_group_results <- group_imp(obj, group = group_df, k = 20, dist_pow = 1, cores = 2)
 #> Imputing 2 groups using KNN.
 #> Running mode: threaded (2 cores)
@@ -259,6 +269,7 @@ knn_group_results
   machines.
 
 ``` r
+
 # Similar to `tune_imp`, parallelization is controlled by `mirai::daemons()`
 mirai::daemons(2)
 pca_group_results <- group_imp(obj, group = group_df, ncp = 10)
@@ -271,6 +282,7 @@ mirai::daemons(0)
   [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
 
 ``` r
+
 full_knn_results <- knn_imp(obj = obj, k = 20)
 full_pca_results <- pca_imp(obj = obj, ncp = 10)
 ```
@@ -291,6 +303,7 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
     [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md).
 
 ``` r
+
 # Simulate some data
 chr1_beta <- sim_mat(n = 10, p = 2000)$input
 dim(chr1_beta)
@@ -335,6 +348,7 @@ chr1_beta[1:5, 1:5]
   imputed by `slide_imp`.
 
 ``` r
+
 location <- seq_len(ncol(chr1_beta)) # 1, 2, ..., 2000 for this simulated chromosome
 
 slide_imp(
@@ -363,6 +377,7 @@ slide_imp(
 - Then, we can perform the imputation using the given parameters.
 
 ``` r
+
 slide_imp(
   obj = chr1_beta,
   location = location,

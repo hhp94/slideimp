@@ -1,6 +1,7 @@
 # slideimp
 
 ``` r
+
 library(slideimp)
 set.seed(1234)
 ```
@@ -10,6 +11,7 @@ set.seed(1234)
 - Simulate some data
 
 ``` r
+
 # 20 rows, 1000 columns, all columns have at least some NA
 sim_obj <- sim_mat(n = 20, p = 1000, perc_col_na = 1)
 obj <- sim_obj$input
@@ -36,6 +38,7 @@ obj[1:4, 1:4]
     matrix whose rows store the row and column index of a missing value.
 
 ``` r
+
 na_loc <- sample_na_loc(obj, n_cols = 200, n_rows = 5, n_reps = 5)
 length(na_loc)
 #> [1] 5
@@ -58,6 +61,7 @@ na_loc[[1]][1:6, ]
   data frame.
 
 ``` r
+
 # This custom function imputes missing values with random normal values and takes
 # `mean` and `sd` as params
 rnorm_imp <- function(obj, mean, sd) {
@@ -103,6 +107,7 @@ rnorm_tune <- tune_imp(
 - Pick the method with the lowest cross-validation error:
 
 ``` r
+
 mean(compute_metrics(pca_tune, metrics = "rmse")$.estimate)
 #> [1] 0.2048011
 mean(compute_metrics(knn_tune, metrics = "rmse")$.estimate)
@@ -138,6 +143,7 @@ mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
   list column.
 
 ``` r
+
 sim_obj <- sim_mat(n = 20, p = 50, n_col_groups = 2)
 
 # Matrix to be imputed
@@ -178,6 +184,7 @@ meta[1:5, ]
   as a demonstration.
 
 ``` r
+
 set.seed(1234)
 group_imp_df <- prep_groups(colnames(obj), group = meta, min_group_size = 10)
 group_imp_df$parameters <- list(list(k = 3), list(k = 4), list(k = 5))
@@ -195,6 +202,7 @@ group_imp_df
   is ignored since all groups have group-wise `k` specified.
 
 ``` r
+
 knn_results <- group_imp(obj, group = group_imp_df, cores = 4, k = 10)
 #> Imputing 3 groups using KNN.
 #> Running mode: threaded (4 cores)
@@ -227,6 +235,7 @@ print(knn_results, p = 4)
   given a window size.
 
 ``` r
+
 set.seed(1234)
 sample_names <- paste0("S", 1:10)
 n_sites <- 1000
@@ -261,6 +270,7 @@ methyl[1:5, 1:10]
   columns.
 
 ``` r
+
 numCs_matrix <- as.matrix(methyl[, paste0("numCs", seq_along(sample_names))])
 cov_matrix <- as.matrix(methyl[, paste0("coverage", seq_along(sample_names))])
 beta_matrix <- numCs_matrix / cov_matrix
@@ -293,6 +303,7 @@ beta_matrix[1:4, 1:4]
     real analyses).
 
 ``` r
+
 params <- expand.grid(ncp = c(2, 4), window_size = c(5000, 10000))
 params$overlap_size <- 1000
 params$min_window_n <- 20 # windows with less than 20 columns are dropped
@@ -335,6 +346,7 @@ aggregate(.estimate ~ .metric + ncp + window_size, data = metrics, FUN = mean)
   - `window_n` is the number of features included in the window.
 
 ``` r
+
 slide_imp(
   obj = beta_matrix,
   location = locations,
@@ -363,6 +375,7 @@ slide_imp(
 - Turn off `dry_run` to impute the data
 
 ``` r
+
 slide_imp(
   obj = beta_matrix,
   location = locations,
@@ -401,6 +414,7 @@ slide_imp(
   `"33810"` by creating 5,000 bp flanking windows around each feature:
 
 ``` r
+
 slide_imp(
   obj = beta_matrix,
   location = locations,

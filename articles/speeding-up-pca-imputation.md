@@ -1,6 +1,7 @@
 # Speeding up PCA imputation
 
 ``` r
+
 library(slideimp)
 ```
 
@@ -22,6 +23,7 @@ eigensolver, and a parallel backend with
 Most users can keep the defaults:
 
 ``` r
+
 set.seed(1234)
 sim <- sim_mat(
   n = 80,
@@ -114,6 +116,7 @@ subset. Here, we designate `group1` of the simulated data as the
 representative chromosome.
 
 ``` r
+
 set.seed(1234)
 
 obj_probe <- obj[, subset(sim_df, group == "group1")$feature]
@@ -133,10 +136,12 @@ iterative solver is faster on this kind of data. We use a relaxed
 same convergence criterion, so their relative timing is representative.
 
 ``` r
+
 ncp_probe <- 5
 ```
 
 ``` r
+
 exact <- system.time(invisible(
   pca_imp(
     obj = obj_probe,
@@ -159,7 +164,7 @@ iterative <- system.time(invisible(
 
 exact - iterative
 #>    user  system elapsed 
-#>  -0.002  -0.011  -0.001
+#>  -0.003  -0.006  -0.001
 ```
 
 Second, use
@@ -169,6 +174,7 @@ example, relaxing the threshold to `1e-5` did not meaningfully change
 the error.
 
 ``` r
+
 thresh_df <- data.frame(threshold = c(1e-5, 1e-6), ncp = ncp_probe)
 res <- tune_imp(obj = obj_probe, parameters = thresh_df, .f = "pca_imp")
 #> Tuning `pca_imp()`
@@ -199,6 +205,7 @@ After choosing `solver` and `threshold`, keep them fixed while tuning
 accuracy-related PCA parameters (i.e., `ncp` and `coeff.ridge`):
 
 ``` r
+
 chosen_solver <- "exact"
 chosen_threshold <- 1e-5
 
@@ -255,6 +262,7 @@ solver is usually the better default. Forcing `solver = "exact"` also
 avoids paying the auto probe cost on every window.
 
 ``` r
+
 beta_matrix <- obj_probe # We treat `obj_probe` as a slide_imp() input instead
 locations <- seq_len(ncol(beta_matrix))
 slide_params <- expand.grid(
@@ -308,6 +316,7 @@ Finally, use the selected speed and accuracy parameters when imputing
 the full dataset:
 
 ``` r
+
 slide_results <- slide_imp(
   obj = beta_matrix,
   location = locations,
@@ -338,6 +347,7 @@ or
 [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
 
 ``` r
+
 library(mirai)
 
 # Start 4 mirai workers.
@@ -381,6 +391,7 @@ when running PCA imputation with [mirai](https://mirai.r-lib.org). This
 requires [RhpcBLASctl](https://prs.ism.ac.jp/~nakama/Rhpc/):
 
 ``` r
+
 mirai::daemons(4)
 
 tune_slide_pca <- tune_imp(
@@ -404,6 +415,7 @@ mirai::daemons(0)
 For group-wise PCA imputation:
 
 ``` r
+
 mirai::daemons(4)
 
 pca_group_results <- group_imp(
