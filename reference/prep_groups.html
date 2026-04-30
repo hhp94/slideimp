@@ -106,7 +106,7 @@ groups.</p></dd>
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A <code>data.frame</code> of class <code>slideimp_tbl</code> containing:</p><ul><li><p><code>group</code>: original group labels, if provided, or sequential group labels.</p></li>
+    <p>A data frame of class <code>slideimp_tbl</code> containing:</p><ul><li><p><code>group</code>: original group labels, if provided, or sequential group labels.</p></li>
 <li><p><code>feature</code>: a list-column of character vectors containing feature names.</p></li>
 <li><p><code>aux</code>: a list-column of character vectors containing auxiliary names.</p></li>
 <li><p><code>parameters</code>: a list-column of per-group configuration lists.</p></li>
@@ -121,8 +121,8 @@ auxiliary names in <code>group</code>. When <code>allow_unmapped = FALSE</code>,
 enforces \(A \subseteq B\): every matrix column must appear somewhere in
 the grouping specification.</p>
 <p>Elements in \(B\) but not in \(A\), such as previously dropped probes,
-are pruned from each group. Groups left with zero features after pruning or
-subset demotion are removed with a diagnostic message.</p>
+are pruned from each group. Groups left with zero features after pruning
+are removed with a diagnostic message.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

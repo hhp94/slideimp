@@ -17,8 +17,7 @@ mat_miss(obj, col = TRUE, prop = FALSE)
 
 - col:
 
-  Logical. If `TRUE`, compute per-column statistics. If `FALSE`, compute
-  per-row statistics.
+  Logical. If `TRUE`, compute column-wise. If `FALSE`, compute row-wise.
 
 - prop:
 
@@ -27,28 +26,29 @@ mat_miss(obj, col = TRUE, prop = FALSE)
 
 ## Value
 
-A named numeric vector containing missing-value counts or proportions
-for columns or rows.
+A numeric vector containing missing-value counts or proportions for
+columns or rows, named when the corresponding dimension names are
+present.
 
 ## Examples
 
 ``` r
-mat <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)
-mat
+obj <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)
+obj
 #>      [,1] [,2] [,3]
 #> [1,]    1    4   NA
 #> [2,]   NA   NA    8
 #> [3,]    3    6    9
 
-# Column missing counts
-mat_miss(mat)
+# column missing counts
+mat_miss(obj)
 #> [1] 1 1 1
 
-# Row missing counts
-mat_miss(mat, col = FALSE)
+# row missing counts
+mat_miss(obj, col = FALSE)
 #> [1] 1 2 0
 
-# Column missing proportions
-mat_miss(mat, prop = TRUE)
+# column missing proportions
+mat_miss(obj, prop = TRUE)
 #> [1] 0.3333333 0.3333333 0.3333333
 ```

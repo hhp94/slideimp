@@ -148,17 +148,20 @@ when <code>solver = "exact"</code>.</p></dd>
 
 <dt id="arg-colmax">colmax<a class="anchor" aria-label="anchor" href="#arg-colmax"></a></dt>
 <dd><p>Numeric scalar between <code>0</code> and <code>1</code>. Columns with a missing-data
-proportion greater than <code>colmax</code> are not imputed.</p></dd>
+proportion greater than <code>colmax</code> are excluded from the main imputation
+method. Excluded columns are left unchanged unless <code>post_imp = TRUE</code>, in
+which case remaining missing values are replaced by column means when
+possible.</p></dd>
 
 
 <dt id="arg-post-imp">post_imp<a class="anchor" aria-label="anchor" href="#arg-post-imp"></a></dt>
-<dd><p>Logical. If <code>TRUE</code>, replace any remaining missing values
-with column means after PCA imputation.</p></dd>
+<dd><p>Logical. If <code>TRUE</code>, replace missing values remaining after
+the main imputation method with column means when possible.</p></dd>
 
 
 <dt id="arg-na-check">na_check<a class="anchor" aria-label="anchor" href="#arg-na-check"></a></dt>
-<dd><p>Logical. If <code>TRUE</code>, check whether the result still contains
-missing values.</p></dd>
+<dd><p>Logical. If <code>TRUE</code>, check whether the returned matrix still
+contains missing values.</p></dd>
 
 
 <dt id="arg-clamp">clamp<a class="anchor" aria-label="anchor" href="#arg-clamp"></a></dt>
@@ -190,11 +193,11 @@ it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="e
 convergence threshold <code>threshold</code>. The exact solver is selected with
 <code>solver = "exact"</code>. The iterative LOBPCG solver is selected with
 <code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, performs a short timed
-probe chooses LOBPCG only when it is clearly faster.</p>
+probe and chooses LOBPCG only when it is clearly faster.</p>
 <p>For large or approximately low-rank genomic matrices, it can be useful to
 benchmark <code>solver = "exact"</code> against <code>solver = "lobpcg"</code> on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters such
-as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <code>overlap_size</code>.</p>
+subset, such as chromosome 22, before tuning accuracy-related parameters.
+For <code><a href="slide_imp.html">slide_imp()</a></code>, this may include <code>window_size</code> and <code>overlap_size</code>.</p>
 <p>The default <code>threshold = 1e-6</code> is conservative. In many genomic datasets,
 <code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
 Check this on a representative subset before using the relaxed threshold in a
@@ -227,7 +230,8 @@ implementation by Francois Husson and Julie Josse.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> sample3 0.7709271 0.75477764 1.0000000 0.5099311</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> sample4 0.5068375 0.37347042 0.6018860 1.0000000</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Randomly initialize missing values 5 times. The first initialization is mean imputation.</span></span></span>
+<span class="r-in"><span><span class="co"># Randomly initialize missing values 5 times. The first initialization is</span></span></span>
+<span class="r-in"><span><span class="co"># mean imputation.</span></span></span>
 <span class="r-in"><span><span class="fu">pca_imp</span><span class="op">(</span><span class="va">obj</span>, ncp <span class="op">=</span> <span class="fl">2</span>, nb.init <span class="op">=</span> <span class="fl">5</span>, seed <span class="op">=</span> <span class="fl">123</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Method: PCA imputation</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Dimensions: 10 x 10</span>

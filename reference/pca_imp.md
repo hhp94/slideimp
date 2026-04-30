@@ -102,17 +102,20 @@ pca_imp(
 - colmax:
 
   Numeric scalar between `0` and `1`. Columns with a missing-data
-  proportion greater than `colmax` are not imputed.
+  proportion greater than `colmax` are excluded from the main imputation
+  method. Excluded columns are left unchanged unless `post_imp = TRUE`,
+  in which case remaining missing values are replaced by column means
+  when possible.
 
 - post_imp:
 
-  Logical. If `TRUE`, replace any remaining missing values with column
-  means after PCA imputation.
+  Logical. If `TRUE`, replace missing values remaining after the main
+  imputation method with column means when possible.
 
 - na_check:
 
-  Logical. If `TRUE`, check whether the result still contains missing
-  values.
+  Logical. If `TRUE`, check whether the returned matrix still contains
+  missing values.
 
 - clamp:
 
@@ -145,13 +148,14 @@ PCA imputation speed depends on the eigensolver selected by `solver` and
 the convergence threshold `threshold`. The exact solver is selected with
 `solver = "exact"`. The iterative LOBPCG solver is selected with
 `solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
-timed probe chooses LOBPCG only when it is clearly faster.
+timed probe and chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful
 to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
 representative subset, such as chromosome 22, before tuning
-accuracy-related parameters such as `ncp`, `coeff.ridge`, `window_size`,
-or `overlap_size`.
+accuracy-related parameters. For
+[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
+this may include `window_size` and `overlap_size`.
 
 The default `threshold = 1e-6` is conservative. In many genomic
 datasets, `threshold = 1e-5` can be faster while giving very similar
@@ -188,7 +192,8 @@ obj[1:4, 1:4]
 #> sample3 0.7709271 0.75477764 1.0000000 0.5099311
 #> sample4 0.5068375 0.37347042 0.6018860 1.0000000
 
-# Randomly initialize missing values 5 times. The first initialization is mean imputation.
+# Randomly initialize missing values 5 times. The first initialization is
+# mean imputation.
 pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 #> Method: PCA imputation
 #> Dimensions: 10 x 10

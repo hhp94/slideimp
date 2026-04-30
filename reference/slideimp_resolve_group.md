@@ -1,10 +1,10 @@
-# Resolve a group specification to a data.frame
+# Resolve a Group Specification to a Data Frame
 
-S3 generic for converting various group specifications into the
-canonical data.frame form expected by
+Convert a group specification to the canonical data-frame form expected
+by
 [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md).
-This generic is exported only to allow `slideimp.extra` to register the
-character method.
+This S3 generic is exported so that extension packages, such as
+`slideimp.extra`, can register additional methods.
 
 ## Usage
 
@@ -22,14 +22,13 @@ slideimp_resolve_group(x)
 
 - x:
 
-  A group specification. The base package provides a method for
-  `data.frame`. `slideimp.extra` provides `character` for chip-name
-  lookup.
+  A group specification. `slideimp` provides a method for `data.frame`
+  objects. The optional `slideimp.extra` package provides a method for
+  character platform names.
 
-## Value
+## Note
 
-A data.frame with at least a `feature` column, suitable for passing to
-[`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md).
+This is primarily an extension hook for `slideimp.extra`.
 
 ## Examples
 

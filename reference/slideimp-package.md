@@ -1,7 +1,7 @@
 # slideimp: Numeric Matrices K-NN and PCA Imputation
 
-Provides K-nearest neighbor, PCA, grouped, and sliding-window imputation
-methods for numeric matrices, with utilities for simulation and
+Provides K-nearest-neighbor, PCA, grouped, and sliding-window imputation
+methods for numeric matrices, along with utilities for simulation and
 parameter tuning.
 
 ## See also

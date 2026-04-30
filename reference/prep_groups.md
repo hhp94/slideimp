@@ -63,7 +63,7 @@ prep_groups(
 
 ## Value
 
-A `data.frame` of class `slideimp_tbl` containing:
+A data frame of class `slideimp_tbl` containing:
 
 - `group`: original group labels, if provided, or sequential group
   labels.
@@ -89,7 +89,7 @@ the grouping specification.
 
 Elements in \\B\\ but not in \\A\\, such as previously dropped probes,
 are pruned from each group. Groups left with zero features after pruning
-or subset demotion are removed with a diagnostic message.
+are removed with a diagnostic message.
 
 ## See also
 

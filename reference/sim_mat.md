@@ -75,8 +75,8 @@ An object of class `slideimp_sim`. This is a list containing:
 
 ## Details
 
-Generate a numeric matrix, optional column and row metadata, and
-optionally injected missing values.
+Generate a numeric matrix with optional row and column metadata and
+added missing values.
 
 ## Examples
 

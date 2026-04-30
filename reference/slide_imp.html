@@ -118,7 +118,9 @@ be supplied when <code>flank = TRUE</code>.</p></dd>
 
 <dt id="arg-min-window-n">min_window_n<a class="anchor" aria-label="anchor" href="#arg-min-window-n"></a></dt>
 <dd><p>Integer. Minimum number of columns a window must contain
-to be imputed. <code>k</code> and <code>ncp</code> must be smaller than <code>min_window_n</code>.</p></dd>
+to be considered for imputation. For non-dry runs, the selected <code>k</code> or
+<code>ncp</code> value must be feasible for the usable columns in each retained
+window after applying <code>colmax</code>.</p></dd>
 
 
 <dt id="arg-subset">subset<a class="anchor" aria-label="anchor" href="#arg-subset"></a></dt>
@@ -134,8 +136,7 @@ filtering rules are applied. In this mode, <code>k</code> and <code>ncp</code> a
 
 
 <dt id="arg-k">k<a class="anchor" aria-label="anchor" href="#arg-k"></a></dt>
-<dd><p>Integer or <code>NULL</code>. Number of nearest neighbors for K-NN imputation.
-Supply <code>k</code> to use K-NN imputation.</p></dd>
+<dd><p>Integer. Number of nearest neighbors to use for K-NN imputation.</p></dd>
 
 
 <dt id="arg-cores">cores<a class="anchor" aria-label="anchor" href="#arg-cores"></a></dt>
@@ -149,8 +150,8 @@ nearest neighbors.</p></dd>
 
 
 <dt id="arg-ncp">ncp<a class="anchor" aria-label="anchor" href="#arg-ncp"></a></dt>
-<dd><p>Integer or <code>NULL</code>. Number of components for PCA imputation.
-Supply <code>ncp</code> to use PCA imputation.</p></dd>
+<dd><p>Integer. Number of principal components used to predict missing
+entries.</p></dd>
 
 
 <dt id="arg-scale">scale<a class="anchor" aria-label="anchor" href="#arg-scale"></a></dt>
@@ -223,22 +224,25 @@ is used.</p></dd>
 
 
 <dt id="arg--progress">.progress<a class="anchor" aria-label="anchor" href="#arg--progress"></a></dt>
-<dd><p>Logical. If <code>TRUE</code>, show progress.</p></dd>
+<dd><p>Logical. If <code>TRUE</code>, show imputation progress.</p></dd>
 
 
 <dt id="arg-colmax">colmax<a class="anchor" aria-label="anchor" href="#arg-colmax"></a></dt>
 <dd><p>Numeric scalar between <code>0</code> and <code>1</code>. Columns with a missing-data
-proportion greater than <code>colmax</code> are not imputed.</p></dd>
+proportion greater than <code>colmax</code> are excluded from the main imputation
+method. Excluded columns are left unchanged unless <code>post_imp = TRUE</code>, in
+which case remaining missing values are replaced by column means when
+possible.</p></dd>
 
 
 <dt id="arg-post-imp">post_imp<a class="anchor" aria-label="anchor" href="#arg-post-imp"></a></dt>
-<dd><p>Logical. If <code>TRUE</code>, replace any remaining missing values
-with column means after backend imputation.</p></dd>
+<dd><p>Logical. If <code>TRUE</code>, replace missing values remaining after
+the main imputation method with column means when possible.</p></dd>
 
 
 <dt id="arg-na-check">na_check<a class="anchor" aria-label="anchor" href="#arg-na-check"></a></dt>
-<dd><p>Logical. If <code>TRUE</code>, check whether the result still contains
-missing values.</p></dd>
+<dd><p>Logical. If <code>TRUE</code>, check whether the returned matrix still
+contains missing values.</p></dd>
 
 
 <dt id="arg-on-infeasible">on_infeasible<a class="anchor" aria-label="anchor" href="#arg-on-infeasible"></a></dt>
@@ -250,10 +254,11 @@ when <code>k</code> or <code>ncp</code> exceeds the number of usable columns aft
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A numeric matrix of the same dimensions as <code>obj</code>, with missing
-values imputed. The returned object has class <code>slideimp_results</code>.</p>
-<p>When <code>dry_run = TRUE</code>, returns a <code>data.frame</code> of class <code>slideimp_tbl</code> with
-columns <code>start</code>, <code>end</code>, and <code>window_n</code>, plus <code>subset_local</code> and, when
+    <p>If <code>dry_run = FALSE</code>, a numeric matrix of the same dimensions as
+<code>obj</code>, with missing values imputed. The returned object has class
+<code>slideimp_results</code>.</p>
+<p>If <code>dry_run = TRUE</code>, a data frame of class <code>slideimp_tbl</code> with columns
+<code>start</code>, <code>end</code>, and <code>window_n</code>, plus <code>subset_local</code> and, when
 <code>flank = TRUE</code>, <code>target</code>.</p>
     </div>
     <div class="section level2">
@@ -281,11 +286,11 @@ it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="e
 convergence threshold <code>threshold</code>. The exact solver is selected with
 <code>solver = "exact"</code>. The iterative LOBPCG solver is selected with
 <code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, performs a short timed
-probe chooses LOBPCG only when it is clearly faster.</p>
+probe and chooses LOBPCG only when it is clearly faster.</p>
 <p>For large or approximately low-rank genomic matrices, it can be useful to
 benchmark <code>solver = "exact"</code> against <code>solver = "lobpcg"</code> on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters such
-as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <code>overlap_size</code>.</p>
+subset, such as chromosome 22, before tuning accuracy-related parameters.
+For <code>slide_imp()</code>, this may include <code>window_size</code> and <code>overlap_size</code>.</p>
 <p>The default <code>threshold = 1e-6</code> is conservative. In many genomic datasets,
 <code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
 Check this on a representative subset before using the relaxed threshold in a

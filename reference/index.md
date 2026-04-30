@@ -12,7 +12,7 @@
   : Grouped K-NN or PCA Imputation
 
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) :
-  K-Nearest Neighbors Imputation for Numeric Matrices
+  K-Nearest-Neighbor Imputation for Numeric Matrices
 
 - [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md)
   : LOBPCG Eigensolver Control Options
@@ -52,6 +52,9 @@
 
 - [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
   : Sliding-Window K-NN or PCA Imputation
+
+- [`slideimp_resolve_group()`](https://hhp94.github.io/slideimp/reference/slideimp_resolve_group.md)
+  : Resolve a Group Specification to a Data Frame
 
 - [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
   : Tune Imputation Method Parameters

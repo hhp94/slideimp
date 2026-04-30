@@ -44,8 +44,8 @@ tune_imp(
 
 - .f:
 
-  Either `"knn_imp"`, `"pca_imp"`, `"slide_imp"`, or a custom imputation
-  function.
+  One of `"knn_imp"`, `"pca_imp"`, or `"slide_imp"`, or a custom
+  imputation function.
 
 - na_loc:
 
@@ -69,8 +69,8 @@ tune_imp(
 
   Integer or `NULL`. Number of columns to receive injected missing
   values per repetition. Must be supplied when both `num_na` and
-  `na_loc` are `NULL`, unless `tune_imp()` chooses its automatic
-  default. Ignored when `num_na` or `na_loc` is supplied.
+  `na_loc` are `NULL`, unless the automatic default applies. Ignored
+  when `num_na` or `na_loc` is supplied.
 
 - n_rows:
 
@@ -119,16 +119,16 @@ tune_imp(
 
 ## Value
 
-A `data.frame` of class `slideimp_tune` containing:
+A data frame of class `slideimp_tune` containing:
 
-- columns originally provided in `parameters`
+- columns originally provided in `parameters`;
 
-- `param_set`, an integer ID for each unique parameter combination
+- `param_set`, an integer ID for each unique parameter combination;
 
-- `rep_id`, an integer repetition index
+- `rep_id`, an integer repetition index;
 
 - `result`, a list-column where each element is a data frame containing
-  `truth` and `estimate` columns
+  `truth` and `estimate` columns;
 
 - `error`, a character column containing the error message if the
   iteration failed, otherwise `NA`.
@@ -156,16 +156,20 @@ To tune parameters for grouped imputation, tune
 representative groups, then pass the selected parameters to
 [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
 
+The top-level `rowmax` and `colmax` arguments control random
+missing-value injection performed by
+[`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md).
+To tune or pass an imputation method's own `colmax` argument, include a
+`colmax` column in `parameters`.
+
 Tuning results can be summarized with
 [`compute_metrics()`](https://hhp94.github.io/slideimp/reference/compute_metrics.md)
 or evaluated with external packages such as `yardstick`.
 
 ## Parallelization
 
-- K-NN: use the `cores` argument. If
-  [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
-  are active, `cores` is automatically set to `1` to avoid nested
-  parallelism.
+- K-NN: use the `cores` argument. If `mirai` daemons are active, `cores`
+  is automatically set to `1` to avoid nested parallelism.
 
 - PCA: use
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
@@ -190,13 +194,14 @@ PCA imputation speed depends on the eigensolver selected by `solver` and
 the convergence threshold `threshold`. The exact solver is selected with
 `solver = "exact"`. The iterative LOBPCG solver is selected with
 `solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
-timed probe chooses LOBPCG only when it is clearly faster.
+timed probe and chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful
 to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
 representative subset, such as chromosome 22, before tuning
-accuracy-related parameters such as `ncp`, `coeff.ridge`, `window_size`,
-or `overlap_size`.
+accuracy-related parameters. For
+[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
+this may include `window_size` and `overlap_size`.
 
 The default `threshold = 1e-6` is conservative. In many genomic
 datasets, `threshold = 1e-5` can be faster while giving very similar
@@ -212,10 +217,11 @@ for a full workflow.
 ``` r
 set.seed(123)
 
-# Increase num_na and n_reps for real analyses.
+# Simulate some data
 obj <- sim_mat(10, 50)$input
 
-# Tune K-NN imputation with random missing-value injection
+# Tune K-NN imputation with random missing-value injection.
+# Use larger `num_na` and `n_reps` values for real analyses.
 params_knn <- data.frame(k = c(2, 4))
 results <- tune_imp(
   obj,

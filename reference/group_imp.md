@@ -106,13 +106,15 @@ group_imp(
 - colmax:
 
   Numeric scalar between `0` and `1`. Columns with a missing-data
-  proportion greater than `colmax` are not imputed.
+  proportion greater than `colmax` are excluded from the main imputation
+  method. Excluded columns are left unchanged unless `post_imp = TRUE`,
+  in which case remaining missing values are replaced by column means
+  when possible.
 
 - post_imp:
 
-  Logical or `NULL`. If `TRUE`, replace any remaining missing values
-  with column means after imputation. If `NULL`, the backend default is
-  used unless overridden by `group$parameters`.
+  Logical. If `TRUE`, replace missing values remaining after the main
+  imputation method with column means when possible.
 
 - dist_pow:
 
@@ -198,8 +200,8 @@ group_imp(
 
 - na_check:
 
-  Logical. If `TRUE`, check whether the result still contains missing
-  values.
+  Logical. If `TRUE`, check whether the returned matrix still contains
+  missing values.
 
 - on_infeasible:
 
@@ -215,7 +217,7 @@ imputed. The returned object has class `slideimp_results`.
 ## Details
 
 `group_imp()` performs K-NN or PCA imputation on feature groups
-independently, which can substantially reduce run time for large
+independently, which can substantially reduce runtime for large
 matrices.
 
 Specify `k` and related arguments to use K-NN imputation, or `ncp` and
@@ -243,14 +245,13 @@ capping occurs.
 A character scalar can be passed to `group` to name a supported Illumina
 platform, such as `"EPICv2"` or `"EPICv2_deduped"`. This requires the
 optional `slideimp.extra` package to be installed. Supported platforms
-are listed in `slideimp_arrays` of the `slideimp.extra` package.
+are listed in the `slideimp_arrays` object in the `slideimp.extra`
+package.
 
 ## Parallelization
 
-- K-NN: use the `cores` argument. If
-  [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
-  are active, `cores` is automatically set to `1` to avoid nested
-  parallelism.
+- K-NN: use the `cores` argument. If `mirai` daemons are active, `cores`
+  is automatically set to `1` to avoid nested parallelism.
 
 - PCA: use
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
@@ -275,13 +276,14 @@ PCA imputation speed depends on the eigensolver selected by `solver` and
 the convergence threshold `threshold`. The exact solver is selected with
 `solver = "exact"`. The iterative LOBPCG solver is selected with
 `solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
-timed probe chooses LOBPCG only when it is clearly faster.
+timed probe and chooses LOBPCG only when it is clearly faster.
 
 For large or approximately low-rank genomic matrices, it can be useful
 to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
 representative subset, such as chromosome 22, before tuning
-accuracy-related parameters such as `ncp`, `coeff.ridge`, `window_size`,
-or `overlap_size`.
+accuracy-related parameters. For
+[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
+this may include `window_size` and `overlap_size`.
 
 The default `threshold = 1e-6` is conservative. In many genomic
 datasets, `threshold = 1e-5` can be faster while giving very similar

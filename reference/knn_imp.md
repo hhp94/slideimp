@@ -1,4 +1,4 @@
-# K-Nearest Neighbors Imputation for Numeric Matrices
+# K-Nearest-Neighbor Imputation for Numeric Matrices
 
 Impute missing values in a numeric matrix using k-nearest neighbors
 (K-NN).
@@ -29,32 +29,34 @@ knn_imp(
 
 - k:
 
-  Integer. Number of nearest neighbors to use for imputation.
+  Integer. Number of nearest neighbors to use for K-NN imputation.
 
 - colmax:
 
   Numeric scalar between `0` and `1`. Columns with a missing-data
-  proportion greater than `colmax` are not imputed.
+  proportion greater than `colmax` are excluded from the main imputation
+  method. Excluded columns are left unchanged unless `post_imp = TRUE`,
+  in which case remaining missing values are replaced by column means
+  when possible.
 
 - method:
 
-  Character. Distance metric for nearest-neighbor calculation: either
-  `"euclidean"` or `"manhattan"`.
+  Character. K-NN imputation distance method: either `"euclidean"` or
+  `"manhattan"`.
 
 - cores:
 
-  Integer. Number of cores to use for parallel computation. Defaults to
-  `1`.
+  Integer. Number of cores to use for K-NN imputation. Defaults to `1`.
 
 - post_imp:
 
-  Logical. If `TRUE`, replace any remaining missing values with column
-  means after K-NN imputation.
+  Logical. If `TRUE`, replace missing values remaining after the main
+  imputation method with column means when possible.
 
 - subset:
 
-  Optional character or integer vector specifying columns to impute. If
-  `NULL`, all eligible columns are imputed.
+  Optional character or integer vector specifying columns to target for
+  imputation. If `NULL`, all eligible columns are targeted.
 
 - dist_pow:
 
@@ -69,8 +71,8 @@ knn_imp(
 
 - na_check:
 
-  Logical. If `TRUE`, check whether the result still contains missing
-  values.
+  Logical. If `TRUE`, check whether the returned matrix still contains
+  missing values.
 
 - .progress:
 
@@ -95,10 +97,11 @@ If `tree = TRUE`, nearest neighbors are found with a ball tree via the
 data sets, but it requires initially filling missing values with column
 means, which can introduce bias when missingness is high.
 
-## Performance optimization
+## K-NN performance optimization
 
-- `tree = FALSE` uses brute-force K-NN. This is always safe and is often
-  faster for small to moderate data sets or high-dimensional data.
+- `tree = FALSE` uses brute-force K-NN. This avoids the initial
+  mean-filling step and is often faster for small to moderate datasets
+  or high-dimensional data.
 
 - `tree = TRUE` uses ball-tree K-NN. Consider this only when run time is
   prohibitive and missingness is low, for example less than 5%.

@@ -91,7 +91,7 @@ defaults.</p></dd>
 
 
 <dt id="arg--f">.f<a class="anchor" aria-label="anchor" href="#arg--f"></a></dt>
-<dd><p>Either <code>"knn_imp"</code>, <code>"pca_imp"</code>, <code>"slide_imp"</code>, or a custom
+<dd><p>One of <code>"knn_imp"</code>, <code>"pca_imp"</code>, or <code>"slide_imp"</code>, or a custom
 imputation function.</p></dd>
 
 
@@ -115,7 +115,7 @@ Ignored when <code>na_loc</code> is supplied.</p></dd>
 <dt id="arg-n-cols">n_cols<a class="anchor" aria-label="anchor" href="#arg-n-cols"></a></dt>
 <dd><p>Integer or <code>NULL</code>. Number of columns to receive injected
 missing values per repetition. Must be supplied when both <code>num_na</code> and
-<code>na_loc</code> are <code>NULL</code>, unless <code>tune_imp()</code> chooses its automatic default.
+<code>na_loc</code> are <code>NULL</code>, unless the automatic default applies.
 Ignored when <code>num_na</code> or <code>na_loc</code> is supplied.</p></dd>
 
 
@@ -166,11 +166,11 @@ tuning to reduce thread contention.</p></dd>
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>A <code>data.frame</code> of class <code>slideimp_tune</code> containing:</p><ul><li><p>columns originally provided in <code>parameters</code></p></li>
-<li><p><code>param_set</code>, an integer ID for each unique parameter combination</p></li>
-<li><p><code>rep_id</code>, an integer repetition index</p></li>
+    <p>A data frame of class <code>slideimp_tune</code> containing:</p><ul><li><p>columns originally provided in <code>parameters</code>;</p></li>
+<li><p><code>param_set</code>, an integer ID for each unique parameter combination;</p></li>
+<li><p><code>rep_id</code>, an integer repetition index;</p></li>
 <li><p><code>result</code>, a list-column where each element is a data frame containing
-<code>truth</code> and <code>estimate</code> columns</p></li>
+<code>truth</code> and <code>estimate</code> columns;</p></li>
 <li><p><code>error</code>, a character column containing the error message if the
 iteration failed, otherwise <code>NA</code>.</p></li>
 </ul></div>
@@ -187,6 +187,9 @@ against the selected method:</p><ul><li><p><code>"knn_imp"</code> requires <code
 plus exactly one of <code>k</code> or <code>ncp</code>.</p></li>
 </ul><p>To tune parameters for grouped imputation, tune <code><a href="knn_imp.html">knn_imp()</a></code> or <code><a href="pca_imp.html">pca_imp()</a></code>
 on representative groups, then pass the selected parameters to <code><a href="group_imp.html">group_imp()</a></code>.</p>
+<p>The top-level <code>rowmax</code> and <code>colmax</code> arguments control random missing-value
+injection performed by <code><a href="sample_na_loc.html">sample_na_loc()</a></code>. To tune or pass an imputation
+method's own <code>colmax</code> argument, include a <code>colmax</code> column in <code>parameters</code>.</p>
 <p>Tuning results can be summarized with <code><a href="compute_metrics.html">compute_metrics()</a></code> or evaluated with
 external packages such as <code>yardstick</code>.</p>
     </div>
@@ -194,7 +197,7 @@ external packages such as <code>yardstick</code>.</p>
     <h2 id="parallelization">Parallelization<a class="anchor" aria-label="anchor" href="#parallelization"></a></h2>
 
 
-<ul><li><p>K-NN: use the <code>cores</code> argument. If <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code> are active, <code>cores</code>
+<ul><li><p>K-NN: use the <code>cores</code> argument. If <code>mirai</code> daemons are active, <code>cores</code>
 is automatically set to <code>1</code> to avoid nested parallelism.</p></li>
 <li><p>PCA: use <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code> instead of <code>cores</code>.</p></li>
 </ul><p>When running PCA imputation in parallel with <code>mirai</code>, set <code>pin_blas = TRUE</code>
@@ -214,11 +217,11 @@ it with <a href="https://github.com/david-cortes/R-openblas-in-windows" class="e
 convergence threshold <code>threshold</code>. The exact solver is selected with
 <code>solver = "exact"</code>. The iterative LOBPCG solver is selected with
 <code>solver = "lobpcg"</code>. The default, <code>solver = "auto"</code>, performs a short timed
-probe chooses LOBPCG only when it is clearly faster.</p>
+probe and chooses LOBPCG only when it is clearly faster.</p>
 <p>For large or approximately low-rank genomic matrices, it can be useful to
 benchmark <code>solver = "exact"</code> against <code>solver = "lobpcg"</code> on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters such
-as <code>ncp</code>, <code>coeff.ridge</code>, <code>window_size</code>, or <code>overlap_size</code>.</p>
+subset, such as chromosome 22, before tuning accuracy-related parameters.
+For <code><a href="slide_imp.html">slide_imp()</a></code>, this may include <code>window_size</code> and <code>overlap_size</code>.</p>
 <p>The default <code>threshold = 1e-6</code> is conservative. In many genomic datasets,
 <code>threshold = 1e-5</code> can be faster while giving very similar imputed values.
 Check this on a representative subset before using the relaxed threshold in a
@@ -232,10 +235,11 @@ for a full workflow.</p>
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">123</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Increase num_na and n_reps for real analyses.</span></span></span>
+<span class="r-in"><span><span class="co"># Simulate some data</span></span></span>
 <span class="r-in"><span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="sim_mat.html">sim_mat</a></span><span class="op">(</span><span class="fl">10</span>, <span class="fl">50</span><span class="op">)</span><span class="op">$</span><span class="va">input</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co"># Tune K-NN imputation with random missing-value injection</span></span></span>
+<span class="r-in"><span><span class="co"># Tune K-NN imputation with random missing-value injection.</span></span></span>
+<span class="r-in"><span><span class="co"># Use larger `num_na` and `n_reps` values for real analyses.</span></span></span>
 <span class="r-in"><span><span class="va">params_knn</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">4</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">results</span> <span class="op">&lt;-</span> <span class="fu">tune_imp</span><span class="op">(</span></span></span>
 <span class="r-in"><span>  <span class="va">obj</span>,</span></span>
