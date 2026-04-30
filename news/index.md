@@ -4,6 +4,7 @@
 
 ### Breaking changes
 
+- Minimum R version is now 4.3.0 (was 4.1.0).
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
   no longer caches pair-wise distances. The `use_cache` argument has
   been removed.
