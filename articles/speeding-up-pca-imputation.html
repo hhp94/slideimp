@@ -159,11 +159,10 @@ iterations of each solver at the start of the run, measures wall-clock
 time, and picks LOBPCG only if it is clearly faster than the exact
 solver. This decision is data-dependent and is made per call.</p>
 <p>For most users, <code>solver = "auto"</code> is a good default.
-Manual benchmarking is still useful in two situations:</p>
+However, manual benchmarking is still useful in two situations:</p>
 <ul>
-<li>Before a long <code><a href="../reference/tune_imp.html">tune_imp()</a></code> run, where amortizing the
-probe overhead across many calls matters less than knowing the right
-solver up front.</li>
+<li>Before a long <code><a href="../reference/tune_imp.html">tune_imp()</a></code> run to avoid the cost of
+repeated probing with <code>solver = "auto"</code>.</li>
 <li>When you suspect the auto choice is wrong (for example, very large
 or very low-rank matrices where LOBPCG should clearly win, or very small
 windows where the exact solver should clearly win).</li>
@@ -183,15 +182,16 @@ subset at a fixed <code>threshold</code>.</li>
 error.</li>
 <li>Use the chosen <code>solver</code> and <code>threshold</code> when
 tuning accuracy-related parameters such as <code>ncp</code>,
-<code>coeff.ridge</code>, <code>window_size</code>, or
+<code>coeff.ridge</code>, <code>window_size</code>, and
 <code>overlap_size</code>.</li>
 </ol>
+<p>We demonstrate this workflow as follows.</p>
 </div>
 <div class="section level3">
 <h3 id="create-a-representative-test-matrix">Create a representative test matrix<a class="anchor" aria-label="anchor" href="#create-a-representative-test-matrix"></a>
 </h3>
-<p>In a real methylation analysis, use a representative chromosome or
-subset. Here, we designate <code>group1</code> of the simulated data as
+<p>In a real DNA methylation analysis, use a representative chromosome
+or subset. Here, we treat <code>group1</code> of the simulated data as
 the representative chromosome.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span>
@@ -207,11 +207,11 @@ the representative chromosome.</p>
 <h3 id="time-solver-and-threshold-settings">Time solver and threshold settings<a class="anchor" aria-label="anchor" href="#time-solver-and-threshold-settings"></a>
 </h3>
 <p>First, choose a small <code>ncp</code> for the speed probe. This does
-not need to be the final <code>ncp</code>. The goal is to identify
-whether the exact or iterative solver is faster on this kind of data. We
-use a relaxed <code>threshold = 1e-5</code> to keep the probe quick.
-Both solvers stop at the same convergence criterion, so their relative
-timing is representative.</p>
+not need to be the final value of <code>ncp</code>. The goal is to
+identify whether the exact or iterative solver is faster on this kind of
+data. We use a relaxed <code>threshold = 1e-5</code> to keep the probe
+quick. Both solvers use the same convergence criterion, so their
+relative timing should be representative.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ncp_probe</span> <span class="op">&lt;-</span> <span class="fl">5</span></span></code></pre></div>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
@@ -237,10 +237,10 @@ timing is representative.</p>
 <span></span>
 <span><span class="va">exact</span> <span class="op">-</span> <span class="va">iterative</span></span>
 <span><span class="co">#&gt;    user  system elapsed </span></span>
-<span><span class="co">#&gt;   0.005  -0.013  -0.002</span></span></code></pre></div>
+<span><span class="co">#&gt;   0.006  -0.016  -0.002</span></span></code></pre></div>
 <p>Second, use <code><a href="../reference/tune_imp.html">tune_imp()</a></code> to compare cross-validation error
 across <code>threshold</code> values. In this example, relaxing the
-threshold to <code>1e-5</code> did not meaningfully change the
+threshold to <code>1e-5</code> does not meaningfully change the
 error.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">thresh_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>threshold <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1e-5</span>, <span class="fl">1e-6</span><span class="op">)</span>, ncp <span class="op">=</span> <span class="va">ncp_probe</span><span class="op">)</span></span>
@@ -262,8 +262,8 @@ error.</p>
 imputed values more than expected, use the more conservative
 <code>threshold = 1e-6</code>.</p>
 <p>If neither solver is clearly faster on the representative subset,
-<code>solver = "auto"</code> is fine. If one solver is clearly faster,
-force it explicitly to skip the auto probe overhead.</p>
+pick <code>solver = "exact"</code> for robustness. If one solver is
+clearly faster, force it explicitly to skip the auto probe overhead.</p>
 </div>
 <div class="section level3">
 <h3 id="use-the-chosen-settings-with-tune_imp">Use the chosen settings with <code>tune_imp()</code><a class="anchor" aria-label="anchor" href="#use-the-chosen-settings-with-tune_imp"></a>
@@ -323,15 +323,16 @@ those fixed settings in the <code>parameters</code> data frame while
 tuning window and PCA parameters.</p>
 <p><code><a href="../reference/slide_imp.html">slide_imp()</a></code> typically operates on small windows with few
 samples, so the <code>"exact"</code> solver is usually the better
-default. Forcing <code>solver = "exact"</code> also avoids paying the
-auto probe cost on every window.</p>
+default. If <code>solver = "auto"</code>, <code><a href="../reference/slide_imp.html">slide_imp()</a></code> will
+only probe the first window and force the solver for the rest of the
+windows.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">beta_matrix</span> <span class="op">&lt;-</span> <span class="va">obj_probe</span> <span class="co"># We treat `obj_probe` as a slide_imp() input instead</span></span>
+<code class="sourceCode R"><span><span class="va">beta_matrix</span> <span class="op">&lt;-</span> <span class="va">obj_probe</span> <span class="co"># Treat `obj_probe` as a `slide_imp()` input</span></span>
 <span><span class="va">locations</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">slide_params</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/expand.grid.html" class="external-link">expand.grid</a></span><span class="op">(</span></span>
 <span>  ncp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">4</span><span class="op">)</span>,</span>
 <span>  coeff.ridge <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.8</span>, <span class="fl">1</span>, <span class="fl">1.2</span><span class="op">)</span>,</span>
-<span>  window_size <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">50</span>, <span class="fl">500</span><span class="op">)</span> <span class="co"># Change based on units of `locations`</span></span>
+<span>  window_size <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">50</span>, <span class="fl">500</span><span class="op">)</span> <span class="co"># Adjust based on units of `locations`</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">slide_params</span><span class="op">$</span><span class="va">overlap_size</span> <span class="op">&lt;-</span> <span class="fl">5</span></span>
@@ -393,12 +394,10 @@ the full dataset:</p>
 <h3 id="parallel-pca-imputation-and-blas-threading">Parallel PCA imputation and BLAS threading<a class="anchor" aria-label="anchor" href="#parallel-pca-imputation-and-blas-threading"></a>
 </h3>
 <p>PCA imputation can also be sped up by running independent imputation
-tasks in parallel within <code><a href="../reference/group_imp.html">group_imp()</a></code>. For PCA imputation,
-use <a href="https://mirai.r-lib.org" class="external-link">mirai</a> parallelization rather than the
-<code>cores</code> argument.</p>
-<p>The <code>cores</code> argument is for K-NN imputation. For PCA
-imputation, start <a href="https://mirai.r-lib.org" class="external-link">mirai</a> daemons before calling functions
-such as <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <code><a href="../reference/group_imp.html">group_imp()</a></code>.</p>
+tasks in parallel with <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or
+<code><a href="../reference/group_imp.html">group_imp()</a></code>. For PCA imputation, we use
+<a href="https://mirai.r-lib.org" class="external-link">mirai</a> parallelization rather than the <code>cores</code>
+argument.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mirai.r-lib.org" class="external-link">mirai</a></span><span class="op">)</span></span>
 <span></span>
@@ -411,7 +410,7 @@ such as <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <cod
 <span>  .f <span class="op">=</span> <span class="st">"pca_imp"</span>,</span>
 <span>  parameters <span class="op">=</span> <span class="va">params</span>,</span>
 <span>  n_reps <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- `TRUE` to monitor longer running jobs</span></span>
+<span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- Use `TRUE` to monitor longer-running jobs</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; Tuning `pca_imp()`</span></span>
 <span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
@@ -424,9 +423,9 @@ such as <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <cod
 <span><span class="co"># Stop mirai workers when finished.</span></span>
 <span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span></span></code></pre></div>
 <p>When PCA imputation is run in parallel, each worker may call
-multi-threaded linear algebra routines through BLAS. If those workers
-each use multiple BLAS threads, the total number of active CPU threads
-can become much larger than the number of physical cores. This is called
+multithreaded linear algebra routines through BLAS. If each worker uses
+multiple BLAS threads, the total number of active CPU threads can become
+much larger than the number of physical cores. This is called
 <strong>thread oversubscription</strong>, and it can make code slower
 rather than faster.</p>
 <p>For example, 8 <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers each using 8 BLAS threads
@@ -471,41 +470,55 @@ imputation with <a href="https://mirai.r-lib.org" class="external-link">mirai</a
 <span></span>
 <span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span></span></code></pre></div>
 <p><code>pin_blas = TRUE</code> uses <a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a> to limit
-BLAS threads inside parallel workers. This works with common BLAS
-libraries such as OpenBLAS and MKL, which are typical on Linux and also
-available on Windows after replacing R’s default BLAS. It may have no
-effect on macOS, depending on the BLAS implementation.</p>
+the number of BLAS threads inside parallel workers. This works with
+common BLAS libraries such as OpenBLAS and MKL, which are typical on
+Linux and are also available on Windows after replacing R’s default
+BLAS. It may have no effect on macOS, depending on the BLAS
+implementation.</p>
+<div class="section level4">
+<h4 id="blaslapack-swapping-for-advanced-windows-users">BLAS/LAPACK swapping for advanced Windows users<a class="anchor" aria-label="anchor" href="#blaslapack-swapping-for-advanced-windows-users"></a>
+</h4>
+<p>On Windows machines, R’s default BLAS/LAPACK is reliable but
+single-threaded and can be slow. Advanced users can get much faster PCA
+imputation by replacing R’s default BLAS with an optimized BLAS
+following this guide: <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">OpenBLAS
+for R on Windows</a>.</p>
+<p>However, OpenBLAS is multithreaded, so for parallel runs using
+<a href="https://mirai.r-lib.org" class="external-link">mirai</a>, set <code>pin_blas = TRUE</code> to avoid thread
+oversubscription.</p>
+</div>
 </div>
 <div class="section level3">
 <h3 id="practical-recommendations">Practical recommendations<a class="anchor" aria-label="anchor" href="#practical-recommendations"></a>
 </h3>
 <ul>
 <li>Start with <code>solver = "auto"</code> unless PCA imputation is
-slow or you are about to run many calls (e.g., with
-<code><a href="../reference/tune_imp.html">tune_imp()</a></code>) where the per-call probe overhead adds up.</li>
+slow or you are about to run many calls, such as with
+<code><a href="../reference/tune_imp.html">tune_imp()</a></code>, where the per-call probe overhead can add
+up.</li>
 <li>If PCA imputation is slow, benchmark <code>solver = "exact"</code>
 against <code>solver = "lobpcg"</code> on a representative subset and
-force the winner.</li>
-<li>Try <code>threshold = 1e-5</code> or higher, depending on your error
-tolerance.</li>
+force the faster solver.</li>
+<li>Try <code>threshold = 1e-5</code> or a less stringent value,
+depending on your error tolerance.</li>
 <li>Keep <code>threshold = 1e-5</code> only if it produces similar
 imputed values or similar cross-validation error.</li>
 <li>LOBPCG is most likely to help when the matrix is large,
 approximately low-rank, and <code>ncp</code> is small.</li>
-<li>For <code><a href="../reference/slide_imp.html">slide_imp()</a></code>, force <code>solver = "exact"</code>.
-Windows are usually small enough that exact wins, and forcing it avoids
-the per-window probe.</li>
+<li>For <code><a href="../reference/slide_imp.html">slide_imp()</a></code>, <code>solver = "exact"</code> is
+usually the right choice.</li>
 <li>Choose speed settings first, then tune accuracy-related parameters
 such as <code>ncp</code>, <code>coeff.ridge</code>, and
 <code>window_size</code>.</li>
-<li>If running PCA imputation sequentially, BLAS multi-threading may
+<li>If running PCA imputation sequentially, BLAS multithreading may
 help, and <code>pin_blas</code> is unnecessary.</li>
 <li>If running many PCA imputations in parallel with
 <a href="https://mirai.r-lib.org" class="external-link">mirai</a>, use <code>pin_blas = TRUE</code>.</li>
 <li>Avoid using many <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers and many BLAS threads
 at the same time.</li>
 <li>Benchmark on a representative subset, because the best setup depends
-on hardware, BLAS library, matrix size, and missing-data pattern.</li>
+on the hardware, BLAS library, matrix size, and missing-data
+pattern.</li>
 </ul>
 </div>
 </div>

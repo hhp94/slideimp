@@ -82,13 +82,12 @@ each solver at the start of the run, measures wall-clock time, and picks
 LOBPCG only if it is clearly faster than the exact solver. This decision
 is data-dependent and is made per call.
 
-For most users, `solver = "auto"` is a good default. Manual benchmarking
-is still useful in two situations:
+For most users, `solver = "auto"` is a good default. However, manual
+benchmarking is still useful in two situations:
 
 - Before a long
   [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
-  run, where amortizing the probe overhead across many calls matters
-  less than knowing the right solver up front.
+  run to avoid the cost of repeated probing with `solver = "auto"`.
 - When you suspect the auto choice is wrong (for example, very large or
   very low-rank matrices where LOBPCG should clearly win, or very small
   windows where the exact solver should clearly win).
@@ -106,13 +105,15 @@ A practical workflow is:
     to check that a relaxed `threshold` does not materially change
     cross-validation error.
 4.  Use the chosen `solver` and `threshold` when tuning accuracy-related
-    parameters such as `ncp`, `coeff.ridge`, `window_size`, or
+    parameters such as `ncp`, `coeff.ridge`, `window_size`, and
     `overlap_size`.
+
+We demonstrate this workflow as follows.
 
 ### Create a representative test matrix
 
-In a real methylation analysis, use a representative chromosome or
-subset. Here, we designate `group1` of the simulated data as the
+In a real DNA methylation analysis, use a representative chromosome or
+subset. Here, we treat `group1` of the simulated data as the
 representative chromosome.
 
 ``` r
@@ -130,10 +131,11 @@ mean(is.na(obj_probe))
 ### Time solver and threshold settings
 
 First, choose a small `ncp` for the speed probe. This does not need to
-be the final `ncp`. The goal is to identify whether the exact or
-iterative solver is faster on this kind of data. We use a relaxed
-`threshold = 1e-5` to keep the probe quick. Both solvers stop at the
-same convergence criterion, so their relative timing is representative.
+be the final value of `ncp`. The goal is to identify whether the exact
+or iterative solver is faster on this kind of data. We use a relaxed
+`threshold = 1e-5` to keep the probe quick. Both solvers use the same
+convergence criterion, so their relative timing should be
+representative.
 
 ``` r
 
@@ -164,13 +166,13 @@ iterative <- system.time(invisible(
 
 exact - iterative
 #>    user  system elapsed 
-#>   0.005  -0.013  -0.002
+#>   0.006  -0.016  -0.002
 ```
 
 Second, use
 [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
 to compare cross-validation error across `threshold` values. In this
-example, relaxing the threshold to `1e-5` did not meaningfully change
+example, relaxing the threshold to `1e-5` does not meaningfully change
 the error.
 
 ``` r
@@ -195,9 +197,9 @@ compute_metrics(res)
 If `threshold = 1e-5` changes cross-validation error or imputed values
 more than expected, use the more conservative `threshold = 1e-6`.
 
-If neither solver is clearly faster on the representative subset,
-`solver = "auto"` is fine. If one solver is clearly faster, force it
-explicitly to skip the auto probe overhead.
+If neither solver is clearly faster on the representative subset, pick
+`solver = "exact"` for robustness. If one solver is clearly faster,
+force it explicitly to skip the auto probe overhead.
 
 ### Use the chosen settings with `tune_imp()`
 
@@ -258,17 +260,19 @@ PCA parameters.
 
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
 typically operates on small windows with few samples, so the `"exact"`
-solver is usually the better default. Forcing `solver = "exact"` also
-avoids paying the auto probe cost on every window.
+solver is usually the better default. If `solver = "auto"`,
+[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
+will only probe the first window and force the solver for the rest of
+the windows.
 
 ``` r
 
-beta_matrix <- obj_probe # We treat `obj_probe` as a slide_imp() input instead
+beta_matrix <- obj_probe # Treat `obj_probe` as a `slide_imp()` input
 locations <- seq_len(ncol(beta_matrix))
 slide_params <- expand.grid(
   ncp = c(2, 4),
   coeff.ridge = c(0.8, 1, 1.2),
-  window_size = c(50, 500) # Change based on units of `locations`
+  window_size = c(50, 500) # Adjust based on units of `locations`
 )
 
 slide_params$overlap_size <- 5
@@ -334,17 +338,12 @@ slide_results <- slide_imp(
 ### Parallel PCA imputation and BLAS threading
 
 PCA imputation can also be sped up by running independent imputation
-tasks in parallel within
-[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
-For PCA imputation, use [mirai](https://mirai.r-lib.org) parallelization
-rather than the `cores` argument.
-
-The `cores` argument is for K-NN imputation. For PCA imputation, start
-[mirai](https://mirai.r-lib.org) daemons before calling functions such
-as
+tasks in parallel with
 [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
 or
 [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
+For PCA imputation, we use [mirai](https://mirai.r-lib.org)
+parallelization rather than the `cores` argument.
 
 ``` r
 
@@ -359,7 +358,7 @@ tune_pca <- tune_imp(
   .f = "pca_imp",
   parameters = params,
   n_reps = 1,
-  .progress = FALSE # <- `TRUE` to monitor longer running jobs
+  .progress = FALSE # <- Use `TRUE` to monitor longer-running jobs
 )
 #> Tuning `pca_imp()`
 #> Step 1/2: Resolving NA locations
@@ -374,11 +373,10 @@ mirai::daemons(0)
 ```
 
 When PCA imputation is run in parallel, each worker may call
-multi-threaded linear algebra routines through BLAS. If those workers
-each use multiple BLAS threads, the total number of active CPU threads
-can become much larger than the number of physical cores. This is called
-**thread oversubscription**, and it can make code slower rather than
-faster.
+multithreaded linear algebra routines through BLAS. If each worker uses
+multiple BLAS threads, the total number of active CPU threads can become
+much larger than the number of physical cores. This is called **thread
+oversubscription**, and it can make code slower rather than faster.
 
 For example, 8 [mirai](https://mirai.r-lib.org) workers each using 8
 BLAS threads can try to use 64 CPU threads.
@@ -433,36 +431,49 @@ mirai::daemons(0)
 ```
 
 `pin_blas = TRUE` uses
-[RhpcBLASctl](https://prs.ism.ac.jp/~nakama/Rhpc/) to limit BLAS threads
-inside parallel workers. This works with common BLAS libraries such as
-OpenBLAS and MKL, which are typical on Linux and also available on
-Windows after replacing R’s default BLAS. It may have no effect on
-macOS, depending on the BLAS implementation.
+[RhpcBLASctl](https://prs.ism.ac.jp/~nakama/Rhpc/) to limit the number
+of BLAS threads inside parallel workers. This works with common BLAS
+libraries such as OpenBLAS and MKL, which are typical on Linux and are
+also available on Windows after replacing R’s default BLAS. It may have
+no effect on macOS, depending on the BLAS implementation.
+
+#### BLAS/LAPACK swapping for advanced Windows users
+
+On Windows machines, R’s default BLAS/LAPACK is reliable but
+single-threaded and can be slow. Advanced users can get much faster PCA
+imputation by replacing R’s default BLAS with an optimized BLAS
+following this guide: [OpenBLAS for R on
+Windows](https://github.com/david-cortes/R-openblas-in-windows).
+
+However, OpenBLAS is multithreaded, so for parallel runs using
+[mirai](https://mirai.r-lib.org), set `pin_blas = TRUE` to avoid thread
+oversubscription.
 
 ### Practical recommendations
 
 - Start with `solver = "auto"` unless PCA imputation is slow or you are
-  about to run many calls (e.g., with
-  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md))
-  where the per-call probe overhead adds up.
+  about to run many calls, such as with
+  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md),
+  where the per-call probe overhead can add up.
 - If PCA imputation is slow, benchmark `solver = "exact"` against
-  `solver = "lobpcg"` on a representative subset and force the winner.
-- Try `threshold = 1e-5` or higher, depending on your error tolerance.
+  `solver = "lobpcg"` on a representative subset and force the faster
+  solver.
+- Try `threshold = 1e-5` or a less stringent value, depending on your
+  error tolerance.
 - Keep `threshold = 1e-5` only if it produces similar imputed values or
   similar cross-validation error.
 - LOBPCG is most likely to help when the matrix is large, approximately
   low-rank, and `ncp` is small.
 - For
   [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
-  force `solver = "exact"`. Windows are usually small enough that exact
-  wins, and forcing it avoids the per-window probe.
+  `solver = "exact"` is usually the right choice.
 - Choose speed settings first, then tune accuracy-related parameters
   such as `ncp`, `coeff.ridge`, and `window_size`.
-- If running PCA imputation sequentially, BLAS multi-threading may help,
+- If running PCA imputation sequentially, BLAS multithreading may help,
   and `pin_blas` is unnecessary.
 - If running many PCA imputations in parallel with
   [mirai](https://mirai.r-lib.org), use `pin_blas = TRUE`.
 - Avoid using many [mirai](https://mirai.r-lib.org) workers and many
   BLAS threads at the same time.
 - Benchmark on a representative subset, because the best setup depends
-  on hardware, BLAS library, matrix size, and missing-data pattern.
+  on the hardware, BLAS library, matrix size, and missing-data pattern.
