@@ -2,6 +2,7 @@
 
 ## Breaking changes
 
+* Minimum R version is now 4.3.0 (was 4.1.0).
 * `knn_imp()` no longer caches pair-wise distances. The `use_cache` argument
   has been removed.
 
