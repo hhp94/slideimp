@@ -8,7 +8,7 @@
 ## Citation
 
 Source:
-[`DESCRIPTION`](https://github.com/hhp94/slideimp/blob/master/DESCRIPTION)
+[`DESCRIPTION`](https://github.com/hhp94/slideimp/blob/v1.1.0/DESCRIPTION)
 
 Pham H (2026). *slideimp: Numeric Matrices K-NN and PCA Imputation*. R
 package version 1.1.0, <https://github.com/hhp94/slideimp>.

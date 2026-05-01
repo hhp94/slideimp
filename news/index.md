@@ -2,6 +2,8 @@
 
 ## slideimp 1.1.0
 
+CRAN release: 2026-05-01
+
 ### Breaking changes
 
 - Minimum R version is now 4.3.0 (was 4.1.0).
