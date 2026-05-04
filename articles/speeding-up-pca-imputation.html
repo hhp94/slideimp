@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -68,7 +68,7 @@
       <h1>Speeding up PCA imputation</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/v1.1.0/vignettes/articles/speeding-up-pca-imputation.Rmd" class="external-link"><code>vignettes/articles/speeding-up-pca-imputation.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/master/vignettes/articles/speeding-up-pca-imputation.Rmd" class="external-link"><code>vignettes/articles/speeding-up-pca-imputation.Rmd</code></a></small>
       <div class="d-none name"><code>speeding-up-pca-imputation.Rmd</code></div>
     </div>
 
@@ -135,43 +135,50 @@ solvers and picks the faster one.</li>
 <li>
 <code>solver = "exact"</code> forces the exact solver.</li>
 <li>
-<code>solver = "lobpcg"</code> forces the iterative LOBPCG
+<code>solver = "lobpcg"</code> forces the LOBPCG with warm start
 solver.</li>
 </ul>
 </li>
 </ul>
 </div>
 <div class="section level3">
-<h3 id="exact-versus-iterative-pca-solvers">Exact versus iterative PCA solvers<a class="anchor" aria-label="anchor" href="#exact-versus-iterative-pca-solvers"></a>
+<h3 id="exact-versus-lobpcg-with-warm-start-solvers">Exact versus LOBPCG with warm start solvers<a class="anchor" aria-label="anchor" href="#exact-versus-lobpcg-with-warm-start-solvers"></a>
 </h3>
 <p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> supports two PCA eigensolvers:</p>
 <ul>
-<li>The exact solver, selected by <code>solver = "exact"</code>.</li>
-<li>The iterative LOBPCG solver, selected by
+<li>the exact solver, selected by <code>solver = "exact"</code>;</li>
+<li>the LOBPCG solver with warm start, selected by
 <code>solver = "lobpcg"</code>.</li>
 </ul>
-<p>The exact solver is robust and often fast for small to moderate
-matrices. The iterative LOBPCG solver can be faster for large or
-approximately low-rank genomic matrices, especially when only a small
-number of principal components is needed.</p>
-<p>The default <code>solver = "auto"</code> runs a small number of probe
-iterations of each solver at the start of the run, measures wall-clock
-time, and picks LOBPCG only if it is clearly faster than the exact
-solver. This decision is data-dependent and is made per call.</p>
-<p>For most users, <code>solver = "auto"</code> is a good default.
-However, manual benchmarking is still useful in two situations:</p>
+<p>LOBPCG has two advantages over the exact solver. First, it scales
+well when only a small number of <code>ncp</code> is needed and the
+matrix is approximately low ranked. Second, it benefits from warm
+starts: in the iterative EM algorithm, the eigensolver is called
+repeatedly, and consecutive solutions usually differ only slightly as
+the imputed values stabilize. <code><a href="../reference/pca_imp.html">pca_imp()</a></code> reuses information
+from the previous solution to warm start subsequent LOBPCG calls.</p>
+<p>As a result, while the exact solver is robust and faster for small to
+moderate matrices, the LOBPCG solver with warm start can be much faster
+for large, approximately low-rank matrices such as DNAm beta matrices,
+especially when only a small number of principal components is
+needed.</p>
+<p>The default <code>solver = "auto"</code> runs a short timing probe of
+the available solvers and chooses LOBPCG only when it is clearly faster.
+For most users, <code>solver = "auto"</code> is a good default. But,
+consider setting the solver manually when:</p>
 <ul>
-<li>Before a long <code><a href="../reference/tune_imp.html">tune_imp()</a></code> run to avoid the cost of
-repeated probing with <code>solver = "auto"</code>.</li>
-<li>When you suspect the auto choice is wrong (for example, very large
-or very low-rank matrices where LOBPCG should clearly win, or very small
-windows where the exact solver should clearly win).</li>
+<li>You are running many independent <code><a href="../reference/pca_imp.html">pca_imp()</a></code> calls, i.e.,
+in <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <code><a href="../reference/group_imp.html">group_imp()</a></code>, where repeated
+probing may add overhead.</li>
+<li>You are working with matrices where you know one solver should
+dominate but <code>"auto"</code> is selecting the wrong solver.</li>
 </ul>
 </div>
 <div class="section level3">
-<h3 id="recommended-workflow">Recommended workflow<a class="anchor" aria-label="anchor" href="#recommended-workflow"></a>
+<h3 id="tuning-workflow">Tuning workflow<a class="anchor" aria-label="anchor" href="#tuning-workflow"></a>
 </h3>
-<p>A practical workflow is:</p>
+<p>Before an expensive analysis, a practical <code><a href="../reference/pca_imp.html">pca_imp()</a></code>
+tuning workflow is:</p>
 <ol style="list-style-type: decimal">
 <li>Choose a representative subset of the data, for example chromosome
 22.</li>
@@ -181,9 +188,9 @@ subset at a fixed <code>threshold</code>.</li>
 <code>threshold</code> does not materially change cross-validation
 error.</li>
 <li>Use the chosen <code>solver</code> and <code>threshold</code> when
-tuning accuracy-related parameters such as <code>ncp</code>,
-<code>coeff.ridge</code>, <code>window_size</code>, and
-<code>overlap_size</code>.</li>
+tuning accuracy-related parameters, i.e., <code>ncp</code> and
+<code>coeff.ridge</code> (and <code>window_size</code> and
+<code>overlap_size</code> for <code><a href="../reference/slide_imp.html">slide_imp()</a></code>).</li>
 </ol>
 <p>We demonstrate this workflow as follows.</p>
 </div>
@@ -237,7 +244,7 @@ relative timing should be representative.</p>
 <span></span>
 <span><span class="va">exact</span> <span class="op">-</span> <span class="va">iterative</span></span>
 <span><span class="co">#&gt;    user  system elapsed </span></span>
-<span><span class="co">#&gt;  -0.006  -0.002  -0.001</span></span></code></pre></div>
+<span><span class="co">#&gt;  -0.005  -0.003  -0.001</span></span></code></pre></div>
 <p>Second, use <code><a href="../reference/tune_imp.html">tune_imp()</a></code> to compare cross-validation error
 across <code>threshold</code> values. In this example, relaxing the
 threshold to <code>1e-5</code> does not meaningfully change the

@@ -1,5 +1,12 @@
 # Changelog
 
+## slideimp 1.1.1
+
+- `DESCRIPTION` now mentions the LOBPCG eigensolver and its warm-start
+  behavior across E-M iterations in
+  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
+- Minor wording improvements in the PCA solver vignette.
+
 ## slideimp 1.1.0
 
 CRAN release: 2026-05-01

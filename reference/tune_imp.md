@@ -1,8 +1,8 @@
 # Tune Imputation Method Parameters
 
-Tune imputation-method parameters by repeatedly masking observed values,
-imputing them, and comparing the imputed values with the original
-values.
+Tune method specific hyperparameters by repeatedly masking observed
+values, imputing them, and comparing the imputed values with the
+original values.
 
 ## Usage
 
@@ -59,7 +59,7 @@ tune_imp(
   Integer or `NULL`. Total number of missing values to inject per
   repetition. If supplied, `n_cols` is derived from `num_na` and
   `n_rows`, and missing values are distributed as evenly as possible
-  across columns. Ignored when `na_loc` is supplied.
+  across columns.
 
 - n_reps:
 
@@ -67,15 +67,13 @@ tune_imp(
 
 - n_cols:
 
-  Integer or `NULL`. Number of columns to receive injected missing
-  values per repetition. Must be supplied when both `num_na` and
-  `na_loc` are `NULL`, unless the automatic default applies. Ignored
-  when `num_na` or `na_loc` is supplied.
+  Integer or `NULL`. Must be supplied when both `num_na` and `na_loc`
+  are `NULL`, unless the automatic default applies.
 
 - n_rows:
 
   Integer. Target number of missing values to inject per selected
-  column. Ignored when `na_loc` is supplied.
+  column.
 
 - rowmax:
 
@@ -90,8 +88,7 @@ tune_imp(
 - na_col_subset:
 
   Optional integer or character vector restricting which columns are
-  eligible for random missing-value injection. Ignored when `na_loc` is
-  supplied.
+  eligible for missing-value injection.
 
 - max_attempts:
 
@@ -139,6 +136,9 @@ Built-in methods can be selected by passing `.f = "knn_imp"`,
 `.f = "pca_imp"`, or `.f = "slide_imp"`. A custom function can also be
 supplied. Custom functions must accept `obj` as their first argument and
 return a numeric matrix with the same dimensions as `obj`.
+
+When `na_loc` is supplied, `num_na`, `n_cols`, `n_rows`, and
+`na_col_subset` are ignored.
 
 When `.f` is a character string, columns in `parameters` are validated
 against the selected method:

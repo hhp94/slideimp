@@ -424,8 +424,8 @@ slide_imp(
   Parallelizable hyperparameter tuning with repeated cross-validation
   that works with built-in or custom imputation functions.
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md):
-  Full-matrix K-NN imputation with multi-core parallelization,
-  [`mlpack`](https://mlpack.org/) KD/Ball-Tree nearest neighbor
+  Full K-NN imputation with multi-core parallelization,
+  [`mlpack`](https://mlpack.org/) Ball tree nearest neighbor
   implementation (for data with very low missing rates and extremely
   high dimensions), and optional subset imputation (ideal for epigenetic
   clock calculations).
