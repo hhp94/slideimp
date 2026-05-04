@@ -43,32 +43,37 @@ However, for large genomic matrices, runtime can depend strongly on two argument
 * `solver`: the eigensolver used inside `pca_imp()`.
   - `solver = "auto"` runs a short timed probe of both solvers and picks the faster one.
   - `solver = "exact"` forces the exact solver.
-  - `solver = "lobpcg"` forces the iterative LOBPCG solver.
+  - `solver = "lobpcg"` forces the LOBPCG with warm start solver.
 
-## Exact versus iterative PCA solvers
+## Exact versus LOBPCG with warm start solvers
 
 `pca_imp()` supports two PCA eigensolvers:
 
-* The exact solver, selected by `solver = "exact"`.
-* The iterative LOBPCG solver, selected by `solver = "lobpcg"`.
+* the exact solver, selected by `solver = "exact"`;
+* the LOBPCG solver with warm start, selected by `solver = "lobpcg"`.
 
-The exact solver is robust and often fast for small to moderate matrices. The iterative LOBPCG solver can be faster for large or approximately low-rank genomic matrices, especially when only a small number of principal components is needed.
+LOBPCG has two advantages over the exact solver. First, it scales well when only a small number of `ncp` is needed and the matrix is approximately low ranked. Second, it benefits from warm starts: in the iterative EM algorithm, the eigensolver is called repeatedly, and consecutive solutions usually differ only slightly as the imputed values stabilize. `pca_imp()` reuses information from the previous solution to warm start subsequent LOBPCG calls.
 
-The default `solver = "auto"` runs a small number of probe iterations of each solver at the start of the run, measures wall-clock time, and picks LOBPCG only if it is clearly faster than the exact solver. This decision is data-dependent and is made per call.
+As a result, while the exact solver is robust and faster for small to moderate matrices, the LOBPCG solver with warm start can be much faster for large, approximately low-rank matrices such as DNAm beta matrices, especially when only a small number of principal components is needed.
 
-For most users, `solver = "auto"` is a good default. However, manual benchmarking is still useful in two situations:
+The default `solver = "auto"` runs a short timing probe of the available
+solvers and chooses LOBPCG only when it is clearly faster. For most users,
+`solver = "auto"` is a good default. But, consider setting the solver manually
+when:
 
-* Before a long `tune_imp()` run to avoid the cost of repeated probing with `solver = "auto"`.
-* When you suspect the auto choice is wrong (for example, very large or very low-rank matrices where LOBPCG should clearly win, or very small windows where the exact solver should clearly win).
+* You are running many independent `pca_imp()` calls, i.e., in `tune_imp()` or
+  `group_imp()`, where repeated probing may add overhead.
+* You are working with matrices where you know one solver should dominate but
+  `"auto"` is selecting the wrong solver.
 
-## Recommended workflow
+## Tuning workflow
 
-A practical workflow is:
+Before an expensive analysis, a practical `pca_imp()` tuning workflow is:
 
 1. Choose a representative subset of the data, for example chromosome 22.
 2. Time the `exact` and `lobpcg` solvers on the subset at a fixed `threshold`.
 3. Use `tune_imp()` to check that a relaxed `threshold` does not materially change cross-validation error.
-4. Use the chosen `solver` and `threshold` when tuning accuracy-related parameters such as `ncp`, `coeff.ridge`, `window_size`, and `overlap_size`.
+4. Use the chosen `solver` and `threshold` when tuning accuracy-related parameters, i.e., `ncp` and `coeff.ridge` (and `window_size` and `overlap_size` for `slide_imp()`).
 
 We demonstrate this workflow as follows.
 

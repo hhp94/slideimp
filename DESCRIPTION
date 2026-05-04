@@ -1,7 +1,7 @@
 Type: Package
 Package: slideimp
 Title: Numeric Matrices K-NN and PCA Imputation
-Version: 1.1.0
+Version: 1.1.1
 Authors@R:
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355"))
@@ -19,6 +19,9 @@ Description: Fast k-nearest neighbors (K-NN) and principal component
     imputePCA() function from the 'missMDA' package described in: Josse,
     J. and Husson, F.  (2016) <doi:10.18637/jss.v070.i01> "missMDA: A
     Package for Handling Missing Values in Multivariate Data Analysis".
+    Additionally, a LOBPCG (locally optimal block preconditioned conjugate
+    gradient) eigensolver with warm starts of both the eigenblock and
+    search direction is provided.
 License: GPL (>= 2)
 URL: https://github.com/hhp94/slideimp, https://hhp94.github.io/slideimp/
 BugReports: https://github.com/hhp94/slideimp/issues

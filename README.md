@@ -388,11 +388,11 @@ slide_imp(
 - `tune_imp()`: Parallelizable hyperparameter tuning with repeated
   cross-validation that works with built-in or custom imputation
   functions.
-- `knn_imp()`: Full-matrix K-NN imputation with multi-core
-  parallelization, [`mlpack`](https://mlpack.org/) KD/Ball-Tree nearest
-  neighbor implementation (for data with very low missing rates and
-  extremely high dimensions), and optional subset imputation (ideal for
-  epigenetic clock calculations).
+- `knn_imp()`: Full K-NN imputation with multi-core parallelization,
+  [`mlpack`](https://mlpack.org/) Ball tree nearest neighbor
+  implementation (for data with very low missing rates and extremely
+  high dimensions), and optional subset imputation (ideal for epigenetic
+  clock calculations).
 - `pca_imp()`: Optimized version of
   [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
   for high-dimensional numeric matrices.

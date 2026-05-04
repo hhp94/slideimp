@@ -42,18 +42,15 @@ of linear positions, or a list whose elements are either of those formats.}
 
 \item{num_na}{Integer or \code{NULL}. Total number of missing values to inject per
 repetition. If supplied, \code{n_cols} is derived from \code{num_na} and \code{n_rows},
-and missing values are distributed as evenly as possible across columns.
-Ignored when \code{na_loc} is supplied.}
+and missing values are distributed as evenly as possible across columns.}
 
 \item{n_reps}{Integer. Number of independent repetitions.}
 
-\item{n_cols}{Integer or \code{NULL}. Number of columns to receive injected
-missing values per repetition. Must be supplied when both \code{num_na} and
-\code{na_loc} are \code{NULL}, unless the automatic default applies.
-Ignored when \code{num_na} or \code{na_loc} is supplied.}
+\item{n_cols}{Integer or \code{NULL}. Must be supplied when both \code{num_na} and
+\code{na_loc} are \code{NULL}, unless the automatic default applies.}
 
 \item{n_rows}{Integer. Target number of missing values to inject per selected
-column. Ignored when \code{na_loc} is supplied.}
+column.}
 
 \item{rowmax}{Numeric scalar between \code{0} and \code{1}. Maximum allowed
 missing-data proportion per row after injection.}
@@ -62,8 +59,7 @@ missing-data proportion per row after injection.}
 missing-data proportion per column after injection.}
 
 \item{na_col_subset}{Optional integer or character vector restricting which
-columns are eligible for random missing-value injection. Ignored when
-\code{na_loc} is supplied.}
+columns are eligible for missing-value injection.}
 
 \item{max_attempts}{Integer. Maximum number of resampling attempts per
 repetition before giving up.}
@@ -92,7 +88,7 @@ iteration failed, otherwise \code{NA}.
 }
 }
 \description{
-Tune imputation-method parameters by repeatedly masking observed values,
+Tune method specific hyperparameters by repeatedly masking observed values,
 imputing them, and comparing the imputed values with the original values.
 }
 \details{
@@ -100,6 +96,9 @@ Built-in methods can be selected by passing \code{.f = "knn_imp"},
 \code{.f = "pca_imp"}, or \code{.f = "slide_imp"}. A custom function can also be
 supplied. Custom functions must accept \code{obj} as their first argument and
 return a numeric matrix with the same dimensions as \code{obj}.
+
+When \code{na_loc} is supplied, \code{num_na}, \code{n_cols}, \code{n_rows}, and \code{na_col_subset}
+are ignored.
 
 When \code{.f} is a character string, columns in \code{parameters} are validated
 against the selected method:

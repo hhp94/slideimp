@@ -327,10 +327,9 @@ resolve_na_loc <- function(
 
 #' Tune Imputation Method Parameters
 #'
-#' Tune imputation-method parameters by repeatedly masking observed values,
+#' Tune method specific hyperparameters by repeatedly masking observed values,
 #' imputing them, and comparing the imputed values with the original values.
 #'
-#' @param obj A numeric matrix.
 #' @param parameters A `data.frame` specifying parameter combinations to tune.
 #'   Each column should be a parameter accepted by `.f`, excluding `obj`.
 #'   List-columns are supported for complex parameters. Duplicate rows are
@@ -342,20 +341,8 @@ resolve_na_loc <- function(
 #' @param na_loc Optional predefined missing-value locations. Accepted formats
 #'   are a two-column integer matrix of row and column indices, a numeric vector
 #'   of linear positions, or a list whose elements are either of those formats.
-#' @param num_na Integer or `NULL`. Total number of missing values to inject per
-#'   repetition. If supplied, `n_cols` is derived from `num_na` and `n_rows`,
-#'   and missing values are distributed as evenly as possible across columns.
-#'   Ignored when `na_loc` is supplied.
-#' @param n_cols Integer or `NULL`. Number of columns to receive injected
-#'   missing values per repetition. Must be supplied when both `num_na` and
+#' @param n_cols Integer or `NULL`. Must be supplied when both `num_na` and
 #'   `na_loc` are `NULL`, unless the automatic default applies.
-#'   Ignored when `num_na` or `na_loc` is supplied.
-#' @param n_rows Integer. Target number of missing values to inject per selected
-#'   column. Ignored when `na_loc` is supplied.
-#' @param na_col_subset Optional integer or character vector restricting which
-#'   columns are eligible for random missing-value injection. Ignored when
-#'   `na_loc` is supplied.
-#' @inheritParams sample_na_loc
 #' @param .progress Logical. If `TRUE`, show progress during tuning.
 #' @param cores Integer. Number of cores to use for K-NN and sliding-window
 #'   K-NN imputation. For other methods, use `mirai::daemons()`.
@@ -363,12 +350,16 @@ resolve_na_loc <- function(
 #'   `.f = "slide_imp"`.
 #' @param pin_blas Logical. If `TRUE`, pin BLAS threads to 1 during parallel
 #'   tuning to reduce thread contention.
+#' @inheritParams sample_na_loc
 #'
 #' @details
 #' Built-in methods can be selected by passing `.f = "knn_imp"`,
 #' `.f = "pca_imp"`, or `.f = "slide_imp"`. A custom function can also be
 #' supplied. Custom functions must accept `obj` as their first argument and
 #' return a numeric matrix with the same dimensions as `obj`.
+#'
+#' When `na_loc` is supplied, `num_na`, `n_cols`, `n_rows`, and `na_col_subset`
+#' are ignored.
 #'
 #' When `.f` is a character string, columns in `parameters` are validated
 #' against the selected method:
@@ -490,8 +481,16 @@ tune_imp <- function(
   location = NULL,
   pin_blas = FALSE
 ) {
-  # this function sometime leaves behind big matrices. This can help clean up.
-  on.exit(gc(verbose = FALSE), add = TRUE)
+  # only gc on longer running calls
+  .start <- proc.time()[["elapsed"]]
+  on.exit(
+    {
+      if (proc.time()[["elapsed"]] - .start > 0.5) {
+        gc(verbose = FALSE)
+      }
+    },
+    add = TRUE
+  )
 
   # pre-conditioning
   checkmate::assert_matrix(
@@ -853,7 +852,7 @@ tune_imp <- function(
     # sequential: `indices` is built by expand.grid with param_set varying
     # fastest, so consecutive iterations share rep_id. Build `pre` once per
     # rep and reuse it across all param_sets in that rep.
-    run_one <- function(pre, ps, rep_id) {
+    run_sequential <- function(pre, ps, rep_id) {
       call_args <- c(
         list(obj = pre),
         fixed_args,
@@ -881,7 +880,7 @@ tune_imp <- function(
         current_rep <- rep_id
       }
       result_list[[i]] <- tryCatch(
-        run_one(pre, ps, rep_id),
+        run_sequential(pre, ps, rep_id),
         error = function(e) {
           out <- data.frame(truth = numeric(), estimate = numeric())
           attr(out, "error") <- conditionMessage(e)
@@ -891,7 +890,6 @@ tune_imp <- function(
       if (.progress) cli::cli_progress_update(id = pb)
     }
     if (.progress) cli::cli_progress_done(id = pb)
-    rm(pre)
   }
 
   error_vec <- vapply(result_list, function(x) {
