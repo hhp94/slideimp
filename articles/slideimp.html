@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,6 +31,12 @@
       <ul class="navbar-nav me-auto">
 <li class="active nav-item"><a class="nav-link" href="../articles/slideimp.html">Get started</a></li>
 <li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
+<li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  </ul>
+</li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
@@ -62,7 +68,7 @@
       <h1>slideimp</h1>
             
       
-      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/zenodo-v1.0.0/vignettes/slideimp.Rmd" class="external-link"><code>vignettes/slideimp.Rmd</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/master/vignettes/slideimp.Rmd" class="external-link"><code>vignettes/slideimp.Rmd</code></a></small>
       <div class="d-none name"><code>slideimp.Rmd</code></div>
     </div>
 
@@ -98,8 +104,9 @@ specify just certain columns (i.e., clock CpGs), provide the
 <code>na_col_subset</code> argument.
 <ul>
 <li>
-<code>na_loc</code> has 5 elements (5 repeats) where each row stores
-the row and column index of a missing value.</li>
+<code>na_loc</code> has 5 elements, one for each repeat. Each
+element is a matrix whose rows store the row and column index of a
+missing value.</li>
 </ul>
 </li>
 </ul>
@@ -121,9 +128,9 @@ method, since the cross-validation missing values are the same for all
 methods.</li>
 <li>
 <strong>Note</strong>: The custom function requires the first
-argument to be <code>obj</code>, must return an object of the same
-dimensions, and all subsequent arguments must match the column names of
-the <code>parameters</code> data.frame.</li>
+argument to be <code>obj</code>, must return an object with the same
+dimensions as <code>obj</code>, and all subsequent arguments must match
+the column names of the <code>parameters</code> data frame.</li>
 </ul>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># This custom function imputes missing values with random normal values and takes</span></span>
@@ -140,10 +147,10 @@ the <code>parameters</code> data.frame.</li>
 <span>  na_loc <span class="op">=</span> <span class="va">na_loc</span>,</span>
 <span>  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>ncp <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning pca_imp</span></span>
-<span><span class="co">#&gt; Step 1/2: Resolving NA locations</span></span>
-<span><span class="co">#&gt; Running Mode: sequential...</span></span>
-<span><span class="co">#&gt; Step 2/2: Tuning</span></span>
+<span><span class="co">#&gt; Tuning `pca_imp()`</span></span>
+<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
+<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
+<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
 <span></span>
 <span><span class="va">knn_tune</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
 <span>  <span class="va">obj</span>,</span>
@@ -151,10 +158,10 @@ the <code>parameters</code> data.frame.</li>
 <span>  na_loc <span class="op">=</span> <span class="va">na_loc</span>,</span>
 <span>  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning knn_imp</span></span>
-<span><span class="co">#&gt; Step 1/2: Resolving NA locations</span></span>
-<span><span class="co">#&gt; Running Mode: sequential...</span></span>
-<span><span class="co">#&gt; Step 2/2: Tuning</span></span>
+<span><span class="co">#&gt; Tuning `knn_imp()`</span></span>
+<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
+<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
+<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
 <span></span>
 <span><span class="va">rnorm_tune</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
 <span>  <span class="va">obj</span>,</span>
@@ -162,10 +169,10 @@ the <code>parameters</code> data.frame.</li>
 <span>  na_loc <span class="op">=</span> <span class="va">na_loc</span>,</span>
 <span>  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span> <span class="co"># must match with arguments of `rnorm_imp`</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning custom function</span></span>
-<span><span class="co">#&gt; Step 1/2: Resolving NA locations</span></span>
-<span><span class="co">#&gt; Running Mode: sequential...</span></span>
-<span><span class="co">#&gt; Step 2/2: Tuning</span></span></code></pre></div>
+<span><span class="co">#&gt; Tuning <span style="color: #00BB00;">custom function</span></span></span>
+<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
+<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
+<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span></code></pre></div>
 <ul>
 <li>Pick the method with the lowest cross-validation error:</li>
 </ul>
@@ -192,8 +199,8 @@ and PCA imputation.</li>
 which maps <code>colnames(obj)</code> to groups. This can be created up
 front with <code><a href="../reference/prep_groups.html">prep_groups()</a></code> for advanced features such as
 group-wise parameters and padding of small groups with random features
-from other groups. <code><a href="../reference/prep_groups.html">prep_groups()</a></code> returns a list-column
-data.frame with:
+from other groups. <code><a href="../reference/prep_groups.html">prep_groups()</a></code> returns a list-column data
+frame with:
 <ul>
 <li>
 <code>features</code>: <strong>required</strong> - a list-column
@@ -203,8 +210,8 @@ together.</li>
 <code>aux</code>: <strong>optional</strong> - auxiliary variables to
 include in each group. These are only used to augment the imputation
 quality of features and are not imputed themselves. If one group is too
-small (e.g., chrM), <code>aux</code> is used to pad the group by
-randomly drawing samples from other groups to meet
+small, e.g. <code>chrM</code>, <code>aux</code> is used to pad the group
+by randomly drawing features from other groups to meet
 <code>min_group_size</code>.</li>
 <li>
 <code>parameters</code>: <strong>optional</strong> - group-specific
@@ -273,8 +280,8 @@ neighbors as a demonstration.</li>
 </ul>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">knn_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/group_imp.html">group_imp</a></span><span class="op">(</span><span class="va">obj</span>, group <span class="op">=</span> <span class="va">group_imp_df</span>, cores <span class="op">=</span> <span class="fl">4</span>, k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Imputing 3 group(s) using KNN.</span></span>
-<span><span class="co">#&gt; Running Mode: parallel (OpenMP within groups)...</span></span>
+<span><span class="co">#&gt; Imputing 3 groups using <span style="font-weight: bold;">KNN</span>.</span></span>
+<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">threaded</span> (4 cores)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">knn_results</span>, p <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Method: group_imp (KNN imputation)</span></span>
 <span><span class="co">#&gt; Dimensions: 20 x 50</span></span>
@@ -286,8 +293,7 @@ neighbors as a demonstration.</li>
 <span><span class="co">#&gt; sample4 0.40710170 0.4094603 0.3228294 0.2529592</span></span>
 <span><span class="co">#&gt; sample5 0.73113251 0.4108405 0.6385945 0.4472338</span></span>
 <span><span class="co">#&gt; sample6 0.48993078 0.4950764 0.6553896 0.6737998</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; # Showing [1:6, 1:4] of full matrix</span></span></code></pre></div>
+<span><span class="co">#&gt; # Showing 6 of 20 rows and 4 of 50 columns</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="sliding-window-imputation-for-wgbsem-seq-data-with-slide_imp">Sliding Window Imputation for WGBS/EM-seq Data with
@@ -396,13 +402,12 @@ much in real analyses).</li>
 <span>  n_reps <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  location <span class="op">=</span> <span class="va">locations</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning slide_imp</span></span>
-<span><span class="co">#&gt; Step 1/2: Resolving NA locations</span></span>
+<span><span class="co">#&gt; Tuning `slide_imp()`</span></span>
+<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
 <span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using default `num_na` = 500 (~5% of cells).</span></span>
 <span><span class="co">#&gt;   Increase for more reliability or decrease if missing is dense.</span></span>
-<span><span class="co">#&gt; Running Mode: sequential...</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; Step 2/2: Tuning</span></span>
+<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
+<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
 <span></span>
 <span><span class="va">metrics</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">tune_slide_pca</span><span class="op">)</span></span>
 <span></span>
@@ -481,8 +486,7 @@ window.</li>
 <span><span class="co">#&gt; S4 0.69444444 0.2846154 0.04347826 0.7636364 0.9595960 0.54621849</span></span>
 <span><span class="co">#&gt; S5 0.83505155 0.5777778 0.47517730        NA 0.7368421 0.21666667</span></span>
 <span><span class="co">#&gt; S6 0.26612903 0.3451327 0.53072626 0.5000000 0.6465517 0.37288136</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt; # Showing [1:6, 1:6] of full matrix</span></span></code></pre></div>
+<span><span class="co">#&gt; # Showing 6 of 10 rows and 6 of 1000 columns</span></span></code></pre></div>
 </div>
 <div class="section level3">
 <h3 id="subset-and-flanking-mode">Subset and Flanking Mode<a class="anchor" aria-label="anchor" href="#subset-and-flanking-mode"></a>

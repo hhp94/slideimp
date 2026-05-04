@@ -30,7 +30,7 @@ print(x, n = 6L, p = 6L, ...)
 
 ## Value
 
-Invisible `x`.
+`x`, invisibly.
 
 ## Examples
 
@@ -48,6 +48,7 @@ print(sim_data)
 #> 4 feature4 group1
 #> 5 feature5 group2
 #> 6 feature6 group2
+#> # Showing 6 of 10 rows
 #> 
 #> $row_group (1 row groups)
 #>    sample  group
@@ -57,6 +58,7 @@ print(sim_data)
 #> 4 sample4 group1
 #> 5 sample5 group1
 #> 6 sample6 group1
+#> # Showing 6 of 50 rows
 #> 
 #> $input (50 x 10)
 #>          feature1  feature2  feature3  feature4  feature5  feature6
@@ -66,5 +68,5 @@ print(sim_data)
 #> sample4 0.6887438 0.4568955 0.3007332 0.5369357 0.5503469 0.3900968
 #> sample5 0.4220865 0.3630904 0.4552229        NA 0.7723463 0.5073267
 #> sample6 1.0000000 0.7918423 0.6874920 0.6385426 0.7579935 0.9167009
-#> # Showing [1:6, 1:6] of full matrix
+#> # Showing 6 of 50 rows and 6 of 10 columns
 ```

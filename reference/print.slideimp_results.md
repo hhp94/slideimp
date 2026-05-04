@@ -4,6 +4,7 @@ Print the output of
 [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md),
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md),
 [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md),
+or
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md).
 
 ## Usage
@@ -25,7 +26,7 @@ print(x, n = 6L, p = 6L, ...)
 
 - p:
 
-  Number of cols to print.
+  Number of columns to print.
 
 - ...:
 
@@ -33,14 +34,14 @@ print(x, n = 6L, p = 6L, ...)
 
 ## Value
 
-Invisible `x`.
+`x`, invisibly.
 
 ## Examples
 
 ``` r
 set.seed(1234)
 mat <- sim_mat(n = 10, p = 10)
-result <- knn_imp(mat$input, k = 5)
+result <- knn_imp(mat$input, k = 5, .progress = FALSE)
 class(result)
 #> [1] "slideimp_results" "matrix"           "array"           
 print(result, n = 6, p = 6)
@@ -54,6 +55,5 @@ print(result, n = 6, p = 6)
 #> sample4 0.0000000 0.01200625 0.0000000 0.0000000 0.00000000 0.0000000
 #> sample5 0.9639671 0.64091372 0.5111760 0.7184678 0.81815288 0.5883255
 #> sample6 0.7031741 0.37310619 0.6782811 0.7542872 0.99910554 0.9070005
-#> 
-#> # Showing [1:6, 1:6] of full matrix
+#> # Showing 6 of 10 rows and 6 of 10 columns
 ```

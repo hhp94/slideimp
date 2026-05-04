@@ -1,10 +1,11 @@
-# Simulate Matrix with Metadata
+# Simulate a Matrix with Metadata
 
-Generates a matrix of random normal data, then optionally scales values
-between 0 and 1 column-wise. It also creates corresponding data frames
-for feature (column) and sample (row) metadata and can optionally
-introduce `NA` values into a specified proportion of rows. A correlation
-between columns `rho` (before scaling) can be added.
+`sim_mat()` generates random normal data with optional
+compound-symmetric column correlation. Values can optionally be scaled
+to the interval `[0, 1]` column-wise. The function also creates feature
+metadata for columns and sample metadata for rows, and can inject `NA`
+values into a specified proportion of matrix cells across a specified
+proportion of columns.
 
 ## Usage
 
@@ -25,53 +26,57 @@ sim_mat(
 
 - n:
 
-  An integer specifying the number of rows (samples). Default is `100`.
+  Integer. Number of rows, interpreted as samples. Defaults to `100`.
 
 - p:
 
-  An integer specifying the number of columns (features). Default is
+  Integer. Number of columns, interpreted as features. Defaults to
   `100`.
 
 - rho:
 
-  Columns correlation before scaling (compound symmetry). Default is
-  `0.5`.
+  Numeric. Compound-symmetric column correlation before optional
+  scaling. Defaults to `0.5`.
 
 - n_col_groups:
 
-  An integer for the number of groups to assign to features/columns.
-  Default is `2`.
+  Integer. Number of groups to assign to features. Defaults to `2`.
 
 - n_row_groups:
 
-  An integer for the number of groups to assign to samples/rows. Default
-  is `1`.
+  Integer. Number of groups to assign to samples. Defaults to `1`.
 
 - perc_total_na:
 
-  Proportion of all cells to set to NA. Default is `0.1`.
+  Numeric scalar between `0` and `1`. Proportion of all matrix cells to
+  set to `NA`. Defaults to `0.1`.
 
 - perc_col_na:
 
-  Proportion of columns across which those NAs are spread. Default is
-  `0.5`.
+  Numeric scalar between `0` and `1`. Proportion of columns across which
+  injected `NA` values are spread. Defaults to `0.5`.
 
 - beta:
 
-  If `TRUE` (default) scale values between 0 and 1 column wise.
+  Logical. If `TRUE`, scale values to the interval `[0, 1]` column-wise.
 
 ## Value
 
 An object of class `slideimp_sim`. This is a list containing:
 
-- `input`: A numeric matrix of dimension \\n \times p\\ containing the
-  simulated values and injected `NA`s.
+- `input`: a numeric matrix of dimension \\n \times p\\ containing the
+  simulated values and injected missing values.
 
-- `col_group`: A data frame with \$p\$ rows mapping each `feature` to a
+- `col_group`: a data frame with \\p\\ rows mapping each `feature` to a
   `group`.
 
-- `row_group`: A data frame with \$n\$ rows mapping each `sample` to a
+- `row_group`: a data frame with \\n\\ rows mapping each `sample` to a
   `group`.
+
+## Details
+
+Generate a numeric matrix with optional row and column metadata and
+added missing values.
 
 ## Examples
 
@@ -87,6 +92,7 @@ sim_data
 #> 4 feature4 group1
 #> 5 feature5 group2
 #> 6 feature6 group2
+#> # Showing 6 of 10 rows
 #> 
 #> $row_group (1 row groups)
 #>    sample  group
@@ -96,6 +102,7 @@ sim_data
 #> 4 sample4 group1
 #> 5 sample5 group1
 #> 6 sample6 group1
+#> # Showing 6 of 50 rows
 #> 
 #> $input (50 x 10)
 #>          feature1  feature2  feature3  feature4  feature5  feature6
@@ -105,5 +112,5 @@ sim_data
 #> sample4 0.6887438 0.4568955 0.3007332 0.5369357 0.5503469 0.3900968
 #> sample5 0.4220865 0.3630904 0.4552229        NA 0.7723463 0.5073267
 #> sample6 1.0000000 0.7918423 0.6874920 0.6385426 0.7579935 0.9167009
-#> # Showing [1:6, 1:6] of full matrix
+#> # Showing 6 of 50 rows and 6 of 10 columns
 ```

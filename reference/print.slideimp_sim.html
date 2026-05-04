@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -17,6 +17,10 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto"><li class="nav-item"><a class="nav-link" href="../articles/slideimp.html">Get started</a></li>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
+<li class="nav-item dropdown">
+  <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
  <input class="form-control" type="search" name="search-input" id="search-input" autocomplete="off" aria-label="Search site" placeholder="Search for" data-search-index="../search.json"></form></li>
@@ -36,7 +40,7 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>Print a <code>slideimp_sim</code> Object</h1>
-      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/zenodo-v1.0.0/R/print.R" class="external-link"><code>R/print.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/master/R/print.R" class="external-link"><code>R/print.R</code></a></small>
       <div class="d-none name"><code>print.slideimp_sim.Rd</code></div>
     </div>
 
@@ -72,7 +76,7 @@
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>Invisible <code>x</code>.</p>
+    <p><code>x</code>, invisibly.</p>
     </div>
 
     <div class="section level2">
@@ -90,6 +94,7 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 feature4 group1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 5 feature5 group2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 6 feature6 group2</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> # Showing 6 of 10 rows</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $row_group (1 row groups)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    sample  group</span>
@@ -99,6 +104,7 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> 4 sample4 group1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 5 sample5 group1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 6 sample6 group1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> # Showing 6 of 50 rows</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $input (50 x 10)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          feature1  feature2  feature3  feature4  feature5  feature6</span>
@@ -108,7 +114,7 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> sample4 0.6887438 0.4568955 0.3007332 0.5369357 0.5503469 0.3900968</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> sample5 0.4220865 0.3630904 0.4552229        NA 0.7723463 0.5073267</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> sample6 1.0000000 0.7918423 0.6874920 0.6385426 0.7579935 0.9167009</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> # Showing [1:6, 1:6] of full matrix</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> # Showing 6 of 50 rows and 6 of 10 columns</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

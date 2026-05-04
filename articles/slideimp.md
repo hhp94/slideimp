@@ -34,8 +34,8 @@ obj[1:4, 1:4]
   [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md).
   To specify just certain columns (i.e., clock CpGs), provide the
   `na_col_subset` argument.
-  - `na_loc` has 5 elements (5 repeats) where each row stores the row
-    and column index of a missing value.
+  - `na_loc` has 5 elements, one for each repeat. Each element is a
+    matrix whose rows store the row and column index of a missing value.
 
 ``` r
 
@@ -56,8 +56,9 @@ na_loc[[1]][1:6, ]
   method, since the cross-validation missing values are the same for all
   methods.
 - **Note**: The custom function requires the first argument to be `obj`,
-  must return an object of the same dimensions, and all subsequent
-  arguments must match the column names of the `parameters` data.frame.
+  must return an object with the same dimensions as `obj`, and all
+  subsequent arguments must match the column names of the `parameters`
+  data frame.
 
 ``` r
 
@@ -75,9 +76,9 @@ pca_tune <- tune_imp(
   na_loc = na_loc,
   parameters = data.frame(ncp = 10)
 )
-#> Tuning pca_imp
+#> Tuning `pca_imp()`
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 
 knn_tune <- tune_imp(
@@ -86,9 +87,9 @@ knn_tune <- tune_imp(
   na_loc = na_loc,
   parameters = data.frame(k = 10)
 )
-#> Tuning knn_imp
+#> Tuning `knn_imp()`
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 
 rnorm_tune <- tune_imp(
@@ -99,7 +100,7 @@ rnorm_tune <- tune_imp(
 )
 #> Tuning custom function
 #> Step 1/2: Resolving NA locations
-#> Running Mode: sequential...
+#> Running mode: sequential
 #> Step 2/2: Tuning
 ```
 
@@ -128,14 +129,14 @@ mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
   for advanced features such as group-wise parameters and padding of
   small groups with random features from other groups.
   [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
-  returns a list-column data.frame with:
+  returns a list-column data frame with:
   - `features`: **required** - a list-column where each element is a
     character vector of variable names to be imputed together.
   - `aux`: **optional** - auxiliary variables to include in each group.
     These are only used to augment the imputation quality of features
-    and are not imputed themselves. If one group is too small (e.g.,
-    chrM), `aux` is used to pad the group by randomly drawing samples
-    from other groups to meet `min_group_size`.
+    and are not imputed themselves. If one group is too small,
+    e.g. `chrM`, `aux` is used to pad the group by randomly drawing
+    features from other groups to meet `min_group_size`.
   - `parameters`: **optional** - group-specific imputation parameters.
 - First we simulate data from 2 groups. We then create `group3` with
   only 1 feature to show how `min_group_size` pads it using the `aux`
@@ -203,8 +204,8 @@ group_imp_df
 ``` r
 
 knn_results <- group_imp(obj, group = group_imp_df, cores = 4, k = 10)
-#> Imputing 3 group(s) using KNN.
-#> Running Mode: parallel (OpenMP within groups)...
+#> Imputing 3 groups using KNN.
+#> Running mode: threaded (4 cores)
 print(knn_results, p = 4)
 #> Method: group_imp (KNN imputation)
 #> Dimensions: 20 x 50
@@ -216,8 +217,7 @@ print(knn_results, p = 4)
 #> sample4 0.40710170 0.4094603 0.3228294 0.2529592
 #> sample5 0.73113251 0.4108405 0.6385945 0.4472338
 #> sample6 0.48993078 0.4950764 0.6553896 0.6737998
-#> 
-#> # Showing [1:6, 1:4] of full matrix
+#> # Showing 6 of 20 rows and 4 of 50 columns
 ```
 
 ## Sliding Window Imputation for WGBS/EM-seq Data with `slide_imp()`
@@ -316,12 +316,11 @@ tune_slide_pca <- tune_imp(
   n_reps = 2,
   location = locations
 )
-#> Tuning slide_imp
+#> Tuning `slide_imp()`
 #> Step 1/2: Resolving NA locations
 #> ℹ Using default `num_na` = 500 (~5% of cells).
 #>   Increase for more reliability or decrease if missing is dense.
-#> Running Mode: sequential...
-#> 
+#> Running mode: sequential
 #> Step 2/2: Tuning
 
 metrics <- compute_metrics(tune_slide_pca)
@@ -398,8 +397,7 @@ slide_imp(
 #> S4 0.69444444 0.2846154 0.04347826 0.7636364 0.9595960 0.54621849
 #> S5 0.83505155 0.5777778 0.47517730        NA 0.7368421 0.21666667
 #> S6 0.26612903 0.3451327 0.53072626 0.5000000 0.6465517 0.37288136
-#> 
-#> # Showing [1:6, 1:6] of full matrix
+#> # Showing 6 of 10 rows and 6 of 1000 columns
 ```
 
 ### Subset and Flanking Mode
