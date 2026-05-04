@@ -1,59 +1,5 @@
 # Changelog
 
-## slideimp 1.1.1
-
-- `DESCRIPTION` now mentions the LOBPCG eigensolver and its warm-start
-  behavior across E-M iterations in
-  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
-- Minor wording improvements in the PCA solver vignette.
-
-## slideimp 1.1.0
-
-CRAN release: 2026-05-01
-
-### Breaking changes
-
-- Minimum R version is now 4.3.0 (was 4.1.0).
-- [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
-  no longer caches pair-wise distances. The `use_cache` argument has
-  been removed.
-
-### New features
-
-- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-  gained a `solver` argument to select the LOBPCG eigensolver,
-  configured via the new
-  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md)
-  helper.
-
-- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-  gained a `clamp` argument to bound imputed values, e.g. `c(0, 1)` for
-  methylation beta values. Also threaded through
-  [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
-  and
-  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
-
-### Minor improvements and fixes
-
-- [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
-  now uses [RcppThread](https://github.com/tnagler/RcppThread) instead
-  of OpenMP, enabling parallelism on macOS.
-
-- [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
-  now infers the subset from `na_loc`, speeding up tuning for
-  [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
-  and
-  [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md).
-
-- [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
-  is now an S3 generic, replacing the previous register-on-load pattern
-  with `{slideimp.extra}`.
-
-- New article describing how to speed up PCA imputation by choosing
-  `solver` and `threshold`.
-
-- Fixed numerical tolerance check failure on CRAN’s ATLAS configuration.
-
 ## slideimp 1.0.0
 
 CRAN release: 2026-04-16

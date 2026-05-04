@@ -23,7 +23,7 @@ pak::pkg_install("hhp94/slideimp")
 ```
 
 You can install the optional
-[`slideimp.extra`](https://github.com/hhp94/slideimp.extra) package
+[`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra) package
 (which provides lightweight Illumina manifests) with:
 
 ``` r
@@ -61,19 +61,18 @@ MSA_beta_matrix[1:4, 1:4]
 
 library(slideimp.extra)
 library(slideimp)
+library(mirai)
 
 imputed <- group_imp(
   obj = MSA_beta_matrix,
   group = "MSA", # <- this feature requires the `slideimp.extra` package
   ncp = 10, # <- change to `k` for K-NN imputation
-  clamp = c(0, 1), # <- PCA imputation can generate values outside of `c(0, 1)`
   .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
 # Found cleaned manifest for 'MSA'
-# ! 1 group dropped: no features remaining after matching `obj_cn`.
-# ℹ Dropped group indices: 24
-# Imputing 25 groups using PCA.
-# Running mode: sequential
+# Groups 24 dropped: no features remaining after matching obj columns.
+# Imputing 25 group(s) using PCA.
+# Running Mode: sequential ...
 
 print(imputed, n = 4, p = 4)
 # Method: group_imp (PCA imputation)
@@ -84,43 +83,20 @@ print(imputed, n = 4, p = 4)
 # sample2       0.4907466       0.5095459      0.90258164       0.4313347
 # sample3       0.6885036       0.7339375      0.76467530       0.4498772
 # sample4       0.0000000       0.0000000      0.05230101       0.0000000
-# # Showing 4 of 20 rows and 4 of 281797 columns
+#
+# # Showing [1:4, 1:4] of full matrix
 ```
 
-### Troubleshooting tips
-
-- [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-  fails with unmapped probes: your matrix likely contains
-  [`sesame`](https://bioconductor.org/packages/release/bioc/html/sesame.html)
-  generated control probes (prefixed `ctl_`) or you picked the wrong
-  manifest (`"EPICv2"` vs. `"EPICv2_deduped"`). Check the manifest,
-  remove `"ctl"` probes with
-  `obj <- obj[, !grepl("^ctl", colnames(obj))]`, or pass
-  `allow_unmapped = TRUE` to bypass.
-- Impute the MSA or EPICv2 data **with** the duplicated probes, then
-  dedup with `slideimp.extra::dedup_matrix()`.
-
-### Performance tips
-
-- For PCA performance tuning, including guidance on choosing
-  `threshold`, selecting `solver`, configuring `lobpcg_control`, and
-  using [mirai](https://mirai.r-lib.org) or BLAS threading effectively,
-  see [Speeding up PCA
-  imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html).
-- For PCA imputation of bounded data, i.e., DNA methylation beta values,
-  use `clamp = c(0, 1)` to restrict PCA-imputed values to the valid
-  range.
-- For parallel PCA imputation with a threaded BLAS such as OpenBLAS or
-  MKL, set `pin_blas = TRUE` so BLAS threads and
-  [mirai](https://mirai.r-lib.org) workers do not compete for cores.
-  This requires [RhpcBLASctl](https://prs.ism.ac.jp/~nakama/Rhpc/).
-- For faster PCA imputation on Windows machines, advanced users can
-  replace R’s default reference BLAS with OpenBLAS. See [this community
-  guide](https://github.com/david-cortes/R-openblas-in-windows).
-- For parallel K-NN imputation, use the `cores` argument, which uses
-  [RcppThread](https://github.com/tnagler/RcppThread)’s `parallelFor`,
-  instead of [mirai](https://mirai.r-lib.org). If you only need clock
-  CpGs, pass `subset` to skip all other probes.
+- Tips
+  - Remove the “ctl” probes (control probes) before imputation with
+    `obj <- obj[, !grepl("^ctl", colnames(obj))]` or set
+    `allow_unmapped = TRUE` to ignore them.
+  - Deduplicate the MSA and EPICv2 data after imputation with
+    `slideimp.extra::dedup_matrix()`.
+  - Speed up K-NN imputation with OpenMP by using the `cores` argument
+    instead of [mirai](https://mirai.r-lib.org) (available by default on
+    Windows and Linux). If you only need clock CpGs, provide the
+    `subset` argument to ignore all other probes.
 
 ## Extended Workflow
 
@@ -157,8 +133,7 @@ group_df <- sim_obj$col_group
   more reliable error estimates.
 
 - **Note:** Parallelization via the `cores` argument is only available
-  for K-NN imputation with
-  [RcppThread](https://github.com/tnagler/RcppThread).
+  for K-NN imputation with OpenMP.
 
 ``` r
 
@@ -174,15 +149,15 @@ tune_knn <- tune_imp(
   n_reps = 10,
   num_na = 50
 )
-#> Tuning `knn_imp()`
+#> Tuning knn_imp
 #> Step 1/2: Resolving NA locations
-#> Running mode: threaded (8 cores)
+#> Running Mode: parallel...
 #> Step 2/2: Tuning
 ```
 
 - Calculate errors using
   [`compute_metrics()`](https://hhp94.github.io/slideimp/reference/compute_metrics.md)
-  or [yardstick](https://github.com/tidymodels/yardstick) functions.
+  or [`{yardstick}`](https://github.com/tidymodels/yardstick) functions.
 
 ``` r
 
@@ -216,11 +191,9 @@ sum_metrics[order(sum_metrics$.estimate.mean_error), ]
 #> 7  5        2    rmse          10            0.2101955         0.01884442
 ```
 
-- For PCA imputation and custom functions, set up parallelization with
+- For K-NN without OpenMP, PCA imputation, and custom functions (see
+  vignette), set up parallelization with
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html).
-  See [Speeding up PCA
-  imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
-  for additional PCA performance-tuning guidance.
 - **Note:** For machines with multi-threaded BLAS, turn on
   `pin_blas = TRUE` when tuning PCA imputation in parallel to avoid
   thrashing.
@@ -244,8 +217,8 @@ mirai::daemons(0) # Close daemons
 ``` r
 
 knn_group_results <- group_imp(obj, group = group_df, k = 20, dist_pow = 1, cores = 2)
-#> Imputing 2 groups using KNN.
-#> Running mode: threaded (2 cores)
+#> Imputing 2 group(s) using KNN.
+#> Running Mode: parallel (OpenMP within groups)...
 knn_group_results
 #> Method: group_imp (KNN imputation)
 #> Dimensions: 20 x 100
@@ -257,7 +230,8 @@ knn_group_results
 #> sample4 0.1734418 0.0000000 0.0000000 0.0000000 0.0000000 0.2106358
 #> sample5 0.5388440 0.5306182 0.5685354 0.5383513 0.4680080 0.8518388
 #> sample6 0.3768380 0.5570723 0.8764909 0.5276245 0.6722794 0.5740639
-#> # Showing 6 of 20 rows and 6 of 100 columns
+#> 
+#> # Showing [1:6, 1:6] of full matrix
 ```
 
 - PCA imputation with
@@ -291,7 +265,7 @@ full_pca_results <- pca_imp(obj = obj, ncp = 10)
 
 - [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
   performs sliding window imputation.
-- This function is **not** for Illumina DNAm microarrays. See
+- This function is **not** for Illumina DNAm microarrays; see
   [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
 - **Note:**
   - DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run
@@ -398,7 +372,8 @@ slide_imp(
 #> sample4 0.5946795 0.0000000 0.5837423 0.07237333 0.4410413 0.6101870
 #> sample5 0.8664253 0.6206139 0.3444691 0.52025046 0.5220036 0.7464794
 #> sample6 0.8157626 0.3053222 0.7227880 0.57711498 0.4576367 0.0000000
-#> # Showing 6 of 10 rows and 6 of 2000 columns
+#> 
+#> # Showing [1:6, 1:6] of full matrix
 ```
 
 ## Core functions
@@ -408,7 +383,7 @@ slide_imp(
   K-NN or PCA imputation with optional auxiliary features and group-wise
   parameters. The `group` argument supports:
   - Choices such as `"EPICv2"` or `"MSA"` (requires the
-    [`slideimp.extra`](https://github.com/hhp94/slideimp.extra)
+    [`{slideimp.extra}`](https://github.com/hhp94/slideimp.extra)
     package).
   - (Basic): a `data.frame` containing a `feature` column (character
     strings of feature names) and a `group` column (defining the group).
@@ -421,11 +396,11 @@ slide_imp(
   numeric matrices (WGBS/EM-seq) with ordered features (i.e., by genomic
   position).
 - [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md):
-  Parallelizable hyperparameter tuning with repeated cross-validation
-  that works with built-in or custom imputation functions.
+  Parallelizable hyperparameter tuning with repeated cross-validation;
+  works with built-in or custom imputation functions.
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md):
-  Full K-NN imputation with multi-core parallelization,
-  [`mlpack`](https://mlpack.org/) Ball tree nearest neighbor
+  Full-matrix K-NN imputation with multi-core parallelization,
+  [`{mlpack}`](https://mlpack.org/) KD/Ball-Tree nearest neighbor
   implementation (for data with very low missing rates and extremely
   high dimensions), and optional subset imputation (ideal for epigenetic
   clock calculations).
@@ -439,15 +414,14 @@ slide_imp(
   provide fast column-wise variance and mean imputation using the
   high-performance
   [RcppArmadillo](https://github.com/RcppCore/RcppArmadillo) backend
-  with full [RcppThread](https://github.com/tnagler/RcppThread)
-  parallelization support.
+  with full OpenMP parallelization support.
 
 # Package index
 
 ## All functions
 
 - [`col_vars()`](https://hhp94.github.io/slideimp/reference/col_vars.md)
-  : Calculate Matrix Column Variances
+  : Calculate Matrix Column Variance
 
 - [`compute_metrics()`](https://hhp94.github.io/slideimp/reference/compute_metrics.md)
   : Compute Prediction Accuracy Metrics
@@ -456,19 +430,13 @@ slide_imp(
   : Grouped K-NN or PCA Imputation
 
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) :
-  K-Nearest-Neighbor Imputation for Numeric Matrices
-
-- [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md)
-  : LOBPCG Eigensolver Control Options
-
-- [`mat_miss()`](https://hhp94.github.io/slideimp/reference/mat_miss.md)
-  : Column or Row Missing Counts and Proportions
+  K-Nearest Neighbor Imputation for Numeric Matrices
 
 - [`mean_imp_col()`](https://hhp94.github.io/slideimp/reference/mean_imp_col.md)
   : Column Mean Imputation
 
 - [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md) :
-  PCA Imputation for Numeric Matrices
+  Impute Numeric Matrix with PCA Imputation
 
 - [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
   : Prepare Groups for Imputation
@@ -488,25 +456,23 @@ slide_imp(
 
   Print a `slideimp_tbl` Object
 
+- [`register_group_resolver()`](https://hhp94.github.io/slideimp/reference/register_group_resolver.md)
+  : Register a Group Resolver
+
 - [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md)
-  : Sample Missing-Value Locations with Constraints
+  : Sample Missing Value Locations with Constraints
 
 - [`sim_mat()`](https://hhp94.github.io/slideimp/reference/sim_mat.md) :
-  Simulate a Matrix with Metadata
+  Simulate Matrix with Metadata
 
 - [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
-  : Sliding-Window K-NN or PCA Imputation
-
-- [`slideimp_resolve_group()`](https://hhp94.github.io/slideimp/reference/slideimp_resolve_group.md)
-  : Resolve a Group Specification to a Data Frame
+  : Sliding Window K-NN or PCA Imputation
 
 - [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
-  : Tune Imputation Method Parameters
+  : Tune Parameters for Imputation Methods
 
 # Articles
 
 ### All vignettes
 
 - [slideimp](https://hhp94.github.io/slideimp/articles/slideimp.md):
-- [Speeding up PCA
-  imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.md):

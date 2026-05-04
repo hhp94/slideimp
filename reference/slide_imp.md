@@ -1,7 +1,8 @@
-# Sliding-Window K-NN or PCA Imputation
+# Sliding Window K-NN or PCA Imputation
 
-Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
-columns are meaningfully ordered.
+Performs sliding window K-NN or PCA imputation of large numeric matrices
+column-wise. This method assumes that columns are meaningfully sorted by
+`location`.
 
 ## Usage
 
@@ -18,18 +19,15 @@ slide_imp(
   k = NULL,
   cores = 1,
   dist_pow = 0,
+  max_cache = 4,
   ncp = NULL,
   scale = TRUE,
   coeff.ridge = 1,
-  threshold = 1e-06,
   seed = NULL,
   row.w = NULL,
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
-  solver = c("auto", "exact", "lobpcg"),
-  lobpcg_control = NULL,
-  clamp = NULL,
   method = NULL,
   .progress = TRUE,
   colmax = 0.9,
@@ -43,96 +41,104 @@ slide_imp(
 
 - obj:
 
-  A numeric matrix with samples in rows and features in columns.
+  A numeric matrix with **samples in rows** and **features in columns**.
 
 - location:
 
   A sorted numeric vector of length `ncol(obj)` giving the position of
-  each column, such as genomic coordinates.
+  each column (e.g., genomic coordinates). Used to define sliding
+  windows.
 
 - window_size:
 
-  Numeric. Window width in the same units as `location`.
+  Window width in the same units as `location`.
 
 - overlap_size:
 
-  Numeric. Overlap between consecutive windows in the same units as
-  `location`. Must be less than `window_size`. Ignored when
+  Overlap between consecutive windows in the same units as `location`.
+  Must be less than `window_size`. Default is `0`. Ignored when
   `flank = TRUE`.
 
 - flank:
 
-  Logical. If `FALSE`, imputation uses sliding windows across the full
-  matrix. If `TRUE`, one window of width `window_size` is created for
-  each feature listed in `subset`; `overlap_size` is ignored. `subset`
-  must be supplied when `flank = TRUE`.
+  Logical. If `TRUE`, instead of sliding windows across the whole
+  matrix, one window of width `window_size` is created flanking each
+  feature listed in `subset`. In this mode `overlap_size` is ignored.
+  Requires `subset` to be provided. Default = `FALSE`.
 
 - min_window_n:
 
-  Integer. Minimum number of columns a window must contain to be
-  considered for imputation. For non-dry runs, the selected `k` or `ncp`
-  value must be feasible for the usable columns in each retained window
-  after applying `colmax`.
+  Minimum number of columns a window must contain to be imputed. Windows
+  smaller than this are not imputed. `k` and `ncp` must also be smaller
+  than `min_window_n`.
 
 - subset:
 
-  Optional character or integer vector specifying columns to impute. If
-  `NULL`, all eligible columns are imputed. Required when
-  `flank = TRUE`.
+  Character. Vector of column names or integer vector of column indices
+  specifying which columns to impute.
 
 - dry_run:
 
-  Logical. If `TRUE`, skip imputation and return a `slideimp_tbl`
-  describing the windows that would be used after all filtering rules
-  are applied. In this mode, `k` and `ncp` are not required.
+  Logical. If `TRUE`, skip imputation and return a `slideimp_tbl` object
+  of the windows that *would* be used (after all dropping rules).
+  `k`/`ncp` are not required in this mode. Columns: `start`, `end`,
+  `window_n`, plus `subset_local` (list-column of local subset indices)
+  when `flank = FALSE`, or `target` and `subset_local` when
+  `flank = TRUE`. Default = `FALSE`.
 
 - k:
 
-  Integer. Number of nearest neighbors to use for K-NN imputation.
+  Integer. Number of nearest neighbors for imputation. 10 is a good
+  starting point.
 
 - cores:
 
-  Integer. Number of cores to use for K-NN imputation.
+  Integer. Number of cores for K-NN parallelization (OpenMP). On macOS,
+  OpenMP may need additional compiler configuration.
 
 - dist_pow:
 
-  Numeric. Power used to penalize more distant neighbors in the weighted
-  average. `dist_pow = 0` gives an unweighted average of the nearest
-  neighbors.
+  Numeric. The amount of penalization for further away nearest neighbors
+  in the weighted average. `dist_pow = 0` (default) is the simple
+  average of the nearest neighbors.
+
+- max_cache:
+
+  Numeric. Maximum allowed cache size in GB (default `4`). When greater
+  than `0`, pairwise distances between columns with missing values are
+  pre-computed and cached, which is faster for moderate-sized data but
+  uses O(m^2) memory where m is the number of columns with missing
+  values. Set to `0` to disable caching and trade speed for lower memory
+  usage.
 
 - ncp:
 
-  Integer. Number of principal components used to predict missing
-  entries.
+  Integer. Number of components used to predict the missing entries.
 
 - scale:
 
-  Logical. If `TRUE`, columns are scaled to unit variance.
+  Logical. If `TRUE` (default), variables are scaled to have unit
+  variance.
 
 - coeff.ridge:
 
-  Numeric. Ridge regularization coefficient. Only used when
-  `method = "regularized"`. Values less than `1` regularize less, moving
-  closer to EM PCA. Values greater than `1` regularize more, moving
-  closer to mean imputation.
-
-- threshold:
-
-  Numeric. Convergence threshold.
+  Numeric. Ridge regularization coefficient (default is 1). Only used if
+  `method = "regularized"`. Values \< 1 regularize less (closer to EM);
+  values \> 1 regularize more (closer to mean imputation).
 
 - seed:
 
-  Integer, numeric, or `NULL`. Random seed for reproducibility.
+  Integer. Random number generator seed.
 
 - row.w:
 
-  Row weights, internally normalized to sum to `1`. Can be:
+  Row weights (internally normalized to sum to 1). Can be one of:
 
-  - `NULL`: all rows are weighted equally.
+  - `NULL` (default): All rows weighted equally.
 
-  - A numeric vector of positive weights with length `nrow(obj)`.
+  - A numeric vector: Custom positive weights of length `nrow(obj)`.
 
-  - `"n_miss"`: rows with more missing values receive lower weight.
+  - `"n_miss"`: Rows with more missing values receive lower weight.
 
 - nb.init:
 
@@ -141,156 +147,100 @@ slide_imp(
 
 - maxiter:
 
-  Integer. Maximum number of iterations.
+  Integer. Maximum number of iterations for the algorithm.
 
 - miniter:
 
-  Integer. Minimum number of iterations.
-
-- solver:
-
-  Character. Eigensolver selection. One of `"auto"`, `"exact"`, or
-  `"lobpcg"`. `"exact"` uses the exact solver. `"lobpcg"` uses the
-  iterative LOBPCG solver with exact fallback. `"auto"` performs a short
-  timed probe and chooses LOBPCG only if it is clearly faster than the
-  exact solver. When `nb.init > 1`, the auto choice from the first PCA
-  initialization is reused for subsequent PCA initializations.
-
-- lobpcg_control:
-
-  A list of LOBPCG eigensolver control options, usually created by
-  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
-  A plain named list is also accepted. Ignored when `solver = "exact"`.
-
-- clamp:
-
-  Optional numeric vector of length 2 giving lower and upper bounds for
-  PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
-  methylation beta values. Use `c(lb, Inf)` for only lower bound
-  clamping, or `c(-Inf, ub)` for only upper bound clamping. Clamping is
-  applied only to values imputed by the PCA step, not to observed
-  values.
+  Integer. Minimum number of iterations for the algorithm.
 
 - method:
 
-  Character or `NULL`. For K-NN imputation, one of `"euclidean"` or
-  `"manhattan"`. For PCA imputation, one of `"regularized"` or `"EM"`.
-  If `NULL`, the corresponding backend default is used.
+  For K-NN imputation: distance metric to use (`"euclidean"` or
+  `"manhattan"`). For PCA imputation: regularization imputation
+  algorithm (`"regularized"` or `"EM"`).
 
 - .progress:
 
-  Logical. If `TRUE`, show imputation progress.
+  Show progress bar (default = `TRUE`).
 
 - colmax:
 
-  Numeric scalar between `0` and `1`. Columns with a missing-data
-  proportion greater than `colmax` are excluded from the main imputation
-  method. Excluded columns are left unchanged unless `post_imp = TRUE`,
-  in which case remaining missing values are replaced by column means
-  when possible.
+  Numeric. A number from 0 to 1. Threshold of column-wise missing data
+  rate above which imputation is skipped.
 
 - post_imp:
 
-  Logical. If `TRUE`, replace missing values remaining after the main
-  imputation method with column means when possible.
+  Boolean. Whether to impute remaining missing values (those that failed
+  imputation) using column means.
 
 - na_check:
 
-  Logical. If `TRUE`, check whether the returned matrix still contains
-  missing values.
+  Boolean. Check for leftover `NA` values in the results or not
+  (internal use).
 
 - on_infeasible:
 
-  Character. One of `"skip"`, `"error"`, or `"mean"`. Controls behavior
-  when a window is infeasible for imputation, for example when `k` or
-  `ncp` exceeds the number of usable columns after applying `colmax`.
+  Character, one of `"error"` (default on
+  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)),
+  `"skip"`, or `"mean"` (default on `slide_imp()`). Controls behaviour
+  when a group is infeasible for imputation, e.g., `k`/`ncp` exceeds the
+  number of usable columns after applying `colmax`, or all subset
+  columns in the group exceed `colmax`.
 
 ## Value
 
-If `dry_run = FALSE`, a numeric matrix of the same dimensions as `obj`,
-with missing values imputed. The returned object has class
-`slideimp_results`.
-
-If `dry_run = TRUE`, a data frame of class `slideimp_tbl` with columns
-`start`, `end`, and `window_n`, plus `subset_local` and, when
-`flank = TRUE`, `target`.
+A numeric matrix of the same dimensions as `obj` with missing values
+imputed. When `dry_run = TRUE`, returns a `data.frame` of class
+`slideimp_tbl` with columns `start`, `end`, `window_n`, plus
+`subset_local` (and `target` when `flank = TRUE`).
 
 ## Details
 
-The sliding-window approach divides the input matrix into smaller
+The sliding window approach divides the input matrix into smaller
 segments based on `location` values and applies imputation to each
-window independently. Values in overlapping regions are averaged across
+window independently. Values in overlapping areas are averaged across
 windows to produce the final imputed result.
 
 Two windowing modes are supported:
 
-- `flank = FALSE`: greedily partition `location` into windows of width
-  `window_size` with the requested `overlap_size` between consecutive
-  windows.
+- `flank = FALSE` (default): Greedily partitions the `location` vector
+  into windows of width `window_size` with the requested `overlap_size`
+  between consecutive windows.
 
-- `flank = TRUE`: create one window per feature in `subset`, centered on
-  that feature using the supplied `window_size`.
+- `flank = TRUE`: Creates one window per feature in `subset` that
+  exactly flanks that specific feature using the supplied `window_size`.
 
 Specify `k` and related arguments to use
-[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md), or
-`ncp` and related arguments to use
+[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md),
+`ncp` and related arguments for
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
-
-## Performance tips
-
-[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-relies heavily on linear algebra. On Windows, the default BLAS shipped
-with R may be slow for large matrices. Advanced users can replace it
-with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
-
-PCA imputation speed depends on the eigensolver selected by `solver` and
-the convergence threshold `threshold`. The exact solver is selected with
-`solver = "exact"`. The iterative LOBPCG solver is selected with
-`solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
-timed probe and chooses LOBPCG only when it is clearly faster.
-
-For large or approximately low-rank genomic matrices, it can be useful
-to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
-representative subset, such as chromosome 22, before tuning
-accuracy-related parameters. For `slide_imp()`, this may include
-`window_size` and `overlap_size`.
-
-The default `threshold = 1e-6` is conservative. In many genomic
-datasets, `threshold = 1e-5` can be faster while giving very similar
-imputed values. Check this on a representative subset before using the
-relaxed threshold in a full analysis.
-
-See the pkgdown article [Speeding up PCA
-imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
-for a full workflow.
 
 ## Examples
 
 ``` r
+# Generate sample data with missing values with 20 samples and 100 columns
+# where the column order is sorted (i.e., by genomic position)
 set.seed(1234)
-
-# Example data with 20 samples and 100 ordered columns
 beta_matrix <- sim_mat(20, 100)$input
 location <- 1:100
 
-# First perform a dry run to inspect the calculated windows
-window_statistics <- slide_imp(
+# It's very useful to first perform a dry run to examine the calculated windows
+windows_statistics <- slide_imp(
   beta_matrix,
   location = location,
   window_size = 50,
   overlap_size = 10,
   min_window_n = 10,
-  dry_run = TRUE,
-  .progress = FALSE
+  dry_run = TRUE
 )
-window_statistics
+windows_statistics
 #> # slideimp table: 3 x 4
 #>  start end window_n  subset_local
 #>      1  50       50 <double [50]>
 #>     41  90       50 <double [50]>
 #>     81 100       20 <double [20]>
 
-# Sliding-window K-NN imputation
+# Sliding Window K-NN imputation by specifying `k` (sliding windows)
 imputed_knn <- slide_imp(
   beta_matrix,
   location = location,
@@ -298,8 +248,13 @@ imputed_knn <- slide_imp(
   window_size = 50,
   overlap_size = 10,
   min_window_n = 10,
-  .progress = FALSE
+  scale = FALSE # This argument belongs to PCA imputation and will be ignored
 )
+#> Step 1/2: Imputing
+#>  Processing window 1 of 3
+#>  Processing window 2 of 3
+#>  Processing window 3 of 3
+#> Step 2/2: Averaging overlapping regions
 imputed_knn
 #> Method: slide_imp (KNN imputation)
 #> Dimensions: 20 x 100
@@ -311,19 +266,24 @@ imputed_knn
 #> sample4 0.1734418 0.0000000 0.0000000 0.0000000 0.0000000 0.2106358
 #> sample5 0.4499620 0.5306182 0.5685354 0.5383513 0.4680080 0.8518388
 #> sample6 0.3768380 0.5570723 0.8764909 0.5276245 0.6722794 0.5740639
-#> # Showing 6 of 20 rows and 6 of 100 columns
+#> 
+#> # Showing [1:6, 1:6] of full matrix
 
-# Sliding-window PCA imputation
-imputed_pca <- slide_imp(
+# Sliding Window PCA imputation by specifying `ncp` (sliding windows)
+pca_knn <- slide_imp(
   beta_matrix,
   location = location,
   ncp = 2,
   window_size = 50,
   overlap_size = 10,
-  min_window_n = 10,
-  .progress = FALSE
+  min_window_n = 10
 )
-imputed_pca
+#> Step 1/2: Imputing
+#>  Processing window 1 of 3
+#>  Processing window 2 of 3
+#>  Processing window 3 of 3
+#> Step 2/2: Averaging overlapping regions
+pca_knn
 #> Method: slide_imp (PCA imputation)
 #> Dimensions: 20 x 100
 #> 
@@ -334,9 +294,12 @@ imputed_pca
 #> sample4 0.1734418 0.0000000 0.0000000 0.0000000 0.0000000 0.2106358
 #> sample5 0.4971181 0.5306182 0.5685354 0.5383513 0.4680080 0.8518388
 #> sample6 0.3768380 0.5570723 0.8764909 0.5276245 0.6722794 0.5740639
-#> # Showing 6 of 20 rows and 6 of 100 columns
+#> 
+#> # Showing [1:6, 1:6] of full matrix
 
-# K-NN imputation with flanking windows
+# Sliding Window K-NN imputation with flanking windows (flank = TRUE)
+# Only the columns listed in `subset` are imputed; each uses its own
+# centered window of width `window_size`.
 imputed_flank <- slide_imp(
   beta_matrix,
   location = location,
@@ -344,9 +307,13 @@ imputed_flank <- slide_imp(
   window_size = 30,
   flank = TRUE,
   subset = c(10, 30, 70),
-  min_window_n = 5,
-  .progress = FALSE
+  min_window_n = 5
 )
+#> Step 1/2: Imputing
+#>  Processing window 1 of 3
+#>  Processing window 2 of 3
+#>  Processing window 3 of 3
+#> Step 2/2: Averaging overlapping regions
 imputed_flank
 #> Method: slide_imp (KNN imputation)
 #> Dimensions: 20 x 100
@@ -358,5 +325,6 @@ imputed_flank
 #> sample4 0.1734418 0.0000000 0.0000000 0.0000000 0.0000000 0.2106358
 #> sample5        NA 0.5306182 0.5685354 0.5383513 0.4680080 0.8518388
 #> sample6 0.3768380 0.5570723 0.8764909 0.5276245 0.6722794 0.5740639
-#> # Showing 6 of 20 rows and 6 of 100 columns
+#> 
+#> # Showing [1:6, 1:6] of full matrix
 ```

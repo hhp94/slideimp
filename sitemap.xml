@@ -3,7 +3,6 @@
 <url><loc>https://hhp94.github.io/slideimp/LICENSE.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/articles/index.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/articles/slideimp.html</loc></url>
-<url><loc>https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/authors.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/index.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/news/index.html</loc></url>
@@ -12,19 +11,16 @@
 <url><loc>https://hhp94.github.io/slideimp/reference/group_imp.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/index.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/knn_imp.html</loc></url>
-<url><loc>https://hhp94.github.io/slideimp/reference/lobpcg_control.html</loc></url>
-<url><loc>https://hhp94.github.io/slideimp/reference/mat_miss.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/mean_imp_col.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/pca_imp.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/prep_groups.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/print.slideimp_results.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/print.slideimp_sim.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/print.slideimp_tbl.html</loc></url>
+<url><loc>https://hhp94.github.io/slideimp/reference/register_group_resolver.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/sample_na_loc.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/sim_mat.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/slide_imp.html</loc></url>
-<url><loc>https://hhp94.github.io/slideimp/reference/slideimp-package.html</loc></url>
-<url><loc>https://hhp94.github.io/slideimp/reference/slideimp_resolve_group.html</loc></url>
 <url><loc>https://hhp94.github.io/slideimp/reference/tune_imp.html</loc></url>
 </urlset>
 

@@ -13,57 +13,56 @@ mean_imp_col(obj, subset = NULL, cores = 1)
 
 - obj:
 
-  A numeric matrix.
+  A numeric matrix with **samples in rows** and **features in columns**.
 
 - subset:
 
-  Optional character or integer vector specifying columns to impute. If
-  `NULL`, all columns are imputed.
+  Character. Vector of column names or integer vector of column indices
+  specifying which columns to impute.
 
 - cores:
 
-  Integer. Number of cores to use for parallel computation. Defaults to
-  `1`.
+  Integer. Number of cores for K-NN parallelization (OpenMP). On macOS,
+  OpenMP may need additional compiler configuration.
 
 ## Value
 
-A numeric matrix of the same dimensions as `obj`, with missing values in
-the selected columns replaced by column means.
-
-## Details
-
-Columns with no observed values cannot be imputed by their column mean
-and are left unchanged.
+A numeric matrix of the same dimensions as `obj` with missing values in
+the specified columns replaced by column means.
 
 ## Examples
 
 ``` r
-obj <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9, NA, NA, NA), nrow = 3)
-colnames(obj) <- c("A", "B", "C", "D")
-obj
-#>       A  B  C  D
-#> [1,]  1  4 NA NA
-#> [2,]  2 NA  8 NA
-#> [3,] NA  6  9 NA
+# Create example matrix with missing values
+mat <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9), nrow = 3)
+colnames(mat) <- c("A", "B", "C")
+mat
+#>       A  B  C
+#> [1,]  1  4 NA
+#> [2,]  2 NA  8
+#> [3,] NA  6  9
 
-# impute missing values with column means
-mean_imp_col(obj)
-#>        A B   C  D
-#> [1,] 1.0 4 8.5 NA
-#> [2,] 2.0 5 8.0 NA
-#> [3,] 1.5 6 9.0 NA
+# Impute missing values with column means
+imputed_mat <- mean_imp_col(mat)
+imputed_mat
+#>        A B   C
+#> [1,] 1.0 4 8.5
+#> [2,] 2.0 5 8.0
+#> [3,] 1.5 6 9.0
 
-# impute only specific columns by name
-mean_imp_col(obj, subset = c("A", "C"))
-#>        A  B   C  D
-#> [1,] 1.0  4 8.5 NA
-#> [2,] 2.0 NA 8.0 NA
-#> [3,] 1.5  6 9.0 NA
+# Impute only specific columns by name
+imputed_subset <- mean_imp_col(mat, subset = c("A", "C"))
+imputed_subset
+#>        A  B   C
+#> [1,] 1.0  4 8.5
+#> [2,] 2.0 NA 8.0
+#> [3,] 1.5  6 9.0
 
-# impute only specific columns by index
-mean_imp_col(obj, subset = c(1, 3))
-#>        A  B   C  D
-#> [1,] 1.0  4 8.5 NA
-#> [2,] 2.0 NA 8.0 NA
-#> [3,] 1.5  6 9.0 NA
+# Impute only specific columns by index
+imputed_idx <- mean_imp_col(mat, subset = c(1, 3))
+imputed_idx
+#>        A  B   C
+#> [1,] 1.0  4 8.5
+#> [2,] 2.0 NA 8.0
+#> [3,] 1.5  6 9.0
 ```

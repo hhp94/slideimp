@@ -1,4 +1,4 @@
-# K-Nearest-Neighbor Imputation for Numeric Matrices
+# K-Nearest Neighbor Imputation for Numeric Matrices
 
 Impute missing values in a numeric matrix using k-nearest neighbors
 (K-NN).
@@ -16,8 +16,8 @@ knn_imp(
   subset = NULL,
   dist_pow = 0,
   tree = FALSE,
-  na_check = TRUE,
-  .progress = FALSE
+  max_cache = 4,
+  na_check = TRUE
 )
 ```
 
@@ -25,115 +25,117 @@ knn_imp(
 
 - obj:
 
-  A numeric matrix with samples in rows and features in columns.
+  A numeric matrix with **samples in rows** and **features in columns**.
 
 - k:
 
-  Integer. Number of nearest neighbors to use for K-NN imputation.
+  Integer. Number of nearest neighbors for imputation. 10 is a good
+  starting point.
 
 - colmax:
 
-  Numeric scalar between `0` and `1`. Columns with a missing-data
-  proportion greater than `colmax` are excluded from the main imputation
-  method. Excluded columns are left unchanged unless `post_imp = TRUE`,
-  in which case remaining missing values are replaced by column means
-  when possible.
+  Numeric. A number from 0 to 1. Threshold of column-wise missing data
+  rate above which imputation is skipped.
 
 - method:
 
-  Character. K-NN imputation distance method: either `"euclidean"` or
-  `"manhattan"`.
+  Character. Either "euclidean" (default) or "manhattan". Distance
+  metric for nearest neighbor calculation.
 
 - cores:
 
-  Integer. Number of cores to use for K-NN imputation. Defaults to `1`.
+  Integer. Number of cores for K-NN parallelization (OpenMP). On macOS,
+  OpenMP may need additional compiler configuration.
 
 - post_imp:
 
-  Logical. If `TRUE`, replace missing values remaining after the main
-  imputation method with column means when possible.
+  Boolean. Whether to impute remaining missing values (those that failed
+  imputation) using column means.
 
 - subset:
 
-  Optional character or integer vector specifying columns to target for
-  imputation. If `NULL`, all eligible columns are targeted.
+  Character. Vector of column names or integer vector of column indices
+  specifying which columns to impute.
 
 - dist_pow:
 
-  Numeric. Power used to penalize more distant neighbors in the weighted
-  average. `dist_pow = 0` gives an unweighted average of the nearest
-  neighbors.
+  Numeric. The amount of penalization for further away nearest neighbors
+  in the weighted average. `dist_pow = 0` (default) is the simple
+  average of the nearest neighbors.
 
 - tree:
 
-  Logical. If `FALSE`, use brute-force K-NN. If `TRUE`, use ball-tree
-  K-NN via `mlpack`.
+  Logical. `FALSE` (default) uses brute-force K-NN. `TRUE` uses `mlpack`
+  BallTree.
+
+- max_cache:
+
+  Numeric. Maximum allowed cache size in GB (default `4`). When greater
+  than `0`, pairwise distances between columns with missing values are
+  pre-computed and cached, which is faster for moderate-sized data but
+  uses O(m^2) memory where m is the number of columns with missing
+  values. Set to `0` to disable caching and trade speed for lower memory
+  usage.
 
 - na_check:
 
-  Logical. If `TRUE`, check whether the returned matrix still contains
-  missing values.
-
-- .progress:
-
-  Logical. If `TRUE`, show imputation progress.
+  Boolean. Check for leftover `NA` values in the results or not
+  (internal use).
 
 ## Value
 
-A numeric matrix of the same dimensions as `obj`, with missing values
-imputed. The returned object has class `slideimp_results`.
+A numeric matrix of the same dimensions as `obj` with missing values
+imputed.
 
 ## Details
 
-`knn_imp()` performs imputation column-wise, treating rows as
-observations and columns as features.
+This function performs imputation **column-wise** (using rows as
+observations).
 
 When `dist_pow > 0`, imputed values are computed as distance-weighted
-averages. Weights are inverse distances raised to the power of
+averages where weights are inverse distances raised to the power of
 `dist_pow`.
 
-If `tree = TRUE`, nearest neighbors are found with a ball tree via the
-`mlpack` package. This can be faster for some large, low-missingness
-data sets, but it requires initially filling missing values with column
-means, which can introduce bias when missingness is high.
+The `tree` parameter (when `TRUE`) uses a BallTree for faster neighbor
+search via `{mlpack}` but **requires pre-filling** missing values with
+column means. This can introduce a small bias when missingness is high.
 
-## K-NN performance optimization
+## Performance Optimization
 
-- `tree = FALSE` uses brute-force K-NN. This avoids the initial
-  mean-filling step and is often faster for small to moderate datasets
-  or high-dimensional data.
+- **`tree = FALSE`** (default, brute-force K-NN): Always safe and
+  usually faster for small to moderate data or high-dimensional cases.
 
-- `tree = TRUE` uses ball-tree K-NN. Consider this only when run time is
-  prohibitive and missingness is low, for example less than 5%.
+- **`tree = TRUE`** (BallTree K-NN): Only use when imputation run time
+  becomes prohibitive and missingness is low (\<5% missing).
 
-- Use `subset` when only specific columns need imputation.
+- **Subset imputation**: Use the `subset` parameter for efficiency when
+  only specific columns need imputation (e.g., epigenetic clock CpGs).
 
 ## References
 
 Troyanskaya O, Cantor M, Sherlock G, Brown P, Hastie T, Tibshirani R,
 Botstein D, Altman RB (2001). Missing value estimation methods for DNA
-microarrays. *Bioinformatics*, 17(6), 520-525.
-[doi:10.1093/bioinformatics/17.6.520](https://doi.org/10.1093/bioinformatics/17.6.520)
+microarrays. Bioinformatics 17(6): 520-525.
 
 ## Examples
 
 ``` r
-set.seed(123)
+# Basic K-NN imputation
 obj <- sim_mat(20, 20, perc_col_na = 1)$input
 sum(is.na(obj))
 #> [1] 40
-
-result <- knn_imp(obj, k = 10, .progress = FALSE)
+result <- knn_imp(obj, k = 10)
 result
 #> Method: KNN imputation
 #> Dimensions: 20 x 20
 #> 
-#>           feature1  feature2  feature3  feature4  feature5  feature6
-#> sample1 0.08885928 0.0946424 0.5010982 0.2257198 0.3310293 0.3919172
-#> sample2 0.35087647 0.2569208 0.4441198 0.3953534 0.5894579 0.2589739
-#> sample3 0.56864697 0.4021824 0.7354948 0.6422099 0.8454413 0.6652821
-#> sample4 0.30420093 0.7886995 0.3732225 0.5291319 0.5289648 0.4384578
-#> sample5 0.34030847 0.6095144 0.3741498 0.3364915 0.4772101 0.8290134
-#> sample6 0.45667473 0.4614949 0.8676809 0.7274044 0.9167450 0.6643710
-#> # Showing 6 of 20 rows and 6 of 20 columns
+#>          feature1  feature2  feature3  feature4  feature5   feature6
+#> sample1 0.5735747 0.7626304 0.9963202 0.8746018 0.3284892 0.65258962
+#> sample2 0.7822131 0.5781703 0.5488623 0.7839500 0.9539087 0.56076182
+#> sample3 0.1483321 0.0000000 0.3522334 0.0000000 0.1723249 0.04672928
+#> sample4 0.4022741 0.2915725 0.4836761 0.4337060 0.7217295 0.11032665
+#> sample5 0.6369624 0.6085569 0.5528170 0.7578386 0.2057219 0.60409777
+#> sample6 0.6537480 0.3639402 0.5886658 0.8679417 0.6366236 0.22544169
+#> 
+#> # Showing [1:6, 1:6] of full matrix
 ```

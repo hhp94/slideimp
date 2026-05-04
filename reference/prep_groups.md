@@ -2,6 +2,9 @@
 
 Normalize and validate a grouping specification for use with
 [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md).
+Converts long-format or canonical list-column input into a validated
+`slideimp_tbl`, enforcing set relationships, pruning dropped columns,
+and optionally padding small groups.
 
 ## Usage
 
@@ -20,89 +23,87 @@ prep_groups(
 
 - obj_cn:
 
-  Character vector of column names from the data matrix, usually
-  `colnames(obj)`.
+  Character vector of column names from the data matrix (e.g.,
+  `colnames(obj)`). Every element must appear in `group$feature` unless
+  `allow_unmapped = TRUE`.
 
 - group:
 
   Specification of how features should be grouped for imputation.
-  Accepted formats are:
+  Accepts three formats:
 
-  - A character scalar naming a supported Illumina platform; see Note.
+  - `character`: string naming a supported Illumina platform; see the
+    Note section.
 
-  - A long-format `data.frame` with columns `group` and `feature`.
+  - `data.frame` (Long format):
 
-  - A list-column `data.frame` with a `feature` list-column. Optional
-    list-columns are `aux`, for auxiliary feature names, and
-    `parameters`, for group-specific parameter lists.
+    - `group`: Column identifying the group for each feature.
+
+    - `feature`: Character column of individual feature names.
+
+  - `data.frame` (List-column format):
+
+    - `feature`: List-column of character vectors to impute. A row is a
+      group.
+
+    - `aux`: (Optional) List-column of auxiliary names used for context.
+
+    - `parameters`: (Optional) List-column of group-specific parameter
+      lists.
 
 - subset:
 
-  Optional character vector of feature names to impute. If `NULL`, all
-  grouped features are imputed. Features in a group but not in `subset`
-  are demoted to auxiliary columns for that group. Groups left with zero
-  features after demotion are dropped with a message.
+  Character vector of feature names to impute (default `NULL` means
+  impute all features). Must be a subset of `obj_cn` (`colnames(obj)`)
+  and must appear in at least one group's `feature`. Features in a group
+  but not in `subset` are demoted to auxiliary columns for that group.
+  Groups left with zero features after demotion are dropped with a
+  message.
 
 - min_group_size:
 
-  Integer or `NULL`. Minimum total number of columns per group, counting
-  both features and auxiliary columns. Groups smaller than this are
-  padded with randomly sampled columns from `obj_cn`. If `NULL` or `0`,
-  no padding is performed.
+  Integer or `NULL`. Minimum column count (features + aux) per group.
+  Groups smaller than this are padded with randomly sampled columns from
+  `obj`. Passed to `prep_groups()` internally.
 
 - allow_unmapped:
 
   Logical. If `FALSE`, every column in `colnames(obj)` must appear in
   `group`. If `TRUE`, columns with no group assignment are left
-  untouched and are not used as auxiliary columns.
+  untouched (neither imputed nor used as auxiliary columns) and a
+  message is issued instead of an error.
 
 - seed:
 
-  Integer, numeric, or `NULL`. Random seed used when padding small
-  groups.
+  Numeric or `NULL`. Random seed for reproducibility.
 
 ## Value
 
-A data frame of class `slideimp_tbl` containing:
+A `data.frame` of class `slideimp_tbl` containing:
 
-- `group`: original group labels, if provided, or sequential group
+- `group`: Original group labels (if provided) or sequential group
   labels.
 
-- `feature`: a list-column of character vectors containing feature
-  names.
+- `feature`: A list-column of character vectors (feature names).
 
-- `aux`: a list-column of character vectors containing auxiliary names.
+- `aux`: A list-column of character vectors (auxiliary names).
 
-- `parameters`: a list-column of per-group configuration lists.
+- `parameters`: A list-column of per-group configuration lists.
 
 ## Details
 
-`prep_groups()` converts long-format or list-column group specifications
-into a validated `slideimp_tbl`, enforces feature and auxiliary-column
-set relationships, prunes dropped columns, and optionally pads small
-groups.
+### Set Validation
 
-Let \\A\\ be `obj_cn` and \\B\\ be the union of all feature and
-auxiliary names in `group`. When `allow_unmapped = FALSE`, the function
-enforces \\A \subseteq B\\: every matrix column must appear somewhere in
-the grouping specification.
+Let \\A\\ = `obj_cn` and \\B\\ = the union of all feature and auxiliary
+names in `group`. The function enforces \\A \subseteq B\\: every column
+in the matrix must appear somewhere in the manifest.
 
-Elements in \\B\\ but not in \\A\\, such as previously dropped probes,
-are pruned from each group. Groups left with zero features after pruning
-are removed with a diagnostic message.
+- `Pruning:` Elements in \\B\\ but not in \\A\\ (e.g., QC-dropped
+  probes) are silently pruned from each group.
+
+- `Dropping:` Groups left with zero features after pruning are removed
+  entirely with a diagnostic message.
 
 ## See also
 
 [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-
-## Examples
-
-``` r
-sim <- sim_mat(n = 10, p = 20)
-prepped <- prep_groups(colnames(sim$input), sim$col_group)
-prepped
-#> # slideimp table: 2 x 4
-#>   group          feature             aux parameters
-#>  group1 <character [12]> <character [0]> <list [0]>
-#>  group2  <character [8]> <character [0]> <list [0]>
-```

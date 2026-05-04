@@ -1,7 +1,7 @@
-# PCA Imputation for Numeric Matrices
+# Impute Numeric Matrix with PCA Imputation
 
-Impute missing values in a numeric matrix using regularized or
-expectation-maximization PCA imputation.
+Impute missing values in a numeric matrix using (regularized) iterative
+PCA.
 
 ## Usage
 
@@ -18,12 +18,9 @@ pca_imp(
   nb.init = 1,
   maxiter = 1000,
   miniter = 5,
-  solver = c("auto", "exact", "lobpcg"),
-  lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE,
-  clamp = NULL
+  na_check = TRUE
 )
 ```
 
@@ -31,45 +28,44 @@ pca_imp(
 
 - obj:
 
-  A numeric matrix with samples in rows and features in columns.
+  A numeric matrix with **samples in rows** and **features in columns**.
 
 - ncp:
 
-  Integer. Number of principal components used to predict missing
-  entries.
+  Integer. Number of components used to predict the missing entries.
 
 - scale:
 
-  Logical. If `TRUE`, columns are scaled to unit variance.
+  Logical. If `TRUE` (default), variables are scaled to have unit
+  variance.
 
 - method:
 
-  Character. PCA imputation method: either `"regularized"` or `"EM"`.
+  Character. Either `"regularized"` (default) or `"EM"`.
 
 - coeff.ridge:
 
-  Numeric. Ridge regularization coefficient. Only used when
-  `method = "regularized"`. Values less than `1` regularize less, moving
-  closer to EM PCA. Values greater than `1` regularize more, moving
-  closer to mean imputation.
+  Numeric. Ridge regularization coefficient (default is 1). Only used if
+  `method = "regularized"`. Values \< 1 regularize less (closer to EM);
+  values \> 1 regularize more (closer to mean imputation).
 
 - row.w:
 
-  Row weights, internally normalized to sum to `1`. Can be:
+  Row weights (internally normalized to sum to 1). Can be one of:
 
-  - `NULL`: all rows are weighted equally.
+  - `NULL` (default): All rows weighted equally.
 
-  - A numeric vector of positive weights with length `nrow(obj)`.
+  - A numeric vector: Custom positive weights of length `nrow(obj)`.
 
-  - `"n_miss"`: rows with more missing values receive lower weight.
+  - `"n_miss"`: Rows with more missing values receive lower weight.
 
 - threshold:
 
-  Numeric. Convergence threshold.
+  Numeric. The threshold for assessing convergence.
 
 - seed:
 
-  Integer, numeric, or `NULL`. Random seed for reproducibility.
+  Integer. Random number generator seed.
 
 - nb.init:
 
@@ -78,132 +74,77 @@ pca_imp(
 
 - maxiter:
 
-  Integer. Maximum number of iterations.
+  Integer. Maximum number of iterations for the algorithm.
 
 - miniter:
 
-  Integer. Minimum number of iterations.
-
-- solver:
-
-  Character. Eigensolver selection. One of `"auto"`, `"exact"`, or
-  `"lobpcg"`. `"exact"` uses the exact solver. `"lobpcg"` uses the
-  iterative LOBPCG solver with exact fallback. `"auto"` performs a short
-  timed probe and chooses LOBPCG only if it is clearly faster than the
-  exact solver. When `nb.init > 1`, the auto choice from the first PCA
-  initialization is reused for subsequent PCA initializations.
-
-- lobpcg_control:
-
-  A list of LOBPCG eigensolver control options, usually created by
-  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
-  A plain named list is also accepted. Ignored when `solver = "exact"`.
+  Integer. Minimum number of iterations for the algorithm.
 
 - colmax:
 
-  Numeric scalar between `0` and `1`. Columns with a missing-data
-  proportion greater than `colmax` are excluded from the main imputation
-  method. Excluded columns are left unchanged unless `post_imp = TRUE`,
-  in which case remaining missing values are replaced by column means
-  when possible.
+  Numeric. A number from 0 to 1. Threshold of column-wise missing data
+  rate above which imputation is skipped.
 
 - post_imp:
 
-  Logical. If `TRUE`, replace missing values remaining after the main
-  imputation method with column means when possible.
+  Boolean. Whether to impute remaining missing values (those that failed
+  imputation) using column means.
 
 - na_check:
 
-  Logical. If `TRUE`, check whether the returned matrix still contains
-  missing values.
-
-- clamp:
-
-  Optional numeric vector of length 2 giving lower and upper bounds for
-  PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
-  methylation beta values. Use `c(lb, Inf)` for only lower bound
-  clamping, or `c(-Inf, ub)` for only upper bound clamping. Clamping is
-  applied only to values imputed by the PCA step, not to observed
-  values.
+  Boolean. Check for leftover `NA` values in the results or not
+  (internal use).
 
 ## Value
 
-A numeric matrix of the same dimensions as `obj`, with missing values
-imputed. The returned object has class `slideimp_results`.
+A numeric matrix of the same dimensions as `obj` with missing values
+imputed.
 
 ## Details
 
-This algorithm is based on
-[`missMDA::imputePCA()`](https://rdrr.io/pkg/missMDA/man/imputePCA.html)
-and is optimized for tall or wide numeric matrices.
-
-## Performance tips
-
-`pca_imp()` relies heavily on linear algebra. On Windows, the default
-BLAS shipped with R may be slow for large matrices. Advanced users can
-replace it with
-[OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
-
-PCA imputation speed depends on the eigensolver selected by `solver` and
-the convergence threshold `threshold`. The exact solver is selected with
-`solver = "exact"`. The iterative LOBPCG solver is selected with
-`solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
-timed probe and chooses LOBPCG only when it is clearly faster.
-
-For large or approximately low-rank genomic matrices, it can be useful
-to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
-representative subset, such as chromosome 22, before tuning
-accuracy-related parameters. For
-[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
-this may include `window_size` and `overlap_size`.
-
-The default `threshold = 1e-6` is conservative. In many genomic
-datasets, `threshold = 1e-5` can be faster while giving very similar
-imputed values. Check this on a representative subset before using the
-relaxed threshold in a full analysis.
-
-See the pkgdown article [Speeding up PCA
-imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
-for a full workflow.
+This algorithm is based on the original
+[`missMDA::imputePCA`](https://rdrr.io/pkg/missMDA/man/imputePCA.html)
+function and is optimized for tall or wide numeric matrices.
 
 ## References
 
-Josse J, Husson F (2013). Handling missing values in exploratory
-multivariate data analysis methods. *Journal de la SFdS*, 153(2), 79-99.
+Josse, J. & Husson, F. (2013). Handling missing values in exploratory
+multivariate data analysis methods. Journal de la SFdS. 153 (2), pp.
+79-99.
 
-Josse J, Husson F (2016). missMDA: A Package for Handling Missing Values
-in Multivariate Data Analysis. *Journal of Statistical Software*, 70(1),
-1-31. [doi:10.18637/jss.v070.i01](https://doi.org/10.18637/jss.v070.i01)
+Josse, J. and Husson, F. (2016). missMDA: A Package for Handling Missing
+Values in Multivariate Data Analysis. Journal of Statistical Software,
+70 (1), pp 1-31.
+[doi:10.18637/jss.v070.i01](https://doi.org/10.18637/jss.v070.i01)
 
-The PCA imputation algorithm is based on the original `missMDA`
-implementation by Francois Husson and Julie Josse.
+## Author
+
+Francois Husson and Julie Josse (original `missMDA` implementation).
 
 ## Examples
 
 ``` r
-set.seed(123)
 obj <- sim_mat(10, 10)$input
 sum(is.na(obj))
 #> [1] 10
 obj[1:4, 1:4]
-#>          feature1   feature2  feature3  feature4
-#> sample1 0.5784798 0.06296727 0.3155309 0.1199980
-#> sample2 0.4991812 0.44077231 0.2120510 0.3257524
-#> sample3 0.7709271 0.75477764 1.0000000 0.5099311
-#> sample4 0.5068375 0.37347042 0.6018860 1.0000000
-
-# Randomly initialize missing values 5 times. The first initialization is
-# mean imputation.
-pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
+#>          feature1  feature2  feature3   feature4
+#> sample1 0.1993174 0.0000000 0.5194403 0.19248733
+#> sample2 0.5861872 0.7793109 1.0000000 0.05740143
+#> sample3 0.2991663 0.4695521 0.8906237 0.53696051
+#> sample4 0.3010367 0.3079201 0.0000000 0.00000000
+# Randomly initialize missing values 5 times (1st time is mean).
+pca_imp(obj, ncp = 2, nb.init = 5)
 #> Method: PCA imputation
 #> Dimensions: 10 x 10
 #> 
-#>          feature1   feature2  feature3  feature4  feature5   feature6
-#> sample1 0.5784798 0.06296727 0.3155309 0.1199980 0.1807391 0.31919912
-#> sample2 0.4991812 0.44077231 0.2120510 0.3257524 0.1919521 0.14843947
-#> sample3 0.7709271 0.75477764 1.0000000 0.5099311 0.6027900 0.75450992
-#> sample4 0.5068375 0.37347042 0.6018860 1.0000000 0.5850265 0.08171420
-#> sample5 0.4165827 0.42553421 0.6024750 0.7728095 0.2295133 0.08343629
-#> sample6 1.0000000 0.93942257 0.9867413 0.5851340 1.0000000 1.00000000
-#> # Showing 6 of 10 rows and 6 of 10 columns
+#>          feature1  feature2  feature3   feature4  feature5  feature6
+#> sample1 0.1993174 0.0000000 0.5194403 0.19248733 0.0000000 0.3136988
+#> sample2 0.5861872 0.7793109 1.0000000 0.05740143 0.1396488 0.3300150
+#> sample3 0.2991663 0.4695521 0.8906237 0.53696051 0.6138600 0.3213725
+#> sample4 0.3010367 0.3079201 0.0000000 0.00000000 0.4679464 0.4484497
+#> sample5 0.3898840 0.8718041 0.8782409 0.81735982 1.0000000 0.7495673
+#> sample6 0.3191516 0.6561425 0.2994724 0.89020793 0.4422327 0.6983652
+#> 
+#> # Showing [1:6, 1:6] of full matrix
 ```
