@@ -154,7 +154,8 @@ If \code{dry_run = TRUE}, a data frame of class \code{slideimp_tbl} with columns
 }
 \description{
 Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
-columns are meaningfully ordered.
+columns are meaningfully ordered. Not intended for Illumina DNA
+methylation microarrays, use \code{\link[=group_imp]{group_imp()}} instead.
 }
 \details{
 The sliding-window approach divides the input matrix into smaller segments
