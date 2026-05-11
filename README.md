@@ -11,12 +11,14 @@
 `{slideimp}` is a lightweight R package for fast K-NN and PCA imputation
 of missing values in high-dimensional numeric matrices. Two
 “meta-callers” are provided that wrap the workhorse functions
-`knn_imp()` and `pca_imp()`: - `group_imp()`: group-wise K-NN or PCA
-imputation (e.g., by chromosome for **Illumina DNAm microarrays** such
-as 450K, EPIC, EPICv2, MSA). - `slide_imp()`: sliding window K-NN or PCA
-imputation for **whole-genome methylation data** (WGBS, EM-seq).
-**Note**: not intended for Illumina microarrays, use `group_imp()`
-instead.
+`knn_imp()` and `pca_imp()`:
+
+- `group_imp()`: group-wise K-NN or PCA imputation (e.g., by chromosome
+  for Illumina DNAm microarrays such as 450K, EPIC, EPICv2, MSA).
+
+- `slide_imp()`: sliding window K-NN or PCA imputation for whole-genome
+  methylation data (WGBS, EM-seq). **Note**: not intended for Illumina
+  microarrays, use `group_imp()` instead.
 
 ## Installation
 
