@@ -5,16 +5,18 @@ for fast K-NN and PCA imputation of missing values in high-dimensional
 numeric matrices. Two “meta-callers” are provided that wrap the
 workhorse functions
 [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) and
-[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md): -
-[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md):
-group-wise K-NN or PCA imputation (e.g., by chromosome for **Illumina
-DNAm microarrays** such as 450K, EPIC, EPICv2, MSA). -
-[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md):
-sliding window K-NN or PCA imputation for **whole-genome methylation
-data** (WGBS, EM-seq). **Note**: not intended for Illumina microarrays,
-use
-[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-instead.
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md):
+
+- [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md):
+  group-wise K-NN or PCA imputation (e.g., by chromosome for Illumina
+  DNAm microarrays such as 450K, EPIC, EPICv2, MSA).
+
+- [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md):
+  sliding window K-NN or PCA imputation for whole-genome methylation
+  data (WGBS, EM-seq). **Note**: not intended for Illumina microarrays,
+  use
+  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
+  instead.
 
 ## Installation
 
