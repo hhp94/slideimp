@@ -1,7 +1,10 @@
 # Sliding-Window K-NN or PCA Imputation
 
 Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
-columns are meaningfully ordered.
+columns are meaningfully ordered. Not intended for Illumina DNA
+methylation microarrays, use
+[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
+instead.
 
 ## Usage
 

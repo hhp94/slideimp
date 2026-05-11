@@ -82,15 +82,17 @@
 <p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> is the PCA imputation workhorse used by
 <code><a href="../reference/slide_imp.html">slide_imp()</a></code>, <code><a href="../reference/tune_imp.html">tune_imp()</a></code>, and
 <code><a href="../reference/group_imp.html">group_imp()</a></code> whenever PCA imputation is requested. This
-article describes how to make PCA imputation faster by choosing the
-convergence threshold, the PCA eigensolver, and a parallel backend with
-<a href="https://mirai.r-lib.org" class="external-link">mirai</a>.</p>
+article describes how to make PCA imputation faster by choosing
+<code>threshold</code>, <code>scale</code>, <code>solver</code>, and a
+parallel backend with <a href="https://mirai.r-lib.org" class="external-link">mirai</a>.</p>
 <div class="section level3">
 <h3 id="overview">Overview<a class="anchor" aria-label="anchor" href="#overview"></a>
 </h3>
-<p>Most users can keep the defaults:</p>
+<p>For large genomic matrices, runtime can be significantly reduced by
+tuning three arguments: <code>threshold</code>, <code>scale</code>, and
+<code>solver</code>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span> <span class="co"># simulate some data</span></span>
 <span><span class="va">sim</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sim_mat.html">sim_mat</a></span><span class="op">(</span></span>
 <span>  n <span class="op">=</span> <span class="fl">80</span>,</span>
 <span>  p <span class="op">=</span> <span class="fl">1500</span>,</span>
@@ -99,80 +101,61 @@ convergence threshold, the PCA eigensolver, and a parallel backend with
 <span>  perc_col_na <span class="op">=</span> <span class="fl">0.8</span></span>
 <span><span class="op">)</span></span>
 <span><span class="va">sim_df</span> <span class="op">&lt;-</span> <span class="va">sim</span><span class="op">$</span><span class="va">col_group</span></span>
-<span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="va">sim</span><span class="op">$</span><span class="va">input</span></span>
-<span><span class="fu"><a href="../reference/pca_imp.html">pca_imp</a></span><span class="op">(</span><span class="va">obj</span>, ncp <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Method: PCA imputation</span></span>
-<span><span class="co">#&gt; Dimensions: 80 x 1500</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;           feature1  feature2   feature3  feature4  feature5  feature6</span></span>
-<span><span class="co">#&gt; sample1 0.25105224 0.2690159 0.22175022 0.3808861 0.1697869 0.3006772</span></span>
-<span><span class="co">#&gt; sample2 0.46488252 0.5570005 0.56877205 0.6171557 0.5943715 0.6692621</span></span>
-<span><span class="co">#&gt; sample3 0.46781185 0.6658607 0.53191864 0.6945785 0.6875948 0.5242096</span></span>
-<span><span class="co">#&gt; sample4 0.07870941 0.1605554 0.07784548 0.2108805 0.0000000 0.2506738</span></span>
-<span><span class="co">#&gt; sample5 0.52579469 0.6477465 0.63987522 0.6117717 0.6680913 0.6045150</span></span>
-<span><span class="co">#&gt; sample6 0.58204683 0.6815553 0.59358698 0.5741023 0.6504755 0.8734424</span></span>
-<span><span class="co">#&gt; # Showing 6 of 80 rows and 6 of 1500 columns</span></span></code></pre></div>
-<p>However, for large genomic matrices, runtime can depend strongly on
-two arguments:</p>
-<ul>
-<li>
-<code>threshold</code>: the convergence threshold for the PCA
-imputation algorithm.
-<ul>
-<li>The default is <code>threshold = 1e-6</code>, matching the
-conservative behavior of <a href="http://factominer.free.fr/missMDA/index.html" class="external-link">missMDA</a>.</li>
-<li>For many genomic matrices, <code>threshold = 1e-5</code> can be much
-faster while producing very similar imputed values.</li>
-</ul>
-</li>
-<li>
-<code>solver</code>: the eigensolver used inside
-<code><a href="../reference/pca_imp.html">pca_imp()</a></code>.
-<ul>
-<li>
-<code>solver = "auto"</code> runs a short timed probe of both
-solvers and picks the faster one.</li>
-<li>
-<code>solver = "exact"</code> forces the exact solver.</li>
-<li>
-<code>solver = "lobpcg"</code> forces the LOBPCG with warm start
-solver.</li>
-</ul>
-</li>
-</ul>
+<span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="va">sim</span><span class="op">$</span><span class="va">input</span></span></code></pre></div>
+<div class="section level4">
+<h4 id="threshold">
+<code>threshold</code><a class="anchor" aria-label="anchor" href="#threshold"></a>
+</h4>
+<p>The convergence threshold for the PCA imputation algorithm. The
+default <code>threshold = 1e-6</code> matches the conservative behavior
+of <a href="http://factominer.free.fr/missMDA/index.html" class="external-link">missMDA</a>. For many genomic matrices,
+<code>threshold = 1e-5</code> is much faster while producing very
+similar imputed values.</p>
 </div>
-<div class="section level3">
-<h3 id="exact-versus-lobpcg-with-warm-start-solvers">Exact versus LOBPCG with warm start solvers<a class="anchor" aria-label="anchor" href="#exact-versus-lobpcg-with-warm-start-solvers"></a>
-</h3>
+<div class="section level4">
+<h4 id="scale">
+<code>scale</code><a class="anchor" aria-label="anchor" href="#scale"></a>
+</h4>
+<p>Whether columns are centered and scaled before PCA. The default
+<code>scale = TRUE</code> adds per-iteration overhead. For data where
+columns are on the same scale (e.g., DNAm beta values in
+<code>[0, 1]</code>), <code>scale = TRUE</code> may amplify low-variance
+and noise-dominated columns. For such data, <code>scale = FALSE</code>
+can be both faster and more accurate.</p>
+</div>
+<div class="section level4">
+<h4 id="solver">
+<code>solver</code><a class="anchor" aria-label="anchor" href="#solver"></a>
+</h4>
 <p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> supports two PCA eigensolvers:</p>
 <ul>
-<li>the exact solver, selected by <code>solver = "exact"</code>;</li>
-<li>the LOBPCG solver with warm start, selected by
-<code>solver = "lobpcg"</code>.</li>
+<li>
+<code>solver = "exact"</code>: the exact solver. Robust and
+typically faster for small to moderate matrices.</li>
+<li>
+<code>solver = "lobpcg"</code>: LOBPCG with warm start. Scales well
+when only a small <code>ncp</code> is needed and the matrix is
+approximately low rank. In the iterative EM algorithm, consecutive
+eigensolver calls differ only slightly as imputed values stabilize.
+<code><a href="../reference/pca_imp.html">pca_imp()</a></code> <strong>warm-starts LOBPCG with both the previous
+eigenblock and search direction</strong>, so subsequent calls converge
+in few iterations.</li>
+<li>
+<code>solver = "auto"</code> (default): runs a short timed probe of
+both solvers and picks LOBPCG only when it is clearly faster.</li>
 </ul>
-<p>LOBPCG has two advantages over the exact solver. First, it scales
-well when only a small number of <code>ncp</code> is needed and the
-matrix is approximately low ranked. Second, it benefits from warm
-starts: in the iterative EM algorithm, the eigensolver is called
-repeatedly, and consecutive solutions usually differ only slightly as
-the imputed values stabilize. <code><a href="../reference/pca_imp.html">pca_imp()</a></code> reuses information
-from the previous solution to warm start subsequent LOBPCG calls.</p>
-<p>As a result, while the exact solver is robust and faster for small to
-moderate matrices, the LOBPCG solver with warm start can be much faster
-for large, approximately low-rank matrices such as DNAm beta matrices,
-especially when only a small number of principal components is
-needed.</p>
-<p>The default <code>solver = "auto"</code> runs a short timing probe of
-the available solvers and chooses LOBPCG only when it is clearly faster.
-For most users, <code>solver = "auto"</code> is a good default. But,
+<p>For most users, <code>solver = "auto"</code> is a good default. But,
 consider setting the solver manually when:</p>
 <ul>
-<li>You are running many independent <code><a href="../reference/pca_imp.html">pca_imp()</a></code> calls, i.e.,
-in <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <code><a href="../reference/group_imp.html">group_imp()</a></code>, where repeated
-probing may add overhead.</li>
-<li>You are working with matrices where you know one solver should
-dominate but <code>"auto"</code> is selecting the wrong solver.</li>
+<li>You are running many independent <code><a href="../reference/pca_imp.html">pca_imp()</a></code> calls (i.e.,
+in <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <code><a href="../reference/group_imp.html">group_imp()</a></code>), where repeated
+probing adds overhead.</li>
+<li>You know one solver should dominate but <code>"auto"</code> is
+selecting the wrong one.</li>
 </ul>
+<p>If neither solver is clearly faster on a representative subset, pick
+<code>solver = "exact"</code> for robustness.</p>
+</div>
 </div>
 <div class="section level3">
 <h3 id="tuning-workflow">Tuning workflow<a class="anchor" aria-label="anchor" href="#tuning-workflow"></a>
@@ -185,18 +168,16 @@ tuning workflow is:</p>
 <li>Time the <code>exact</code> and <code>lobpcg</code> solvers on the
 subset at a fixed <code>threshold</code>.</li>
 <li>Use <code><a href="../reference/tune_imp.html">tune_imp()</a></code> to check that a relaxed
-<code>threshold</code> does not materially change cross-validation
-error.</li>
-<li>Use the chosen <code>solver</code> and <code>threshold</code> when
-tuning accuracy-related parameters, i.e., <code>ncp</code> and
-<code>coeff.ridge</code> (and <code>window_size</code> and
+<code>threshold</code> and <code>scale = FALSE</code> do not materially
+change cross-validation error.</li>
+<li>Fix <code>solver</code>, <code>threshold</code>, and
+<code>scale</code>, then tune the other parameters (<code>ncp</code> and
+<code>coeff.ridge</code>, and <code>window_size</code> and
 <code>overlap_size</code> for <code><a href="../reference/slide_imp.html">slide_imp()</a></code>).</li>
 </ol>
-<p>We demonstrate this workflow as follows.</p>
-</div>
-<div class="section level3">
-<h3 id="create-a-representative-test-matrix">Create a representative test matrix<a class="anchor" aria-label="anchor" href="#create-a-representative-test-matrix"></a>
-</h3>
+<div class="section level4">
+<h4 id="create-a-representative-test-matrix">Create a representative test matrix<a class="anchor" aria-label="anchor" href="#create-a-representative-test-matrix"></a>
+</h4>
 <p>In a real DNA methylation analysis, use a representative chromosome
 or subset. Here, we treat <code>group1</code> of the simulated data as
 the representative chromosome.</p>
@@ -210,19 +191,17 @@ the representative chromosome.</p>
 <span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/NA.html" class="external-link">is.na</a></span><span class="op">(</span><span class="va">obj_probe</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 0.09849521</span></span></code></pre></div>
 </div>
-<div class="section level3">
-<h3 id="time-solver-and-threshold-settings">Time solver and threshold settings<a class="anchor" aria-label="anchor" href="#time-solver-and-threshold-settings"></a>
-</h3>
-<p>First, choose a small <code>ncp</code> for the speed probe. This does
-not need to be the final value of <code>ncp</code>. The goal is to
-identify whether the exact or iterative solver is faster on this kind of
-data. We use a relaxed <code>threshold = 1e-5</code> to keep the probe
-quick. Both solvers use the same convergence criterion, so their
-relative timing should be representative.</p>
+<div class="section level4">
+<h4 id="time-the-solvers">Time the solvers<a class="anchor" aria-label="anchor" href="#time-the-solvers"></a>
+</h4>
+<p>Use a small <code>ncp</code> and a relaxed
+<code>threshold = 1e-5</code> for the probe. This <code>ncp</code> is
+not necessary the final <code>ncp</code>. Both solvers use the same
+convergence criterion, so their relative timing is representative.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">ncp_probe</span> <span class="op">&lt;-</span> <span class="fl">5</span></span></code></pre></div>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">exact</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.time.html" class="external-link">system.time</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/invisible.html" class="external-link">invisible</a></span><span class="op">(</span></span>
+<code class="sourceCode R"><span><span class="va">ncp_probe</span> <span class="op">&lt;-</span> <span class="fl">5</span></span>
+<span></span>
+<span><span class="va">exact</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.time.html" class="external-link">system.time</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/invisible.html" class="external-link">invisible</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="../reference/pca_imp.html">pca_imp</a></span><span class="op">(</span></span>
 <span>    obj <span class="op">=</span> <span class="va">obj_probe</span>,</span>
 <span>    ncp <span class="op">=</span> <span class="va">ncp_probe</span>,</span>
@@ -242,14 +221,17 @@ relative timing should be representative.</p>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
-<span><span class="va">exact</span> <span class="op">-</span> <span class="va">iterative</span></span>
-<span><span class="co">#&gt;    user  system elapsed </span></span>
-<span><span class="co">#&gt;  -0.006  -0.031  -0.008</span></span></code></pre></div>
-<p>Second, use <code><a href="../reference/tune_imp.html">tune_imp()</a></code> to compare cross-validation error
-across <code>threshold</code> values. In this example, relaxing the
-threshold to <code>1e-5</code> does not meaningfully change the
-error.</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<span><span class="co"># diff</span></span>
+<span><span class="va">exact</span><span class="op">[[</span><span class="st">"elapsed"</span><span class="op">]</span><span class="op">]</span> <span class="op">-</span> <span class="va">iterative</span><span class="op">[[</span><span class="st">"elapsed"</span><span class="op">]</span><span class="op">]</span></span>
+<span><span class="co">#&gt; [1] -0.001</span></span></code></pre></div>
+</div>
+<div class="section level4">
+<h4 id="check-threshold">Check <code>threshold</code><a class="anchor" aria-label="anchor" href="#check-threshold"></a>
+</h4>
+<p>Use <code><a href="../reference/tune_imp.html">tune_imp()</a></code> to compare cross-validation error across
+<code>threshold</code> values. In this example, relaxing the threshold
+to <code>1e-5</code> does not meaningfully change the error.</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">thresh_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>threshold <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1e-5</span>, <span class="fl">1e-6</span><span class="op">)</span>, ncp <span class="op">=</span> <span class="va">ncp_probe</span><span class="op">)</span></span>
 <span><span class="va">res</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span>obj <span class="op">=</span> <span class="va">obj_probe</span>, parameters <span class="op">=</span> <span class="va">thresh_df</span>, .f <span class="op">=</span> <span class="st">"pca_imp"</span><span class="op">)</span></span>
 <span><span class="co">#&gt; Tuning `pca_imp()`</span></span>
@@ -265,23 +247,52 @@ error.</p>
 <span><span class="co">#&gt; 2     1e-05   5         1      1  &lt;NA&gt; 500      0    rmse   standard 0.11499555</span></span>
 <span><span class="co">#&gt; 3     1e-06   5         2      1  &lt;NA&gt; 500      0     mae   standard 0.09174508</span></span>
 <span><span class="co">#&gt; 4     1e-06   5         2      1  &lt;NA&gt; 500      0    rmse   standard 0.11500090</span></span></code></pre></div>
-<p>If <code>threshold = 1e-5</code> changes cross-validation error or
-imputed values more than expected, use the more conservative
-<code>threshold = 1e-6</code>.</p>
-<p>If neither solver is clearly faster on the representative subset,
-pick <code>solver = "exact"</code> for robustness. If one solver is
-clearly faster, force it explicitly to skip the auto probe overhead.</p>
 </div>
-<div class="section level3">
-<h3 id="use-the-chosen-settings-with-tune_imp">Use the chosen settings with <code>tune_imp()</code><a class="anchor" aria-label="anchor" href="#use-the-chosen-settings-with-tune_imp"></a>
-</h3>
-<p>After choosing <code>solver</code> and <code>threshold</code>, keep
-them fixed while tuning accuracy-related PCA parameters (i.e.,
-<code>ncp</code> and <code>coeff.ridge</code>):</p>
+<div class="section level4">
+<h4 id="check-scale">Check <code>scale</code><a class="anchor" aria-label="anchor" href="#check-scale"></a>
+</h4>
+<p><code>scale = FALSE</code> can be both faster and more accurate for
+certain DNAm data. We verify this with <code><a href="../reference/tune_imp.html">tune_imp()</a></code>.</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">scale_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
+<span>  scale <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="cn">TRUE</span>, <span class="cn">FALSE</span><span class="op">)</span>,</span>
+<span>  ncp <span class="op">=</span> <span class="va">ncp_probe</span>,</span>
+<span>  threshold <span class="op">=</span> <span class="fl">1e-5</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">res_scale</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span>obj <span class="op">=</span> <span class="va">obj_probe</span>, parameters <span class="op">=</span> <span class="va">scale_df</span>, .f <span class="op">=</span> <span class="st">"pca_imp"</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Tuning `pca_imp()`</span></span>
+<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
+<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using default `num_na` = 500 (~0.9% of cells).</span></span>
+<span><span class="co">#&gt;   Increase for more reliability or decrease if missing is dense.</span></span>
+<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
+<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
+<span></span>
+<span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">res_scale</span><span class="op">)</span></span>
+<span><span class="co">#&gt;   scale ncp threshold param_set rep_id error   n n_miss .metric .estimator</span></span>
+<span><span class="co">#&gt; 1  TRUE   5     1e-05         1      1  &lt;NA&gt; 500      0     mae   standard</span></span>
+<span><span class="co">#&gt; 2  TRUE   5     1e-05         1      1  &lt;NA&gt; 500      0    rmse   standard</span></span>
+<span><span class="co">#&gt; 3 FALSE   5     1e-05         2      1  &lt;NA&gt; 500      0     mae   standard</span></span>
+<span><span class="co">#&gt; 4 FALSE   5     1e-05         2      1  &lt;NA&gt; 500      0    rmse   standard</span></span>
+<span><span class="co">#&gt;    .estimate</span></span>
+<span><span class="co">#&gt; 1 0.09031781</span></span>
+<span><span class="co">#&gt; 2 0.11342431</span></span>
+<span><span class="co">#&gt; 3 0.09037308</span></span>
+<span><span class="co">#&gt; 4 0.11352813</span></span></code></pre></div>
+</div>
+<div class="section level4">
+<h4 id="tune-accuracy-parameters-with-the-chosen-settings">Tune accuracy parameters with the chosen settings<a class="anchor" aria-label="anchor" href="#tune-accuracy-parameters-with-the-chosen-settings"></a>
+</h4>
+<p>After choosing <code>solver</code>, <code>threshold</code>, and
+<code>scale</code>, keep them fixed while tuning accuracy-related PCA
+parameters (<code>ncp</code> and <code>coeff.ridge</code>). Here, the
+<code>solver = "lobpcg"</code> is not clearly faster and
+<code>scale = FALSE</code> is more accurate.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">chosen_solver</span> <span class="op">&lt;-</span> <span class="st">"exact"</span></span>
 <span><span class="va">chosen_threshold</span> <span class="op">&lt;-</span> <span class="fl">1e-5</span></span>
+<span><span class="va">chosen_scale</span> <span class="op">&lt;-</span> <span class="cn">FALSE</span></span>
 <span></span>
+<span><span class="co"># tune ncp and coeff.ridge</span></span>
 <span><span class="va">params</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/expand.grid.html" class="external-link">expand.grid</a></span><span class="op">(</span></span>
 <span>  ncp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">4</span>, <span class="fl">6</span><span class="op">)</span>,</span>
 <span>  coeff.ridge <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0.8</span>, <span class="fl">1</span>, <span class="fl">1.2</span><span class="op">)</span></span>
@@ -289,6 +300,7 @@ them fixed while tuning accuracy-related PCA parameters (i.e.,
 <span></span>
 <span><span class="va">params</span><span class="op">$</span><span class="va">solver</span> <span class="op">&lt;-</span> <span class="va">chosen_solver</span></span>
 <span><span class="va">params</span><span class="op">$</span><span class="va">threshold</span> <span class="op">&lt;-</span> <span class="va">chosen_threshold</span></span>
+<span><span class="va">params</span><span class="op">$</span><span class="va">scale</span> <span class="op">&lt;-</span> <span class="va">chosen_scale</span></span>
 <span></span>
 <span><span class="va">tune_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
 <span>  obj <span class="op">=</span> <span class="va">obj_probe</span>,</span>
@@ -311,28 +323,24 @@ them fixed while tuning accuracy-related PCA parameters (i.e.,
 <span>  FUN <span class="op">=</span> <span class="va">mean</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt;   ncp coeff.ridge .estimate</span></span>
-<span><span class="co">#&gt; 1   2         0.8 0.1125669</span></span>
-<span><span class="co">#&gt; 2   4         0.8 0.1132658</span></span>
-<span><span class="co">#&gt; 3   6         0.8 0.1148464</span></span>
-<span><span class="co">#&gt; 4   2         1.0 0.1123355</span></span>
-<span><span class="co">#&gt; 5   4         1.0 0.1128064</span></span>
-<span><span class="co">#&gt; 6   6         1.0 0.1138270</span></span>
-<span><span class="co">#&gt; 7   2         1.2 0.1121501</span></span>
-<span><span class="co">#&gt; 8   4         1.2 0.1124116</span></span>
-<span><span class="co">#&gt; 9   6         1.2 0.1130121</span></span></code></pre></div>
+<span><span class="co">#&gt; 1   2         0.8 0.1172521</span></span>
+<span><span class="co">#&gt; 2   4         0.8 0.1193276</span></span>
+<span><span class="co">#&gt; 3   6         0.8 0.1195876</span></span>
+<span><span class="co">#&gt; 4   2         1.0 0.1170776</span></span>
+<span><span class="co">#&gt; 5   4         1.0 0.1184868</span></span>
+<span><span class="co">#&gt; 6   6         1.0 0.1185998</span></span>
+<span><span class="co">#&gt; 7   2         1.2 0.1169066</span></span>
+<span><span class="co">#&gt; 8   4         1.2 0.1177737</span></span>
+<span><span class="co">#&gt; 9   6         1.2 0.1178293</span></span></code></pre></div>
 </div>
-<div class="section level3">
-<h3 id="use-the-chosen-settings-with-slide_imp">Use the chosen settings with <code>slide_imp()</code><a class="anchor" aria-label="anchor" href="#use-the-chosen-settings-with-slide_imp"></a>
-</h3>
+<div class="section level4">
+<h4 id="apply-to-slide_imp">Apply to <code>slide_imp()</code><a class="anchor" aria-label="anchor" href="#apply-to-slide_imp"></a>
+</h4>
 <p>The same idea applies when tuning sliding-window PCA imputation.
-First choose the speed settings on a representative subset, then include
-those fixed settings in the <code>parameters</code> data frame while
-tuning window and PCA parameters.</p>
-<p><code><a href="../reference/slide_imp.html">slide_imp()</a></code> typically operates on small windows with few
-samples, so the <code>"exact"</code> solver is usually the better
-default. If <code>solver = "auto"</code>, <code><a href="../reference/slide_imp.html">slide_imp()</a></code> will
-only probe the first window and force the solver for the rest of the
-windows.</p>
+<code><a href="../reference/slide_imp.html">slide_imp()</a></code> typically operates on small windows with few
+samples, so <code>solver = "exact"</code> is usually the right choice.
+With <code>solver = "auto"</code>, <code><a href="../reference/slide_imp.html">slide_imp()</a></code> probes only
+the first window and reuses the chosen solver for the rest.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">beta_matrix</span> <span class="op">&lt;-</span> <span class="va">obj_probe</span> <span class="co"># Treat `obj_probe` as a `slide_imp()` input</span></span>
 <span><span class="va">locations</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span><span class="op">)</span></span>
@@ -346,6 +354,7 @@ windows.</p>
 <span><span class="va">slide_params</span><span class="op">$</span><span class="va">min_window_n</span> <span class="op">&lt;-</span> <span class="fl">20</span></span>
 <span><span class="va">slide_params</span><span class="op">$</span><span class="va">solver</span> <span class="op">&lt;-</span> <span class="st">"exact"</span> <span class="co"># Usually better for `slide_imp()`</span></span>
 <span><span class="va">slide_params</span><span class="op">$</span><span class="va">threshold</span> <span class="op">&lt;-</span> <span class="va">chosen_threshold</span></span>
+<span><span class="va">slide_params</span><span class="op">$</span><span class="va">scale</span> <span class="op">&lt;-</span> <span class="va">chosen_scale</span></span>
 <span></span>
 <span><span class="va">tune_slide_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
 <span>  obj <span class="op">=</span> <span class="va">beta_matrix</span>,</span>
@@ -369,20 +378,20 @@ windows.</p>
 <span>  FUN <span class="op">=</span> <span class="va">mean</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt;    ncp coeff.ridge window_size .estimate</span></span>
-<span><span class="co">#&gt; 1    2         0.8          50 0.1218555</span></span>
-<span><span class="co">#&gt; 2    4         0.8          50 0.1257166</span></span>
-<span><span class="co">#&gt; 3    2         1.0          50 0.1213016</span></span>
-<span><span class="co">#&gt; 4    4         1.0          50 0.1242115</span></span>
-<span><span class="co">#&gt; 5    2         1.2          50 0.1208738</span></span>
-<span><span class="co">#&gt; 6    4         1.2          50 0.1228126</span></span>
-<span><span class="co">#&gt; 7    2         0.8         500 0.1170125</span></span>
-<span><span class="co">#&gt; 8    4         0.8         500 0.1185850</span></span>
-<span><span class="co">#&gt; 9    2         1.0         500 0.1168271</span></span>
-<span><span class="co">#&gt; 10   4         1.0         500 0.1179256</span></span>
-<span><span class="co">#&gt; 11   2         1.2         500 0.1166733</span></span>
-<span><span class="co">#&gt; 12   4         1.2         500 0.1173506</span></span></code></pre></div>
-<p>Finally, use the selected speed and accuracy parameters when imputing
-the full dataset:</p>
+<span><span class="co">#&gt; 1    2         0.8          50 0.1257160</span></span>
+<span><span class="co">#&gt; 2    4         0.8          50 0.1317065</span></span>
+<span><span class="co">#&gt; 3    2         1.0          50 0.1253993</span></span>
+<span><span class="co">#&gt; 4    4         1.0          50 0.1303513</span></span>
+<span><span class="co">#&gt; 5    2         1.2          50 0.1251260</span></span>
+<span><span class="co">#&gt; 6    4         1.2          50 0.1291084</span></span>
+<span><span class="co">#&gt; 7    2         0.8         500 0.1231195</span></span>
+<span><span class="co">#&gt; 8    4         0.8         500 0.1228353</span></span>
+<span><span class="co">#&gt; 9    2         1.0         500 0.1230365</span></span>
+<span><span class="co">#&gt; 10   4         1.0         500 0.1225950</span></span>
+<span><span class="co">#&gt; 11   2         1.2         500 0.1229790</span></span>
+<span><span class="co">#&gt; 12   4         1.2         500 0.1224834</span></span></code></pre></div>
+<p>Finally, use the selected parameters when imputing the full
+dataset:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">slide_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/slide_imp.html">slide_imp</a></span><span class="op">(</span></span>
 <span>  obj <span class="op">=</span> <span class="va">beta_matrix</span>,</span>
@@ -392,10 +401,12 @@ the full dataset:</p>
 <span>  min_window_n <span class="op">=</span> <span class="fl">20</span>,</span>
 <span>  ncp <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  coeff.ridge <span class="op">=</span> <span class="fl">1.2</span>,</span>
-<span>  solver <span class="op">=</span> <span class="st">"exact"</span>, <span class="co"># Usually better for `slide_imp()`</span></span>
+<span>  solver <span class="op">=</span> <span class="st">"exact"</span>,</span>
 <span>  threshold <span class="op">=</span> <span class="va">chosen_threshold</span>,</span>
+<span>  scale <span class="op">=</span> <span class="va">chosen_scale</span>,</span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
+</div>
 </div>
 <div class="section level3">
 <h3 id="parallel-pca-imputation-and-blas-threading">Parallel PCA imputation and BLAS threading<a class="anchor" aria-label="anchor" href="#parallel-pca-imputation-and-blas-threading"></a>
@@ -405,64 +416,20 @@ tasks in parallel with <code><a href="../reference/tune_imp.html">tune_imp()</a>
 <code><a href="../reference/group_imp.html">group_imp()</a></code>. For PCA imputation, we use
 <a href="https://mirai.r-lib.org" class="external-link">mirai</a> parallelization rather than the <code>cores</code>
 argument.</p>
+<p>When PCA imputation is run in parallel, each worker may call
+multithreaded linear algebra routines through BLAS. If each worker uses
+multiple BLAS threads, the total number of active CPU threads can far
+exceed the number of physical cores, for example, 8 <a href="https://mirai.r-lib.org" class="external-link">mirai</a>
+workers each using 8 BLAS threads will request 64 threads. This
+<strong>thread oversubscription</strong> can make code slower rather
+than faster.</p>
+<p>Set <code>pin_blas = TRUE</code> to avoid this. It uses
+<a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a> to limit BLAS threads inside workers, and
+works with common BLAS libraries such as OpenBLAS and MKL.</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://mirai.r-lib.org" class="external-link">mirai</a></span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Start 4 mirai workers.</span></span>
 <span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">4</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Run PCA tuning in parallel.</span></span>
-<span><span class="va">tune_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">obj_probe</span>,</span>
-<span>  .f <span class="op">=</span> <span class="st">"pca_imp"</span>,</span>
-<span>  parameters <span class="op">=</span> <span class="va">params</span>,</span>
-<span>  n_reps <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- Use `TRUE` to monitor longer-running jobs</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning `pca_imp()`</span></span>
-<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using default `num_na` = 500 (~0.9% of cells).</span></span>
-<span><span class="co">#&gt;   Increase for more reliability or decrease if missing is dense.</span></span>
-<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">mirai</span></span></span>
-<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
-<span><span class="co">#&gt; Tip: set `pin_blas = TRUE` may improve parallel performance.</span></span>
-<span></span>
-<span><span class="co"># Stop mirai workers when finished.</span></span>
-<span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span></span></code></pre></div>
-<p>When PCA imputation is run in parallel, each worker may call
-multithreaded linear algebra routines through BLAS. If each worker uses
-multiple BLAS threads, the total number of active CPU threads can become
-much larger than the number of physical cores. This is called
-<strong>thread oversubscription</strong>, and it can make code slower
-rather than faster.</p>
-<p>For example, 8 <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers each using 8 BLAS threads
-can try to use 64 CPU threads.</p>
-<p>To avoid this, set <code>pin_blas = TRUE</code> in
-<code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <code><a href="../reference/group_imp.html">group_imp()</a></code> when running PCA
-imputation with <a href="https://mirai.r-lib.org" class="external-link">mirai</a>. This requires
-<a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a>:</p>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">4</span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">tune_slide_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">beta_matrix</span>,</span>
-<span>  .f <span class="op">=</span> <span class="st">"slide_imp"</span>,</span>
-<span>  parameters <span class="op">=</span> <span class="va">slide_params</span>,</span>
-<span>  n_reps <span class="op">=</span> <span class="fl">1</span>,</span>
-<span>  location <span class="op">=</span> <span class="va">locations</span>,</span>
-<span>  pin_blas <span class="op">=</span> <span class="cn">TRUE</span> <span class="co"># &lt;- Set to `TRUE` if R is linked to multi-threaded BLAS/LAPACK</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning `slide_imp()`</span></span>
-<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using default `num_na` = 500 (~0.9% of cells).</span></span>
-<span><span class="co">#&gt;   Increase for more reliability or decrease if missing is dense.</span></span>
-<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">mirai</span></span></span>
-<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
-<span></span>
-<span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span></span></code></pre></div>
-<p>For group-wise PCA imputation:</p>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">4</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">pca_group_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/group_imp.html">group_imp</a></span><span class="op">(</span></span>
 <span>  obj <span class="op">=</span> <span class="va">obj</span>,</span>
@@ -470,62 +437,42 @@ imputation with <a href="https://mirai.r-lib.org" class="external-link">mirai</a
 <span>  ncp <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  solver <span class="op">=</span> <span class="va">chosen_solver</span>,</span>
 <span>  threshold <span class="op">=</span> <span class="va">chosen_threshold</span>,</span>
+<span>  scale <span class="op">=</span> <span class="va">chosen_scale</span>,</span>
 <span>  pin_blas <span class="op">=</span> <span class="cn">TRUE</span> <span class="co"># &lt;- Set to `TRUE` if R is linked to multi-threaded BLAS/LAPACK</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; Imputing 2 groups using <span style="font-weight: bold;">PCA</span>.</span></span>
 <span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">mirai</span></span></span>
 <span></span>
 <span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span></span></code></pre></div>
-<p><code>pin_blas = TRUE</code> uses <a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a> to limit
-the number of BLAS threads inside parallel workers. This works with
-common BLAS libraries such as OpenBLAS and MKL, which are typical on
-Linux and are also available on Windows after replacing R’s default
-BLAS. It may have no effect on macOS, depending on the BLAS
-implementation.</p>
-<div class="section level4">
-<h4 id="blaslapack-swapping-for-advanced-windows-users">BLAS/LAPACK swapping for advanced Windows users<a class="anchor" aria-label="anchor" href="#blaslapack-swapping-for-advanced-windows-users"></a>
-</h4>
-<p>On Windows machines, R’s default BLAS/LAPACK is reliable but
-single-threaded and can be slow. Advanced users can get much faster PCA
-imputation by replacing R’s default BLAS with an optimized BLAS
-following this guide: <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">OpenBLAS
-for R on Windows</a>.</p>
-<p>However, OpenBLAS is multithreaded, so for parallel runs using
-<a href="https://mirai.r-lib.org" class="external-link">mirai</a>, set <code>pin_blas = TRUE</code> to avoid thread
-oversubscription.</p>
-</div>
+<p>The same <code>pin_blas = TRUE</code> argument is available in
+<code><a href="../reference/tune_imp.html">tune_imp()</a></code>.</p>
 </div>
 <div class="section level3">
 <h3 id="practical-recommendations">Practical recommendations<a class="anchor" aria-label="anchor" href="#practical-recommendations"></a>
 </h3>
 <ul>
-<li>Start with <code>solver = "auto"</code> unless PCA imputation is
-slow or you are about to run many calls, such as with
-<code><a href="../reference/tune_imp.html">tune_imp()</a></code>, where the per-call probe overhead can add
-up.</li>
-<li>If PCA imputation is slow, benchmark <code>solver = "exact"</code>
-against <code>solver = "lobpcg"</code> on a representative subset and
-force the faster solver.</li>
-<li>Try <code>threshold = 1e-5</code> or a less stringent value,
-depending on your error tolerance.</li>
-<li>Keep <code>threshold = 1e-5</code> only if it produces similar
-imputed values or similar cross-validation error.</li>
-<li>LOBPCG is most likely to help when the matrix is large,
+<li>Start with <code>solver = "auto"</code> unless you are about to run
+many calls (e.g., with <code><a href="../reference/tune_imp.html">tune_imp()</a></code>), where per-call probe
+overhead adds up.</li>
+<li>If PCA imputation is slow, benchmark <code>"exact"</code> vs
+<code>"lobpcg"</code> on a representative subset and force the faster
+solver. LOBPCG is most likely to help when the matrix is large,
 approximately low-rank, and <code>ncp</code> is small.</li>
+<li>Try <code>threshold = 1e-5</code> if it produces similar imputed
+values or cross-validation error.</li>
+<li>For data where columns already share a common scale (e.g., DNAm beta
+values), try <code>scale = FALSE</code> and verify with
+cross-validation.</li>
 <li>For <code><a href="../reference/slide_imp.html">slide_imp()</a></code>, <code>solver = "exact"</code> is
 usually the right choice.</li>
-<li>Choose speed settings first, then tune accuracy-related parameters
-such as <code>ncp</code>, <code>coeff.ridge</code>, and
+<li>Choose speed settings first, then tune accuracy parameters such as
+<code>ncp</code>, <code>coeff.ridge</code>, and
 <code>window_size</code>.</li>
-<li>If running PCA imputation sequentially, BLAS multithreading may
-help, and <code>pin_blas</code> is unnecessary.</li>
-<li>If running many PCA imputations in parallel with
-<a href="https://mirai.r-lib.org" class="external-link">mirai</a>, use <code>pin_blas = TRUE</code>.</li>
-<li>Avoid using many <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers and many BLAS threads
-at the same time.</li>
-<li>Benchmark on a representative subset, because the best setup depends
-on the hardware, BLAS library, matrix size, and missing-data
-pattern.</li>
+<li>When running PCA imputation in parallel with <a href="https://mirai.r-lib.org" class="external-link">mirai</a>
+and a multithreaded BLAS, use <code>pin_blas = TRUE</code> to avoid
+thread oversubscription.</li>
+<li>Benchmark on a representative subset. The best setup depends on the
+hardware, BLAS library, matrix size, and missing-data pattern.</li>
 </ul>
 </div>
 </div>
