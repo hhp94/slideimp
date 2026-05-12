@@ -97,7 +97,7 @@ In a real DNA methylation analysis, use a representative chromosome or subset.
 Here, we treat `group1` of the simulated data as the representative chromosome.
 
 ```{r}
-set.seed(1234)
+set.seed(12345)
 
 obj_probe <- obj[, subset(sim_df, group == "group1")$feature]
 
@@ -171,7 +171,7 @@ compute_metrics(res_scale)
 
 After choosing `solver`, `threshold`, and `scale`, keep them fixed while
 tuning accuracy-related PCA parameters (`ncp` and `coeff.ridge`). Here, the 
-`solver = "lobpcg"` is not clearly faster and `scale = FALSE` is more accurate.
+`solver = "lobpcg"` is not clearly faster and `scale = FALSE` has lower `rmse`.
 
 ```{r}
 chosen_solver <- "exact"

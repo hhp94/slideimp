@@ -146,7 +146,7 @@ obj <- sim_obj$input
 group_df <- sim_obj$col_group
 ```
 
-* Hyperparameters are tuned using `tune_imp()`. We evaluate the following options with grid search:
+* Hyperparameters are tuned using `tune_imp()`. We evaluate the following options with grid search (K-NN imputation):
 
   - Number of nearest neighbors (`k`): 5 or 20
   - Inverse distance power (`dist_pow`) for weighted averaging: 1 or 2
@@ -164,7 +164,7 @@ tune_knn <- tune_imp(
   group2_only,
   parameters = knn_params,
   .f = "knn_imp",
-  cores = 8,
+  cores = 8, # <- only available for K-NN imputation
   n_reps = 10,
   num_na = 50
 )
@@ -174,8 +174,8 @@ tune_knn <- tune_imp(
 ```{r}
 metrics <- compute_metrics(tune_knn)
 
-# equivalently: dplyr::summarize(metrics, n = n(), mean_error = mean(.estimate),
-#   sd_error = sd(.estimate), .by = c(k, dist_pow, .metric))
+# Equivalently: dplyr::summarize(metrics, n = n(), mean_error = mean(.estimate),
+# sd_error = sd(.estimate), .by = c(k, dist_pow, .metric))
 sum_metrics <- do.call(
   data.frame,
   aggregate(

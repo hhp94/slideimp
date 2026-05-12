@@ -490,7 +490,7 @@ prep_groups <- function(
 #' OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 #' `pin_blas = TRUE` may have no effect on macOS.
 #'
-#' @inheritSection pca_imp Performance tips
+#' @inheritSection pca_imp PCA Performance tips
 #'
 #' @note
 #' A character scalar can be passed to `group` to name a supported Illumina

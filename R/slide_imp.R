@@ -81,7 +81,7 @@ find_overlap_regions <- function(start, end) {
 #' Specify `k` and related arguments to use [knn_imp()], or `ncp` and related
 #' arguments to use [pca_imp()].
 #'
-#' @inheritSection pca_imp Performance tips
+#' @inheritSection pca_imp PCA Performance tips
 #'
 #' @returns If `dry_run = FALSE`, a numeric matrix of the same dimensions as
 #'   `obj`, with missing values imputed. The returned object has class

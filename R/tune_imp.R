@@ -381,7 +381,7 @@ resolve_na_loc <- function(
 #'
 #' @inheritSection group_imp Parallelization
 #'
-#' @inheritSection pca_imp Performance tips
+#' @inheritSection pca_imp PCA Performance tips
 #'
 #' @returns A data frame of class `slideimp_tune` containing:
 #'   - columns originally provided in `parameters`;

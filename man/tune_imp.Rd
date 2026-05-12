@@ -134,27 +134,32 @@ OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 \code{pin_blas = TRUE} may have no effect on macOS.
 }
 
-\section{Performance tips}{
+\section{PCA Performance tips}{
 
 \code{pca_imp()} relies heavily on linear algebra. On Windows, the default BLAS
 shipped with R may be slow for large matrices. Advanced users can replace
 it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
 
-PCA imputation speed depends on the eigensolver selected by \code{solver} and the
-convergence threshold \code{threshold}. The exact solver is selected with
-\code{solver = "exact"}. The iterative LOBPCG solver is selected with
-\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
-probe and chooses LOBPCG only when it is clearly faster.
-
-For large or approximately low-rank genomic matrices, it can be useful to
-benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters.
-For \code{slide_imp()}, this may include \code{window_size} and \code{overlap_size}.
+Choose \code{solver}, \code{threshold}, and \code{scale} first, then tune accuracy
+parameters (\code{ncp}, \code{coeff.ridge}). For large or approximately low-rank
+genomic matrices, benchmark \code{"exact"} against \code{"lobpcg"} on a representative
+subset (e.g., chromosome 22) before tuning accuracy-related parameters.
 
 The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 \code{threshold = 1e-5} can be faster while giving very similar imputed values.
-Check this on a representative subset before using the relaxed threshold in a
-full analysis.
+Check this on a representative subset before using the relaxed threshold in
+a full analysis.
+
+For data where columns already share a common scale (e.g., DNAm beta values
+in \verb{[0, 1]}), \code{scale = FALSE} can be both faster and more accurate. Verify
+with \code{tune_imp()} before applying to a full analysis.
+
+For \code{slide_imp()}, windows are small, so \code{solver = "exact"} is usually the
+right choice. With \code{solver = "auto"}, only the first window is probed.
+
+When running PCA imputation in parallel via \code{tune_imp()} or \code{group_imp()}
+with a multithreaded BLAS, set \code{pin_blas = TRUE} to avoid thread
+oversubscription.
 
 See the pkgdown article
 \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}

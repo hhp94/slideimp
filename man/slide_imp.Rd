@@ -79,21 +79,17 @@ entries.}
 
 \item{scale}{Logical. If \code{TRUE}, columns are scaled to unit variance.}
 
-\item{coeff.ridge}{Numeric. Ridge regularization coefficient. Only used when
-\code{method = "regularized"}. Values less than \code{1} regularize less, moving
-closer to EM PCA. Values greater than \code{1} regularize more, moving closer
-to mean imputation.}
+\item{coeff.ridge}{Numeric. Ridge regularization, used only when
+\code{method = "regularized"}. Values \verb{< 1} move toward EM PCA; values \verb{> 1}
+move toward mean imputation.}
 
 \item{threshold}{Numeric. Convergence threshold.}
 
 \item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.}
 
-\item{row.w}{Row weights, internally normalized to sum to \code{1}. Can be:
-\itemize{
-\item \code{NULL}: all rows are weighted equally.
-\item A numeric vector of positive weights with length \code{nrow(obj)}.
-\item \code{"n_miss"}: rows with more missing values receive lower weight.
-}}
+\item{row.w}{Row weights, normalized to sum to \code{1}. \code{NULL} (equal weights),
+a positive numeric vector of length \code{nrow(obj)}, or \code{"n_miss"}
+(down-weight rows with more missing values).}
 
 \item{nb.init}{Integer. Number of random initializations. The first
 initialization is always mean imputation.}
@@ -102,22 +98,19 @@ initialization is always mean imputation.}
 
 \item{miniter}{Integer. Minimum number of iterations.}
 
-\item{solver}{Character. Eigensolver selection. One of \code{"auto"}, \code{"exact"},
-or \code{"lobpcg"}. \code{"exact"} uses the exact solver. \code{"lobpcg"} uses the
-iterative LOBPCG solver with exact fallback. \code{"auto"} performs a short
-timed probe and chooses LOBPCG only if it is clearly faster than the exact
-solver. When \code{nb.init > 1}, the auto choice from the first PCA initialization
-is reused for subsequent PCA initializations.}
+\item{solver}{Character. Eigensolver: \code{"auto"} (default), \code{"exact"}, or
+\code{"lobpcg"}. \code{"auto"} runs a short timed probe and picks \code{"lobpcg"} only
+when clearly faster. Consecutive EM calls warm-start LOBPCG with both the
+previous eigenblock and search direction. When \code{nb.init > 1}, the auto
+choice from the first init is reused. See Performance tips.}
 
 \item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
-created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. Ignored
-when \code{solver = "exact"}.}
+created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted.
+Ignored when \code{solver = "exact"}.}
 
-\item{clamp}{Optional numeric vector of length 2 giving lower and upper bounds
-for PCA-imputed values. Use \code{NULL} for no clamping. Use \code{c(0, 1)} for DNA
-methylation beta values. Use \code{c(lb, Inf)} for only lower bound clamping, or
-\code{c(-Inf, ub)} for only upper bound clamping. Clamping is applied only to
-values imputed by the PCA step, not to observed values.}
+\item{clamp}{Optional numeric vector \code{c(lower, upper)} bounding PCA-imputed
+values (use \code{-Inf}/\code{Inf} for one-sided, \code{NULL} for none). E.g., \code{c(0, 1)}
+for DNAm beta values. Observed values are not clamped.}
 
 \item{method}{Character or \code{NULL}. For K-NN imputation, one of
 \code{"euclidean"} or \code{"manhattan"}. For PCA imputation, one of
@@ -175,27 +168,32 @@ that feature using the supplied \code{window_size}.
 Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, or \code{ncp} and related
 arguments to use \code{\link[=pca_imp]{pca_imp()}}.
 }
-\section{Performance tips}{
+\section{PCA Performance tips}{
 
 \code{pca_imp()} relies heavily on linear algebra. On Windows, the default BLAS
 shipped with R may be slow for large matrices. Advanced users can replace
 it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
 
-PCA imputation speed depends on the eigensolver selected by \code{solver} and the
-convergence threshold \code{threshold}. The exact solver is selected with
-\code{solver = "exact"}. The iterative LOBPCG solver is selected with
-\code{solver = "lobpcg"}. The default, \code{solver = "auto"}, performs a short timed
-probe and chooses LOBPCG only when it is clearly faster.
-
-For large or approximately low-rank genomic matrices, it can be useful to
-benchmark \code{solver = "exact"} against \code{solver = "lobpcg"} on a representative
-subset, such as chromosome 22, before tuning accuracy-related parameters.
-For \code{slide_imp()}, this may include \code{window_size} and \code{overlap_size}.
+Choose \code{solver}, \code{threshold}, and \code{scale} first, then tune accuracy
+parameters (\code{ncp}, \code{coeff.ridge}). For large or approximately low-rank
+genomic matrices, benchmark \code{"exact"} against \code{"lobpcg"} on a representative
+subset (e.g., chromosome 22) before tuning accuracy-related parameters.
 
 The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
 \code{threshold = 1e-5} can be faster while giving very similar imputed values.
-Check this on a representative subset before using the relaxed threshold in a
-full analysis.
+Check this on a representative subset before using the relaxed threshold in
+a full analysis.
+
+For data where columns already share a common scale (e.g., DNAm beta values
+in \verb{[0, 1]}), \code{scale = FALSE} can be both faster and more accurate. Verify
+with \code{tune_imp()} before applying to a full analysis.
+
+For \code{slide_imp()}, windows are small, so \code{solver = "exact"} is usually the
+right choice. With \code{solver = "auto"}, only the first window is probed.
+
+When running PCA imputation in parallel via \code{tune_imp()} or \code{group_imp()}
+with a multithreaded BLAS, set \code{pin_blas = TRUE} to avoid thread
+oversubscription.
 
 See the pkgdown article
 \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}

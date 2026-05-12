@@ -208,7 +208,7 @@ new_lobpcg_control <- function(
 #' PCA Imputation for Numeric Matrices
 #'
 #' Impute missing values in a numeric matrix using regularized or
-#' expectation-maximization PCA imputation.
+#' expectation-maximization (EM) PCA imputation.
 #'
 #' @inheritParams knn_imp
 #'
@@ -217,34 +217,29 @@ new_lobpcg_control <- function(
 #' @param scale Logical. If `TRUE`, columns are scaled to unit variance.
 #' @param method Character. PCA imputation method: either `"regularized"` or
 #'   `"EM"`.
-#' @param coeff.ridge Numeric. Ridge regularization coefficient. Only used when
-#'   `method = "regularized"`. Values less than `1` regularize less, moving
-#'   closer to EM PCA. Values greater than `1` regularize more, moving closer
-#'   to mean imputation.
-#' @param row.w Row weights, internally normalized to sum to `1`. Can be:
-#'   * `NULL`: all rows are weighted equally.
-#'   * A numeric vector of positive weights with length `nrow(obj)`.
-#'   * `"n_miss"`: rows with more missing values receive lower weight.
+#' @param coeff.ridge Numeric. Ridge regularization, used only when
+#'   `method = "regularized"`. Values `< 1` move toward EM PCA; values `> 1`
+#'   move toward mean imputation.
+#' @param row.w Row weights, normalized to sum to `1`. `NULL` (equal weights),
+#'   a positive numeric vector of length `nrow(obj)`, or `"n_miss"`
+#'   (down-weight rows with more missing values).
 #' @param threshold Numeric. Convergence threshold.
 #' @param seed Integer, numeric, or `NULL`. Random seed for reproducibility.
 #' @param nb.init Integer. Number of random initializations. The first
 #'   initialization is always mean imputation.
 #' @param maxiter Integer. Maximum number of iterations.
 #' @param miniter Integer. Minimum number of iterations.
-#' @param solver Character. Eigensolver selection. One of `"auto"`, `"exact"`,
-#'   or `"lobpcg"`. `"exact"` uses the exact solver. `"lobpcg"` uses the
-#'   iterative LOBPCG solver with exact fallback. `"auto"` performs a short
-#'   timed probe and chooses LOBPCG only if it is clearly faster than the exact
-#'   solver. When `nb.init > 1`, the auto choice from the first PCA initialization
-#'   is reused for subsequent PCA initializations.
+#' @param solver Character. Eigensolver: `"auto"` (default), `"exact"`, or
+#'   `"lobpcg"`. `"auto"` runs a short timed probe and picks `"lobpcg"` only
+#'   when clearly faster. Consecutive EM calls warm-start LOBPCG with both the
+#'   previous eigenblock and search direction. When `nb.init > 1`, the auto
+#'   choice from the first init is reused. See Performance tips.
 #' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
-#'   created by [lobpcg_control()]. A plain named list is also accepted. Ignored
-#'   when `solver = "exact"`.
-#' @param clamp Optional numeric vector of length 2 giving lower and upper bounds
-#'   for PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
-#'   methylation beta values. Use `c(lb, Inf)` for only lower bound clamping, or
-#'   `c(-Inf, ub)` for only upper bound clamping. Clamping is applied only to
-#'   values imputed by the PCA step, not to observed values.
+#'   created by [lobpcg_control()]. A plain named list is also accepted.
+#'   Ignored when `solver = "exact"`.
+#' @param clamp Optional numeric vector `c(lower, upper)` bounding PCA-imputed
+#'   values (use `-Inf`/`Inf` for one-sided, `NULL` for none). E.g., `c(0, 1)`
+#'   for DNAm beta values. Observed values are not clamped.
 #'
 #' @returns A numeric matrix of the same dimensions as `obj`, with missing
 #' values imputed. The returned object has class `slideimp_results`.
@@ -253,26 +248,31 @@ new_lobpcg_control <- function(
 #' This algorithm is based on `missMDA::imputePCA()` and is optimized for tall
 #' or wide numeric matrices.
 #'
-#' @section Performance tips:
+#' @section PCA Performance tips:
 #' `pca_imp()` relies heavily on linear algebra. On Windows, the default BLAS
 #' shipped with R may be slow for large matrices. Advanced users can replace
 #' it with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
 #'
-#' PCA imputation speed depends on the eigensolver selected by `solver` and the
-#' convergence threshold `threshold`. The exact solver is selected with
-#' `solver = "exact"`. The iterative LOBPCG solver is selected with
-#' `solver = "lobpcg"`. The default, `solver = "auto"`, performs a short timed
-#' probe and chooses LOBPCG only when it is clearly faster.
-#'
-#' For large or approximately low-rank genomic matrices, it can be useful to
-#' benchmark `solver = "exact"` against `solver = "lobpcg"` on a representative
-#' subset, such as chromosome 22, before tuning accuracy-related parameters.
-#' For `slide_imp()`, this may include `window_size` and `overlap_size`.
+#' Choose `solver`, `threshold`, and `scale` first, then tune accuracy
+#' parameters (`ncp`, `coeff.ridge`). For large or approximately low-rank
+#' genomic matrices, benchmark `"exact"` against `"lobpcg"` on a representative
+#' subset (e.g., chromosome 22) before tuning accuracy-related parameters.
 #'
 #' The default `threshold = 1e-6` is conservative. In many genomic datasets,
 #' `threshold = 1e-5` can be faster while giving very similar imputed values.
-#' Check this on a representative subset before using the relaxed threshold in a
-#' full analysis.
+#' Check this on a representative subset before using the relaxed threshold in
+#' a full analysis.
+#'
+#' For data where columns already share a common scale (e.g., DNAm beta values
+#' in `[0, 1]`), `scale = FALSE` can be both faster and more accurate. Verify
+#' with `tune_imp()` before applying to a full analysis.
+#'
+#' For `slide_imp()`, windows are small, so `solver = "exact"` is usually the
+#' right choice. With `solver = "auto"`, only the first window is probed.
+#'
+#' When running PCA imputation in parallel via `tune_imp()` or `group_imp()`
+#' with a multithreaded BLAS, set `pin_blas = TRUE` to avoid thread
+#' oversubscription.
 #'
 #' See the pkgdown article
 #' [Speeding up PCA imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
