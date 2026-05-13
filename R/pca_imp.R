@@ -317,7 +317,8 @@ pca_imp <- function(
   colmax = 0.9,
   post_imp = TRUE,
   na_check = TRUE,
-  clamp = NULL
+  clamp = NULL,
+  .progress = FALSE
 ) {
   # pre-conditioning
   checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
@@ -363,6 +364,8 @@ pca_imp <- function(
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   checkmate::assert_flag(na_check, .var.name = "na_check")
   clamp <- resolve_clamp(clamp, arg = "clamp")
+  checkmate::assert_flag(.progress, .var.name = ".progress")
+  trace_iter <- if (isTRUE(.progress)) 10L else 0L
 
   # per-column missingnesss
   cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
@@ -493,6 +496,10 @@ pca_imp <- function(
       set.seed(seed * (i - 1L)) # exactly as missMDA does
     }
 
+    if (trace_iter > 0L && nb.init > 1L) {
+      cli::cli_inform("Initialization {i}/{nb.init}")
+    }
+
     solver_code_i <- if (is.null(locked_solver)) solver_code else locked_solver
 
     res.impute <- pca_imp_internal_cpp(
@@ -510,7 +517,8 @@ pca_imp <- function(
       solver = solver_code_i,
       warmup_iters = lobpcg_control$warmup_iters,
       lobpcg_tol = lobpcg_control$tol,
-      lobpcg_maxiter = lobpcg_control$maxiter
+      lobpcg_maxiter = lobpcg_control$maxiter,
+      trace_iter = trace_iter
     )
 
     # after the auto probe, select a solver for the rest of the inits.

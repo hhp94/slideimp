@@ -21,7 +21,8 @@ pca_imp(
   colmax = 0.9,
   post_imp = TRUE,
   na_check = TRUE,
-  clamp = NULL
+  clamp = NULL,
+  .progress = FALSE
 )
 }
 \arguments{
@@ -79,6 +80,8 @@ contains missing values.}
 \item{clamp}{Optional numeric vector \code{c(lower, upper)} bounding PCA-imputed
 values (use \code{-Inf}/\code{Inf} for one-sided, \code{NULL} for none). E.g., \code{c(0, 1)}
 for DNAm beta values. Observed values are not clamped.}
+
+\item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 }
 \value{
 A numeric matrix of the same dimensions as \code{obj}, with missing

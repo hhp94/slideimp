@@ -14,8 +14,8 @@ Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
 // pca_imp_internal_cpp
-Rcpp::List pca_imp_internal_cpp(const arma::mat& obj, const arma::uvec& eligible_idx, const arma::uword ncp, const bool scale, const bool regularized, const double threshold, const arma::uword init, const arma::uword maxiter, const arma::uword miniter, arma::rowvec row_w, const double coeff_ridge, const int solver, const arma::uword warmup_iters, const double lobpcg_tol, const arma::uword lobpcg_maxiter);
-RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP objSEXP, SEXP eligible_idxSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP, SEXP solverSEXP, SEXP warmup_itersSEXP, SEXP lobpcg_tolSEXP, SEXP lobpcg_maxiterSEXP) {
+Rcpp::List pca_imp_internal_cpp(const arma::mat& obj, const arma::uvec& eligible_idx, const arma::uword ncp, const bool scale, const bool regularized, const double threshold, const arma::uword init, const arma::uword maxiter, const arma::uword miniter, arma::rowvec row_w, const double coeff_ridge, const int solver, const arma::uword warmup_iters, const double lobpcg_tol, const arma::uword lobpcg_maxiter, const arma::uword trace_iter);
+RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP objSEXP, SEXP eligible_idxSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP, SEXP solverSEXP, SEXP warmup_itersSEXP, SEXP lobpcg_tolSEXP, SEXP lobpcg_maxiterSEXP, SEXP trace_iterSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -34,7 +34,8 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::uword >::type warmup_iters(warmup_itersSEXP);
     Rcpp::traits::input_parameter< const double >::type lobpcg_tol(lobpcg_tolSEXP);
     Rcpp::traits::input_parameter< const arma::uword >::type lobpcg_maxiter(lobpcg_maxiterSEXP);
-    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(obj, eligible_idx, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge, solver, warmup_iters, lobpcg_tol, lobpcg_maxiter));
+    Rcpp::traits::input_parameter< const arma::uword >::type trace_iter(trace_iterSEXP);
+    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(obj, eligible_idx, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge, solver, warmup_iters, lobpcg_tol, lobpcg_maxiter, trace_iter));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -187,7 +188,7 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 15},
+    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 16},
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 9},

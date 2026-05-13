@@ -6,6 +6,7 @@
 #include "imputed_value.h"
 #include "loc_timer.h"
 #include <limits>
+#include <iomanip>
 
 template <typename F>
 static inline void for_each_missing_in_col(arma::uword cidx,
@@ -311,7 +312,8 @@ Rcpp::List pca_imp_internal_cpp(
     const int solver,
     const arma::uword warmup_iters,
     const double lobpcg_tol,
-    const arma::uword lobpcg_maxiter)
+    const arma::uword lobpcg_maxiter,
+    const arma::uword trace_iter = 0)
 {
   LOC_TIMER_OBJ(pca_imp_gram);
   LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
@@ -372,30 +374,31 @@ Rcpp::List pca_imp_internal_cpp(
     Rcpp::stop("problem dimensions are too large");
   }
 
+  const bool tall = (nrX >= n_elig);
+  const arma::uword k = regularized ? ncp + 1 : ncp;
+  const arma::uword n_gram = tall ? n_elig : nrX;
+
   // BLAS/LAPACK integer range guard
   {
     const arma::uword blas_max =
         static_cast<arma::uword>((std::numeric_limits<arma::blas_int>::max)());
 
-    const arma::uword k_eig = regularized ? (ncp + 1) : ncp;
-    const arma::uword n_gram_check = (nrX >= n_elig) ? n_elig : nrX;
-
-    if (nrX > blas_max || n_elig > blas_max || ncp > blas_max || k_eig > blas_max || n_gram_check > blas_max)
+    if (nrX > blas_max || n_elig > blas_max || ncp > blas_max || k > blas_max || n_gram > blas_max)
     {
       Rcpp::stop("problem dimensions exceed BLAS/LAPACK integer range");
     }
 
     // EigSymWorkspace uses workspace minima 26*n and 10*n.
-    if (n_gram_check > blas_max / 26)
+    if (n_gram > blas_max / 26)
     {
       Rcpp::stop("problem dimension too large for LAPACK dsyevr workspace");
     }
 
-    // LOBPCG internally solves small Rayleigh-Ritz problems up to ~3*k_eig.
+    // LOBPCG internally solves small Rayleigh-Ritz problems up to ~3*k.
     // only apply this guard when the requested solver can actually use LOBPCG.
     if (lobpcg_requested && lobpcg_maxiter > 0)
     {
-      const long double rr_dim = 3.0L * static_cast<long double>(k_eig);
+      const long double rr_dim = 3.0L * static_cast<long double>(k);
       const long double dsyevd_lwork = 1.0L + 6.0L * rr_dim + 2.0L * rr_dim * rr_dim;
       const long double dsyevd_liwork = 3.0L + 5.0L * rr_dim;
 
@@ -618,10 +621,6 @@ Rcpp::List pca_imp_internal_cpp(
   const double *sptr = sqrt_row_w.memptr();
   const double *isptr = inv_sqrt_row_w.memptr();
 
-  const bool tall = (nrX >= n_elig);
-  const arma::uword k = regularized ? ncp + 1 : ncp;
-  const arma::uword n_gram = tall ? n_elig : nrX;
-
   arma::mat U, V, X_work, AA_NxN, Vn, eigvecs;
   arma::vec vs_top, d_inv, eigvals, lambda_shrinked;
 
@@ -698,17 +697,59 @@ Rcpp::List pca_imp_internal_cpp(
   const double scale_factor = (nrX_d * n_elig_d) / min_dim;
 
   // ---------------------------------------------------------------------------
-  // hot loop
+  // hot loop prep
   // ---------------------------------------------------------------------------
   double objective = 0.0;
   const double *xhp = Xhat.memptr();
+
+  arma::uword n_iter_final = 0;
+  double criterion_final = arma::datum::nan;
+  bool converged = false;
+
+  struct PrecGuard
+  {
+    std::streamsize old;
+
+    PrecGuard() : old(Rcpp::Rcout.precision()) {}
+
+    ~PrecGuard()
+    {
+      Rcpp::Rcout.precision(old);
+    }
+  };
+
+  PrecGuard prec_guard;
+
+    const int iter_w = 4;
+  const int obj_w = 8;
+  const int ratio_w = 12;
+
+  if (trace_iter > 0)
+  {
+    Rcpp::Rcout.precision(6);
+    Rcpp::Rcout
+        << "iter : "
+        << std::right << std::setw(obj_w) << "obj"
+        << " "
+        << std::right << std::setw(ratio_w) << "ratio"
+        << std::endl;
+  }
+
+  auto print_iter = [&](arma::uword it, double obj, double crit)
+  {
+    Rcpp::Rcout
+        << std::setw(iter_w) << it << " : "
+        << std::setw(obj_w) << obj
+        << " "
+        << std::setw(ratio_w) << crit
+        << std::endl;
+  };
 
 #if PCA_IMP_DIAGNOSTICS
   arma::mat eigval_hist(ncp, maxiter, arma::fill::zeros);
   arma::vec obj_hist(maxiter, arma::fill::zeros);
   arma::vec subspace_cos_hist(maxiter, arma::fill::zeros);
   arma::mat V_prev;
-  arma::uword iters_done = 0;
 #endif
 
   for (arma::uword nb_iter = 1;; ++nb_iter)
@@ -814,7 +855,6 @@ Rcpp::List pca_imp_internal_cpp(
       }
       V_prev = std::move(V_new);
     }
-    iters_done = nb_iter;
 #endif
 
     // missMDA convergence test:
@@ -828,21 +868,38 @@ Rcpp::List pca_imp_internal_cpp(
     const double criterion = std::abs(1.0 - objective / old);
     old = objective;
 
+    bool stop_now = false;
     if (!std::isnan(criterion))
     {
       if (criterion < threshold && nb_iter >= miniter)
       {
-        break;
+        stop_now = true;
+        converged = true;
       }
-      if (objective < threshold && nb_iter >= miniter)
+      else if (objective < threshold && nb_iter >= miniter)
       {
-        break;
+        stop_now = true;
+        converged = true;
       }
     }
-
-    if (nb_iter >= maxiter)
+    if (!stop_now && nb_iter >= maxiter)
     {
+      stop_now = true;
+      converged = false;
       Rcpp::warning("Stopped after " + std::to_string(maxiter) + " iterations");
+    }
+
+    if (trace_iter > 0)
+    {
+      const bool periodic = (nb_iter == 1) || (nb_iter % trace_iter == 0);
+      if (periodic || stop_now)
+        print_iter(nb_iter, objective, criterion);
+    }
+
+    if (stop_now)
+    {
+      n_iter_final = nb_iter;
+      criterion_final = criterion;
       break;
     }
   }
@@ -920,19 +977,22 @@ Rcpp::List pca_imp_internal_cpp(
   LOC_TOC(pca_imp_gram, "postprocessing");
   LOC_TOC(pca_imp_gram, "pca_imp_internal_cpp_total");
 #if PCA_IMP_DIAGNOSTICS
-  eigval_hist.resize(ncp, iters_done);
-  obj_hist.resize(iters_done);
-  subspace_cos_hist.resize(iters_done);
+  eigval_hist.resize(ncp, n_iter_final);
+  obj_hist.resize(n_iter_final);
+  subspace_cos_hist.resize(n_iter_final);
 
-  hyb_ctx.path_log.resize(iters_done);
-  hyb_ctx.reason_log.resize(iters_done);
-  hyb_ctx.lobpcg_iter_log.resize(iters_done);
-  hyb_ctx.lobpcg_fail_iter_log.resize(iters_done);
-  hyb_ctx.lobpcg_max_rel_res_log.resize(iters_done);
+  hyb_ctx.path_log.resize(n_iter_final);
+  hyb_ctx.reason_log.resize(n_iter_final);
+  hyb_ctx.lobpcg_iter_log.resize(n_iter_final);
+  hyb_ctx.lobpcg_fail_iter_log.resize(n_iter_final);
+  hyb_ctx.lobpcg_max_rel_res_log.resize(n_iter_final);
 
   return Rcpp::List::create(
       Rcpp::Named("imputed_values") = imputed_values,
       Rcpp::Named("mse") = mse,
+      Rcpp::Named("n_iter") = n_iter_final,
+      Rcpp::Named("criterion_final") = criterion_final,
+      Rcpp::Named("converged") = converged,
       Rcpp::Named("solver_chosen") = hyb_ctx.solver_chosen_code(),
       Rcpp::Named("eigval_hist") = eigval_hist,
       Rcpp::Named("obj_hist") = obj_hist,
@@ -955,6 +1015,9 @@ Rcpp::List pca_imp_internal_cpp(
   return Rcpp::List::create(
       Rcpp::Named("imputed_values") = imputed_values,
       Rcpp::Named("mse") = mse,
+      Rcpp::Named("n_iter") = n_iter_final,
+      Rcpp::Named("criterion_final") = criterion_final,
+      Rcpp::Named("converged") = converged,
       Rcpp::Named("solver_chosen") = hyb_ctx.solver_chosen_code(),
       Rcpp::Named("n_exact") = hyb_ctx.n_exact,
       Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
