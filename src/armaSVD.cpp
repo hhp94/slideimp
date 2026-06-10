@@ -37,8 +37,9 @@ void impute_restandardize(arma::mat &Xhat,
                           const arma::uvec &miss_cols,
                           const arma::uvec &miss_rows_flat,
                           const arma::uvec &miss_rows_offsets,
-                          const double *obs_sum,
-                          const double *obs_sumsq)
+                          const double *mu0,
+                          const double *obs_sum_c,
+                          const double *obs_sumsq_c)
 {
   double *xptr = Xhat.memptr();
   const double *fxp = fittedX.memptr();
@@ -67,6 +68,10 @@ void impute_restandardize(arma::mat &Xhat,
 
     const double old_mu = mean_p(j);
 
+    // old_mu stays within O(sd) of mu0[j], so this subtraction is exact
+    // (Sterbenz) and dmu_old is an O(sd) quantity.
+    const double dmu_old = old_mu - mu0[j];
+
     double old_et;
     if constexpr (Scale)
     {
@@ -77,8 +82,8 @@ void impute_restandardize(arma::mat &Xhat,
       old_et = 1.0;
     }
 
-    double imp_sum = 0.0;
-    double imp_sumsq = 0.0;
+    double imp_sum_c = 0.0;
+    [[maybe_unused]] double imp_sumsq_c = 0.0; // accumulated only when Scale
 
     for_each_missing_in_col(cidx, miss_rows_offsets, miss_rows_flat,
                             [&](arma::uword i)
@@ -90,28 +95,35 @@ void impute_restandardize(arma::mat &Xhat,
 
                               if constexpr (Scale)
                               {
-                                const double v = v_std * old_et + old_mu;
-                                imp_sum += w * v;
-                                imp_sumsq += w * v * v;
+                                // centered imputed value v - mu0[j], formed
+                                // directly at O(sd); never materialize the
+                                // O(mean) value v itself.
+                                const double v_c = v_std * old_et + dmu_old;
+                                imp_sum_c += w * v_c;
+                                imp_sumsq_c += w * v_c * v_c;
                               }
                               else
                               {
-                                const double v = v_std + old_mu;
-                                imp_sum += w * v;
+                                const double v_c = v_std + dmu_old;
+                                imp_sum_c += w * v_c;
                               }
                             });
 
-    const double new_mu = obs_sum[j] + imp_sum;
+    // total weight over observed + imputed rows is exactly 1 (row_w was
+    // normalized), so the centered sums add up to the full mean offset.
+    const double dmu_new = obs_sum_c[j] + imp_sum_c;
+    const double new_mu = mu0[j] + dmu_new;
 
     if constexpr (Scale)
     {
-      const double new_var = obs_sumsq[j] + imp_sumsq - new_mu * new_mu;
+      const double new_var = obs_sumsq_c[j] + imp_sumsq_c - dmu_new * dmu_new;
       const double new_et = std::sqrt(std::max(0.0, new_var));
       const double new_et_eff = std::max(new_et, PCA_TOL);
 
       const double inv_new = 1.0 / new_et_eff;
       const double a = old_et * inv_new;
-      const double b = (old_mu - new_mu) * inv_new;
+      // (old_mu - new_mu) * inv_new. The mu0 offset cancels.
+      const double b = (dmu_old - dmu_new) * inv_new;
 
       if (scaled_col)
       {
@@ -134,7 +146,8 @@ void impute_restandardize(arma::mat &Xhat,
     }
     else
     {
-      const double b = old_mu - new_mu;
+      // old_mu - new_mu. The mu0 offset cancels.
+      const double b = dmu_old - dmu_new;
 
       if (scaled_col)
       {
@@ -171,22 +184,23 @@ static inline void impute_restandardize_dispatch(
     const arma::uvec &miss_cols,
     const arma::uvec &miss_rows_flat,
     const arma::uvec &miss_rows_offsets,
-    const double *obs_sum,
-    const double *obs_sumsq)
+    const double *mu0,
+    const double *obs_sum_c,
+    const double *obs_sumsq_c)
 {
   if (scale)
   {
     impute_restandardize<true>(Xhat, fittedX, mean_p, et,
                                wptr, swptr, X_chg_scaled, nrX,
                                miss_cols, miss_rows_flat, miss_rows_offsets,
-                               obs_sum, obs_sumsq);
+                               mu0, obs_sum_c, obs_sumsq_c);
   }
   else
   {
     impute_restandardize<false>(Xhat, fittedX, mean_p, et,
                                 wptr, swptr, X_chg_scaled, nrX,
                                 miss_cols, miss_rows_flat, miss_rows_offsets,
-                                obs_sum, obs_sumsq);
+                                mu0, obs_sum_c, obs_sumsq_c);
   }
 }
 
@@ -502,8 +516,9 @@ Rcpp::List pca_imp_internal_cpp(
   arma::mat fittedX;
 
   arma::rowvec denom(n_elig, arma::fill::zeros);
-  arma::rowvec weighted_sum(n_elig, arma::fill::zeros);
-  arma::rowvec sum_sq(n_elig, arma::fill::zeros);
+  arma::rowvec mu0(n_elig, arma::fill::zeros);
+  arma::rowvec obs_sum_c(n_elig, arma::fill::zeros);
+  arma::rowvec obs_sumsq_c(n_elig, arma::fill::zeros);
 
   LOC_TIC(pca_imp_gram, "pass2_scan");
   {
@@ -517,13 +532,13 @@ Rcpp::List pca_imp_internal_cpp(
       const arma::uword cidx = has_miss ? (jp - n_fixed) : 0;
       arma::uword p = has_miss ? miss_rows_offsets[cidx] : 0;
 
-      double d_acc = 0.0, ws_acc = 0.0, ss_acc = 0.0;
+      // pass A: observed weight, raw weighted sum, missing-row indices.
+      double d_acc = 0.0, ws_acc = 0.0;
       for (arma::uword i = 0; i < nrX; ++i)
       {
         const double v = src[i];
         if (std::isnan(v))
         {
-          dst[i] = 0.0;
           if (has_miss)
           {
             miss_rows_flat[p++] = i;
@@ -531,16 +546,40 @@ Rcpp::List pca_imp_internal_cpp(
         }
         else
         {
-          dst[i] = v;
           const double w = wptr[i];
           d_acc += w;
           ws_acc += w * v;
-          ss_acc += w * v * v;
         }
       }
       denom[jp] = d_acc;
-      weighted_sum[jp] = ws_acc;
-      sum_sq[jp] = ss_acc;
+
+      // per-column reference mean for centered moment tracking. The
+      // d_acc == 0 case is rejected right after this loop; 0.0 just keeps
+      // the pass-B arithmetic finite until then.
+      const double mu0_j = (d_acc > 0.0) ? (ws_acc / d_acc) : 0.0;
+      mu0[jp] = mu0_j;
+
+      // pass B: centered moments at O(sd) magnitude (avoids the
+      // E[x^2] - mu^2 catastrophic cancellation), plus the Xhat write.
+      double osc_acc = 0.0, ossq_acc = 0.0;
+      for (arma::uword i = 0; i < nrX; ++i)
+      {
+        const double v = src[i];
+        if (std::isnan(v))
+        {
+          dst[i] = 0.0;
+        }
+        else
+        {
+          dst[i] = v;
+          const double vc = v - mu0_j;
+          const double w = wptr[i];
+          osc_acc += w * vc;
+          ossq_acc += w * vc * vc;
+        }
+      }
+      obs_sum_c[jp] = osc_acc; // ~0 by construction; kept for exactness
+      obs_sumsq_c[jp] = ossq_acc;
     }
   }
   LOC_TOC(pca_imp_gram, "pass2_scan");
@@ -556,17 +595,15 @@ Rcpp::List pca_imp_internal_cpp(
     }
   }
 
-  const double *wsptr = weighted_sum.memptr();
-  const double *ssptr = sum_sq.memptr();
-  arma::rowvec mean_p = weighted_sum / denom;
+  const double *mu0ptr = mu0.memptr();
+  const double *oscptr = obs_sum_c.memptr();
+  const double *ossqptr = obs_sumsq_c.memptr();
+  const arma::rowvec mean_resid = obs_sum_c / denom;
+  arma::rowvec mean_p = mu0 + mean_resid;
   arma::rowvec et;
   if (scale)
   {
-    // clamp tiny-negative variance from rounding before sqrt, and floor the
-    // scale at PCA_TOL so 1/et is finite. Storing the floored value here is
-    // consistent with impute_restandardize<true> committing
-    // et(j) = max(new_et, PCA_TOL).
-    arma::rowvec var = sum_sq / denom - mean_p % mean_p;
+    arma::rowvec var = obs_sumsq_c / denom - mean_resid % mean_resid;
     var.transform([](double v)
                   { return v < 0.0 ? 0.0 : v; });
     et = arma::sqrt(var);
@@ -720,7 +757,7 @@ Rcpp::List pca_imp_internal_cpp(
 
   PrecGuard prec_guard;
 
-    const int iter_w = 4;
+  const int iter_w = 4;
   const int obj_w = 8;
   const int ratio_w = 12;
 
@@ -772,8 +809,9 @@ Rcpp::List pca_imp_internal_cpp(
         miss_cols_idx,
         miss_rows_flat,
         miss_rows_offsets,
-        wsptr,
-        ssptr);
+        mu0ptr,
+        oscptr,
+        ossqptr);
     LOC_TOC(pca_imp_gram, "restandardize");
 
     LOC_TIC(pca_imp_gram, "svd");
