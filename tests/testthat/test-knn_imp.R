@@ -42,9 +42,21 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
   idx_mlpack <- imputed_mlpack[, 1:2, drop = FALSE]
 
   # sort so the comparison is order-independent
-  expected_sorted <- expected_local[order(expected_local[, 1], expected_local[, 2]), , drop = FALSE]
-  brute_sorted <- idx_brute[order(idx_brute[, 1], idx_brute[, 2]), , drop = FALSE]
-  mlpack_sorted <- idx_mlpack[order(idx_mlpack[, 1], idx_mlpack[, 2]), , drop = FALSE]
+  expected_sorted <- expected_local[
+    order(expected_local[, 1], expected_local[, 2]),
+    ,
+    drop = FALSE
+  ]
+  brute_sorted <- idx_brute[
+    order(idx_brute[, 1], idx_brute[, 2]),
+    ,
+    drop = FALSE
+  ]
+  mlpack_sorted <- idx_mlpack[
+    order(idx_mlpack[, 1], idx_mlpack[, 2]),
+    ,
+    drop = FALSE
+  ]
 
   expect_equal(brute_sorted, expected_sorted)
   expect_equal(mlpack_sorted, expected_sorted)

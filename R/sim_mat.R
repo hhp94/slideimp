@@ -122,7 +122,8 @@ sim_mat <- function(
     cols_na <- sample.int(p, n_cols_na)
     per_col <- floor(n_total_na / n_cols_na)
     remainder <- n_total_na - per_col * n_cols_na
-    counts <- rep(per_col, n_cols_na) + c(rep(1L, remainder), rep(0L, n_cols_na - remainder))
+    counts <- rep(per_col, n_cols_na) +
+      c(rep(1L, remainder), rep(0L, n_cols_na - remainder))
     row_idx <- unlist(lapply(counts, function(k) sample.int(n, k)))
     col_idx <- rep(cols_na, times = counts)
     d[cbind(row_idx, col_idx)] <- NA

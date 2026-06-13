@@ -61,27 +61,37 @@ resolve_subset <- function(subset, obj, sort = FALSE) {
     subset <- seq_len(nc)
   } else if (is.character(subset)) {
     if (is.null(cn)) {
-      cli::cli_abort("{.arg subset} contains characters but {.arg obj} has no column names.")
+      cli::cli_abort(
+        "{.arg subset} contains characters but {.arg obj} has no column names."
+      )
     }
     if (anyDuplicated(subset)) {
       cli::cli_abort("{.arg subset} contains duplicate feature names.")
     }
     matched <- match(subset, cn, nomatch = NA_integer_)
     if (anyNA(matched)) {
-      cli::cli_inform("Feature(s) in {.arg subset} not found in {.code colnames(obj)} and dropped.")
+      cli::cli_inform(
+        "Feature(s) in {.arg subset} not found in {.code colnames(obj)} and dropped."
+      )
     }
     subset <- matched[!is.na(matched)]
   } else {
     checkmate::assert_integerish(
       subset,
-      lower = 1L, upper = nc, any.missing = FALSE, unique = TRUE,
-      min.len = 0L, .var.name = "`subset`"
+      lower = 1L,
+      upper = nc,
+      any.missing = FALSE,
+      unique = TRUE,
+      min.len = 0L,
+      .var.name = "`subset`"
     )
     subset <- as.integer(subset)
   }
 
   if (length(subset) == 0L) {
-    cli::cli_inform("No features in {.arg subset} detected. No imputation was performed.")
+    cli::cli_inform(
+      "No features in {.arg subset} detected. No imputation was performed."
+    )
     return(NULL)
   }
 
@@ -144,17 +154,34 @@ check_pin_blas <- function(pin_blas) {
     required = "k",
     methods = c("euclidean", "manhattan"),
     allowed = c(
-      "k", "method", "colmax", "post_imp",
-      "dist_pow", "tree", ".progress"
+      "k",
+      "method",
+      "colmax",
+      "post_imp",
+      "dist_pow",
+      "tree",
+      ".progress"
     )
   ),
   pca = list(
     required = "ncp",
     methods = c("regularized", "EM"),
     allowed = c(
-      "ncp", "scale", "method", "coeff.ridge", "row.w",
-      "threshold", "seed", "nb.init", "maxiter", "miniter",
-      "lobpcg_control", "solver", "colmax", "post_imp", "clamp"
+      "ncp",
+      "scale",
+      "method",
+      "coeff.ridge",
+      "row.w",
+      "threshold",
+      "seed",
+      "nb.init",
+      "maxiter",
+      "miniter",
+      "lobpcg_control",
+      "solver",
+      "colmax",
+      "post_imp",
+      "clamp"
     )
   )
 )
@@ -184,7 +211,9 @@ check_pin_blas <- function(pin_blas) {
 #' @keywords internal
 #' @noRd
 check_unknown_params <- function(
-  param_names, mode, extra = character(),
+  param_names,
+  mode,
+  extra = character(),
   arg = "parameters"
 ) {
   allowed <- unique(c(.param_registry[[mode]]$allowed, extra))

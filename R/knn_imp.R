@@ -79,7 +79,14 @@ knn_imp <- function(
   .progress = FALSE
 ) {
   # Pre-conditioning
-  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(
+    obj,
+    mode = "numeric",
+    min.rows = 1,
+    min.cols = 2,
+    null.ok = FALSE,
+    .var.name = "obj"
+  )
   check_finite(obj)
   method <- match.arg(method)
   checkmate::assert_int(k, lower = 1, upper = ncol(obj) - 1, .var.name = "k")
@@ -102,7 +109,9 @@ knn_imp <- function(
 
   # early exit if no missingness in subset columns
   if (!any(cmiss[subset] > 0)) {
-    cli::cli_inform("No missing values in subset columns. Returning input unchanged.")
+    cli::cli_inform(
+      "No missing values in subset columns. Returning input unchanged."
+    )
     return(obj)
   }
 
@@ -144,10 +153,7 @@ knn_imp <- function(
     )
   }
 
-  method <- switch(method,
-    "euclidean" = 0L,
-    "manhattan" = 1L
-  )
+  method <- switch(method, "euclidean" = 0L, "manhattan" = 1L)
 
   # Impute
   if (!tree) {

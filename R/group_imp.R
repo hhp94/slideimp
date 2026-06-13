@@ -66,7 +66,10 @@ remove_feat_from_aux <- function(aux, feat, iter) {
   feat_flat <- unlist(feat, use.names = FALSE)
   feat_gid <- rep.int(iter, feat_lens)
 
-  keep <- is.na(collapse::fmatch(list(aux_gid, aux_flat), list(feat_gid, feat_flat)))
+  keep <- is.na(collapse::fmatch(
+    list(aux_gid, aux_flat),
+    list(feat_gid, feat_flat)
+  ))
   gid_f <- factor(aux_gid[keep], levels = iter)
   out <- collapse::gsplit(aux_flat[keep], gid_f)
   names(out) <- NULL
@@ -194,21 +197,27 @@ prep_groups <- function(
   # pre-conditioning ---
   checkmate::assert_character(
     obj_cn,
-    min.len = 1, unique = TRUE,
-    any.missing = FALSE, .var.name = "obj_cn"
+    min.len = 1,
+    unique = TRUE,
+    any.missing = FALSE,
+    .var.name = "obj_cn"
   )
   group <- slideimp_resolve_group(group)
   checkmate::assert_data_frame(group, min.rows = 1, .var.name = "group")
   checkmate::assert_names(
     colnames(group),
-    must.include = "feature", .var.name = "group"
+    must.include = "feature",
+    .var.name = "group"
   )
   checkmate::assert_int(min_group_size, lower = 0, .var.name = "min_group_size")
   checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
   checkmate::assert_character(
     subset,
-    min.len = 1, any.missing = FALSE, unique = TRUE,
-    null.ok = TRUE, .var.name = "subset"
+    min.len = 1,
+    any.missing = FALSE,
+    unique = TRUE,
+    null.ok = TRUE,
+    .var.name = "subset"
   )
 
   # Step 1: Normalize input format ----
@@ -219,7 +228,8 @@ prep_groups <- function(
 
     checkmate::assert_character(
       group$feature,
-      any.missing = FALSE, unique = TRUE,
+      any.missing = FALSE,
+      unique = TRUE,
       .var.name = "group$feature"
     )
 
@@ -245,8 +255,10 @@ prep_groups <- function(
 
   checkmate::assert_list(
     group$feature,
-    types = "character", min.len = 1,
-    unique = TRUE, .var.name = "group$feature"
+    types = "character",
+    min.len = 1,
+    unique = TRUE,
+    .var.name = "group$feature"
   )
 
   # Normalize aux - always present as a list of character vectors
@@ -254,7 +266,8 @@ prep_groups <- function(
     checkmate::assert_list(
       group$aux,
       types = c("character", "logical", "null"),
-      min.len = 1, .var.name = "group$aux"
+      min.len = 1,
+      .var.name = "group$aux"
     )
     group$aux <- lapply(group$aux, function(x) {
       if (is.null(x) || is.logical(x)) character(0) else unique(x[!is.na(x)])
@@ -361,7 +374,9 @@ prep_groups <- function(
     }
     keep <- lengths(group$feature) > 0L
     if (!any(keep)) {
-      cli::cli_abort("No groups have features to impute after applying {.arg subset}.")
+      cli::cli_abort(
+        "No groups have features to impute after applying {.arg subset}."
+      )
     }
     if (any(!keep)) {
       dropped <- which(!keep)
@@ -384,19 +399,24 @@ prep_groups <- function(
     group_size <- lengths(group$feature) + lengths(group$aux)
     need <- pmax(min_group_size - group_size, 0L)
     if (any(need > 0)) {
-      group$aux <- Map(function(feat, aux, n) {
-        if (n == 0L) {
-          return(aux)
-        }
-        pool <- setdiff(A, c(feat, aux))
-        if (length(pool) < n) {
-          cli::cli_abort(c(
-            "{.arg min_group_size} is too large.",
-            "x" = "Not enough columns available to pad."
-          ))
-        }
-        c(aux, sample(pool, size = n))
-      }, group$feature, group$aux, need)
+      group$aux <- Map(
+        function(feat, aux, n) {
+          if (n == 0L) {
+            return(aux)
+          }
+          pool <- setdiff(A, c(feat, aux))
+          if (length(pool) < n) {
+            cli::cli_abort(c(
+              "{.arg min_group_size} is too large.",
+              "x" = "Not enough columns available to pad."
+            ))
+          }
+          c(aux, sample(pool, size = n))
+        },
+        group$feature,
+        group$aux,
+        need
+      )
     }
   }
 
@@ -572,8 +592,10 @@ group_imp <- function(
 ) {
   checkmate::assert_matrix(
     obj,
-    mode = "numeric", col.names = "unique",
-    null.ok = FALSE, .var.name = "obj"
+    mode = "numeric",
+    col.names = "unique",
+    null.ok = FALSE,
+    .var.name = "obj"
   )
   check_finite(obj)
   checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
@@ -602,16 +624,31 @@ group_imp <- function(
 
   # Step 2: Resolve parameters ----
   if (!is.null(k) && !is.null(ncp)) {
-    cli::cli_abort("Cannot specify both {.arg k} and {.arg ncp} as global parameters.")
+    cli::cli_abort(
+      "Cannot specify both {.arg k} and {.arg ncp} as global parameters."
+    )
   }
 
   # global fills gaps (group-wise wins)
   global_params <- list(
-    k = k, method = method, colmax = colmax, post_imp = post_imp,
-    dist_pow = dist_pow, tree = tree, ncp = ncp, scale = scale,
-    coeff.ridge = coeff.ridge, threshold = threshold, row.w = row.w,
-    seed = seed, nb.init = nb.init, maxiter = maxiter, miniter = miniter,
-    lobpcg_control = lobpcg_control, solver = solver, clamp = clamp
+    k = k,
+    method = method,
+    colmax = colmax,
+    post_imp = post_imp,
+    dist_pow = dist_pow,
+    tree = tree,
+    ncp = ncp,
+    scale = scale,
+    coeff.ridge = coeff.ridge,
+    threshold = threshold,
+    row.w = row.w,
+    seed = seed,
+    nb.init = nb.init,
+    maxiter = maxiter,
+    miniter = miniter,
+    lobpcg_control = lobpcg_control,
+    solver = solver,
+    clamp = clamp
   )
   global_params <- global_params[!vapply(global_params, is.null, logical(1))]
 
@@ -653,9 +690,13 @@ group_imp <- function(
 
   # validate method values
   valid_methods <- reg$methods
-  bad_method <- vapply(group$parameters, function(p) {
-    !is.null(p$method) && !(p$method %in% valid_methods)
-  }, logical(1))
+  bad_method <- vapply(
+    group$parameters,
+    function(p) {
+      !is.null(p$method) && !(p$method %in% valid_methods)
+    },
+    logical(1)
+  )
 
   if (any(bad_method)) {
     bad <- which(bad_method)
@@ -666,7 +707,10 @@ group_imp <- function(
   }
 
   # validate parameter names
-  all_param_names <- unique(unlist(lapply(group$parameters, names), use.names = FALSE))
+  all_param_names <- unique(unlist(
+    lapply(group$parameters, names),
+    use.names = FALSE
+  ))
 
   check_unknown_params(
     param_names = all_param_names,
@@ -720,7 +764,8 @@ group_imp <- function(
   names(aux_splits) <- NULL
 
   indices <- lapply(
-    iter, group_indices,
+    iter,
+    group_indices,
     feat_splits = feat_splits,
     aux_splits = aux_splits,
     prep_groups = group$feature
@@ -780,8 +825,10 @@ group_imp <- function(
     big_obj <- bigmemory::as.big.matrix(obj, shared = TRUE)
     big_obj_desc <- bigmemory::describe(big_obj)
     big_out <- bigmemory::big.matrix(
-      nrow = nrow(obj), ncol = length(all_feats_pos),
-      type = "double", shared = TRUE
+      nrow = nrow(obj),
+      ncol = length(all_feats_pos),
+      type = "double",
+      shared = TRUE
     )
     big_out_desc <- bigmemory::describe(big_out)
     on.exit(
@@ -804,14 +851,21 @@ group_imp <- function(
         sub_mat <- src[, indices[[i]]$col_idx, drop = FALSE]
 
         imputed <- tryCatch(
-          suppressMessages(do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))),
+          suppressMessages(do.call(
+            imp_fn,
+            c(list(obj = sub_mat), params[[i]])
+          )),
           slideimp_infeasible = function(e) {
-            switch(on_infeasible,
-              error = cli::cli_abort(c(
-                "Group {group_ids[[i]]} is infeasible for imputation.",
-                "x" = conditionMessage(e),
-                "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
-              ), parent = e),
+            switch(
+              on_infeasible,
+              error = cli::cli_abort(
+                c(
+                  "Group {group_ids[[i]]} is infeasible for imputation.",
+                  "x" = conditionMessage(e),
+                  "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
+                ),
+                parent = e
+              ),
               skip = structure(sub_mat, fallback = TRUE),
               mean = structure(
                 mean_imp_col(sub_mat, subset = indices[[i]]$features_idx_local),
@@ -821,7 +875,10 @@ group_imp <- function(
           }
         )
 
-        dst[, out_ranges[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
+        dst[, out_ranges[[i]]] <- imputed[,
+          indices[[i]]$features_idx_local,
+          drop = FALSE
+        ]
         return(isTRUE(attr(imputed, "fallback")))
       },
       big_obj_desc = big_obj_desc,
@@ -836,9 +893,11 @@ group_imp <- function(
     )
     m <- mirai::mirai_map(iter, crated_fn)
     fallback_flags <- unlist(m[.progress = .progress])
-    obj[, all_feats_pos] <- big_out[, ]
+    obj[, all_feats_pos] <- big_out[,]
   } else {
-    if (.progress) pb <- cli::cli_progress_bar(name = "Imputing", total = length(iter))
+    if (.progress) {
+      pb <- cli::cli_progress_bar(name = "Imputing", total = length(iter))
+    }
     fallback_flags <- logical(length(iter))
     for (i in iter) {
       sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
@@ -846,12 +905,16 @@ group_imp <- function(
       imputed <- tryCatch(
         suppressMessages(do.call(imp_fn, c(list(obj = sub_mat), params[[i]]))),
         slideimp_infeasible = function(e) {
-          switch(on_infeasible,
-            error = cli::cli_abort(c(
-              "Group {group_ids[[i]]} is infeasible for imputation.",
-              "x" = conditionMessage(e),
-              "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
-            ), parent = e),
+          switch(
+            on_infeasible,
+            error = cli::cli_abort(
+              c(
+                "Group {group_ids[[i]]} is infeasible for imputation.",
+                "x" = conditionMessage(e),
+                "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
+              ),
+              parent = e
+            ),
             skip = structure(sub_mat, fallback = TRUE),
             mean = structure(
               mean_imp_col(sub_mat, subset = indices[[i]]$features_idx_local),
@@ -861,7 +924,10 @@ group_imp <- function(
         }
       )
 
-      obj[, feat_splits[[i]]] <- imputed[, indices[[i]]$features_idx_local, drop = FALSE]
+      obj[, feat_splits[[i]]] <- imputed[,
+        indices[[i]]$features_idx_local,
+        drop = FALSE
+      ]
       fallback_flags[i] <- isTRUE(attr(imputed, "fallback"))
       if (.progress) cli::cli_progress_update(id = pb)
     }

@@ -3,7 +3,9 @@ load_all1 <- function(timer = TRUE, debug = FALSE) {
   checkmate::assert_flag(debug)
 
   flags <- character()
-  if (timer) flags <- c(flags, "-DLOC_TIMER")
+  if (timer) {
+    flags <- c(flags, "-DLOC_TIMER")
+  }
   flags <- c(flags, sprintf("-DPCA_IMP_DIAGNOSTICS=%d", as.integer(debug)))
 
   old <- Sys.getenv("PKG_CPPFLAGS", unset = "")
@@ -20,6 +22,7 @@ scratch <- function() {
 dump_roxygen2 <- function(output_file = "roxygen2.txt", dir = "R/") {
   cat(sprintf(
     "rg -nU --multiline-dotall \"^#'|^[a-zA-Z0-9_\\.]+ <- function\\(.*?\\) ?\\{\" %s > %s\n",
-    dir, output_file
+    dir,
+    output_file
   ))
 }

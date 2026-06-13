@@ -56,16 +56,25 @@ test_that("num_na not divisible by n_rows bumps last buckets by at least 1", {
 test_that("numeric na_col_subset restricts columns to the pool", {
   m <- sim_mat(p = 10, perc_total_na = 0)$input
   pool <- c(2L, 4L, 6L, 8L)
-  out <- sample_na_loc(m, n_cols = 3, n_rows = 2, na_col_subset = pool, n_reps = 10)
+  out <- sample_na_loc(
+    m,
+    n_cols = 3,
+    n_rows = 2,
+    na_col_subset = pool,
+    n_reps = 10
+  )
   used <- unique(unlist(lapply(out, function(r) r[, "col"])))
   expect_true(all(used %in% pool))
 })
 
 test_that("character na_col_subset resolves via colnames", {
   m <- sim_mat(p = 6, perc_total_na = 0)$input # colnames feature1 ... feature6
-  out <- sample_na_loc(m,
-    n_cols = 2, n_rows = 1,
-    na_col_subset = c("feature2", "feature5"), n_reps = 5
+  out <- sample_na_loc(
+    m,
+    n_cols = 2,
+    n_rows = 1,
+    na_col_subset = c("feature2", "feature5"),
+    n_reps = 5
   )
   used <- unique(unlist(lapply(out, function(r) r[, "col"])))
   expect_setequal(used, c(2L, 5L))
@@ -130,10 +139,7 @@ test_that("aborts when requested n_cols exceeds available pool", {
 test_that("resulting matrix respects colmax", {
   m <- sim_mat(20, 8, perc_total_na = 0)$input
   colmax <- 0.5
-  out <- sample_na_loc(m,
-    n_cols = 4, n_rows = 5,
-    colmax = colmax, n_reps = 10
-  )
+  out <- sample_na_loc(m, n_cols = 4, n_rows = 5, colmax = colmax, n_reps = 10)
   cap <- floor(nrow(m) * colmax)
   for (rep in out) {
     m2 <- apply_na(m, rep)
@@ -145,10 +151,7 @@ test_that("resulting matrix respects colmax", {
 test_that("resulting matrix respects rowmax", {
   m <- sim_mat(30, 10, perc_total_na = 0)$input
   rowmax <- 0.4
-  out <- sample_na_loc(m,
-    n_cols = 5, n_rows = 4,
-    rowmax = rowmax, n_reps = 10
-  )
+  out <- sample_na_loc(m, n_cols = 5, n_rows = 4, rowmax = rowmax, n_reps = 10)
   cap <- floor(ncol(m) * rowmax)
   for (rep in out) {
     m2 <- apply_na(m, rep)
@@ -162,9 +165,13 @@ test_that("reps are independently sampled (not identical)", {
   m <- sim_mat(30, 10, perc_total_na = 0)$input
   out <- sample_na_loc(m, n_cols = 4, n_rows = 3, n_reps = 5)
   # Hash each rep; at least 2 distinct with high probability.
-  sigs <- vapply(out, function(r) {
-    paste(r[, "row"], r[, "col"], collapse = ",")
-  }, character(1))
+  sigs <- vapply(
+    out,
+    function(r) {
+      paste(r[, "row"], r[, "col"], collapse = ",")
+    },
+    character(1)
+  )
   expect_gt(length(unique(sigs)), 1)
 })
 
@@ -183,10 +190,7 @@ test_that("aborts when budgets make sampling infeasible", {
   # but colmax=0.1 -> floor(10*0.1)=1 NA per column, so needing 3 is impossible.
   m <- sim_mat(10, 6, perc_total_na = 0)$input
   expect_error(
-    sample_na_loc(m,
-      n_cols = 2, n_rows = 3, colmax = 0.1,
-      max_attempts = 3
-    ),
+    sample_na_loc(m, n_cols = 2, n_rows = 3, colmax = 0.1, max_attempts = 3),
     "Failed to sample NA locations"
   )
 })
@@ -218,8 +222,10 @@ test_that("final colmax / rowmax account for pre-existing NAs", {
 
   out <- sample_na_loc(
     m,
-    n_cols = 4, n_rows = 3,
-    colmax = colmax, rowmax = rowmax,
+    n_cols = 4,
+    n_rows = 3,
+    colmax = colmax,
+    rowmax = rowmax,
     n_reps = 20
   )
   col_cap <- floor(nrow(m) * colmax)
@@ -241,8 +247,10 @@ test_that("columns with exhausted col_room are skipped even if individually heal
 
   out <- sample_na_loc(
     m,
-    n_cols = 4, n_rows = 3,
-    colmax = colmax, n_reps = 20
+    n_cols = 4,
+    n_rows = 3,
+    colmax = colmax,
+    n_reps = 20
   )
   for (rep in out) {
     expect_false(2L %in% rep[, "col"])
@@ -315,7 +323,8 @@ test_that("tune_imp works", {
           class(x$estimate)
         },
         character(1)
-      ) == "numeric"
+      ) ==
+        "numeric"
     )
   )
 
@@ -326,7 +335,13 @@ test_that("tune_imp works", {
     post_imp = TRUE
   )
   expect_no_error({
-    knn_imp_res <- tune_imp(obj, knn_imp_par, .f = "knn_imp", n_reps = 1, num_na = 100)
+    knn_imp_res <- tune_imp(
+      obj,
+      knn_imp_par,
+      .f = "knn_imp",
+      n_reps = 1,
+      num_na = 100
+    )
   })
 
   expect_true(
@@ -337,14 +352,21 @@ test_that("tune_imp works", {
           class(x$estimate)
         },
         character(1)
-      ) == "numeric"
+      ) ==
+        "numeric"
     )
   )
 
   # Check `pca_imp`
   pca_imp_par <- data.frame(ncp = 2, miniter = 2)
   expect_no_error({
-    pca_imp_res <- tune_imp(obj, pca_imp_par, .f = "pca_imp", n_reps = 1, num_na = 100)
+    pca_imp_res <- tune_imp(
+      obj,
+      pca_imp_par,
+      .f = "pca_imp",
+      n_reps = 1,
+      num_na = 100
+    )
   })
 
   expect_true(
@@ -355,10 +377,10 @@ test_that("tune_imp works", {
           class(x$estimate)
         },
         character(1)
-      ) == "numeric"
+      ) ==
+        "numeric"
     )
   )
-
 
   # Check custom function
   f1 <- function() {}
@@ -371,14 +393,25 @@ test_that("tune_imp works", {
     value = c(0, 1)
   )
   expect_no_error({
-    custom_imp_res <- tune_imp(obj, custom_par, n_reps = 1, num_na = 100, .f = custom_fun)
+    custom_imp_res <- tune_imp(
+      obj,
+      custom_par,
+      n_reps = 1,
+      num_na = 100,
+      .f = custom_fun
+    )
   })
 
   expect_true(
     all(
-      vapply(custom_imp_res$result, \(x) {
-        class(x$estimate)
-      }, character(1)) == "numeric"
+      vapply(
+        custom_imp_res$result,
+        \(x) {
+          class(x$estimate)
+        },
+        character(1)
+      ) ==
+        "numeric"
     )
   )
 })
@@ -454,9 +487,13 @@ test_that("tune_imp works when n_reps is a list of NA locations", {
 
   # Check that results contain numeric estimates
   expect_true(
-    all(vapply(knn_imp_res$result, function(x) {
-      is.numeric(x$estimate) && is.numeric(x$truth)
-    }, logical(1)))
+    all(vapply(
+      knn_imp_res$result,
+      function(x) {
+        is.numeric(x$estimate) && is.numeric(x$truth)
+      },
+      logical(1)
+    ))
   )
 
   # Test with custom function
@@ -611,7 +648,9 @@ test_that("compute_metrics works with slideimp_tune and data.frame", {
   # slideimp_tune object
   out_tune <- compute_metrics(result_tune)
   expect_s3_class(out_tune, "data.frame")
-  expect_true(all(c(".metric", ".estimator", ".estimate", "n", "n_miss") %in% names(out_tune)))
+  expect_true(all(
+    c(".metric", ".estimator", ".estimate", "n", "n_miss") %in% names(out_tune)
+  ))
   expect_equal(sort(unique(out_tune$.metric)), c("mae", "rmse"))
 
   # Plain data.frame
@@ -720,9 +759,13 @@ test_that("tune_imp works with custom function and list-column parameters", {
   expect_true("result" %in% names(res))
   expect_true(
     all(
-      vapply(res$result, \(x) {
-        is.numeric(x$estimate) && nrow(x) > 0
-      }, logical(1))
+      vapply(
+        res$result,
+        \(x) {
+          is.numeric(x$estimate) && nrow(x) > 0
+        },
+        logical(1)
+      )
     )
   )
   # The weights list column should be preserved in the output
@@ -757,9 +800,13 @@ test_that("tune_imp works with custom function and NULL parameters", {
   expect_false(".placeholder" %in% names(res))
   expect_true(
     all(
-      vapply(res$result, \(x) {
-        is.numeric(x$estimate) && is.numeric(x$truth) && nrow(x) > 0
-      }, logical(1))
+      vapply(
+        res$result,
+        \(x) {
+          is.numeric(x$estimate) && is.numeric(x$truth) && nrow(x) > 0
+        },
+        logical(1)
+      )
     )
   )
 })
@@ -817,9 +864,12 @@ test_that("serial branch reuses `pre` correctly across param_sets within a rep",
   params <- data.frame(tag = c("a", "b", "c")) # 3 param sets
 
   res <- tune_imp(
-    obj, params,
+    obj,
+    params,
     .f = capture_fun,
-    n_reps = 2, num_na = 20, .progress = FALSE
+    n_reps = 2,
+    num_na = 20,
+    .progress = FALSE
   )
 
   # 1 probe call + 2 reps * 3 param_sets = 7
@@ -896,7 +946,10 @@ test_that("slide_imp flank mode is tuned correctly", {
 
   ## now we setup tune_imp
   params <- data.frame(
-    min_window_n = 3, window_size = 5, overlap_size = 0, flank = TRUE
+    min_window_n = 3,
+    window_size = 5,
+    overlap_size = 0,
+    flank = TRUE
   )
   knn_params <- params
   knn_params$k <- 2

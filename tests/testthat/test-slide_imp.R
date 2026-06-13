@@ -53,7 +53,7 @@ test_that("slide_imp knn mode works", {
     post_imp = TRUE
   )
 
-  expect_equal(simple_mean[, ], final_imputed)
+  expect_equal(simple_mean[,], final_imputed)
 
   # slide_imp weighted should be different than simple mean
   weighted_1 <- slide_imp(
@@ -78,8 +78,8 @@ test_that("slide_imp knn mode works", {
     post_imp = TRUE,
     dist_pow = 2
   )
-  expect_true(sum((simple_mean[, ] - weighted_1[, ])^2) > 0)
-  expect_true(sum((weighted_2[, ] - weighted_1[, ])^2) > 0)
+  expect_true(sum((simple_mean[,] - weighted_1[,])^2) > 0)
+  expect_true(sum((weighted_2[,] - weighted_1[,])^2) > 0)
 })
 
 test_that("slide_imp subset works", {
@@ -205,7 +205,7 @@ test_that("slide_imp edge case no overlap", {
       k = 3,
       colmax = 0.9,
       post_imp = TRUE
-    )[, ],
+    )[,],
     final_imputed
   )
 })
@@ -264,7 +264,7 @@ test_that("slide_imp pca mode works", {
     miniter = 2,
     seed = 1234
   )
-  expect_equal(simple_mean[, ], final_imputed)
+  expect_equal(simple_mean[,], final_imputed)
 })
 
 test_that("slide_imp handling of errors on zero-variance features in PCA mode", {
@@ -331,7 +331,7 @@ test_that("slide_imp flank works with knn", {
       post_imp = TRUE,
       subset = subset,
       .progress = FALSE
-    )[, ],
+    )[,],
     result
   )
 })
@@ -390,8 +390,8 @@ test_that("slide_imp K-NN skips windows not covering any subset features", {
       colmax = 0.9,
       post_imp = TRUE,
       subset = subset
-    )[, ],
-    final_imputed[, ]
+    )[,],
+    final_imputed[,]
   )
 })
 
@@ -441,8 +441,8 @@ test_that("slide_imp PCA skips windows not covering any subset features", {
       scale = TRUE,
       seed = 1,
       subset = subset
-    )[, ],
-    final_imputed[, ]
+    )[,],
+    final_imputed[,]
   )
 })
 
@@ -492,7 +492,7 @@ test_that("slide_imp flank works with pca", {
       subset = subset,
       seed = 1234,
       .progress = FALSE
-    )[, ],
+    )[,],
     result
   )
 })
@@ -509,9 +509,12 @@ test_that("slide_imp: on_infeasible = 'error' rethrows slideimp_infeasible", {
   expect_error(
     suppressMessages(slide_imp(
       mat,
-      location = location, k = 3,
-      window_size = 10, overlap_size = 0,
-      min_window_n = 5, colmax = 0.9,
+      location = location,
+      k = 3,
+      window_size = 10,
+      overlap_size = 0,
+      min_window_n = 5,
+      colmax = 0.9,
       on_infeasible = "error",
       .progress = FALSE
     )),
@@ -528,10 +531,14 @@ test_that("slide_imp: on_infeasible = 'skip' marks windows and retains originals
 
   res <- suppressMessages(slide_imp(
     mat,
-    location = location, k = 3,
-    window_size = 10, overlap_size = 0,
-    min_window_n = 5, colmax = 0.9,
-    on_infeasible = "skip", .progress = FALSE
+    location = location,
+    k = 3,
+    window_size = 10,
+    overlap_size = 0,
+    min_window_n = 5,
+    colmax = 0.9,
+    on_infeasible = "skip",
+    .progress = FALSE
   ))
 
   # at least one window was skipped
@@ -555,10 +562,14 @@ test_that("slide_imp: on_infeasible = 'mean' fills skipped windows with column m
 
   res <- suppressMessages(slide_imp(
     mat,
-    location = location, k = 3,
-    window_size = 10, overlap_size = 0,
-    min_window_n = 5, colmax = 0.9,
-    on_infeasible = "mean", .progress = FALSE
+    location = location,
+    k = 3,
+    window_size = 10,
+    overlap_size = 0,
+    min_window_n = 5,
+    colmax = 0.9,
+    on_infeasible = "mean",
+    .progress = FALSE
   ))
 
   expect_gt(length(attr(res, "fallback")), 0)
@@ -576,10 +587,14 @@ test_that("slide_imp: mixed feasible + infeasible windows - skip isolates correc
 
   res <- suppressMessages(slide_imp(
     mat,
-    location = location, k = 3,
-    window_size = 10, overlap_size = 0,
-    min_window_n = 5, colmax = 0.9,
-    on_infeasible = "skip", .progress = FALSE
+    location = location,
+    k = 3,
+    window_size = 10,
+    overlap_size = 0,
+    min_window_n = 5,
+    colmax = 0.9,
+    on_infeasible = "skip",
+    .progress = FALSE
   ))
 
   expect_true(all(is.na(res[1:19, 11:20])))
@@ -602,11 +617,15 @@ test_that("slide_imp: flank mode - infeasible flank window skips only its target
 
   res <- suppressMessages(slide_imp(
     mat,
-    location = location, k = 2,
-    window_size = 10, flank = TRUE,
+    location = location,
+    k = 2,
+    window_size = 10,
+    flank = TRUE,
     subset = c(15, 60),
-    min_window_n = 5, colmax = 0.9,
-    on_infeasible = "skip", .progress = FALSE
+    min_window_n = 5,
+    colmax = 0.9,
+    on_infeasible = "skip",
+    .progress = FALSE
   ))
 
   # target 15's window was skipped -> col 15 retains original NA
@@ -626,10 +645,14 @@ test_that("slide_imp: overlapping windows - skip decrements overlap counts corre
 
   res <- suppressMessages(slide_imp(
     mat,
-    location = location, k = 3,
-    window_size = 20, overlap_size = 10,
-    min_window_n = 10, colmax = 0.9,
-    on_infeasible = "skip", .progress = FALSE
+    location = location,
+    k = 3,
+    window_size = 20,
+    overlap_size = 10,
+    min_window_n = 10,
+    colmax = 0.9,
+    on_infeasible = "skip",
+    .progress = FALSE
   ))
 
   # columns 11:20 are overlapped by windows [1-20] (skipped) and [11-30] (feasible)
@@ -644,16 +667,22 @@ test_that("slide_imp: all windows infeasible under 'error' fails with slideimp_i
   mat <- matrix(NA_real_, nrow = 20, ncol = 100)
   colnames(mat) <- sample.int(100, size = 100)
   # Leave a handful of values so check_finite passes per column, but colmax rejects
-  for (j in seq_len(ncol(mat))) mat[1, j] <- rnorm(1)
+  for (j in seq_len(ncol(mat))) {
+    mat[1, j] <- rnorm(1)
+  }
   location <- 1:100
 
   expect_error(
     suppressMessages(slide_imp(
       mat,
-      location = location, k = 3,
-      window_size = 10, overlap_size = 0,
-      min_window_n = 5, colmax = 0.5,
-      on_infeasible = "error", .progress = FALSE
+      location = location,
+      k = 3,
+      window_size = 10,
+      overlap_size = 0,
+      min_window_n = 5,
+      colmax = 0.5,
+      on_infeasible = "error",
+      .progress = FALSE
     )),
     class = "slideimp_infeasible"
   )
@@ -663,15 +692,21 @@ test_that("slide_imp: all windows infeasible under 'skip' returns original matri
   set.seed(1234)
   mat <- matrix(NA_real_, nrow = 20, ncol = 100)
   colnames(mat) <- sample.int(100, size = 100)
-  for (j in seq_len(ncol(mat))) mat[1, j] <- rnorm(1)
+  for (j in seq_len(ncol(mat))) {
+    mat[1, j] <- rnorm(1)
+  }
   location <- 1:100
 
   res <- suppressMessages(slide_imp(
     mat,
-    location = location, k = 3,
-    window_size = 10, overlap_size = 0,
-    min_window_n = 5, colmax = 0.5,
-    on_infeasible = "skip", .progress = FALSE
+    location = location,
+    k = 3,
+    window_size = 10,
+    overlap_size = 0,
+    min_window_n = 5,
+    colmax = 0.5,
+    on_infeasible = "skip",
+    .progress = FALSE
   ))
 
   # all windows skipped -> every value either original or 0-filled then overwritten

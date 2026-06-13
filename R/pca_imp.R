@@ -321,9 +321,19 @@ pca_imp <- function(
   .progress = FALSE
 ) {
   # pre-conditioning
-  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(
+    obj,
+    mode = "numeric",
+    null.ok = FALSE,
+    .var.name = "obj"
+  )
   check_finite(obj)
-  checkmate::assert_int(ncp, lower = 1L, upper = ncol(obj) - 1L, .var.name = "ncp")
+  checkmate::assert_int(
+    ncp,
+    lower = 1L,
+    upper = ncol(obj) - 1L,
+    .var.name = "ncp"
+  )
   method <- match.arg(method)
   checkmate::assert_flag(scale, .var.name = "scale")
   checkmate::assert_number(coeff.ridge, lower = 0, .var.name = "coeff.ridge")
@@ -448,11 +458,7 @@ pca_imp <- function(
   solver_code <- if (auto_force_exact) {
     0L
   } else {
-    switch(solver,
-      exact = 0L,
-      lobpcg = 1L,
-      auto = 2L
-    )
+    switch(solver, exact = 0L, lobpcg = 1L, auto = 2L)
   }
 
   # index of eligible columns (1-based)
@@ -484,11 +490,7 @@ pca_imp <- function(
   resolved_solver_code <- if (isTRUE(auto_force_exact)) {
     0L
   } else {
-    switch(solver,
-      exact = 0L,
-      lobpcg = 1L,
-      auto = NA_integer_
-    )
+    switch(solver, exact = 0L, lobpcg = 1L, auto = NA_integer_)
   }
 
   for (i in seq_len(nb.init)) {

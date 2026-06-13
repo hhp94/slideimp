@@ -58,13 +58,27 @@ sample_na_loc <- function(
   max_attempts = 100
 ) {
   checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
-  checkmate::assert_count(n_cols, positive = TRUE, null.ok = TRUE, .var.name = "n_cols")
+  checkmate::assert_count(
+    n_cols,
+    positive = TRUE,
+    null.ok = TRUE,
+    .var.name = "n_cols"
+  )
   checkmate::assert_count(n_rows, positive = TRUE, .var.name = "n_rows")
-  checkmate::assert_count(num_na, positive = TRUE, null.ok = TRUE, .var.name = "num_na")
+  checkmate::assert_count(
+    num_na,
+    positive = TRUE,
+    null.ok = TRUE,
+    .var.name = "num_na"
+  )
   checkmate::assert_count(n_reps, positive = TRUE, .var.name = "n_reps")
   checkmate::assert_number(rowmax, lower = 0, upper = 1, .var.name = "rowmax")
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
-  checkmate::assert_count(max_attempts, positive = TRUE, .var.name = "max_attempts")
+  checkmate::assert_count(
+    max_attempts,
+    positive = TRUE,
+    .var.name = "max_attempts"
+  )
 
   if (is.null(n_cols) && is.null(num_na)) {
     cli::cli_abort("Either {.arg n_cols} or {.arg num_na} must be supplied.")
@@ -115,10 +129,15 @@ sample_na_loc <- function(
   } else if (is.character(na_col_subset)) {
     checkmate::assert_character(
       na_col_subset,
-      any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "na_col_subset"
+      any.missing = FALSE,
+      min.len = 1,
+      unique = TRUE,
+      .var.name = "na_col_subset"
     )
     if (is.null(colnames(obj))) {
-      cli::cli_abort("{.arg na_col_subset} is character but {.arg obj} has no colnames.")
+      cli::cli_abort(
+        "{.arg na_col_subset} is character but {.arg obj} has no colnames."
+      )
     }
     missing_cols <- setdiff(na_col_subset, colnames(obj))
     if (length(missing_cols)) {
@@ -130,8 +149,12 @@ sample_na_loc <- function(
   } else if (is.numeric(na_col_subset)) {
     checkmate::assert_integerish(
       na_col_subset,
-      lower = 1, upper = ncol(obj),
-      any.missing = FALSE, min.len = 1, unique = TRUE, .var.name = "na_col_subset"
+      lower = 1,
+      upper = ncol(obj),
+      any.missing = FALSE,
+      min.len = 1,
+      unique = TRUE,
+      .var.name = "na_col_subset"
     )
     as.integer(na_col_subset)
   } else {
@@ -259,7 +282,8 @@ resolve_na_loc <- function(
     if (is.matrix(na_loc) || is.numeric(na_loc)) {
       na_loc <- list(na_loc)
     } else {
-      stop("`na_loc` must be a 2-col matrix, an integer vector, or a list of these.",
+      stop(
+        "`na_loc` must be a 2-col matrix, an integer vector, or a list of these.",
         call. = FALSE
       )
     }
@@ -277,7 +301,10 @@ resolve_na_loc <- function(
     if (is.matrix(elem)) {
       checkmate::assert_matrix(
         elem,
-        mode = "integerish", ncols = 2, min.rows = 1, .var.name = nm
+        mode = "integerish",
+        ncols = 2,
+        min.rows = 1,
+        .var.name = nm
       )
       checkmate::assert_true(
         all(elem[, 1] >= 1 & elem[, 1] <= nr),
@@ -290,8 +317,12 @@ resolve_na_loc <- function(
     } else {
       checkmate::assert_integerish(
         elem,
-        lower = 1, upper = n_total, any.missing = FALSE,
-        min.len = 1, unique = TRUE, .var.name = nm
+        lower = 1,
+        upper = n_total,
+        any.missing = FALSE,
+        min.len = 1,
+        unique = TRUE,
+        .var.name = nm
       )
     }
   }
@@ -302,7 +333,8 @@ resolve_na_loc <- function(
     numeric(1)
   )
   if (length(unique(elem_sizes)) != 1L) {
-    stop("All elements in `na_loc` must specify the same number of NA positions.",
+    stop(
+      "All elements in `na_loc` must specify the same number of NA positions.",
       call. = FALSE
     )
   }
@@ -554,16 +586,31 @@ tune_imp <- function(
       } else if (.f == "slide_imp") {
         allowed_params <- c(
           # required
-          "window_size", "overlap_size", "min_window_n",
+          "window_size",
+          "overlap_size",
+          "min_window_n",
           # one of
-          "k", "ncp",
+          "k",
+          "ncp",
           # shared tuneable
-          "flank", "method", "colmax", "post_imp", "on_infeasible",
+          "flank",
+          "method",
+          "colmax",
+          "post_imp",
+          "on_infeasible",
           # knn branch
           "dist_pow",
           # pca branch
-          "scale", "coeff.ridge", "threshold", "row.w",
-          "seed", "nb.init", "maxiter", "miniter", "lobpcg_control", "solver",
+          "scale",
+          "coeff.ridge",
+          "threshold",
+          "row.w",
+          "seed",
+          "nb.init",
+          "maxiter",
+          "miniter",
+          "lobpcg_control",
+          "solver",
           "clamp",
           # suppressed
           ".progress"
@@ -583,7 +630,9 @@ tune_imp <- function(
 
     if (.f == "slide_imp") {
       if (is.null(location)) {
-        cli::cli_abort("Tuning {.fn slide_imp} requires the {.arg location} argument provided to `tune_imp(location = ...)`.")
+        cli::cli_abort(
+          "Tuning {.fn slide_imp} requires the {.arg location} argument provided to `tune_imp(location = ...)`."
+        )
       }
       checkmate::assert_numeric(
         location,
@@ -594,7 +643,12 @@ tune_imp <- function(
         null.ok = FALSE,
         .var.name = "location"
       )
-      if (!all(c("window_size", "overlap_size", "min_window_n") %in% names(parameters))) {
+      if (
+        !all(
+          c("window_size", "overlap_size", "min_window_n") %in%
+            names(parameters)
+        )
+      ) {
         cli::cli_abort(
           "{.fn slide_imp} requires {.arg window_size}, {.arg overlap_size}, and {.arg min_window_n} in {.arg parameters}."
         )
@@ -611,7 +665,9 @@ tune_imp <- function(
       }
       # slide_imp defaults set progress to true. so we suppress it
       if (".progress" %in% names(parameters)) {
-        cli::cli_alert_info("{.arg .progress} in {.arg parameters} is suppressed.")
+        cli::cli_alert_info(
+          "{.arg .progress} in {.arg parameters} is suppressed."
+        )
       }
       parameters$.progress <- FALSE
     } else if (.f == "knn_imp") {
@@ -624,12 +680,16 @@ tune_imp <- function(
         )
       }
       if (".progress" %in% names(parameters)) {
-        cli::cli_alert_info("{.arg .progress} in {.arg parameters} is suppressed.")
+        cli::cli_alert_info(
+          "{.arg .progress} in {.arg parameters} is suppressed."
+        )
       }
       parameters$.progress <- FALSE
     } else if (.f == "pca_imp") {
       if (!"ncp" %in% names(parameters)) {
-        cli::cli_abort("{.fn pca_imp} requires {.arg ncp} in {.arg parameters}.")
+        cli::cli_abort(
+          "{.fn pca_imp} requires {.arg ncp} in {.arg parameters}."
+        )
       }
       if ("k" %in% names(parameters)) {
         cli::cli_abort(
@@ -648,17 +708,22 @@ tune_imp <- function(
   }
 
   checkmate::assert_flag(.progress, .var.name = ".progress")
-  checkmate::assert_integerish(cores, lower = 1, len = 1, null.ok = FALSE, .var.name = "cores")
+  checkmate::assert_integerish(
+    cores,
+    lower = 1,
+    len = 1,
+    null.ok = FALSE,
+    .var.name = "cores"
+  )
 
   # Two separate flags:
   # - is_subset_mode: slide_imp (both PCA & KNN) + knn_imp -> controls subset
   # injection by infering automatically from `na_loc`
   # - is_knn_mode: only paths that benefit from RcppThread cores
   is_subset_mode <- is.character(.f) && .f %in% c("slide_imp", "knn_imp")
-  is_knn_mode <- is.character(.f) && (
-    .f == "knn_imp" ||
-      (.f == "slide_imp" && "k" %in% names(parameters))
-  )
+  is_knn_mode <- is.character(.f) &&
+    (.f == "knn_imp" ||
+      (.f == "slide_imp" && "k" %in% names(parameters)))
 
   if (is_subset_mode && "subset" %in% names(parameters)) {
     cli::cli_abort(
@@ -729,26 +794,34 @@ tune_imp <- function(
 
   is_slide <- is.character(.f) && .f == "slide_imp"
   fixed_args <- list()
-  if (is_slide) fixed_args$location <- location
-  if (is_knn_mode) fixed_args$cores <- cores
+  if (is_slide) {
+    fixed_args$location <- location
+  }
+  if (is_knn_mode) {
+    fixed_args$cores <- cores
+  }
 
-  parameters_list <- lapply(split(parameters, f = as.factor(.rowid)), function(row) {
-    row_list <- as.list(row)
-    if (parameters_is_null) {
-      row_list$.placeholder <- NULL
-    }
-    row_list <- lapply(row_list, function(x) {
-      if (is.list(x) && length(x) == 1) {
-        x[[1]]
-      } else {
-        x
+  parameters_list <- lapply(
+    split(parameters, f = as.factor(.rowid)),
+    function(row) {
+      row_list <- as.list(row)
+      if (parameters_is_null) {
+        row_list$.placeholder <- NULL
       }
-    })
-    row_list
-  })
+      row_list <- lapply(row_list, function(x) {
+        if (is.list(x) && length(x) == 1) {
+          x[[1]]
+        } else {
+          x
+        }
+      })
+      row_list
+    }
+  )
 
   if (is.character(.f)) {
-    impute_f <- switch(.f,
+    impute_f <- switch(
+      .f,
       slide_imp = slide_imp,
       knn_imp = knn_imp,
       pca_imp = pca_imp
@@ -766,7 +839,9 @@ tune_imp <- function(
         checkmate::assert_matrix(
           probe_result,
           mode = "numeric",
-          nrows = nr, ncols = nc, null.ok = FALSE,
+          nrows = nr,
+          ncols = nc,
+          null.ok = FALSE,
           .var.name = "imputed_result"
         )
         checkmate::assert_true(
@@ -815,7 +890,7 @@ tune_imp <- function(
             na_positions <- na_loc[[rep_id]]
             truth_vec <- truth_list[[rep_id]]
             src <- bigmemory::attach.big.matrix(big_obj_desc)
-            pre <- src[, ]
+            pre <- src[,]
             rm(src)
             pre[na_positions] <- NA
             call_args <- c(
@@ -868,7 +943,9 @@ tune_imp <- function(
       )
     }
     result_list <- vector("list", length(iter))
-    if (.progress) pb <- cli::cli_progress_bar(name = "Tuning", total = length(iter))
+    if (.progress) {
+      pb <- cli::cli_progress_bar(name = "Tuning", total = length(iter))
+    }
     current_rep <- 0L
     pre <- NULL
     for (i in iter) {
@@ -892,14 +969,18 @@ tune_imp <- function(
     if (.progress) cli::cli_progress_done(id = pb)
   }
 
-  error_vec <- vapply(result_list, function(x) {
-    e <- attr(x, "error")
-    if (is.null(e)) {
-      NA_character_
-    } else {
-      e
-    }
-  }, character(1))
+  error_vec <- vapply(
+    result_list,
+    function(x) {
+      e <- attr(x, "error")
+      if (is.null(e)) {
+        NA_character_
+      } else {
+        e
+      }
+    },
+    character(1)
+  )
 
   result_df <- cbind(
     parameters[indices$param_set, , drop = FALSE],
@@ -1018,9 +1099,13 @@ compute_metrics.data.frame <- function(results, metrics = c("mae", "rmse")) {
     stop("`results` must contain a 'result' column.")
   }
   first_result <- results$result[[1]]
-  if (!is.data.frame(first_result) ||
-    !all(c("truth", "estimate") %in% names(first_result))) {
-    stop("Each element of 'result' must be a data.frame with 'truth' and 'estimate' columns.")
+  if (
+    !is.data.frame(first_result) ||
+      !all(c("truth", "estimate") %in% names(first_result))
+  ) {
+    stop(
+      "Each element of 'result' must be a data.frame with 'truth' and 'estimate' columns."
+    )
   }
   compute_metrics.slideimp_tune(results, metrics = metrics)
 }
@@ -1041,21 +1126,32 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   invalid_metrics <- setdiff(metrics, names(.metrics_list))
   if (length(invalid_metrics) > 0) {
     stop(
-      "Unknown metrics: ", paste(invalid_metrics, collapse = ", "), "\n",
-      "Available metrics: ", paste(names(.metrics_list), collapse = ", ")
+      "Unknown metrics: ",
+      paste(invalid_metrics, collapse = ", "),
+      "\n",
+      "Available metrics: ",
+      paste(names(.metrics_list), collapse = ", ")
     )
   }
   metric_fns <- .metrics_list[metrics]
   # always compute n and n_miss per result element
   results$n <- vapply(results$result, nrow, integer(1))
-  results$n_miss <- vapply(results$result, function(x) sum(is.na(x$estimate)), integer(1))
+  results$n_miss <- vapply(
+    results$result,
+    function(x) sum(is.na(x$estimate)),
+    integer(1)
+  )
   metrics_list <- lapply(
     results$result,
     \(x) calc_all_metrics(x, metric_fns = metric_fns)
   )
   keep_cols <- setdiff(names(results), "result")
   n_metrics <- vapply(metrics_list, nrow, integer(1))
-  row_data <- results[rep(seq_len(nrow(results)), n_metrics), keep_cols, drop = FALSE]
+  row_data <- results[
+    rep(seq_len(nrow(results)), n_metrics),
+    keep_cols,
+    drop = FALSE
+  ]
   metric_df <- collapse::rowbind(metrics_list)
   out <- cbind(row_data, metric_df)
   rownames(out) <- NULL
