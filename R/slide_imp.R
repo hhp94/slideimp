@@ -186,7 +186,9 @@ slide_imp <- function(
   # minimal pre-conditioning to avoid code fragility
   if (!dry_run) {
     if (sum(c(is.null(k), is.null(ncp))) != 1L) {
-      stop("Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither.")
+      stop(
+        "Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither."
+      )
     }
     imp_method <- if (!is.null(k)) "knn" else "pca"
   } else {
@@ -197,37 +199,76 @@ slide_imp <- function(
     on_infeasible <- match.arg(on_infeasible)
   }
   # Pre-conditioning ----
-  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
-  checkmate::assert_numeric(location,
-    len = ncol(obj), any.missing = FALSE, sorted = TRUE,
-    finite = TRUE, null.ok = FALSE, .var.name = "location"
+  checkmate::assert_matrix(
+    obj,
+    mode = "numeric",
+    null.ok = FALSE,
+    .var.name = "obj"
   )
-  checkmate::assert_number(window_size,
-    lower = .Machine$double.eps, finite = TRUE,
-    null.ok = FALSE, .var.name = "window_size"
+  checkmate::assert_numeric(
+    location,
+    len = ncol(obj),
+    any.missing = FALSE,
+    sorted = TRUE,
+    finite = TRUE,
+    null.ok = FALSE,
+    .var.name = "location"
   )
-  checkmate::assert_number(overlap_size,
-    lower = 0, finite = TRUE,
-    null.ok = FALSE, .var.name = "overlap_size"
+  checkmate::assert_number(
+    window_size,
+    lower = .Machine$double.eps,
+    finite = TRUE,
+    null.ok = FALSE,
+    .var.name = "window_size"
+  )
+  checkmate::assert_number(
+    overlap_size,
+    lower = 0,
+    finite = TRUE,
+    null.ok = FALSE,
+    .var.name = "overlap_size"
   )
   if (overlap_size >= window_size) {
     stop("`overlap_size` must be strictly less than `window_size`.")
   }
   checkmate::assert_flag(flank, .var.name = "flank", null.ok = FALSE)
   if (flank) {
-    stopifnot("`subset` must be provided when `flank = TRUE`." = !is.null(subset))
+    stopifnot(
+      "`subset` must be provided when `flank = TRUE`." = !is.null(subset)
+    )
     overlap_size <- 0
   }
-  checkmate::assert_int(min_window_n, lower = 2L, null.ok = FALSE, .var.name = "min_window_n")
+  checkmate::assert_int(
+    min_window_n,
+    lower = 2L,
+    null.ok = FALSE,
+    .var.name = "min_window_n"
+  )
 
   if (!dry_run && imp_method == "knn") {
-    method <- if (is.null(method)) "euclidean" else match.arg(method, c("euclidean", "manhattan"))
-    checkmate::assert_int(k, lower = 1L, upper = min_window_n - 1L, null.ok = FALSE, .var.name = "k")
+    method <- if (is.null(method)) {
+      "euclidean"
+    } else {
+      match.arg(method, c("euclidean", "manhattan"))
+    }
+    checkmate::assert_int(
+      k,
+      lower = 1L,
+      upper = min_window_n - 1L,
+      null.ok = FALSE,
+      .var.name = "k"
+    )
   } else if (!dry_run && imp_method == "pca") {
-    method <- if (is.null(method)) "regularized" else match.arg(method, c("regularized", "EM"))
+    method <- if (is.null(method)) {
+      "regularized"
+    } else {
+      match.arg(method, c("regularized", "EM"))
+    }
     solver <- match.arg(solver)
-    checkmate::assert_int(ncp,
-      lower = 1, upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
+    checkmate::assert_int(
+      ncp,
+      lower = 1,
+      upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
       .var.name = "ncp"
     )
     # other PCA arguments, including `lobpcg_control`, are checked in pca_imp().
@@ -263,13 +304,18 @@ slide_imp <- function(
   keep <- window_n >= min_window_n
   if (!any(keep)) {
     stop(
-      "All windows have fewer than `min_window_n` (", min_window_n,
+      "All windows have fewer than `min_window_n` (",
+      min_window_n,
       ") columns. Consider increasing `window_size` or decreasing `min_window_n`."
     )
   }
   if (any(!keep) && .progress) {
     message(
-      sprintf("Dropping %d window(s) with fewer than %d columns.", sum(!keep), min_window_n)
+      sprintf(
+        "Dropping %d window(s) with fewer than %d columns.",
+        sum(!keep),
+        min_window_n
+      )
     )
   }
   start <- start[keep]
@@ -298,11 +344,16 @@ slide_imp <- function(
     # drop windows that cover no subset columns (parity with flank mode).
     keep_sub <- lengths(subset_list) > 0L
     if (!any(keep_sub)) {
-      stop("No windows cover any column in `subset`. Consider increasing `window_size`.")
+      stop(
+        "No windows cover any column in `subset`. Consider increasing `window_size`."
+      )
     }
     if (any(!keep_sub) && .progress) {
       message(
-        sprintf("Dropping %d window(s) covering no `subset` columns.", sum(!keep_sub))
+        sprintf(
+          "Dropping %d window(s) covering no `subset` columns.",
+          sum(!keep_sub)
+        )
       )
     }
     start <- start[keep_sub]
@@ -338,7 +389,9 @@ slide_imp <- function(
   result <- obj
 
   copy_max_bytes <- 500 * 1024^2
-  copy_max_cols_per_chunk <- as.integer(copy_max_bytes %/% (max(1L, nrow(result)) * 8))
+  copy_max_cols_per_chunk <- as.integer(
+    copy_max_bytes %/% (max(1L, nrow(result)) * 8)
+  )
   copy_col_chunk <- min(10000L, max(1L, copy_max_cols_per_chunk))
 
   if (length(subset) > 0L) {
@@ -373,24 +426,43 @@ slide_imp <- function(
       suppressMessages(
         if (imp_method == "knn") {
           knn_imp(
-            obj = sub_mat, k = k, colmax = colmax, cores = cores,
-            method = method, post_imp = post_imp, dist_pow = dist_pow,
-            na_check = FALSE, .progress = FALSE,
+            obj = sub_mat,
+            k = k,
+            colmax = colmax,
+            cores = cores,
+            method = method,
+            post_imp = post_imp,
+            dist_pow = dist_pow,
+            na_check = FALSE,
+            .progress = FALSE,
             subset = subset_list[[i]]
           )
         } else {
           pca_imp(
-            obj = sub_mat, ncp = ncp, scale = scale, method = method,
-            coeff.ridge = coeff.ridge, threshold = threshold, seed = seed,
-            nb.init = nb.init, maxiter = maxiter, miniter = miniter,
-            row.w = row.w, lobpcg_control = lobpcg_control, solver = pca_solver_current,
-            na_check = FALSE, colmax = colmax, post_imp = post_imp,
-            clamp = clamp
+            obj = sub_mat,
+            ncp = ncp,
+            scale = scale,
+            method = method,
+            coeff.ridge = coeff.ridge,
+            threshold = threshold,
+            seed = seed,
+            nb.init = nb.init,
+            maxiter = maxiter,
+            miniter = miniter,
+            row.w = row.w,
+            lobpcg_control = lobpcg_control,
+            solver = pca_solver_current,
+            na_check = FALSE,
+            colmax = colmax,
+            post_imp = post_imp,
+            clamp = clamp,
+            .progress = FALSE
           )
         }
       ),
       slideimp_infeasible = function(e) {
-        switch(on_infeasible,
+        switch(
+          on_infeasible,
           error = stop(e),
           skip = structure(sub_mat, fallback = TRUE, skipped = TRUE),
           mean = structure(
@@ -405,12 +477,16 @@ slide_imp <- function(
     skipped_flags[i] <- isTRUE(attr(imputed_window, "skipped"))
 
     if (
-      imp_method == "pca" && solver == "auto" && pca_solver_current == "auto" &&
+      imp_method == "pca" &&
+        solver == "auto" &&
+        pca_solver_current == "auto" &&
         !fallback_flags[i]
     ) {
       chosen_solver <- attr(imputed_window, "solver_chosen", exact = TRUE)
       if (
-        is.character(chosen_solver) && length(chosen_solver) == 1L && chosen_solver %in% c("exact", "lobpcg")
+        is.character(chosen_solver) &&
+          length(chosen_solver) == 1L &&
+          chosen_solver %in% c("exact", "lobpcg")
       ) {
         pca_solver_current <- chosen_solver
         pca_solver_lock_window <- i
@@ -425,7 +501,8 @@ slide_imp <- function(
 
     if (length(local_idx) > 0L) {
       global_idx <- window_cols[local_idx]
-      result[, global_idx] <- result[, global_idx, drop = FALSE] + imputed_window[, local_idx, drop = FALSE]
+      result[, global_idx] <- result[, global_idx, drop = FALSE] +
+        imputed_window[, local_idx, drop = FALSE]
     }
   }
 
@@ -447,7 +524,10 @@ slide_imp <- function(
       }
 
       if (.progress) {
-        message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
+        message(sprintf(
+          "Note: %d column(s) not covered by any window; original values retained.",
+          length(uncovered)
+        ))
       }
     }
   } else {
@@ -467,7 +547,12 @@ slide_imp <- function(
 
     gt_1_idx <- subset[target_counts > 1L]
     if (length(gt_1_idx) > 0) {
-      result[, gt_1_idx] <- sweep(result[, gt_1_idx, drop = FALSE], 2, counts_vec[gt_1_idx], "/")
+      result[, gt_1_idx] <- sweep(
+        result[, gt_1_idx, drop = FALSE],
+        2,
+        counts_vec[gt_1_idx],
+        "/"
+      )
     }
 
     # restore original values for target columns not covered by any non-skipped window.
@@ -479,7 +564,10 @@ slide_imp <- function(
         result[, cols] <- obj[, cols, drop = FALSE]
       }
       if (.progress) {
-        message(sprintf("Note: %d column(s) not covered by any window; original values retained.", length(uncovered)))
+        message(sprintf(
+          "Note: %d column(s) not covered by any window; original values retained.",
+          length(uncovered)
+        ))
       }
     }
   }

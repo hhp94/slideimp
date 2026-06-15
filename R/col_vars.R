@@ -30,7 +30,11 @@
 col_vars <- function(obj, cores = 1) {
   checkmate::assert_matrix(
     obj,
-    mode = "numeric", null.ok = FALSE, min.rows = 1, min.cols = 1, .var.name = "obj"
+    mode = "numeric",
+    null.ok = FALSE,
+    min.rows = 1,
+    min.cols = 1,
+    .var.name = "obj"
   )
   checkmate::assert_int(cores, lower = 1)
   vars <- col_vars_internal(mat = obj, cores = cores)[1, ]

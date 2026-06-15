@@ -1,0 +1,20 @@
+bibentry(
+  bibtype = "Article",
+  title = "slideimp: efficient imputation of DNA methylation data",
+  author = c(
+    person("Hung", "Pham"),
+    person("Adam P.", "Lombroso"),
+    person("Esma Cansu", "Cevik"),
+    person("Hugh S.", "Taylor"),
+    person("Kieran J.", "O'Donnell")
+  ),
+  journal = "Bioinformatics",
+  year = "2026",
+  month = "06",
+  volume = "42",
+  number = "6",
+  pages = "btag318",
+  doi = "10.1093/bioinformatics/btag318",
+  issn = "1367-4811",
+  url = "https://doi.org/10.1093/bioinformatics/btag318"
+)

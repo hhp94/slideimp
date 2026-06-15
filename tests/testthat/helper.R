@@ -58,11 +58,7 @@ run_pca_fixed_iters <- function(
     p = ncol(x),
     solver = solver
   )
-  solver_code <- switch(solver,
-    exact = 0L,
-    lobpcg = 1L,
-    auto = 2L
-  )
+  solver_code <- switch(solver, exact = 0L, lobpcg = 1L, auto = 2L)
   # mirror pca_imp() eligibility closely enough for fixed-iteration tests:
   # drop columns above colmax and zero-/undefined-variance columns.
   miss_rate <- mat_miss(x, col = TRUE, prop = TRUE)
@@ -122,4 +118,13 @@ run_pca_fixed_iters <- function(
 max_abs_diff <- function(a, b) {
   stopifnot(!anyNA(a), !anyNA(b))
   max(abs(a - b))
+}
+
+try_imputePCA <- function(...) {
+  tryCatch(
+    missMDA::imputePCA(...),
+    error = function(e) {
+      skip(paste0("missMDA::imputePCA() errored: ", conditionMessage(e)))
+    }
+  )
 }

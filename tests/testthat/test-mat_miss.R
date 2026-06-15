@@ -1,5 +1,6 @@
 test_that("mat_miss counts NAs correctly", {
-  m <- matrix(c(1, NA, 3, NA, NA, 6),
+  m <- matrix(
+    c(1, NA, 3, NA, NA, 6),
     nrow = 2,
     dimnames = list(c("r1", "r2"), c("a", "b", "c"))
   )
@@ -34,5 +35,8 @@ test_that("mat_miss agrees with base R on sim_mat output", {
   set.seed(1)
   s <- sim_mat(n = 50, p = 20, perc_total_na = 0.2)
   expect_equal(unname(mat_miss(s$input)), unname(colSums(is.na(s$input))))
-  expect_equal(unname(mat_miss(s$input, col = FALSE)), unname(rowSums(is.na(s$input))))
+  expect_equal(
+    unname(mat_miss(s$input, col = FALSE)),
+    unname(rowSums(is.na(s$input)))
+  )
 })

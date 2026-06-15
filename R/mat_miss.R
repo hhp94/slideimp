@@ -27,7 +27,12 @@
 #'
 #' @export
 mat_miss <- function(obj, col = TRUE, prop = FALSE) {
-  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(
+    obj,
+    mode = "numeric",
+    null.ok = FALSE,
+    .var.name = "obj"
+  )
   checkmate::assert_flag(col, .var.name = "col")
   checkmate::assert_flag(prop, .var.name = "prop")
   if (col) {

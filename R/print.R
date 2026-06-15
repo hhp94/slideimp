@@ -39,7 +39,8 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
     action <- if (is.null(fallback_action)) {
       "used a fallback"
     } else {
-      switch(fallback_action,
+      switch(
+        fallback_action,
         mean = "used mean imputation as fallback",
         skip = "skipped imputation (insufficient eligible columns; original values retained)",
         "used a fallback"
@@ -48,8 +49,18 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
     n_fb <- length(fallback)
     unit_plural <- if (n_fb == 1L) unit else paste0(unit, "s")
     cat(
-      "Note: ", n_fb, " ", unit_plural, " ", action, ".\n",
-      "  See ", unit_plural, ": ", fmt_trunc(fallback), "\n",
+      "Note: ",
+      n_fb,
+      " ",
+      unit_plural,
+      " ",
+      action,
+      ".\n",
+      "  See ",
+      unit_plural,
+      ": ",
+      fmt_trunc(fallback),
+      "\n",
       sep = ""
     )
   }
@@ -67,7 +78,10 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   if (n_show < nrow(x) || p_show < ncol(x)) {
     cat(sprintf(
       "# Showing %d of %d rows and %d of %d columns\n",
-      n_show, nrow(x), p_show, ncol(x)
+      n_show,
+      nrow(x),
+      p_show,
+      ncol(x)
     ))
   }
   invisible(x)
@@ -124,7 +138,10 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
   if (n_show < nr || p_show < nc) {
     cat(sprintf(
       "# Showing %d of %d rows and %d of %d columns\n",
-      n_show, nr, p_show, nc
+      n_show,
+      nr,
+      p_show,
+      nc
     ))
   }
 
@@ -151,7 +168,9 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
 #' @method print slideimp_tbl
 #' @export
 print.slideimp_tbl <- function(x, n = NULL, ...) {
-  if (is.null(n)) n <- 10L
+  if (is.null(n)) {
+    n <- 10L
+  }
   n_show <- min(n, nrow(x))
   cat(sprintf("# slideimp table: %d x %d\n", nrow(x), ncol(x)))
   if (nrow(x) == 0L) {
@@ -161,17 +180,21 @@ print.slideimp_tbl <- function(x, n = NULL, ...) {
   class(disp) <- "data.frame" # prevent recursion
   for (nm in names(disp)) {
     if (is.list(disp[[nm]])) {
-      disp[[nm]] <- vapply(disp[[nm]], function(elem) {
-        if (is.null(elem)) {
-          "<NULL>"
-        } else if (is.data.frame(elem)) {
-          sprintf("<df [%d x %d]>", nrow(elem), ncol(elem))
-        } else if (is.list(elem)) {
-          sprintf("<list [%d]>", length(elem))
-        } else {
-          sprintf("<%s [%d]>", typeof(elem), length(elem))
-        }
-      }, character(1L))
+      disp[[nm]] <- vapply(
+        disp[[nm]],
+        function(elem) {
+          if (is.null(elem)) {
+            "<NULL>"
+          } else if (is.data.frame(elem)) {
+            sprintf("<df [%d x %d]>", nrow(elem), ncol(elem))
+          } else if (is.list(elem)) {
+            sprintf("<list [%d]>", length(elem))
+          } else {
+            sprintf("<%s [%d]>", typeof(elem), length(elem))
+          }
+        },
+        character(1L)
+      )
     }
   }
   print(disp[seq_len(n_show), , drop = FALSE], row.names = FALSE, ...)

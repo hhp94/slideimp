@@ -43,7 +43,11 @@ mean_imp_col <- function(obj, subset = NULL, cores = 1) {
   }
 
   # imputation
-  res <- mean_imp_col_internal(mat = obj, col_idx = as.integer(subset) - 1L, cores = cores)
+  res <- mean_imp_col_internal(
+    mat = obj,
+    col_idx = as.integer(subset) - 1L,
+    cores = cores
+  )
 
   dimnames(res) <- dimnames(obj)
 

@@ -136,34 +136,33 @@ OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 
 \section{PCA Performance tips}{
 
-\code{pca_imp()} relies heavily on linear algebra. On Windows, the default BLAS
-shipped with R may be slow for large matrices. Advanced users can replace
-it with \href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),
+\code{threshold}, and \code{scale}. Tune these first, then accuracy parameters
+(\code{ncp}, \code{coeff.ridge}) on a representative subset.
 
-Choose \code{solver}, \code{threshold}, and \code{scale} first, then tune accuracy
-parameters (\code{ncp}, \code{coeff.ridge}). For large or approximately low-rank
-genomic matrices, benchmark \code{"exact"} against \code{"lobpcg"} on a representative
-subset (e.g., chromosome 22) before tuning accuracy-related parameters.
+\strong{Exact vs. LOBPCG with warm-start.} Whether \code{"lobpcg"} beats \code{"exact"}
+depends on size and low-rankness: prefer \code{"lobpcg"} for large, approximately
+low-rank matrices with small \code{ncp}, and \code{"exact"} for small matrices
+(including \code{slide_imp()} windows), where it is faster and more robust.
+Separately, the warm-start makes each successive solve cheap: \code{pca_imp()}
+warm-starts LOBPCG with the previous eigenblock and search direction, so once
+imputed values stabilize, later solves converge in a few iterations. The
+payoff therefore grows with the number of EM iterations, independent of
+low-rankness. \code{solver = "auto"} (default) probes both and is a safe start.
 
-The default \code{threshold = 1e-6} is conservative. In many genomic datasets,
-\code{threshold = 1e-5} can be faster while giving very similar imputed values.
-Check this on a representative subset before using the relaxed threshold in
-a full analysis.
+\strong{Threshold.} The default \code{1e-6} is conservative; \code{1e-5} is often faster
+with very similar values.
 
-For data where columns already share a common scale (e.g., DNAm beta values
-in \verb{[0, 1]}), \code{scale = FALSE} can be both faster and more accurate. Verify
-with \code{tune_imp()} before applying to a full analysis.
+\strong{Scale.} For columns on a common scale (e.g., DNAm beta values in
+\verb{[0, 1]}), \code{scale = FALSE} can be faster and more accurate.
 
-For \code{slide_imp()}, windows are small, so \code{solver = "exact"} is usually the
-right choice. With \code{solver = "auto"}, only the first window is probed.
+\strong{Parallel and BLAS.} In parallel via \code{tune_imp()} or \code{group_imp()} with a
+multithreaded BLAS, set \code{pin_blas = TRUE} to avoid thread oversubscription.
+On Windows, the stock BLAS can be slow. Advanced users can swap in
+\href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
 
-When running PCA imputation in parallel via \code{tune_imp()} or \code{group_imp()}
-with a multithreaded BLAS, set \code{pin_blas = TRUE} to avoid thread
-oversubscription.
-
-See the pkgdown article
-\href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}
-for a full workflow.
+See \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}
+for the full workflow.
 }
 
 \examples{

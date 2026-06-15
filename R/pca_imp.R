@@ -249,34 +249,33 @@ new_lobpcg_control <- function(
 #' or wide numeric matrices.
 #'
 #' @section PCA Performance tips:
-#' `pca_imp()` relies heavily on linear algebra. On Windows, the default BLAS
-#' shipped with R may be slow for large matrices. Advanced users can replace
-#' it with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+#' Speed comes from three levers: `solver` (through LOBPCG with warm-start),
+#' `threshold`, and `scale`. Tune these first, then accuracy parameters
+#' (`ncp`, `coeff.ridge`) on a representative subset.
 #'
-#' Choose `solver`, `threshold`, and `scale` first, then tune accuracy
-#' parameters (`ncp`, `coeff.ridge`). For large or approximately low-rank
-#' genomic matrices, benchmark `"exact"` against `"lobpcg"` on a representative
-#' subset (e.g., chromosome 22) before tuning accuracy-related parameters.
+#' **Exact vs. LOBPCG with warm-start.** Whether `"lobpcg"` beats `"exact"`
+#' depends on size and low-rankness: prefer `"lobpcg"` for large, approximately
+#' low-rank matrices with small `ncp`, and `"exact"` for small matrices
+#' (including `slide_imp()` windows), where it is faster and more robust.
+#' Separately, the warm-start makes each successive solve cheap: `pca_imp()`
+#' warm-starts LOBPCG with the previous eigenblock and search direction, so once
+#' imputed values stabilize, later solves converge in a few iterations. The
+#' payoff therefore grows with the number of EM iterations, independent of
+#' low-rankness. `solver = "auto"` (default) probes both and is a safe start.
 #'
-#' The default `threshold = 1e-6` is conservative. In many genomic datasets,
-#' `threshold = 1e-5` can be faster while giving very similar imputed values.
-#' Check this on a representative subset before using the relaxed threshold in
-#' a full analysis.
+#' **Threshold.** The default `1e-6` is conservative; `1e-5` is often faster
+#' with very similar values.
 #'
-#' For data where columns already share a common scale (e.g., DNAm beta values
-#' in `[0, 1]`), `scale = FALSE` can be both faster and more accurate. Verify
-#' with `tune_imp()` before applying to a full analysis.
+#' **Scale.** For columns on a common scale (e.g., DNAm beta values in
+#' `[0, 1]`), `scale = FALSE` can be faster and more accurate.
 #'
-#' For `slide_imp()`, windows are small, so `solver = "exact"` is usually the
-#' right choice. With `solver = "auto"`, only the first window is probed.
+#' **Parallel and BLAS.** In parallel via `tune_imp()` or `group_imp()` with a
+#' multithreaded BLAS, set `pin_blas = TRUE` to avoid thread oversubscription.
+#' On Windows, the stock BLAS can be slow. Advanced users can swap in
+#' [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
 #'
-#' When running PCA imputation in parallel via `tune_imp()` or `group_imp()`
-#' with a multithreaded BLAS, set `pin_blas = TRUE` to avoid thread
-#' oversubscription.
-#'
-#' See the pkgdown article
-#' [Speeding up PCA imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
-#' for a full workflow.
+#' See [Speeding up PCA imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
+#' for the full workflow.
 #'
 #' @references
 #' Josse J, Husson F (2013). Handling missing values in exploratory
@@ -317,12 +316,23 @@ pca_imp <- function(
   colmax = 0.9,
   post_imp = TRUE,
   na_check = TRUE,
-  clamp = NULL
+  clamp = NULL,
+  .progress = FALSE
 ) {
   # pre-conditioning
-  checkmate::assert_matrix(obj, mode = "numeric", null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(
+    obj,
+    mode = "numeric",
+    null.ok = FALSE,
+    .var.name = "obj"
+  )
   check_finite(obj)
-  checkmate::assert_int(ncp, lower = 1L, upper = ncol(obj) - 1L, .var.name = "ncp")
+  checkmate::assert_int(
+    ncp,
+    lower = 1L,
+    upper = ncol(obj) - 1L,
+    .var.name = "ncp"
+  )
   method <- match.arg(method)
   checkmate::assert_flag(scale, .var.name = "scale")
   checkmate::assert_number(coeff.ridge, lower = 0, .var.name = "coeff.ridge")
@@ -363,6 +373,8 @@ pca_imp <- function(
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   checkmate::assert_flag(na_check, .var.name = "na_check")
   clamp <- resolve_clamp(clamp, arg = "clamp")
+  checkmate::assert_flag(.progress, .var.name = ".progress")
+  trace_iter <- if (isTRUE(.progress)) 10L else 0L
 
   # per-column missingnesss
   cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
@@ -445,11 +457,7 @@ pca_imp <- function(
   solver_code <- if (auto_force_exact) {
     0L
   } else {
-    switch(solver,
-      exact = 0L,
-      lobpcg = 1L,
-      auto = 2L
-    )
+    switch(solver, exact = 0L, lobpcg = 1L, auto = 2L)
   }
 
   # index of eligible columns (1-based)
@@ -470,6 +478,7 @@ pca_imp <- function(
 
   init_obj <- Inf
   best_imputed <- NULL
+  best_diag <- NULL
 
   # solver_chosen codes:
   #   0 = forced exact
@@ -481,16 +490,16 @@ pca_imp <- function(
   resolved_solver_code <- if (isTRUE(auto_force_exact)) {
     0L
   } else {
-    switch(solver,
-      exact = 0L,
-      lobpcg = 1L,
-      auto = NA_integer_
-    )
+    switch(solver, exact = 0L, lobpcg = 1L, auto = NA_integer_)
   }
 
   for (i in seq_len(nb.init)) {
     if (!is.null(seed)) {
       set.seed(seed * (i - 1L)) # exactly as missMDA does
+    }
+
+    if (trace_iter > 0L && nb.init > 1L) {
+      cli::cli_inform("Initialization {i}/{nb.init}")
     }
 
     solver_code_i <- if (is.null(locked_solver)) solver_code else locked_solver
@@ -510,7 +519,8 @@ pca_imp <- function(
       solver = solver_code_i,
       warmup_iters = lobpcg_control$warmup_iters,
       lobpcg_tol = lobpcg_control$tol,
-      lobpcg_maxiter = lobpcg_control$maxiter
+      lobpcg_maxiter = lobpcg_control$maxiter,
+      trace_iter = trace_iter
     )
 
     # after the auto probe, select a solver for the rest of the inits.
@@ -525,10 +535,16 @@ pca_imp <- function(
 
     cur_obj <- res.impute$mse
     if (cur_obj < init_obj) {
-      # res.impute$imputed_values: N_miss x 3 matrix of
-      # (row_idx, col_idx, value) in original-matrix, 1-based coordinates
       best_imputed <- res.impute$imputed_values
       init_obj <- cur_obj
+      best_diag <- list(
+        n_iter = res.impute$n_iter,
+        criterion_final = res.impute$criterion_final,
+        converged = res.impute$converged,
+        n_exact = res.impute$n_exact,
+        n_lobpcg_ok = res.impute$n_lobpcg_ok,
+        n_lobpcg_bad = res.impute$n_lobpcg_bad
+      )
     }
   }
 
@@ -563,7 +579,14 @@ pca_imp <- function(
     post_imp = post_imp,
     na_check = na_check
   )
+
   attr(out, "solver_requested") <- solver
   attr(out, "solver_chosen") <- solver_chosen
+  attr(out, "n_iter") <- best_diag$n_iter
+  attr(out, "criterion_final") <- best_diag$criterion_final
+  attr(out, "converged") <- best_diag$converged
+  attr(out, "n_exact") <- best_diag$n_exact
+  attr(out, "n_lobpcg_ok") <- best_diag$n_lobpcg_ok
+  attr(out, "n_lobpcg_bad") <- best_diag$n_lobpcg_bad
   return(out)
 }

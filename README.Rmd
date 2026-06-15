@@ -20,15 +20,25 @@ knitr::opts_chunk$set(
 <!-- badges: end -->
 
 `{slideimp}` is a lightweight R package for fast K-NN and PCA imputation
-of missing values in high-dimensional numeric matrices. Two "meta-callers" are
-provided that wrap the workhorse functions `knn_imp()` and `pca_imp()`:
+of missing values in high-dimensional numeric matrices (numeric matrix,
+samples in rows, variables in columns). Two "meta-callers" wrap the
+workhorse functions `knn_imp()` and `pca_imp()`:
 
-- `group_imp()`: group-wise K-NN or PCA imputation (e.g., by chromosome
+* `group_imp()`: group-wise K-NN or PCA imputation (e.g., by chromosome
 for Illumina DNAm microarrays such as 450K, EPIC, EPICv2, MSA).
 
-- `slide_imp()`: sliding window K-NN or PCA imputation for
-whole-genome methylation data (WGBS, EM-seq). **Note**: not intended for
-Illumina microarrays, use `group_imp()` instead.
+* `slide_imp()`: sliding window K-NN or PCA imputation for whole-genome
+methylation data (WGBS, EM-seq). **Note**: not intended for Illumina
+microarrays, use `group_imp()` instead.
+
+* `pca_imp()`: Optimized [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
+for high-dimensional matrices. Supports a LOBPCG eigensolver that
+warm-starts each EM iteration from the previous eigenblock and search
+direction.
+
+* `knn_imp()`: Full K-NN imputation with `{RcppThread}` multi-threading.
+Supports `subset` imputation to restrict work to specific columns (e.g.,
+clock CpGs) for very fast targeted imputation.
 
 ## Installation
 
@@ -48,6 +58,27 @@ You can install the optional [`slideimp.extra`](https://github.com/hhp94/slideim
 
 ```r
 pak::pkg_install("hhp94/slideimp.extra")
+```
+
+## Citation
+
+If `{slideimp}` is useful in your work, please cite:
+
+> Pham, H., Lombroso, A. P., Cevik, E. C., Taylor, H. S., & O'Donnell, K. J. (2026). slideimp: efficient imputation of DNA methylation data. *Bioinformatics*, 42(6), btag318. https://doi.org/10.1093/bioinformatics/btag318
+
+```bibtex
+@article{pham2026slideimp,
+  title = {slideimp: efficient imputation of DNA methylation data},
+  author = {Pham, Hung and Lombroso, Adam P. and Cevik, Esma Cansu and Taylor, Hugh S. and O'Donnell, Kieran J.},
+  journal = {Bioinformatics},
+  year = {2026},
+  month = {06},
+  url = {https://doi.org/10.1093/bioinformatics/btag318},
+  volume = {42},
+  number = {6},
+  pages = {btag318},
+  doi = {10.1093/bioinformatics/btag318}
+}
 ```
 
 ## PCA or K-NN imputation of Illumina DNAm microarrays
@@ -120,12 +151,12 @@ print(imputed, n = 4, p = 4)
 
 ### Troubleshooting tips
 
-- `group_imp()` fails with unmapped probes: your matrix likely contains [`sesame`](https://bioconductor.org/packages/release/bioc/html/sesame.html) generated control probes (prefixed `ctl_`) or you picked the wrong manifest (`"EPICv2"` vs. `"EPICv2_deduped"`). Check the manifest, remove `"ctl"` probes with `obj <- obj[, !grepl("^ctl", colnames(obj))]`, or pass `allow_unmapped = TRUE` to bypass.
+- `group_imp()` fails with unmapped probes: your matrix likely contains [`sesame`](https://bioconductor.org/packages/release/bioc/html/sesame.html)-generated control probes (prefixed `ctl_`) or you picked the wrong manifest (`"EPICv2"` vs. `"EPICv2_deduped"`). Check the manifest, remove `"ctl"` probes with `obj <- obj[, !grepl("^ctl", colnames(obj))]`, or pass `allow_unmapped = TRUE` to bypass.
 - Impute the MSA or EPICv2 data **with** the duplicated probes, then dedup with `slideimp.extra::dedup_matrix()`.
 
 ### Performance tips
 
-- For PCA performance tuning, including tips on choosing `threshold`, `scale`, `solver`, configuring `lobpcg_control`, and using `{mirai}` or BLAS threading effectively, see [Speeding up PCA imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html).
+- For tips on the `solver` choice and LOBPCG warm-start, plus `threshold`, `scale`, `lobpcg_control`, and `{mirai}`/BLAS threading, see [Speeding up PCA imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html).
 - For PCA imputation of bounded data, i.e., DNA methylation beta values, use `clamp = c(0, 1)` to restrict PCA-imputed values to the valid range.
 - For parallel PCA imputation with a threaded BLAS such as OpenBLAS or MKL, set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers do not compete for cores. This requires `{RhpcBLASctl}`.
 - For faster PCA imputation on Windows machines, advanced users can replace R's default reference BLAS with OpenBLAS. See [this community guide](https://github.com/david-cortes/R-openblas-in-windows).
@@ -276,13 +307,6 @@ slide_imp(
 )
 ```
 
-## Core functions
-* `group_imp()`: Parallelizable group-wise (e.g., by chromosomes or column clusters) K-NN or PCA imputation with optional auxiliary features and group-wise parameters. The `group` argument supports:
-  * Choices such as `"EPICv2"` or `"MSA"` (requires the [`slideimp.extra`](https://github.com/hhp94/slideimp.extra) package).
-  * (Basic): a `data.frame` containing a `feature` column (character strings of feature names) and a `group` column (defining the group).
-  * (Advanced): use `prep_groups()` to create groups based on a mapping data.frame (e.g., Illumina manifests) with custom group-wise parameters.
-* `slide_imp()`: (**Not for Illumina microarrays**) Sliding window K-NN or PCA imputation for ordered high-dimensional matrices (WGBS/EM-seq).
-* `tune_imp()`: Parallelizable hyperparameter tuning via repeated cross-validation. Supports built-in and custom imputation functions.
-* `knn_imp()`: Full K-NN imputation with multi-core parallelization and optional [`mlpack`](https://mlpack.org/) Ball tree nearest neighbors. Supports `subset` imputation for epigenetic clock calculations.
-* `pca_imp()`: Optimized [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html) for high-dimensional matrices.
+## Other functions
 * `col_vars()` / `mean_imp_col()`: Fast column-wise variance and mean imputation via `{RcppArmadillo}` and `{RcppThread}`.
+* `mat_miss()`: Efficient column/row missing statistics.

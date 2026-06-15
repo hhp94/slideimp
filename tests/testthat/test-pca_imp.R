@@ -1,168 +1,299 @@
+test_that("try_imputePCA() converts imputePCA errors into skips", {
+  skip_if_not_installed("missMDA")
+  expect_condition(
+    try_imputePCA("not a valid matrix"),
+    class = "skip"
+  )
+})
+
 test_that("same results as imputePCA", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
-  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  to_test <- sim_mat(
+    20,
+    50,
+    perc_total_na = 0.25,
+    perc_col_na = 1,
+    rho = 0.75
+  )$input
   expect_true(anyNA(to_test))
   # expected orientation (wide)
-  r1 <- missMDA::imputePCA(to_test, ncp = 2, nb.init = 1, seed = 1234)
+  r1 <- try_imputePCA(to_test, ncp = 2, nb.init = 1, seed = 1234)
   set.seed(1234)
   r2 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 1, seed = 1234,
+    ncp = 2,
+    nb.init = 1,
+    seed = 1234,
     solver = "exact",
     colmax = 1
   )
-  expect_equal(r1$completeObs, r2[, ])
+  expect_equal(r1$completeObs, r2[,])
 
   row.w <- runif(nrow(to_test))
   row.w <- row.w / sum(row.w)
   set.seed(1234)
-  r3 <- missMDA::imputePCA(to_test, ncp = 2, row.w = row.w, nb.init = 5, seed = 1234)
+  r3 <- try_imputePCA(
+    to_test,
+    ncp = 2,
+    row.w = row.w,
+    nb.init = 5,
+    seed = 1234
+  )
   set.seed(1234)
   r4 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 5, row.w = row.w, seed = 1234,
+    ncp = 2,
+    nb.init = 5,
+    row.w = row.w,
+    seed = 1234,
     solver = "exact"
   )
-  expect_equal(r3$completeObs, r4[, ])
+  expect_equal(r3$completeObs, r4[,])
 
   # transposed input also gives identical results
   set.seed(1234)
   to_test_t <- t(to_test)
-  r1_t <- missMDA::imputePCA(to_test_t, ncp = 2, nb.init = 10, seed = 1234)
+  r1_t <- try_imputePCA(to_test_t, ncp = 2, nb.init = 10, seed = 1234)
   set.seed(1234)
   r2_t <- pca_imp(
     to_test_t,
-    ncp = 2, nb.init = 10, seed = 1234,
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
     solver = "exact"
   )
-  expect_equal(r1_t$completeObs, r2_t[, ])
+  expect_equal(r1_t$completeObs, r2_t[,])
 
   row.w_t <- runif(nrow(to_test_t))
   row.w_t <- row.w_t / sum(row.w_t)
   set.seed(1234)
-  r3_t <- missMDA::imputePCA(to_test_t, ncp = 2, row.w = row.w_t, nb.init = 5, seed = 1234)
+  r3_t <- try_imputePCA(
+    to_test_t,
+    ncp = 2,
+    row.w = row.w_t,
+    nb.init = 5,
+    seed = 1234
+  )
   set.seed(1234)
   r4_t <- pca_imp(
     to_test_t,
-    ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234,
+    ncp = 2,
+    nb.init = 5,
+    row.w = row.w_t,
+    seed = 1234,
     solver = "exact"
   )
-  expect_equal(r3_t$completeObs, r4_t[, ])
+  expect_equal(r3_t$completeObs, r4_t[,])
 })
 
 test_that("same results as imputePCA, method = 'EM'", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
-  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  to_test <- sim_mat(
+    20,
+    50,
+    perc_total_na = 0.25,
+    perc_col_na = 1,
+    rho = 0.75
+  )$input
   expect_true(anyNA(to_test))
   # expected orientation (wide)
-  r1 <- missMDA::imputePCA(to_test, ncp = 2, nb.init = 10, seed = 1234, method = "EM")
+  r1 <- try_imputePCA(
+    to_test,
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    method = "EM"
+  )
   set.seed(1234)
   r2 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 10, seed = 1234, method = "EM",
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    method = "EM",
     solver = "exact"
   )
-  expect_equal(r1$completeObs, r2[, ])
+  expect_equal(r1$completeObs, r2[,])
 
   row.w <- runif(nrow(to_test))
   row.w <- row.w / sum(row.w)
   set.seed(1234)
-  r3 <- missMDA::imputePCA(
+  r3 <- try_imputePCA(
     to_test,
-    ncp = 2, row.w = row.w, nb.init = 5, seed = 1234, method = "EM"
+    ncp = 2,
+    row.w = row.w,
+    nb.init = 5,
+    seed = 1234,
+    method = "EM"
   )
   set.seed(1234)
   r4 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 5, row.w = row.w, seed = 1234, method = "EM",
+    ncp = 2,
+    nb.init = 5,
+    row.w = row.w,
+    seed = 1234,
+    method = "EM",
     solver = "exact"
   )
-  expect_equal(r3$completeObs, r4[, ])
+  expect_equal(r3$completeObs, r4[,])
 
   # transposed input also gives identical results
   set.seed(1234)
   to_test_t <- t(to_test)
-  r1_t <- missMDA::imputePCA(to_test_t, ncp = 2, nb.init = 10, seed = 1234, method = "EM")
+  r1_t <- try_imputePCA(
+    to_test_t,
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    method = "EM"
+  )
   set.seed(1234)
   r2_t <- pca_imp(
     to_test_t,
-    ncp = 2, nb.init = 10, seed = 1234, method = "EM",
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    method = "EM",
     solver = "exact"
   )
-  expect_equal(r1_t$completeObs, r2_t[, ])
+  expect_equal(r1_t$completeObs, r2_t[,])
 
   row.w_t <- runif(nrow(to_test_t))
   row.w_t <- row.w_t / sum(row.w_t)
   set.seed(1234)
-  r3_t <- missMDA::imputePCA(to_test_t, ncp = 2, row.w = row.w_t, nb.init = 5, seed = 1234, method = "EM")
+  r3_t <- try_imputePCA(
+    to_test_t,
+    ncp = 2,
+    row.w = row.w_t,
+    nb.init = 5,
+    seed = 1234,
+    method = "EM"
+  )
   set.seed(1234)
   r4_t <- pca_imp(
     to_test_t,
-    ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234, method = "EM",
+    ncp = 2,
+    nb.init = 5,
+    row.w = row.w_t,
+    seed = 1234,
+    method = "EM",
     solver = "exact"
   )
-  expect_equal(r3_t$completeObs, r4_t[, ])
+  expect_equal(r3_t$completeObs, r4_t[,])
 })
 
 test_that("same results as imputePCA, scale = FALSE", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
-  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  to_test <- sim_mat(
+    20,
+    50,
+    perc_total_na = 0.25,
+    perc_col_na = 1,
+    rho = 0.75
+  )$input
   expect_true(anyNA(to_test))
 
   # expected orientation (wide)
-  r1 <- missMDA::imputePCA(to_test, ncp = 2, nb.init = 10, seed = 1234, scale = FALSE)
+  r1 <- try_imputePCA(
+    to_test,
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    scale = FALSE
+  )
   set.seed(1234)
   r2 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 10, seed = 1234, scale = FALSE,
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    scale = FALSE,
     solver = "exact"
   )
-  expect_equal(r1$completeObs, r2[, ])
+  expect_equal(r1$completeObs, r2[,])
 
   row.w <- runif(nrow(to_test))
   row.w <- row.w / sum(row.w)
   set.seed(1234)
-  r3 <- missMDA::imputePCA(to_test, ncp = 2, row.w = row.w, nb.init = 5, seed = 1234, scale = FALSE)
+  r3 <- try_imputePCA(
+    to_test,
+    ncp = 2,
+    row.w = row.w,
+    nb.init = 5,
+    seed = 1234,
+    scale = FALSE
+  )
   set.seed(1234)
   r4 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 5, row.w = row.w, seed = 1234, scale = FALSE,
+    ncp = 2,
+    nb.init = 5,
+    row.w = row.w,
+    seed = 1234,
+    scale = FALSE,
     solver = "exact"
   )
-  expect_equal(r3$completeObs, r4[, ])
+  expect_equal(r3$completeObs, r4[,])
 
   # transposed input also gives identical results
   set.seed(1234)
   to_test_t <- t(to_test)
-  r1_t <- missMDA::imputePCA(to_test_t, ncp = 2, nb.init = 10, seed = 1234, scale = FALSE)
+  r1_t <- try_imputePCA(
+    to_test_t,
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    scale = FALSE
+  )
   set.seed(1234)
   r2_t <- pca_imp(
     to_test_t,
-    ncp = 2, nb.init = 10, seed = 1234, scale = FALSE,
+    ncp = 2,
+    nb.init = 10,
+    seed = 1234,
+    scale = FALSE,
     solver = "exact"
   )
-  expect_equal(r1_t$completeObs, r2_t[, ])
+  expect_equal(r1_t$completeObs, r2_t[,])
 
   row.w_t <- runif(nrow(to_test_t))
   row.w_t <- row.w_t / sum(row.w_t)
   set.seed(1234)
-  r3_t <- missMDA::imputePCA(to_test_t, ncp = 2, row.w = row.w_t, nb.init = 5, seed = 1234, scale = FALSE)
+  r3_t <- try_imputePCA(
+    to_test_t,
+    ncp = 2,
+    row.w = row.w_t,
+    nb.init = 5,
+    seed = 1234,
+    scale = FALSE
+  )
   set.seed(1234)
   r4_t <- pca_imp(
     to_test_t,
-    ncp = 2, nb.init = 5, row.w = row.w_t, seed = 1234, scale = FALSE,
+    ncp = 2,
+    nb.init = 5,
+    row.w = row.w_t,
+    seed = 1234,
+    scale = FALSE,
     solver = "exact"
   )
-  expect_equal(r3_t$completeObs, r4_t[, ])
+  expect_equal(r3_t$completeObs, r4_t[,])
 })
 
-test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights", {
+test_that("row.w = 'n_miss' matches try_imputePCA with equivalent weights", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
-  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  to_test <- sim_mat(
+    20,
+    50,
+    perc_total_na = 0.25,
+    perc_col_na = 1,
+    rho = 0.75
+  )$input
 
   # compute expected weights manually
   miss <- is.na(to_test)
@@ -173,22 +304,31 @@ test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights",
 
   # compare "n_miss" shortcut against missMDA with explicit weights
   set.seed(1234)
-  r1 <- missMDA::imputePCA(
+  r1 <- try_imputePCA(
     to_test,
-    ncp = 2, nb.init = 5, row.w = expected_w, seed = 1234
+    ncp = 2,
+    nb.init = 5,
+    row.w = expected_w,
+    seed = 1234
   )
   set.seed(1234)
   r2 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 5, row.w = "n_miss", seed = 1234,
+    ncp = 2,
+    nb.init = 5,
+    row.w = "n_miss",
+    seed = 1234,
     solver = "exact"
   )
-  expect_equal(r1$completeObs, r2[, ])
+  expect_equal(r1$completeObs, r2[,])
 
   set.seed(1234)
   r3 <- pca_imp(
     to_test,
-    ncp = 2, nb.init = 5, row.w = expected_w, seed = 1234,
+    ncp = 2,
+    nb.init = 5,
+    row.w = expected_w,
+    seed = 1234,
     solver = "exact"
   )
   expect_equal(r2, r3)
@@ -196,7 +336,13 @@ test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights",
 
 test_that("Behavior with extreme missing columns and rows", {
   set.seed(1234)
-  to_test <- sim_mat(20, 50, perc_total_na = 0.25, perc_col_na = 1, rho = 0.75)$input
+  to_test <- sim_mat(
+    20,
+    50,
+    perc_total_na = 0.25,
+    perc_col_na = 1,
+    rho = 0.75
+  )$input
   to_test[1, ] <- NA
   expect_no_error(pca_imp(to_test, ncp = 2, seed = 1234))
   to_test[, 1] <- NA
@@ -292,14 +438,16 @@ test_that("pca_imp falls back to mean imputation when ncp > usable eligible colu
   to_test <- sim_mat(30, 8, perc_total_na = 0.1, perc_col_na = 0.3)$input
   # this column will excceed colmax
   to_test[1:29, 1] <- NA
-  expect_no_error(res <- pca_imp(
-    to_test,
-    ncp = 3,
-    nb.init = 3,
-    seed = 1234,
-    colmax = 0.9,
-    post_imp = FALSE
-  ))
+  expect_no_error(
+    res <- pca_imp(
+      to_test,
+      ncp = 3,
+      nb.init = 3,
+      seed = 1234,
+      colmax = 0.9,
+      post_imp = FALSE
+    )
+  )
   # make most columns ineligible (all-NA)
   to_test[, 1:6] <- NA
   for (i in 1:6) {
@@ -330,8 +478,10 @@ test_that("pca_imp clamps imputed values to specified bounds", {
   # lower bound far above any plausible imputation -> all imputed == 999
   res_lo <- pca_imp(
     to_test,
-    ncp = 2, seed = 1234,
-    clamp = c(999, Inf), post_imp = FALSE
+    ncp = 2,
+    seed = 1234,
+    clamp = c(999, Inf),
+    post_imp = FALSE
   )
   expect_true(all(res_lo[na_pos] == 999))
   expect_equal(res_lo[observed_mask], observed_before)
@@ -339,8 +489,10 @@ test_that("pca_imp clamps imputed values to specified bounds", {
   # upper bound far below any plausible imputation -> all imputed == -999
   res_hi <- pca_imp(
     to_test,
-    ncp = 2, seed = 1234,
-    clamp = c(-Inf, -999), post_imp = FALSE
+    ncp = 2,
+    seed = 1234,
+    clamp = c(-Inf, -999),
+    post_imp = FALSE
   )
   expect_true(all(res_hi[na_pos] == -999))
   expect_equal(res_hi[observed_mask], observed_before)
@@ -351,8 +503,20 @@ test_that("post_imp fills NAs in ineligible columns with column mean", {
   to_test <- sim_mat(30, 8, perc_total_na = 0.05)$input
   to_test[1:28, 1] <- NA # column 1 exceeds colmax = 0.9
 
-  res_with <- pca_imp(to_test, ncp = 2, seed = 1234, colmax = 0.9, post_imp = TRUE)
-  res_without <- pca_imp(to_test, ncp = 2, seed = 1234, colmax = 0.9, post_imp = FALSE)
+  res_with <- pca_imp(
+    to_test,
+    ncp = 2,
+    seed = 1234,
+    colmax = 0.9,
+    post_imp = TRUE
+  )
+  res_without <- pca_imp(
+    to_test,
+    ncp = 2,
+    seed = 1234,
+    colmax = 0.9,
+    post_imp = FALSE
+  )
 
   expect_false(anyNA(res_with))
   expect_true(anyNA(res_without[, 1]))

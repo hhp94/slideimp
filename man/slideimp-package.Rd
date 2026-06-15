@@ -22,5 +22,15 @@ Useful links:
 \author{
 \strong{Maintainer}: Hung Pham \email{amser.hoanghung@gmail.com} (\href{https://orcid.org/0000-0002-8271-9355}{ORCID}) [copyright holder]
 
+Authors:
+\itemize{
+  \item Hung Pham \email{amser.hoanghung@gmail.com} (\href{https://orcid.org/0000-0002-8271-9355}{ORCID}) [copyright holder]
+}
+
+Other contributors:
+\itemize{
+  \item Posit Software, PBC (Copyright holder of code adapted from the 'carrier' package, MIT licensed) [copyright holder]
+}
+
 }
 \keyword{internal}

@@ -21,8 +21,6 @@
 #' @param dist_pow Numeric. Power used to penalize more distant neighbors in
 #'  the weighted average. `dist_pow = 0` gives an unweighted average of the
 #'  nearest neighbors.
-#' @param tree Logical. If `FALSE`, use brute-force K-NN. If `TRUE`, use
-#'  ball-tree K-NN via `mlpack`.
 #' @param na_check Logical. If `TRUE`, check whether the returned matrix still
 #'  contains missing values.
 #' @param .progress Logical. If `TRUE`, show imputation progress.
@@ -34,21 +32,14 @@
 #' `knn_imp()` performs imputation column-wise, treating rows as observations
 #' and columns as features.
 #'
+#' Nearest neighbors are found using brute-force K-NN.
+#'
 #' When `dist_pow > 0`, imputed values are computed as distance-weighted
 #' averages. Weights are inverse distances raised to the power of `dist_pow`.
 #'
-#' If `tree = TRUE`, nearest neighbors are found with a ball tree via the
-#' `mlpack` package. This can be faster for some large, low-missingness data
-#' sets, but it requires initially filling missing values with column means,
-#' which can introduce bias when missingness is high.
-#'
 #' @section K-NN performance optimization:
-#' - `tree = FALSE` uses brute-force K-NN. This avoids the initial mean-filling
-#'  step and is often faster for small to moderate datasets or high-dimensional
-#'  data.
-#' - `tree = TRUE` uses ball-tree K-NN. Consider this only when run time is
-#'  prohibitive and missingness is low, for example less than 5%.
 #' - Use `subset` when only specific columns need imputation.
+#' - Use grouped or sliding-window imputation for very large matrices.
 #'
 #' @references
 #' Troyanskaya O, Cantor M, Sherlock G, Brown P, Hastie T, Tibshirani R,
@@ -74,12 +65,18 @@ knn_imp <- function(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  tree = FALSE,
   na_check = TRUE,
   .progress = FALSE
 ) {
   # Pre-conditioning
-  checkmate::assert_matrix(obj, mode = "numeric", min.rows = 1, min.cols = 2, null.ok = FALSE, .var.name = "obj")
+  checkmate::assert_matrix(
+    obj,
+    mode = "numeric",
+    min.rows = 1,
+    min.cols = 2,
+    null.ok = FALSE,
+    .var.name = "obj"
+  )
   check_finite(obj)
   method <- match.arg(method)
   checkmate::assert_int(k, lower = 1, upper = ncol(obj) - 1, .var.name = "k")
@@ -87,7 +84,6 @@ knn_imp <- function(
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   stopifnot(length(dist_pow) == 1, dist_pow >= 0, !is.infinite(dist_pow))
-  checkmate::assert_flag(tree, .var.name = "tree")
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(na_check, .var.name = "na_check")
 
@@ -102,13 +98,15 @@ knn_imp <- function(
 
   # early exit if no missingness in subset columns
   if (!any(cmiss[subset] > 0)) {
-    cli::cli_inform("No missing values in subset columns. Returning input unchanged.")
+    cli::cli_inform(
+      "No missing values in subset columns. Returning input unchanged."
+    )
     return(obj)
   }
 
   miss_rate <- cmiss / nrow(obj)
 
-  # partitioning: determine eligible columns (under colmax threshold)
+  # partitioning: determine eligible columns under colmax threshold
   eligible <- miss_rate < min(colmax, 1)
   n_elig <- sum(eligible)
 
@@ -122,11 +120,8 @@ knn_imp <- function(
     )
   }
 
-  # Column groups as ORIGINAL (0-based) indices into obj.
-  # The C++ side will use cmiss to know which columns have missingness and
-  # skip/handle accordingly; it also uses `eligible` to restrict the working set.
-  eligible_idx <- which(eligible) # 1-based orig indices of eligible cols
-  has_miss_idx <- which(cmiss > 0L) # 1-based orig indices with any NA
+  eligible_idx <- which(eligible)
+  has_miss_idx <- which(cmiss > 0L)
   eligible_has_miss <- intersect(eligible_idx, has_miss_idx)
   eligible_complete <- setdiff(eligible_idx, has_miss_idx)
 
@@ -144,42 +139,24 @@ knn_imp <- function(
     )
   }
 
-  method <- switch(method,
-    "euclidean" = 0L,
-    "manhattan" = 1L
-  )
+  method <- switch(method, "euclidean" = 0L, "manhattan" = 1L)
 
-  # Impute
-  if (!tree) {
-    imputed_values <- impute_knn_brute(
-      obj = obj,
-      k = k,
-      grp_impute = as.integer(grp_impute - 1L),
-      grp_miss_no_imp = as.integer(grp_miss_no_imp - 1L),
-      grp_complete = as.integer(grp_complete - 1L),
-      method = method,
-      dist_pow = dist_pow,
-      cores = cores,
-      pb = .progress
-    )
-  } else {
-    imputed_values <- impute_knn_mlpack(
-      obj = obj,
-      k = k,
-      grp_impute = as.integer(grp_impute - 1L),
-      grp_miss_no_imp = as.integer(grp_miss_no_imp - 1L),
-      grp_complete = as.integer(grp_complete - 1L),
-      method = method,
-      dist_pow = dist_pow,
-      cores = cores
-    )
-  }
+  # impute using brute-force K-NN
+  imputed_values <- impute_knn_brute(
+    obj = obj,
+    k = k,
+    grp_impute = as.integer(grp_impute - 1L),
+    grp_miss_no_imp = as.integer(grp_miss_no_imp - 1L),
+    grp_complete = as.integer(grp_complete - 1L),
+    method = method,
+    dist_pow = dist_pow,
+    cores = cores,
+    pb = .progress
+  )
 
   # convert NaN values back to NA due to C++ handling
   imputed_values[is.nan(imputed_values)] <- NA_real_
 
-  # Column indices returned by C++ are already original-matrix indices now,
-  # so no remapping through orig_indices is needed.
   imp_indices <- cbind(imputed_values[, 1], imputed_values[, 2])
   obj[imp_indices] <- imputed_values[, 3]
 
