@@ -26,6 +26,10 @@ slideimp_resolve_group(x)
   objects. The optional `slideimp.extra` package provides a method for
   character platform names.
 
+## Value
+
+A data frame group specification, or an error for unsupported inputs.
+
 ## Note
 
 This is primarily an extension hook for `slideimp.extra`.

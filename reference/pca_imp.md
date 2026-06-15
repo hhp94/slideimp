@@ -1,7 +1,7 @@
 # PCA Imputation for Numeric Matrices
 
 Impute missing values in a numeric matrix using regularized or
-expectation-maximization PCA imputation.
+expectation-maximization (EM) PCA imputation.
 
 ## Usage
 
@@ -23,7 +23,8 @@ pca_imp(
   colmax = 0.9,
   post_imp = TRUE,
   na_check = TRUE,
-  clamp = NULL
+  clamp = NULL,
+  .progress = FALSE
 )
 ```
 
@@ -48,20 +49,15 @@ pca_imp(
 
 - coeff.ridge:
 
-  Numeric. Ridge regularization coefficient. Only used when
-  `method = "regularized"`. Values less than `1` regularize less, moving
-  closer to EM PCA. Values greater than `1` regularize more, moving
-  closer to mean imputation.
+  Numeric. Ridge regularization, used only when
+  `method = "regularized"`. Values `< 1` move toward EM PCA; values
+  `> 1` move toward mean imputation.
 
 - row.w:
 
-  Row weights, internally normalized to sum to `1`. Can be:
-
-  - `NULL`: all rows are weighted equally.
-
-  - A numeric vector of positive weights with length `nrow(obj)`.
-
-  - `"n_miss"`: rows with more missing values receive lower weight.
+  Row weights, normalized to sum to `1`. `NULL` (equal weights), a
+  positive numeric vector of length `nrow(obj)`, or `"n_miss"`
+  (down-weight rows with more missing values).
 
 - threshold:
 
@@ -86,12 +82,11 @@ pca_imp(
 
 - solver:
 
-  Character. Eigensolver selection. One of `"auto"`, `"exact"`, or
-  `"lobpcg"`. `"exact"` uses the exact solver. `"lobpcg"` uses the
-  iterative LOBPCG solver with exact fallback. `"auto"` performs a short
-  timed probe and chooses LOBPCG only if it is clearly faster than the
-  exact solver. When `nb.init > 1`, the auto choice from the first PCA
-  initialization is reused for subsequent PCA initializations.
+  Character. Eigensolver: `"auto"` (default), `"exact"`, or `"lobpcg"`.
+  `"auto"` runs a short timed probe and picks `"lobpcg"` only when
+  clearly faster. Consecutive EM calls warm-start LOBPCG with both the
+  previous eigenblock and search direction. When `nb.init > 1`, the auto
+  choice from the first init is reused. See Performance tips.
 
 - lobpcg_control:
 
@@ -119,12 +114,13 @@ pca_imp(
 
 - clamp:
 
-  Optional numeric vector of length 2 giving lower and upper bounds for
-  PCA-imputed values. Use `NULL` for no clamping. Use `c(0, 1)` for DNA
-  methylation beta values. Use `c(lb, Inf)` for only lower bound
-  clamping, or `c(-Inf, ub)` for only upper bound clamping. Clamping is
-  applied only to values imputed by the PCA step, not to observed
-  values.
+  Optional numeric vector `c(lower, upper)` bounding PCA-imputed values
+  (use `-Inf`/`Inf` for one-sided, `NULL` for none). E.g., `c(0, 1)` for
+  DNAm beta values. Observed values are not clamped.
+
+- .progress:
+
+  Logical. If `TRUE`, show imputation progress.
 
 ## Value
 
@@ -137,34 +133,43 @@ This algorithm is based on
 [`missMDA::imputePCA()`](https://rdrr.io/pkg/missMDA/man/imputePCA.html)
 and is optimized for tall or wide numeric matrices.
 
-## Performance tips
+## PCA Performance tips
 
-`pca_imp()` relies heavily on linear algebra. On Windows, the default
-BLAS shipped with R may be slow for large matrices. Advanced users can
-replace it with
+Speed comes from three levers: `solver` (through LOBPCG with
+warm-start), `threshold`, and `scale`. Tune these first, then accuracy
+parameters (`ncp`, `coeff.ridge`) on a representative subset.
+
+**Exact vs. LOBPCG with warm-start.** Whether `"lobpcg"` beats `"exact"`
+depends on size and low-rankness: prefer `"lobpcg"` for large,
+approximately low-rank matrices with small `ncp`, and `"exact"` for
+small matrices (including
+[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
+windows), where it is faster and more robust. Separately, the warm-start
+makes each successive solve cheap: `pca_imp()` warm-starts LOBPCG with
+the previous eigenblock and search direction, so once imputed values
+stabilize, later solves converge in a few iterations. The payoff
+therefore grows with the number of EM iterations, independent of
+low-rankness. `solver = "auto"` (default) probes both and is a safe
+start.
+
+**Threshold.** The default `1e-6` is conservative; `1e-5` is often
+faster with very similar values.
+
+**Scale.** For columns on a common scale (e.g., DNAm beta values in
+`[0, 1]`), `scale = FALSE` can be faster and more accurate.
+
+**Parallel and BLAS.** In parallel via
+[`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
+or
+[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
+with a multithreaded BLAS, set `pin_blas = TRUE` to avoid thread
+oversubscription. On Windows, the stock BLAS can be slow. Advanced users
+can swap in
 [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
 
-PCA imputation speed depends on the eigensolver selected by `solver` and
-the convergence threshold `threshold`. The exact solver is selected with
-`solver = "exact"`. The iterative LOBPCG solver is selected with
-`solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
-timed probe and chooses LOBPCG only when it is clearly faster.
-
-For large or approximately low-rank genomic matrices, it can be useful
-to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
-representative subset, such as chromosome 22, before tuning
-accuracy-related parameters. For
-[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
-this may include `window_size` and `overlap_size`.
-
-The default `threshold = 1e-6` is conservative. In many genomic
-datasets, `threshold = 1e-5` can be faster while giving very similar
-imputed values. Check this on a representative subset before using the
-relaxed threshold in a full analysis.
-
-See the pkgdown article [Speeding up PCA
+See [Speeding up PCA
 imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
-for a full workflow.
+for the full workflow.
 
 ## References
 

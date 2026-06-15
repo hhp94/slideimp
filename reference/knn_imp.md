@@ -15,7 +15,6 @@ knn_imp(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  tree = FALSE,
   na_check = TRUE,
   .progress = FALSE
 )
@@ -64,11 +63,6 @@ knn_imp(
   average. `dist_pow = 0` gives an unweighted average of the nearest
   neighbors.
 
-- tree:
-
-  Logical. If `FALSE`, use brute-force K-NN. If `TRUE`, use ball-tree
-  K-NN via `mlpack`.
-
 - na_check:
 
   Logical. If `TRUE`, check whether the returned matrix still contains
@@ -88,25 +82,17 @@ imputed. The returned object has class `slideimp_results`.
 `knn_imp()` performs imputation column-wise, treating rows as
 observations and columns as features.
 
+Nearest neighbors are found using brute-force K-NN.
+
 When `dist_pow > 0`, imputed values are computed as distance-weighted
 averages. Weights are inverse distances raised to the power of
 `dist_pow`.
 
-If `tree = TRUE`, nearest neighbors are found with a ball tree via the
-`mlpack` package. This can be faster for some large, low-missingness
-data sets, but it requires initially filling missing values with column
-means, which can introduce bias when missingness is high.
-
 ## K-NN performance optimization
 
-- `tree = FALSE` uses brute-force K-NN. This avoids the initial
-  mean-filling step and is often faster for small to moderate datasets
-  or high-dimensional data.
-
-- `tree = TRUE` uses ball-tree K-NN. Consider this only when run time is
-  prohibitive and missingness is low, for example less than 5%.
-
 - Use `subset` when only specific columns need imputation.
+
+- Use grouped or sliding-window imputation for very large matrices.
 
 ## References
 

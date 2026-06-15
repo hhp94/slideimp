@@ -18,3 +18,13 @@ Useful links:
 
 **Maintainer**: Hung Pham <amser.hoanghung@gmail.com>
 ([ORCID](https://orcid.org/0000-0002-8271-9355)) \[copyright holder\]
+
+Authors:
+
+- Hung Pham <amser.hoanghung@gmail.com>
+  ([ORCID](https://orcid.org/0000-0002-8271-9355)) \[copyright holder\]
+
+Other contributors:
+
+- Posit Software, PBC (Copyright holder of code adapted from the
+  'carrier' package, MIT licensed) \[copyright holder\]

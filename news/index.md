@@ -1,11 +1,39 @@
 # Changelog
 
-## slideimp 1.1.1
+## slideimp 1.2.0
 
-- `DESCRIPTION` now mentions the LOBPCG eigensolver and its warm-start
-  behavior across E-M iterations in
+### Breaking changes
+
+- [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
+  no longer supports
+  [mlpack](https://www.mlpack.org/doc/user/bindings/r.html) tree-based
+  imputation, which was less accurate than the alternatives.
+
+### New features
+
+- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  gained a `.progress` argument to display imputation progress.
+
+### Minor improvements and fixes
+
+- Fixed
+  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  tests that broke due to upstream changes in
+  [`missMDA::imputePCA()`](https://rdrr.io/pkg/missMDA/man/imputePCA.html)
+  and
+  [`FactoMineR::svd.triplet()`](https://rdrr.io/pkg/FactoMineR/man/svd.triplet.html).
+
+- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  now uses an internal `.crate()`, a minimal version of
+  `carrier::crate()`.
+
+- `DESCRIPTION` now describes the LOBPCG eigensolver and its warm-start
+  behavior across EM iterations in
   [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
+
 - Minor wording improvements in the PCA solver vignette.
+
+- Added citation information.
 
 ## slideimp 1.1.0
 

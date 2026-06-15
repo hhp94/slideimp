@@ -7,8 +7,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <title>Speeding up PCA imputation • slideimp</title>
 <script src="../lightswitch.js"></script><script src="../deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<link href="../deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="../deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
+<script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="Speeding up PCA imputation">
 </head>
@@ -85,6 +85,9 @@
 article describes how to make PCA imputation faster by choosing
 <code>threshold</code>, <code>scale</code>, <code>solver</code>, and a
 parallel backend with <a href="https://mirai.r-lib.org" class="external-link">mirai</a>.</p>
+<p>Set <code>.progress = TRUE</code> in <code><a href="../reference/pca_imp.html">pca_imp()</a></code> to get a
+rough sense of progress first before determining if any further tuning
+is needed.</p>
 <div class="section level3">
 <h3 id="overview">Overview<a class="anchor" aria-label="anchor" href="#overview"></a>
 </h3>
@@ -133,13 +136,16 @@ can be both faster and more accurate.</p>
 <code>solver = "exact"</code>: the exact solver. Robust and
 typically faster for small to moderate matrices.</li>
 <li>
-<code>solver = "lobpcg"</code>: LOBPCG with warm start. Scales well
-when only a small <code>ncp</code> is needed and the matrix is
-approximately low rank. In the iterative EM algorithm, consecutive
-eigensolver calls differ only slightly as imputed values stabilize.
-<code><a href="../reference/pca_imp.html">pca_imp()</a></code> <strong>warm-starts LOBPCG with both the previous
-eigenblock and search direction</strong>, so subsequent calls converge
-in few iterations.</li>
+<code>solver = "lobpcg"</code>: LOBPCG with warm start. Two
+independent things drive its speed. First, whether it beats
+<code>"exact"</code> at all depends on matrix size and low-rankness.
+LOBPCG wins on large, approximately low-rank matrices with small
+<code>ncp</code>. Second, the warm start makes each <em>successive</em>
+solve cheap: <code><a href="../reference/pca_imp.html">pca_imp()</a></code> warm-starts LOBPCG with the previous
+eigenblock and search direction, so once imputed values stabilize, later
+solves converge in a few iterations. The warm-start payoff therefore
+grows with the number of EM iterations, independent of
+low-rankness.</li>
 <li>
 <code>solver = "auto"</code> (default): runs a short timed probe of
 both solvers and picks LOBPCG only when it is clearly faster.</li>
@@ -182,7 +188,7 @@ change cross-validation error.</li>
 or subset. Here, we treat <code>group1</code> of the simulated data as
 the representative chromosome.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">12345</span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">obj_probe</span> <span class="op">&lt;-</span> <span class="va">obj</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/subset.html" class="external-link">subset</a></span><span class="op">(</span><span class="va">sim_df</span>, <span class="va">group</span> <span class="op">==</span> <span class="st">"group1"</span><span class="op">)</span><span class="op">$</span><span class="va">feature</span><span class="op">]</span></span>
 <span></span>
@@ -196,7 +202,7 @@ the representative chromosome.</p>
 </h4>
 <p>Use a small <code>ncp</code> and a relaxed
 <code>threshold = 1e-5</code> for the probe. This <code>ncp</code> is
-not necessary the final <code>ncp</code>. Both solvers use the same
+not necessarily the final <code>ncp</code>. Both solvers use the same
 convergence criterion, so their relative timing is representative.</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ncp_probe</span> <span class="op">&lt;-</span> <span class="fl">5</span></span>
@@ -242,11 +248,16 @@ to <code>1e-5</code> does not meaningfully change the error.</p>
 <span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
 <span></span>
 <span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">res</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   threshold ncp param_set rep_id error   n n_miss .metric .estimator  .estimate</span></span>
-<span><span class="co">#&gt; 1     1e-05   5         1      1  &lt;NA&gt; 500      0     mae   standard 0.09174255</span></span>
-<span><span class="co">#&gt; 2     1e-05   5         1      1  &lt;NA&gt; 500      0    rmse   standard 0.11499555</span></span>
-<span><span class="co">#&gt; 3     1e-06   5         2      1  &lt;NA&gt; 500      0     mae   standard 0.09174508</span></span>
-<span><span class="co">#&gt; 4     1e-06   5         2      1  &lt;NA&gt; 500      0    rmse   standard 0.11500090</span></span></code></pre></div>
+<span><span class="co">#&gt;   threshold ncp .progress param_set rep_id error   n n_miss .metric .estimator</span></span>
+<span><span class="co">#&gt; 1     1e-05   5     FALSE         1      1  &lt;NA&gt; 500      0     mae   standard</span></span>
+<span><span class="co">#&gt; 2     1e-05   5     FALSE         1      1  &lt;NA&gt; 500      0    rmse   standard</span></span>
+<span><span class="co">#&gt; 3     1e-06   5     FALSE         2      1  &lt;NA&gt; 500      0     mae   standard</span></span>
+<span><span class="co">#&gt; 4     1e-06   5     FALSE         2      1  &lt;NA&gt; 500      0    rmse   standard</span></span>
+<span><span class="co">#&gt;    .estimate</span></span>
+<span><span class="co">#&gt; 1 0.09327532</span></span>
+<span><span class="co">#&gt; 2 0.11584434</span></span>
+<span><span class="co">#&gt; 3 0.09326740</span></span>
+<span><span class="co">#&gt; 4 0.11585427</span></span></code></pre></div>
 </div>
 <div class="section level4">
 <h4 id="check-scale">Check <code>scale</code><a class="anchor" aria-label="anchor" href="#check-scale"></a>
@@ -268,16 +279,16 @@ certain DNAm data. We verify this with <code><a href="../reference/tune_imp.html
 <span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
 <span></span>
 <span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">res_scale</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   scale ncp threshold param_set rep_id error   n n_miss .metric .estimator</span></span>
-<span><span class="co">#&gt; 1  TRUE   5     1e-05         1      1  &lt;NA&gt; 500      0     mae   standard</span></span>
-<span><span class="co">#&gt; 2  TRUE   5     1e-05         1      1  &lt;NA&gt; 500      0    rmse   standard</span></span>
-<span><span class="co">#&gt; 3 FALSE   5     1e-05         2      1  &lt;NA&gt; 500      0     mae   standard</span></span>
-<span><span class="co">#&gt; 4 FALSE   5     1e-05         2      1  &lt;NA&gt; 500      0    rmse   standard</span></span>
-<span><span class="co">#&gt;    .estimate</span></span>
-<span><span class="co">#&gt; 1 0.09031781</span></span>
-<span><span class="co">#&gt; 2 0.11342431</span></span>
-<span><span class="co">#&gt; 3 0.09037308</span></span>
-<span><span class="co">#&gt; 4 0.11352813</span></span></code></pre></div>
+<span><span class="co">#&gt;   scale ncp threshold .progress param_set rep_id error   n n_miss .metric</span></span>
+<span><span class="co">#&gt; 1  TRUE   5     1e-05     FALSE         1      1  &lt;NA&gt; 500      0     mae</span></span>
+<span><span class="co">#&gt; 2  TRUE   5     1e-05     FALSE         1      1  &lt;NA&gt; 500      0    rmse</span></span>
+<span><span class="co">#&gt; 3 FALSE   5     1e-05     FALSE         2      1  &lt;NA&gt; 500      0     mae</span></span>
+<span><span class="co">#&gt; 4 FALSE   5     1e-05     FALSE         2      1  &lt;NA&gt; 500      0    rmse</span></span>
+<span><span class="co">#&gt;   .estimator  .estimate</span></span>
+<span><span class="co">#&gt; 1   standard 0.09281453</span></span>
+<span><span class="co">#&gt; 2   standard 0.11612999</span></span>
+<span><span class="co">#&gt; 3   standard 0.09290920</span></span>
+<span><span class="co">#&gt; 4   standard 0.11589055</span></span></code></pre></div>
 </div>
 <div class="section level4">
 <h4 id="tune-accuracy-parameters-with-the-chosen-settings">Tune accuracy parameters with the chosen settings<a class="anchor" aria-label="anchor" href="#tune-accuracy-parameters-with-the-chosen-settings"></a>
@@ -286,7 +297,10 @@ certain DNAm data. We verify this with <code><a href="../reference/tune_imp.html
 <code>scale</code>, keep them fixed while tuning accuracy-related PCA
 parameters (<code>ncp</code> and <code>coeff.ridge</code>). Here, the
 <code>solver = "lobpcg"</code> is not clearly faster and
-<code>scale = FALSE</code> is more accurate.</p>
+<code>scale = FALSE</code> doesn’t change <code>rmse</code> too much. On
+this small, well-conditioned subset <code>exact</code> wins. On a large,
+approximately low-rank matrix that needs many EM iterations,
+<code>lobpcg</code> with warm start is typically faster.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">chosen_solver</span> <span class="op">&lt;-</span> <span class="st">"exact"</span></span>
 <span><span class="va">chosen_threshold</span> <span class="op">&lt;-</span> <span class="fl">1e-5</span></span>
@@ -323,15 +337,15 @@ parameters (<code>ncp</code> and <code>coeff.ridge</code>). Here, the
 <span>  FUN <span class="op">=</span> <span class="va">mean</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt;   ncp coeff.ridge .estimate</span></span>
-<span><span class="co">#&gt; 1   2         0.8 0.1172521</span></span>
-<span><span class="co">#&gt; 2   4         0.8 0.1193276</span></span>
-<span><span class="co">#&gt; 3   6         0.8 0.1195876</span></span>
-<span><span class="co">#&gt; 4   2         1.0 0.1170776</span></span>
-<span><span class="co">#&gt; 5   4         1.0 0.1184868</span></span>
-<span><span class="co">#&gt; 6   6         1.0 0.1185998</span></span>
-<span><span class="co">#&gt; 7   2         1.2 0.1169066</span></span>
-<span><span class="co">#&gt; 8   4         1.2 0.1177737</span></span>
-<span><span class="co">#&gt; 9   6         1.2 0.1178293</span></span></code></pre></div>
+<span><span class="co">#&gt; 1   2         0.8 0.1158408</span></span>
+<span><span class="co">#&gt; 2   4         0.8 0.1166093</span></span>
+<span><span class="co">#&gt; 3   6         0.8 0.1177499</span></span>
+<span><span class="co">#&gt; 4   2         1.0 0.1157635</span></span>
+<span><span class="co">#&gt; 5   4         1.0 0.1162633</span></span>
+<span><span class="co">#&gt; 6   6         1.0 0.1169795</span></span>
+<span><span class="co">#&gt; 7   2         1.2 0.1157307</span></span>
+<span><span class="co">#&gt; 8   4         1.2 0.1160604</span></span>
+<span><span class="co">#&gt; 9   6         1.2 0.1164008</span></span></code></pre></div>
 </div>
 <div class="section level4">
 <h4 id="apply-to-slide_imp">Apply to <code>slide_imp()</code><a class="anchor" aria-label="anchor" href="#apply-to-slide_imp"></a>
@@ -378,18 +392,18 @@ the first window and reuses the chosen solver for the rest.</p>
 <span>  FUN <span class="op">=</span> <span class="va">mean</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt;    ncp coeff.ridge window_size .estimate</span></span>
-<span><span class="co">#&gt; 1    2         0.8          50 0.1257160</span></span>
-<span><span class="co">#&gt; 2    4         0.8          50 0.1317065</span></span>
-<span><span class="co">#&gt; 3    2         1.0          50 0.1253993</span></span>
-<span><span class="co">#&gt; 4    4         1.0          50 0.1303513</span></span>
-<span><span class="co">#&gt; 5    2         1.2          50 0.1251260</span></span>
-<span><span class="co">#&gt; 6    4         1.2          50 0.1291084</span></span>
-<span><span class="co">#&gt; 7    2         0.8         500 0.1231195</span></span>
-<span><span class="co">#&gt; 8    4         0.8         500 0.1228353</span></span>
-<span><span class="co">#&gt; 9    2         1.0         500 0.1230365</span></span>
-<span><span class="co">#&gt; 10   4         1.0         500 0.1225950</span></span>
-<span><span class="co">#&gt; 11   2         1.2         500 0.1229790</span></span>
-<span><span class="co">#&gt; 12   4         1.2         500 0.1224834</span></span></code></pre></div>
+<span><span class="co">#&gt; 1    2         0.8          50 0.1214082</span></span>
+<span><span class="co">#&gt; 2    4         0.8          50 0.1258193</span></span>
+<span><span class="co">#&gt; 3    2         1.0          50 0.1208723</span></span>
+<span><span class="co">#&gt; 4    4         1.0          50 0.1242678</span></span>
+<span><span class="co">#&gt; 5    2         1.2          50 0.1203357</span></span>
+<span><span class="co">#&gt; 6    4         1.2          50 0.1229213</span></span>
+<span><span class="co">#&gt; 7    2         0.8         500 0.1171656</span></span>
+<span><span class="co">#&gt; 8    4         0.8         500 0.1180867</span></span>
+<span><span class="co">#&gt; 9    2         1.0         500 0.1169246</span></span>
+<span><span class="co">#&gt; 10   4         1.0         500 0.1175901</span></span>
+<span><span class="co">#&gt; 11   2         1.2         500 0.1167663</span></span>
+<span><span class="co">#&gt; 12   4         1.2         500 0.1172382</span></span></code></pre></div>
 <p>Finally, use the selected parameters when imputing the full
 dataset:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
@@ -456,8 +470,7 @@ many calls (e.g., with <code><a href="../reference/tune_imp.html">tune_imp()</a>
 overhead adds up.</li>
 <li>If PCA imputation is slow, benchmark <code>"exact"</code> vs
 <code>"lobpcg"</code> on a representative subset and force the faster
-solver. LOBPCG is most likely to help when the matrix is large,
-approximately low-rank, and <code>ncp</code> is small.</li>
+solver.</li>
 <li>Try <code>threshold = 1e-5</code> if it produces similar imputed
 values or cross-validation error.</li>
 <li>For data where columns already share a common scale (e.g., DNAm beta

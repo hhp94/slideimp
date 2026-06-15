@@ -183,34 +183,42 @@ to prevent BLAS threads from oversubscribing CPU cores. This relies on
 Windows after an OpenBLAS swap). `pin_blas = TRUE` may have no effect on
 macOS.
 
-## Performance tips
+## PCA Performance tips
 
+Speed comes from three levers: `solver` (through LOBPCG with
+warm-start), `threshold`, and `scale`. Tune these first, then accuracy
+parameters (`ncp`, `coeff.ridge`) on a representative subset.
+
+**Exact vs. LOBPCG with warm-start.** Whether `"lobpcg"` beats `"exact"`
+depends on size and low-rankness: prefer `"lobpcg"` for large,
+approximately low-rank matrices with small `ncp`, and `"exact"` for
+small matrices (including
+[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
+windows), where it is faster and more robust. Separately, the warm-start
+makes each successive solve cheap:
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-relies heavily on linear algebra. On Windows, the default BLAS shipped
-with R may be slow for large matrices. Advanced users can replace it
-with [OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+warm-starts LOBPCG with the previous eigenblock and search direction, so
+once imputed values stabilize, later solves converge in a few
+iterations. The payoff therefore grows with the number of EM iterations,
+independent of low-rankness. `solver = "auto"` (default) probes both and
+is a safe start.
 
-PCA imputation speed depends on the eigensolver selected by `solver` and
-the convergence threshold `threshold`. The exact solver is selected with
-`solver = "exact"`. The iterative LOBPCG solver is selected with
-`solver = "lobpcg"`. The default, `solver = "auto"`, performs a short
-timed probe and chooses LOBPCG only when it is clearly faster.
+**Threshold.** The default `1e-6` is conservative; `1e-5` is often
+faster with very similar values.
 
-For large or approximately low-rank genomic matrices, it can be useful
-to benchmark `solver = "exact"` against `solver = "lobpcg"` on a
-representative subset, such as chromosome 22, before tuning
-accuracy-related parameters. For
-[`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md),
-this may include `window_size` and `overlap_size`.
+**Scale.** For columns on a common scale (e.g., DNAm beta values in
+`[0, 1]`), `scale = FALSE` can be faster and more accurate.
 
-The default `threshold = 1e-6` is conservative. In many genomic
-datasets, `threshold = 1e-5` can be faster while giving very similar
-imputed values. Check this on a representative subset before using the
-relaxed threshold in a full analysis.
+**Parallel and BLAS.** In parallel via `tune_imp()` or
+[`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
+with a multithreaded BLAS, set `pin_blas = TRUE` to avoid thread
+oversubscription. On Windows, the stock BLAS can be slow. Advanced users
+can swap in
+[OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
 
-See the pkgdown article [Speeding up PCA
+See [Speeding up PCA
 imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
-for a full workflow.
+for the full workflow.
 
 ## Examples
 

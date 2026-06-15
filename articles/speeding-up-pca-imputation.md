@@ -17,6 +17,11 @@ whenever PCA imputation is requested. This article describes how to make
 PCA imputation faster by choosing `threshold`, `scale`, `solver`, and a
 parallel backend with [mirai](https://mirai.r-lib.org).
 
+Set `.progress = TRUE` in
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md) to
+get a rough sense of progress first before determining if any further
+tuning is needed.
+
 ### Overview
 
 For large genomic matrices, runtime can be significantly reduced by
@@ -59,13 +64,16 @@ supports two PCA eigensolvers:
 
 - `solver = "exact"`: the exact solver. Robust and typically faster for
   small to moderate matrices.
-- `solver = "lobpcg"`: LOBPCG with warm start. Scales well when only a
-  small `ncp` is needed and the matrix is approximately low rank. In the
-  iterative EM algorithm, consecutive eigensolver calls differ only
-  slightly as imputed values stabilize.
+- `solver = "lobpcg"`: LOBPCG with warm start. Two independent things
+  drive its speed. First, whether it beats `"exact"` at all depends on
+  matrix size and low-rankness. LOBPCG wins on large, approximately
+  low-rank matrices with small `ncp`. Second, the warm start makes each
+  *successive* solve cheap:
   [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-  **warm-starts LOBPCG with both the previous eigenblock and search
-  direction**, so subsequent calls converge in few iterations.
+  warm-starts LOBPCG with the previous eigenblock and search direction,
+  so once imputed values stabilize, later solves converge in a few
+  iterations. The warm-start payoff therefore grows with the number of
+  EM iterations, independent of low-rankness.
 - `solver = "auto"` (default): runs a short timed probe of both solvers
   and picks LOBPCG only when it is clearly faster.
 
@@ -112,7 +120,7 @@ representative chromosome.
 
 ``` r
 
-set.seed(1234)
+set.seed(12345)
 
 obj_probe <- obj[, subset(sim_df, group == "group1")$feature]
 
@@ -125,7 +133,7 @@ mean(is.na(obj_probe))
 #### Time the solvers
 
 Use a small `ncp` and a relaxed `threshold = 1e-5` for the probe. This
-`ncp` is not necessary the final `ncp`. Both solvers use the same
+`ncp` is not necessarily the final `ncp`. Both solvers use the same
 convergence criterion, so their relative timing is representative.
 
 ``` r
@@ -177,11 +185,16 @@ res <- tune_imp(obj = obj_probe, parameters = thresh_df, .f = "pca_imp")
 #> Step 2/2: Tuning
 
 compute_metrics(res)
-#>   threshold ncp param_set rep_id error   n n_miss .metric .estimator  .estimate
-#> 1     1e-05   5         1      1  <NA> 500      0     mae   standard 0.09174255
-#> 2     1e-05   5         1      1  <NA> 500      0    rmse   standard 0.11499555
-#> 3     1e-06   5         2      1  <NA> 500      0     mae   standard 0.09174508
-#> 4     1e-06   5         2      1  <NA> 500      0    rmse   standard 0.11500090
+#>   threshold ncp .progress param_set rep_id error   n n_miss .metric .estimator
+#> 1     1e-05   5     FALSE         1      1  <NA> 500      0     mae   standard
+#> 2     1e-05   5     FALSE         1      1  <NA> 500      0    rmse   standard
+#> 3     1e-06   5     FALSE         2      1  <NA> 500      0     mae   standard
+#> 4     1e-06   5     FALSE         2      1  <NA> 500      0    rmse   standard
+#>    .estimate
+#> 1 0.09327532
+#> 2 0.11584434
+#> 3 0.09326740
+#> 4 0.11585427
 ```
 
 #### Check `scale`
@@ -206,24 +219,26 @@ res_scale <- tune_imp(obj = obj_probe, parameters = scale_df, .f = "pca_imp")
 #> Step 2/2: Tuning
 
 compute_metrics(res_scale)
-#>   scale ncp threshold param_set rep_id error   n n_miss .metric .estimator
-#> 1  TRUE   5     1e-05         1      1  <NA> 500      0     mae   standard
-#> 2  TRUE   5     1e-05         1      1  <NA> 500      0    rmse   standard
-#> 3 FALSE   5     1e-05         2      1  <NA> 500      0     mae   standard
-#> 4 FALSE   5     1e-05         2      1  <NA> 500      0    rmse   standard
-#>    .estimate
-#> 1 0.09031781
-#> 2 0.11342431
-#> 3 0.09037308
-#> 4 0.11352813
+#>   scale ncp threshold .progress param_set rep_id error   n n_miss .metric
+#> 1  TRUE   5     1e-05     FALSE         1      1  <NA> 500      0     mae
+#> 2  TRUE   5     1e-05     FALSE         1      1  <NA> 500      0    rmse
+#> 3 FALSE   5     1e-05     FALSE         2      1  <NA> 500      0     mae
+#> 4 FALSE   5     1e-05     FALSE         2      1  <NA> 500      0    rmse
+#>   .estimator  .estimate
+#> 1   standard 0.09281453
+#> 2   standard 0.11612999
+#> 3   standard 0.09290920
+#> 4   standard 0.11589055
 ```
 
 #### Tune accuracy parameters with the chosen settings
 
 After choosing `solver`, `threshold`, and `scale`, keep them fixed while
 tuning accuracy-related PCA parameters (`ncp` and `coeff.ridge`). Here,
-the `solver = "lobpcg"` is not clearly faster and `scale = FALSE` is
-more accurate.
+the `solver = "lobpcg"` is not clearly faster and `scale = FALSE`
+doesn’t change `rmse` too much. On this small, well-conditioned subset
+`exact` wins. On a large, approximately low-rank matrix that needs many
+EM iterations, `lobpcg` with warm start is typically faster.
 
 ``` r
 
@@ -262,15 +277,15 @@ aggregate(
   FUN = mean
 )
 #>   ncp coeff.ridge .estimate
-#> 1   2         0.8 0.1172521
-#> 2   4         0.8 0.1193276
-#> 3   6         0.8 0.1195876
-#> 4   2         1.0 0.1170776
-#> 5   4         1.0 0.1184868
-#> 6   6         1.0 0.1185998
-#> 7   2         1.2 0.1169066
-#> 8   4         1.2 0.1177737
-#> 9   6         1.2 0.1178293
+#> 1   2         0.8 0.1158408
+#> 2   4         0.8 0.1166093
+#> 3   6         0.8 0.1177499
+#> 4   2         1.0 0.1157635
+#> 5   4         1.0 0.1162633
+#> 6   6         1.0 0.1169795
+#> 7   2         1.2 0.1157307
+#> 8   4         1.2 0.1160604
+#> 9   6         1.2 0.1164008
 ```
 
 #### Apply to `slide_imp()`
@@ -320,18 +335,18 @@ aggregate(
   FUN = mean
 )
 #>    ncp coeff.ridge window_size .estimate
-#> 1    2         0.8          50 0.1257160
-#> 2    4         0.8          50 0.1317065
-#> 3    2         1.0          50 0.1253993
-#> 4    4         1.0          50 0.1303513
-#> 5    2         1.2          50 0.1251260
-#> 6    4         1.2          50 0.1291084
-#> 7    2         0.8         500 0.1231195
-#> 8    4         0.8         500 0.1228353
-#> 9    2         1.0         500 0.1230365
-#> 10   4         1.0         500 0.1225950
-#> 11   2         1.2         500 0.1229790
-#> 12   4         1.2         500 0.1224834
+#> 1    2         0.8          50 0.1214082
+#> 2    4         0.8          50 0.1258193
+#> 3    2         1.0          50 0.1208723
+#> 4    4         1.0          50 0.1242678
+#> 5    2         1.2          50 0.1203357
+#> 6    4         1.2          50 0.1229213
+#> 7    2         0.8         500 0.1171656
+#> 8    4         0.8         500 0.1180867
+#> 9    2         1.0         500 0.1169246
+#> 10   4         1.0         500 0.1175901
+#> 11   2         1.2         500 0.1167663
+#> 12   4         1.2         500 0.1172382
 ```
 
 Finally, use the selected parameters when imputing the full dataset:
@@ -407,9 +422,7 @@ The same `pin_blas = TRUE` argument is available in
   [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)),
   where per-call probe overhead adds up.
 - If PCA imputation is slow, benchmark `"exact"` vs `"lobpcg"` on a
-  representative subset and force the faster solver. LOBPCG is most
-  likely to help when the matrix is large, approximately low-rank, and
-  `ncp` is small.
+  representative subset and force the faster solver.
 - Try `threshold = 1e-5` if it produces similar imputed values or
   cross-validation error.
 - For data where columns already share a common scale (e.g., DNAm beta
