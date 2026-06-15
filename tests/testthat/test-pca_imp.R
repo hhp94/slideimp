@@ -1,3 +1,11 @@
+test_that("try_imputePCA() converts imputePCA errors into skips", {
+  skip_if_not_installed("missMDA")
+  expect_condition(
+    try_imputePCA("not a valid matrix"),
+    class = "skip"
+  )
+})
+
 test_that("same results as imputePCA", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
@@ -10,7 +18,7 @@ test_that("same results as imputePCA", {
   )$input
   expect_true(anyNA(to_test))
   # expected orientation (wide)
-  r1 <- missMDA::imputePCA(to_test, ncp = 2, nb.init = 1, seed = 1234)
+  r1 <- try_imputePCA(to_test, ncp = 2, nb.init = 1, seed = 1234)
   set.seed(1234)
   r2 <- pca_imp(
     to_test,
@@ -25,7 +33,7 @@ test_that("same results as imputePCA", {
   row.w <- runif(nrow(to_test))
   row.w <- row.w / sum(row.w)
   set.seed(1234)
-  r3 <- missMDA::imputePCA(
+  r3 <- try_imputePCA(
     to_test,
     ncp = 2,
     row.w = row.w,
@@ -46,7 +54,7 @@ test_that("same results as imputePCA", {
   # transposed input also gives identical results
   set.seed(1234)
   to_test_t <- t(to_test)
-  r1_t <- missMDA::imputePCA(to_test_t, ncp = 2, nb.init = 10, seed = 1234)
+  r1_t <- try_imputePCA(to_test_t, ncp = 2, nb.init = 10, seed = 1234)
   set.seed(1234)
   r2_t <- pca_imp(
     to_test_t,
@@ -60,7 +68,7 @@ test_that("same results as imputePCA", {
   row.w_t <- runif(nrow(to_test_t))
   row.w_t <- row.w_t / sum(row.w_t)
   set.seed(1234)
-  r3_t <- missMDA::imputePCA(
+  r3_t <- try_imputePCA(
     to_test_t,
     ncp = 2,
     row.w = row.w_t,
@@ -91,7 +99,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   )$input
   expect_true(anyNA(to_test))
   # expected orientation (wide)
-  r1 <- missMDA::imputePCA(
+  r1 <- try_imputePCA(
     to_test,
     ncp = 2,
     nb.init = 10,
@@ -112,7 +120,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   row.w <- runif(nrow(to_test))
   row.w <- row.w / sum(row.w)
   set.seed(1234)
-  r3 <- missMDA::imputePCA(
+  r3 <- try_imputePCA(
     to_test,
     ncp = 2,
     row.w = row.w,
@@ -135,7 +143,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   # transposed input also gives identical results
   set.seed(1234)
   to_test_t <- t(to_test)
-  r1_t <- missMDA::imputePCA(
+  r1_t <- try_imputePCA(
     to_test_t,
     ncp = 2,
     nb.init = 10,
@@ -156,7 +164,7 @@ test_that("same results as imputePCA, method = 'EM'", {
   row.w_t <- runif(nrow(to_test_t))
   row.w_t <- row.w_t / sum(row.w_t)
   set.seed(1234)
-  r3_t <- missMDA::imputePCA(
+  r3_t <- try_imputePCA(
     to_test_t,
     ncp = 2,
     row.w = row.w_t,
@@ -190,7 +198,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   expect_true(anyNA(to_test))
 
   # expected orientation (wide)
-  r1 <- missMDA::imputePCA(
+  r1 <- try_imputePCA(
     to_test,
     ncp = 2,
     nb.init = 10,
@@ -211,7 +219,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   row.w <- runif(nrow(to_test))
   row.w <- row.w / sum(row.w)
   set.seed(1234)
-  r3 <- missMDA::imputePCA(
+  r3 <- try_imputePCA(
     to_test,
     ncp = 2,
     row.w = row.w,
@@ -234,7 +242,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   # transposed input also gives identical results
   set.seed(1234)
   to_test_t <- t(to_test)
-  r1_t <- missMDA::imputePCA(
+  r1_t <- try_imputePCA(
     to_test_t,
     ncp = 2,
     nb.init = 10,
@@ -255,7 +263,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   row.w_t <- runif(nrow(to_test_t))
   row.w_t <- row.w_t / sum(row.w_t)
   set.seed(1234)
-  r3_t <- missMDA::imputePCA(
+  r3_t <- try_imputePCA(
     to_test_t,
     ncp = 2,
     row.w = row.w_t,
@@ -276,7 +284,7 @@ test_that("same results as imputePCA, scale = FALSE", {
   expect_equal(r3_t$completeObs, r4_t[,])
 })
 
-test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights", {
+test_that("row.w = 'n_miss' matches try_imputePCA with equivalent weights", {
   skip_if_not_installed("missMDA")
   set.seed(1234)
   to_test <- sim_mat(
@@ -296,7 +304,7 @@ test_that("row.w = 'n_miss' matches missMDA::imputePCA with equivalent weights",
 
   # compare "n_miss" shortcut against missMDA with explicit weights
   set.seed(1234)
-  r1 <- missMDA::imputePCA(
+  r1 <- try_imputePCA(
     to_test,
     ncp = 2,
     nb.init = 5,

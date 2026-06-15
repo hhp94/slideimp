@@ -455,7 +455,8 @@ slide_imp <- function(
             na_check = FALSE,
             colmax = colmax,
             post_imp = post_imp,
-            clamp = clamp
+            clamp = clamp,
+            .progress = FALSE
           )
         }
       ),

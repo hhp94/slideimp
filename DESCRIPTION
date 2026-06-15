@@ -2,9 +2,12 @@ Type: Package
 Package: slideimp
 Title: Numeric Matrices K-NN and PCA Imputation
 Version: 1.1.1
-Authors@R:
+Authors@R: c(
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
-           comment = c(ORCID = "0000-0002-8271-9355"))
+           comment = c(ORCID = "0000-0002-8271-9355")),
+    person("Posit Software, PBC", role = "cph",
+           comment = "Copyright holder of code adapted from the 'carrier' package, MIT licensed")
+  )
 Description: Fast k-nearest neighbors (K-NN) and principal component
     analysis (PCA) imputation algorithms for missing values in epigenetic
     data or other high-dimensional numeric matrices. For PCA, a locally
@@ -21,10 +24,10 @@ Description: Fast k-nearest neighbors (K-NN) and principal component
     imputation. The K-NN algorithm is described in: Hastie, T.,
     Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D.
     (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA
-    imputation is an optimized version of the imputePCA() function from
-    the 'missMDA' package described in: Josse, J. and Husson, F. (2016)
-    <doi:10.18637/jss.v070.i01> "missMDA: A Package for Handling Missing
-    Values in Multivariate Data Analysis".
+    imputation is an optimized reimplementation of the imputePCA()
+    function from the 'missMDA' package described in: Josse, J. and
+    Husson, F. (2016) <doi:10.18637/jss.v070.i01> "missMDA: A Package for
+    Handling Missing Values in Multivariate Data Analysis".
 License: GPL (>= 2)
 URL: https://github.com/hhp94/slideimp, https://hhp94.github.io/slideimp/
 BugReports: https://github.com/hhp94/slideimp/issues
@@ -32,30 +35,29 @@ Depends:
     R (>= 4.3.0)
 Imports:
     bigmemory,
-    carrier,
     checkmate,
     cli,
     collapse,
     mirai,
     Rcpp,
-    stats
+    stats,
+    utils
 Suggests:
     knitr,
     missMDA,
     RhpcBLASctl,
     rmarkdown,
-    testthat (>= 3.0.0)
-LinkingTo: 
-    mlpack,
+    testthat (>= 3.0.0),
+    withr
+LinkingTo:
     Rcpp,
     RcppArmadillo,
-    RcppEnsmallen,
     RcppThread
 VignetteBuilder: 
     knitr
 Config/Needs/website: rmarkdown
+Config/roxygen2/version: 8.0.0
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3

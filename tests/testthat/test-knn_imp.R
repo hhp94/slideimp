@@ -1,4 +1,4 @@
-test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing location correctly", {
+test_that("`impute_knn_brute` calculate the missing location correctly", {
   set.seed(1234)
   to_test <- sim_mat(20, 50, perc_total_na = 0.5, perc_col_na = 1)$input
   miss <- is.na(to_test)
@@ -26,20 +26,8 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
     cores = 1
   )
 
-  imputed_mlpack <- impute_knn_mlpack(
-    obj = pre_imp_cols,
-    k = 5,
-    grp_impute = grp_impute,
-    grp_miss_no_imp = integer(0L),
-    grp_complete = integer(0L),
-    method = 0L,
-    dist_pow = 1,
-    cores = 1
-  )
-
   # extract only the location columns (row, local_col_1based) that the C++ already returns
   idx_brute <- imputed_brute[, 1:2, drop = FALSE]
-  idx_mlpack <- imputed_mlpack[, 1:2, drop = FALSE]
 
   # sort so the comparison is order-independent
   expected_sorted <- expected_local[
@@ -52,60 +40,30 @@ test_that("`impute_knn_brute` and `impute_knn_mlpack` calculate the missing loca
     ,
     drop = FALSE
   ]
-  mlpack_sorted <- idx_mlpack[
-    order(idx_mlpack[, 1], idx_mlpack[, 2]),
-    ,
-    drop = FALSE
-  ]
 
   expect_equal(brute_sorted, expected_sorted)
-  expect_equal(mlpack_sorted, expected_sorted)
 })
 
-test_that("`knn_imp` works", {
+test_that("Exactly replicate `impute.knn`", {
   obj <- sim_mat(50, 100)$input
+
   expect_no_error(knn_imp(
     obj,
     k = 3,
     method = "euclidean"
   ))
 
-  expect_no_error(knn_imp(
-    obj,
-    k = 3,
-    method = "manhattan",
-    tree = TRUE
-  ))
-})
-
-test_that("`knn_imp` tree and brute is the same for few missing values", {
-  set.seed(1234)
-  to_test <- sim_mat(20, n = 1000, perc_total_na = 0, perc_col_na = 0)$input
-  to_test[1, 1] <- NA
-  to_test[2, 2] <- NA
-
-  expect_equal(
-    knn_imp(to_test, k = 3, method = "euclidean"),
-    knn_imp(to_test, k = 3, method = "euclidean", tree = TRUE)
-  )
-})
-
-test_that("Exactly replicate `impute.knn`", {
   skip("Manual Testing Only")
-  # library(impute)
   # set.seed(1234)
   # # post_imp behavior can cause differences
   # obj <- sim_mat(100, 100, perc_total_na = 0.05)$input
   #
-  # # Check if the 'impute' package is installed
-  #
-  # # Perform imputation using knn_imp with method "impute.knn" on transposed data
+  # # perform imputation using knn_imp with method "impute.knn" on transposed data
   # r1 <- knn_imp(obj, k = 3, method = "euclidean", post_imp = FALSE)
   #
-  # # Perform imputation using the original impute.knn function
-  # # Transpose the result to match the orientation
+  # # perform imputation using the original impute.knn function
   # r2 <- t(
-  #   impute.knn(
+  #   impute::impute.knn(
   #     t(obj),
   #     k = 3,
   #     maxp = ncol(obj)

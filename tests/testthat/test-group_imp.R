@@ -339,43 +339,57 @@ test_that("grouped imputation works without aux columns, pca", {
 })
 
 test_that("group-specific parameters work correctly in parallel, pca", {
-  # skip_on_cran()
-  # skip_on_ci()
-  # skip_if_not_installed("carrier")
-  # set.seed(1234)
-  # to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
-  # group_1 <- subset(to_test$col_group, group == "group1")$feature
-  # group_2 <- subset(to_test$col_group, group == "group2")$feature
-  # # Different ncp and coeff.ridge values for each group
-  # group_df <- data.frame(
-  #   feature = I(list(group_1[1:3], group_2[1:4])),
-  #   aux = I(list(group_1, group_2)),
-  #   parameters = I(list(
-  #     list(ncp = 2, coeff.ridge = 1),
-  #     list(ncp = 3, coeff.ridge = 2)
-  #   ))
-  # )
-  # obj <- to_test$input
-  # mirai::daemons(2, seed = 1234)
-  # grouped_results <- group_imp(obj, group = group_df, cores = 1, seed = 1234, nb.init = 10)
-  # mirai::daemons(0)
-  # # Manual verification with different parameters
-  # sub1_full <- pca_imp(obj[, group_1], ncp = 2, coeff.ridge = 1, seed = 1234, nb.init = 10)
-  # sub1 <- obj[, group_1]
-  # sub1[, group_1[1:3]] <- sub1_full[, group_1[1:3]]
-  # sub2_full <- pca_imp(obj[, group_2], ncp = 3, coeff.ridge = 2, seed = 1234, nb.init = 10)
-  # sub2 <- obj[, group_2]
-  # sub2[, group_2[1:4]] <- sub2_full[, group_2[1:4]]
-  # expected_results <- cbind(sub1, sub2)[, colnames(obj)]
-  #
-  # imputed_cols <- c(group_1[1:3], group_2[1:4])
-  # obj_orig <- obj[, imputed_cols]
-  # grouped_values <- grouped_results[, imputed_cols][is.na(obj_orig)]
-  # expected_values <- expected_results[, imputed_cols][is.na(obj_orig)]
-  # # seeding in parallel is hard to reproduce correctly
-  # expect_true(
-  #   cor(grouped_values, expected_values) > 0.999
-  # )
+  skip_on_cran()
+  skip_if_not_installed("withr")
+  set.seed(1234)
+  to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)
+  group_1 <- subset(to_test$col_group, group == "group1")$feature
+  group_2 <- subset(to_test$col_group, group == "group2")$feature
+  group_df <- data.frame(
+    feature = I(list(group_1[1:3], group_2[1:4])),
+    aux = I(list(group_1, group_2)),
+    parameters = I(list(
+      list(ncp = 2, coeff.ridge = 1),
+      list(ncp = 3, coeff.ridge = 2)
+    ))
+  )
+  obj <- to_test$input
+  mirai::daemons(2, seed = 1234)
+  withr::defer(mirai::daemons(0))
+  expect_message(
+    grouped_results <- group_imp(
+      obj,
+      group = group_df,
+      cores = 1,
+      seed = 1234,
+      nb.init = 10
+    ),
+    regexp = "Running mode.*mirai"
+  )
+  sub1_full <- pca_imp(
+    obj[, group_1],
+    ncp = 2,
+    coeff.ridge = 1,
+    seed = 1234,
+    nb.init = 10
+  )
+  sub1 <- obj[, group_1]
+  sub1[, group_1[1:3]] <- sub1_full[, group_1[1:3]]
+  sub2_full <- pca_imp(
+    obj[, group_2],
+    ncp = 3,
+    coeff.ridge = 2,
+    seed = 1234,
+    nb.init = 10
+  )
+  sub2 <- obj[, group_2]
+  sub2[, group_2[1:4]] <- sub2_full[, group_2[1:4]]
+  expected_results <- cbind(sub1, sub2)[, colnames(obj)]
+  imputed_cols <- c(group_1[1:3], group_2[1:4])
+  obj_orig <- obj[, imputed_cols]
+  grouped_values <- grouped_results[, imputed_cols][is.na(obj_orig)]
+  expected_values <- expected_results[, imputed_cols][is.na(obj_orig)]
+  expect_true(cor(grouped_values, expected_values) > 0.999)
 })
 
 # prep_groups ----

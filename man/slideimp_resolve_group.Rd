@@ -17,6 +17,9 @@ slideimp_resolve_group(x)
 \code{data.frame} objects. The optional \code{slideimp.extra} package provides a
 method for character platform names.}
 }
+\value{
+A data frame group specification, or an error for unsupported inputs.
+}
 \description{
 Convert a group specification to the canonical data-frame form expected by
 \code{\link[=prep_groups]{prep_groups()}}. This S3 generic is exported so that extension packages,

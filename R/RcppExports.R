@@ -17,10 +17,6 @@ impute_knn_brute <- function(obj, k, grp_impute, grp_miss_no_imp, grp_complete, 
     .Call(`_slideimp_impute_knn_brute`, obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores, pb)
 }
 
-impute_knn_mlpack <- function(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores = 1L) {
-    .Call(`_slideimp_impute_knn_mlpack`, obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores)
-}
-
 col_min_max <- function(mat) {
     .Call(`_slideimp_col_min_max`, mat)
 }

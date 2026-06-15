@@ -2,7 +2,6 @@
 // Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 #include <RcppArmadillo.h>
-#include <RcppEnsmallen.h>
 #include <RcppThread.h>
 #include <Rcpp.h>
 
@@ -81,24 +80,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
     Rcpp::traits::input_parameter< const bool >::type pb(pbSEXP);
     rcpp_result_gen = Rcpp::wrap(impute_knn_brute(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores, pb));
-    return rcpp_result_gen;
-END_RCPP
-}
-// impute_knn_mlpack
-arma::mat impute_knn_mlpack(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, int cores);
-RcppExport SEXP _slideimp_impute_knn_mlpack(SEXP objSEXP, SEXP kSEXP, SEXP grp_imputeSEXP, SEXP grp_miss_no_impSEXP, SEXP grp_completeSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const arma::uword >::type k(kSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type grp_impute(grp_imputeSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type grp_miss_no_imp(grp_miss_no_impSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type grp_complete(grp_completeSEXP);
-    Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
-    Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(impute_knn_mlpack(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -192,7 +173,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 9},
-    {"_slideimp_impute_knn_mlpack", (DL_FUNC) &_slideimp_impute_knn_mlpack, 8},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 1},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
     {"_slideimp_mean_imp_col_internal", (DL_FUNC) &_slideimp_mean_imp_col_internal, 3},

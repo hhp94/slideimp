@@ -159,7 +159,6 @@ check_pin_blas <- function(pin_blas) {
       "colmax",
       "post_imp",
       "dist_pow",
-      "tree",
       ".progress"
     )
   ),
@@ -181,7 +180,8 @@ check_pin_blas <- function(pin_blas) {
       "solver",
       "colmax",
       "post_imp",
-      "clamp"
+      "clamp",
+      ".progress"
     )
   )
 )

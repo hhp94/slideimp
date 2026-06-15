@@ -232,8 +232,6 @@ sample_na_loc <- function(
 #' positions into a list of 2-column (row, col) integer matrices and
 #' bounds-checks them.
 #'
-#' @inheritParams tune_imp
-#'
 #' Accepted `na_loc` shapes:
 #' - 2-column integerish matrix of (row, col) pairs (treated as a single rep)
 #' - integer vector of linear positions (treated as a single rep)
@@ -696,6 +694,12 @@ tune_imp <- function(
           "{.fn pca_imp} does not accept {.arg k}. Did you mean {.code .f = 'knn_imp'}?"
         )
       }
+      if (".progress" %in% names(parameters)) {
+        cli::cli_alert_info(
+          "{.arg .progress} in {.arg parameters} is suppressed."
+        )
+      }
+      parameters$.progress <- FALSE
     }
 
     cli::cli_inform("Tuning {.fn {fn_name}}")
@@ -877,7 +881,7 @@ tune_imp <- function(
       },
       add = TRUE
     )
-    crated_fn <- carrier::crate(
+    crated_fn <- .crate(
       function(i) {
         if (pin_blas) {
           RhpcBLASctl::blas_set_num_threads(1)
@@ -1156,92 +1160,4 @@ compute_metrics.slideimp_tune <- function(results, metrics = c("mae", "rmse")) {
   out <- cbind(row_data, metric_df)
   rownames(out) <- NULL
   out
-}
-
-#' Legacy Function
-#'
-#' @keywords internal
-#' @noRd
-inject_na <- function(
-  obj,
-  num_na = NULL,
-  rowmax = 0.9,
-  colmax = 0.9,
-  check_sd = FALSE,
-  max_iter = 1000
-) {
-  # subset the matrix to the specified features and samples
-  na_mat <- !is.na(obj)
-  # check if existing NA pattern already exceeds thresholds
-  max_col_miss <- floor(nrow(na_mat) * colmax)
-  max_row_miss <- floor(ncol(na_mat) * rowmax)
-  # calculate current missingness
-  current_col_miss <- nrow(na_mat) - colSums(na_mat)
-  current_row_miss <- ncol(na_mat) - rowSums(na_mat)
-  # check if any columns already exceed the threshold
-  bad_cols <- which(current_col_miss > max_col_miss)
-  if (length(bad_cols) > 0) {
-    stop("Some columns have missing > colmax before na injections")
-  }
-  # check if any rows already exceed the threshold
-  bad_rows <- which(current_row_miss > max_row_miss)
-  if (length(bad_rows) > 0) {
-    stop("Some rows have missing > rowmax before na injections")
-  }
-  not_na <- which(na_mat)
-  # ensure 'num_na' does not exceed the number of available non-NA elements
-  if (num_na > length(not_na)) {
-    stop(
-      sprintf(
-        "'num_na' (%d) exceeds the number of available non-NA elements (%d).
-        Adjust 'num_na' or increase feature/sample group size.",
-        num_na,
-        length(not_na)
-      )
-    )
-  }
-
-  if (check_sd) {
-    # initial check for zero variance
-    cvars <- col_vars(obj)
-    if (any(cvars < .Machine$double.eps | is.na(cvars))) {
-      stop("Zero variance columns detected before na injections")
-    }
-  }
-
-  # initialize variables for the while loop
-  c_miss <- TRUE
-  r_miss <- TRUE
-  sd_ok <- !check_sd # TRUE if not checking, FALSE if we need to check
-
-  na_loc <- NULL
-  iter <- 0
-  # inject `NA` while ensuring missingness thresholds and iter are not exceeded
-  while (c_miss || r_miss || !sd_ok) {
-    iter <- iter + 1
-    if (iter > max_iter) {
-      stop(
-        "NA injection failed. Adjust 'num_na' or increase 'colmax' and 'rowmax'."
-      )
-    }
-    na_mat_test <- na_mat
-    na_loc <- sample(not_na, size = num_na)
-    na_mat_test[na_loc] <- FALSE
-
-    # calculate the counts of missing values in columns and rows
-    col_miss_count <- nrow(na_mat_test) - colSums(na_mat_test)
-    row_miss_count <- ncol(na_mat_test) - rowSums(na_mat_test)
-    # check if any column or row exceeds the missingness thresholds
-    c_miss <- any(col_miss_count > max_col_miss)
-    r_miss <- any(row_miss_count > max_row_miss)
-
-    if (check_sd) {
-      # this is the real obj, not is.na(obj)
-      obj_test <- obj
-      obj_test[na_loc] <- NA
-      cvars <- col_vars(obj_test)
-      sd_ok <- !any(cvars < .Machine$double.eps | is.na(cvars))
-    }
-  }
-  return(na_loc)
 }

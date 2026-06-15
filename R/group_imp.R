@@ -12,6 +12,8 @@
 #' df <- data.frame(feature = c("cg1", "cg2"), group = c(1, 1))
 #' slideimp_resolve_group(df)
 #'
+#' @returns A data frame group specification, or an error for unsupported inputs.
+#'
 #' @note
 #' This is primarily an extension hook for `slideimp.extra`.
 #'
@@ -21,12 +23,14 @@ slideimp_resolve_group <- function(x) {
 }
 
 #' @rdname slideimp_resolve_group
+#' @method slideimp_resolve_group data.frame
 #' @export
 slideimp_resolve_group.data.frame <- function(x) {
   unique(x)
 }
 
 #' @rdname slideimp_resolve_group
+#' @method slideimp_resolve_group default
 #' @export
 slideimp_resolve_group.default <- function(x) {
   cli::cli_abort(c(
@@ -573,7 +577,6 @@ group_imp <- function(
   colmax = NULL,
   post_imp = NULL,
   dist_pow = NULL,
-  tree = NULL,
   # PCA arguments
   scale = NULL,
   coeff.ridge = NULL,
@@ -636,7 +639,6 @@ group_imp <- function(
     colmax = colmax,
     post_imp = post_imp,
     dist_pow = dist_pow,
-    tree = tree,
     ncp = ncp,
     scale = scale,
     coeff.ridge = coeff.ridge,
@@ -794,11 +796,13 @@ group_imp <- function(
   params <- lapply(iter, function(i) {
     p <- group$parameters[[i]]
     p$na_check <- FALSE
+    p$.progress <- FALSE
+
     if (is_knn_mode) {
       p$cores <- cores
       p$subset <- indices[[i]]$features_idx_local
-      p$.progress <- FALSE
     }
+
     p
   })
 
@@ -839,7 +843,7 @@ group_imp <- function(
       add = TRUE
     )
 
-    crated_fn <- carrier::crate(
+    crated_fn <- .crate(
       function(i) {
         if (pin_blas) {
           RhpcBLASctl::blas_set_num_threads(1)
@@ -889,7 +893,8 @@ group_imp <- function(
       pin_blas = pin_blas,
       out_ranges = out_ranges,
       on_infeasible = on_infeasible,
-      group_ids = group_ids
+      group_ids = group_ids,
+      mean_imp_col = mean_imp_col
     )
     m <- mirai::mirai_map(iter, crated_fn)
     fallback_flags <- unlist(m[.progress = .progress])

@@ -416,6 +416,45 @@ test_that("tune_imp works", {
   )
 })
 
+test_that("tune_imp runs the parallel (mirai) branch", {
+  skip_on_cran()
+  skip_if_not_installed("withr")
+  set.seed(1234)
+  obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input
+  knn_imp_par <- data.frame(k = c(5, 10), method = "euclidean", post_imp = TRUE)
+  mirai::daemons(2, seed = 1234)
+  withr::defer(mirai::daemons(0))
+  expect_message(
+    res <- tune_imp(obj, knn_imp_par, .f = "knn_imp", n_reps = 2, num_na = 100),
+    regexp = "Running mode.*mirai"
+  )
+  expect_true(all(is.na(res$error)))
+  expect_true(
+    all(vapply(res$result, \(x) class(x$estimate), character(1)) == "numeric")
+  )
+})
+
+test_that("tune_imp forces cores = 1 under active daemons", {
+  skip_on_cran()
+  skip_if_not_installed("withr")
+  set.seed(1234)
+  obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input
+  knn_imp_par <- data.frame(k = 5, method = "euclidean", post_imp = TRUE)
+  mirai::daemons(2, seed = 1234)
+  withr::defer(mirai::daemons(0))
+  expect_message(
+    output <- tune_imp(
+      obj,
+      knn_imp_par,
+      .f = "knn_imp",
+      n_reps = 1,
+      num_na = 100,
+      cores = 2
+    ),
+    regexp = "nested parallelism"
+  )
+})
+
 test_that("tune_imp works when n_reps is a list of NA locations", {
   # Create a complete matrix (no NAs) for testing
   obj <- sim_mat(50, 200)$input

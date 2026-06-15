@@ -119,3 +119,12 @@ max_abs_diff <- function(a, b) {
   stopifnot(!anyNA(a), !anyNA(b))
   max(abs(a - b))
 }
+
+try_imputePCA <- function(...) {
+  tryCatch(
+    missMDA::imputePCA(...),
+    error = function(e) {
+      skip(paste0("missMDA::imputePCA() errored: ", conditionMessage(e)))
+    }
+  )
+}
