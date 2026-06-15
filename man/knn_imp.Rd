@@ -2,7 +2,7 @@
 % Please edit documentation in R/knn_imp.R
 \name{knn_imp}
 \alias{knn_imp}
-\title{K-Nearest-Neighbor Imputation for Numeric Matrices}
+\title{K-Nearest Neighbor Imputation for Numeric Matrices}
 \usage{
 knn_imp(
   obj,
@@ -54,8 +54,7 @@ A numeric matrix of the same dimensions as \code{obj}, with missing
 values imputed. The returned object has class \code{slideimp_results}.
 }
 \description{
-Impute missing values in a numeric matrix using k-nearest neighbors
-(K-NN).
+Impute missing values in a numeric matrix using full K-nearest neighbors (K-NN).
 }
 \details{
 \code{knn_imp()} performs imputation column-wise, treating rows as observations
@@ -79,6 +78,7 @@ set.seed(123)
 obj <- sim_mat(20, 20, perc_col_na = 1)$input
 sum(is.na(obj))
 
+# Select `k` with `tune_imp()`.
 result <- knn_imp(obj, k = 10, .progress = FALSE)
 result
 

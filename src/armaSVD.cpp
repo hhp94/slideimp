@@ -873,7 +873,7 @@ Rcpp::List pca_imp_internal_cpp(
                                        miss_rows_flat,
                                        miss_rows_offsets);
 
-      objective = objective_full - miss_contrib;
+      objective = std::max(0.0, objective_full - miss_contrib);
     }
     LOC_TOC(pca_imp_gram, "objective");
 
@@ -907,14 +907,9 @@ Rcpp::List pca_imp_internal_cpp(
     old = objective;
 
     bool stop_now = false;
-    if (!std::isnan(criterion))
+    if (nb_iter >= miniter)
     {
-      if (criterion < threshold && nb_iter >= miniter)
-      {
-        stop_now = true;
-        converged = true;
-      }
-      else if (objective < threshold && nb_iter >= miniter)
+      if (criterion < threshold || objective < threshold)
       {
         stop_now = true;
         converged = true;

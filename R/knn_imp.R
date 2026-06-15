@@ -1,7 +1,6 @@
-#' K-Nearest-Neighbor Imputation for Numeric Matrices
+#' K-Nearest Neighbor Imputation for Numeric Matrices
 #'
-#' Impute missing values in a numeric matrix using k-nearest neighbors
-#' (K-NN).
+#' Impute missing values in a numeric matrix using full K-nearest neighbors (K-NN).
 #'
 #' @param obj A numeric matrix with samples in rows and features in columns.
 #' @param k Integer. Number of nearest neighbors to use for K-NN imputation.
@@ -52,6 +51,7 @@
 #' obj <- sim_mat(20, 20, perc_col_na = 1)$input
 #' sum(is.na(obj))
 #'
+#' # Select `k` with `tune_imp()`.
 #' result <- knn_imp(obj, k = 10, .progress = FALSE)
 #' result
 #'

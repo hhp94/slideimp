@@ -10,7 +10,6 @@
 using mask_t = uint8_t;
 using MaskMat = arma::Mat<mask_t>;
 
-constexpr double epsilon = 1e-10;
 // GroupLayout: single source of truth for group boundaries.
 // Groups 1+2 (imputed + missing-no-impute) share identical kernel treatment
 // and live together in obj_masked / nmiss_masked at local cols [0, n_masked()).

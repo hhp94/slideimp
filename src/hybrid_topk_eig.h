@@ -15,41 +15,11 @@ inline bool make_temporal_P(arma::mat &P,
                             const arma::mat &X_prev,
                             const LOBPCGOptions &opt)
 {
-  using namespace lobpcg_detail;
+  const double min_temporal_norm =
+      1e-10 * std::sqrt(static_cast<double>(X_curr.n_cols));
 
-  if (X_prev.n_rows != X_curr.n_rows || X_prev.n_cols != X_curr.n_cols)
-  {
-    return false;
-  }
-
-  P = X_prev - X_curr * (X_curr.t() * X_prev);
-
-  const double p_fro = arma::norm(P, "fro");
-  const double min_temporal_norm = 1e-10 * std::sqrt(static_cast<double>(X_curr.n_cols));
-
-  if (!(p_fro > min_temporal_norm))
-  {
-    P.reset();
-    return false;
-  }
-
-  if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 ||
-      P.n_cols != X_curr.n_cols)
-  {
-    P.reset();
-    return false;
-  }
-
-  P -= X_curr * (X_curr.t() * P);
-
-  if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 ||
-      P.n_cols != X_curr.n_cols)
-  {
-    P.reset();
-    return false;
-  }
-
-  return true;
+  return lobpcg_detail::build_momentum_P(
+      P, X_curr, X_prev, opt, min_temporal_norm);
 }
 
 enum HybridEigPath

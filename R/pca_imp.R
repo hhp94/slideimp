@@ -208,7 +208,8 @@ new_lobpcg_control <- function(
 #' PCA Imputation for Numeric Matrices
 #'
 #' Impute missing values in a numeric matrix using regularized or
-#' expectation-maximization (EM) PCA imputation.
+#' expectation-maximization (EM) PCA imputation. Supports warm-start LOBPCG with
+#' both the previous eigenblock and search direction.
 #'
 #' @inheritParams knn_imp
 #'
@@ -245,8 +246,8 @@ new_lobpcg_control <- function(
 #' values imputed. The returned object has class `slideimp_results`.
 #'
 #' @details
-#' This algorithm is based on `missMDA::imputePCA()` and is optimized for tall
-#' or wide numeric matrices.
+#' This function reimplements the PCA imputation method from the `missMDA`
+#' package by Francois Husson and Julie Josse, based on Josse and Husson (2016).
 #'
 #' @section PCA Performance tips:
 #' Speed comes from three levers: `solver` (through LOBPCG with warm-start),
@@ -254,7 +255,7 @@ new_lobpcg_control <- function(
 #' (`ncp`, `coeff.ridge`) on a representative subset.
 #'
 #' **Exact vs. LOBPCG with warm-start.** Whether `"lobpcg"` beats `"exact"`
-#' depends on size and low-rankness: prefer `"lobpcg"` for large, approximately
+#' depends on size and low-rankness: `"lobpcg"` is preferred for large, approximately
 #' low-rank matrices with small `ncp`, and `"exact"` for small matrices
 #' (including `slide_imp()` windows), where it is faster and more robust.
 #' Separately, the warm-start makes each successive solve cheap: `pca_imp()`
@@ -285,9 +286,6 @@ new_lobpcg_control <- function(
 #' Multivariate Data Analysis. *Journal of Statistical Software*, 70(1), 1-31.
 #' \doi{10.18637/jss.v070.i01}
 #'
-#' The PCA imputation algorithm is based on the original `missMDA`
-#' implementation by Francois Husson and Julie Josse.
-#'
 #' @examples
 #' set.seed(123)
 #' obj <- sim_mat(10, 10)$input
@@ -295,7 +293,7 @@ new_lobpcg_control <- function(
 #' obj[1:4, 1:4]
 #'
 #' # Randomly initialize missing values 5 times. The first initialization is
-#' # mean imputation.
+#' # mean imputation. Select `ncp` with `tune_imp()`.
 #' pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 #'
 #' @export

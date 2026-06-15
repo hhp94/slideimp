@@ -417,7 +417,7 @@ test_that("tune_imp works", {
 })
 
 test_that("tune_imp runs the parallel (mirai) branch", {
-  skip_on_cran()
+  skip_if_not_manual()
   skip_if_not_installed("withr")
   set.seed(1234)
   obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input
@@ -435,7 +435,7 @@ test_that("tune_imp runs the parallel (mirai) branch", {
 })
 
 test_that("tune_imp forces cores = 1 under active daemons", {
-  skip_on_cran()
+  skip_if_not_manual()
   skip_if_not_installed("withr")
   set.seed(1234)
   obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input

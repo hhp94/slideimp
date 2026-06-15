@@ -26,3 +26,10 @@ dump_roxygen2 <- function(output_file = "roxygen2.txt", dir = "R/") {
     output_file
   ))
 }
+
+check_manual <- function(...) {
+  withr::with_envvar(
+    c(MANUAL_TESTS = "true"),
+    devtools::test(...)
+  )
+}

@@ -15,6 +15,5 @@ bibentry(
   number = "6",
   pages = "btag318",
   doi = "10.1093/bioinformatics/btag318",
-  issn = "1367-4811",
-  url = "https://doi.org/10.1093/bioinformatics/btag318"
+  issn = "1367-4811"
 )

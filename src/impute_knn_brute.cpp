@@ -301,22 +301,65 @@ std::vector<NeighborInfo> distance_vector(
     }
 }
 
+// inverse-distance KNN weights, rescaled so the largest weight is 1
+static arma::vec knn_weights(const std::vector<NeighborInfo> &top_k,
+                             double dist_pow)
+{
+    const arma::uword n = top_k.size();
+    arma::vec w(n, arma::fill::ones);
+
+    if (n == 0 || dist_pow == 0.0)
+    {
+        return w; // unweighted KNN
+    }
+
+    double min_pos = std::numeric_limits<double>::infinity();
+    bool has_zero = false;
+
+    for (arma::uword j = 0; j < n; ++j)
+    {
+        const double d = top_k[j].distance;
+        if (d <= 0.0)
+        {
+            has_zero = true;
+        }
+        else if (std::isfinite(d))
+        {
+            min_pos = std::min(min_pos, d);
+        }
+    }
+
+    // no positive finite distances (all zero/degenerate): equal weights.
+    if (!std::isfinite(min_pos))
+    {
+        return w;
+    }
+
+    if (has_zero)
+    {
+        // exact-duplicate neighbors (d == 0) dominate with weight 1;
+        // positive-distance neighbors get tiny but nonzero weights.
+        const double floor =
+            min_pos * std::sqrt(std::numeric_limits<double>::epsilon());
+        for (arma::uword j = 0; j < n; ++j)
+        {
+            const double d = std::max(top_k[j].distance, floor);
+            w(j) = std::pow(floor / d, dist_pow);
+        }
+    }
+    else
+    {
+        for (arma::uword j = 0; j < n; ++j)
+        {
+            w(j) = std::pow(min_pos / top_k[j].distance, dist_pow);
+        }
+    }
+
+    return w;
+}
+
 // -----------------------------------------------------------------------------
 // Entry point
-// -----------------------------------------------------------------------------
-// Build reordered working matrices then run the imputation directly.
-// Layout of obj_masked (columns):
-//  [ 0 -> n_imp )                           grp_impute
-//  [ n_imp -> (n_imp + n_mni) )             grp_miss_no_imp
-//
-// `nmiss_masked` covers only the first two regions. For groups 1 and 2, NaN
-// entries in obj_masked are replaced with 0.0 (required for correctness of the
-// masked kernel) and the corresponding `nmiss_masked` entry is 0; everything
-// else is 1.
-//
-// `n_col_valid` is populated in the same pass as the copy/mask. It feeds both
-// initialize_result_matrix (to size per-column missing row lists) and
-// `n_valid_vec` (`target_n_valid` for the complete-neighbor kernel).
 // -----------------------------------------------------------------------------
 // [[Rcpp::export]]
 arma::mat impute_knn_brute(
@@ -423,12 +466,11 @@ arma::mat impute_knn_brute(
                 return;
             }
             arma::uvec nn_columns(n_neighbors);
-            arma::vec weights(n_neighbors);
             for (arma::uword jj = 0; jj < n_neighbors; ++jj)
             {
                 nn_columns(jj) = top_k[jj].index;
-                weights(jj) = 1.0 / std::pow(top_k[jj].distance + epsilon, dist_pow);
             }
+            arma::vec weights = knn_weights(top_k, dist_pow);
             impute_column_values(
                 result, obj_masked, nmiss_masked, layout,
                 col_offsets(i), nn_columns, weights, rows_to_impute_vec[i],

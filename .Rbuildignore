@@ -10,7 +10,6 @@
 ^CRAN-SUBMISSION$
 ^doc$
 ^Meta$
-^R/utils1\.R$
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
@@ -19,3 +18,4 @@
 ^\.claude$
 ^vignettes/articles$
 ^[.]?air[.]toml$
+^R/dev-utils\.R$

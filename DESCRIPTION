@@ -1,7 +1,7 @@
 Type: Package
 Package: slideimp
 Title: Numeric Matrices K-NN and PCA Imputation
-Version: 1.1.1
+Version: 1.2.0
 Authors@R: c(
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355")),
@@ -12,8 +12,8 @@ Description: Fast k-nearest neighbors (K-NN) and principal component
     analysis (PCA) imputation algorithms for missing values in epigenetic
     data or other high-dimensional numeric matrices. For PCA, a locally
     optimal block preconditioned conjugate gradient (LOBPCG) eigensolver
-    with warm starts of both the eigenblock and search direction is
-    provided. Two complementary imputation strategies are available.
+    with warm starts of both the eigenblock and search direction is also
+    supported. Two complementary imputation strategies are available.
     Group-wise imputation (e.g., by chromosome) is recommended for
     Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other
     matrices with groupable columns. A sliding window approach for K-NN or

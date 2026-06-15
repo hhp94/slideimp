@@ -137,6 +137,47 @@ namespace lobpcg_detail
     return r;
   }
 
+  inline bool build_momentum_P(arma::mat &P,
+                               const arma::mat &X_curr,
+                               const arma::mat &X_prev,
+                               const LOBPCGOptions &opt,
+                               double min_projected_fro_norm = -1.0)
+  {
+    if (X_prev.n_rows != X_curr.n_rows ||
+        X_prev.n_cols != X_curr.n_cols)
+    {
+      P.reset();
+      return false;
+    }
+
+    P = X_prev - X_curr * (X_curr.t() * X_prev);
+
+    if (min_projected_fro_norm >= 0.0 &&
+        !(arma::norm(P, "fro") > min_projected_fro_norm))
+    {
+      P.reset();
+      return false;
+    }
+
+    if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 ||
+        P.n_cols != X_curr.n_cols)
+    {
+      P.reset();
+      return false;
+    }
+
+    P -= X_curr * (X_curr.t() * P);
+
+    if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 ||
+        P.n_cols != X_curr.n_cols)
+    {
+      P.reset();
+      return false;
+    }
+
+    return true;
+  }
+
   inline bool qr_orthonormalize_update_matvec(arma::mat &Q,
                                               arma::mat &AQ,
                                               const arma::mat &A,
@@ -247,20 +288,14 @@ inline void seed_lobpcg_state(LOBPCGState &state,
                               const arma::mat &X_prev,
                               const LOBPCGOptions &opt = LOBPCGOptions())
 {
-  using namespace lobpcg_detail;
   state.X = X_curr;
 
-  arma::mat P = X_prev - X_curr * (X_curr.t() * X_prev);
+  arma::mat P;
 
-  if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 || P.n_cols != state.X.n_cols)
-  {
-    state.P.reset();
-    return;
-  }
+  const double no_min_temporal_norm = -1.0;
 
-  P -= state.X * (state.X.t() * P);
-
-  if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 || P.n_cols != state.X.n_cols)
+  if (!lobpcg_detail::build_momentum_P(
+          P, X_curr, X_prev, opt, no_min_temporal_norm))
   {
     state.P.reset();
     return;

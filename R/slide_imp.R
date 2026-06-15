@@ -236,6 +236,7 @@ slide_imp <- function(
     stopifnot(
       "`subset` must be provided when `flank = TRUE`." = !is.null(subset)
     )
+    # subset is validated later on.
     overlap_size <- 0
   }
   checkmate::assert_int(

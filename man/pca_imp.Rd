@@ -89,11 +89,12 @@ values imputed. The returned object has class \code{slideimp_results}.
 }
 \description{
 Impute missing values in a numeric matrix using regularized or
-expectation-maximization (EM) PCA imputation.
+expectation-maximization (EM) PCA imputation. Supports warm-start LOBPCG with
+both the previous eigenblock and search direction.
 }
 \details{
-This algorithm is based on \code{missMDA::imputePCA()} and is optimized for tall
-or wide numeric matrices.
+This function reimplements the PCA imputation method from the \code{missMDA}
+package by Francois Husson and Julie Josse, based on Josse and Husson (2016).
 }
 \section{PCA Performance tips}{
 
@@ -102,7 +103,7 @@ Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),
 (\code{ncp}, \code{coeff.ridge}) on a representative subset.
 
 \strong{Exact vs. LOBPCG with warm-start.} Whether \code{"lobpcg"} beats \code{"exact"}
-depends on size and low-rankness: prefer \code{"lobpcg"} for large, approximately
+depends on size and low-rankness: \code{"lobpcg"} is preferred for large, approximately
 low-rank matrices with small \code{ncp}, and \code{"exact"} for small matrices
 (including \code{slide_imp()} windows), where it is faster and more robust.
 Separately, the warm-start makes each successive solve cheap: \code{pca_imp()}
@@ -133,7 +134,7 @@ sum(is.na(obj))
 obj[1:4, 1:4]
 
 # Randomly initialize missing values 5 times. The first initialization is
-# mean imputation.
+# mean imputation. Select `ncp` with `tune_imp()`.
 pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 
 }
@@ -144,7 +145,4 @@ multivariate data analysis methods. \emph{Journal de la SFdS}, 153(2), 79-99.
 Josse J, Husson F (2016). missMDA: A Package for Handling Missing Values in
 Multivariate Data Analysis. \emph{Journal of Statistical Software}, 70(1), 1-31.
 \doi{10.18637/jss.v070.i01}
-
-The PCA imputation algorithm is based on the original \code{missMDA}
-implementation by Francois Husson and Julie Josse.
 }

@@ -339,7 +339,7 @@ test_that("grouped imputation works without aux columns, pca", {
 })
 
 test_that("group-specific parameters work correctly in parallel, pca", {
-  skip_on_cran()
+  skip_if_not_manual()
   skip_if_not_installed("withr")
   set.seed(1234)
   to_test <- sim_mat(50, 20, perc_total_na = 0.3, perc_col_na = 1)

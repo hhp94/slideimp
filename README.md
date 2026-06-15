@@ -9,9 +9,9 @@
 <!-- badges: end -->
 
 `{slideimp}` is a lightweight R package for fast K-NN and PCA imputation
-of missing values in high-dimensional numeric matrices (numeric matrix,
-samples in rows, variables in columns). Two “meta-callers” wrap the
-workhorse functions `knn_imp()` and `pca_imp()`:
+of missing values in high-dimensional numeric matrices (samples in rows,
+variables in columns). Two “meta-callers” wrap the workhorse functions
+`knn_imp()` and `pca_imp()`:
 
 - `group_imp()`: group-wise K-NN or PCA imputation (e.g., by chromosome
   for Illumina DNAm microarrays such as 450K, EPIC, EPICv2, MSA).
@@ -20,7 +20,7 @@ workhorse functions `knn_imp()` and `pca_imp()`:
   methylation data (WGBS, EM-seq). **Note**: not intended for Illumina
   microarrays, use `group_imp()` instead.
 
-- `pca_imp()`: Optimized
+- `pca_imp()`: Optimized reimplementation of
   [`missMDA::imputePCA()`](http://factominer.free.fr/missMDA/PCA.html)
   for high-dimensional matrices. Supports a LOBPCG eigensolver that
   warm-starts each EM iteration from the previous eigenblock and search
@@ -54,25 +54,20 @@ pak::pkg_install("hhp94/slideimp.extra")
 
 ## Citation
 
-If `{slideimp}` is useful in your work, please cite:
-
-> Pham, H., Lombroso, A. P., Cevik, E. C., Taylor, H. S., & O’Donnell,
-> K. J. (2026). slideimp: efficient imputation of DNA methylation data.
-> *Bioinformatics*, 42(6), btag318.
-> <https://doi.org/10.1093/bioinformatics/btag318>
+If you find `{slideimp}` helpful in your work, please cite our
+Bioinformatics paper:
 
 ``` bibtex
-@article{pham2026slideimp,
-  title = {slideimp: efficient imputation of DNA methylation data},
-  author = {Pham, Hung and Lombroso, Adam P. and Cevik, Esma Cansu and Taylor, Hugh S. and O'Donnell, Kieran J.},
-  journal = {Bioinformatics},
-  year = {2026},
-  month = {06},
-  url = {https://doi.org/10.1093/bioinformatics/btag318},
-  volume = {42},
-  number = {6},
-  pages = {btag318},
-  doi = {10.1093/bioinformatics/btag318}
+@article{10.1093/bioinformatics/btag318,
+    author = {Pham, Hung and Lombroso, Adam P and Cevik, Esma Cansu and Taylor, Hugh S and O'Donnell, Kieran J},
+    title = {slideimp: efficient imputation of {DNA} methylation data},
+    journal = {Bioinformatics},
+    volume = {42},
+    number = {6},
+    pages = {btag318},
+    year = {2026},
+    doi = {10.1093/bioinformatics/btag318},
+    month = jun,
 }
 ```
 
@@ -108,7 +103,7 @@ library(slideimp)
 imputed <- group_imp(
   obj = MSA_beta_matrix,
   group = "MSA", # <- this feature requires the `slideimp.extra` package
-  ncp = 10, # <- change to `k` for K-NN imputation
+  ncp = 10, # <- change to `k` for K-NN imputation. Optimal value requires `tune_imp()`.
   clamp = c(0, 1), # <- PCA imputation can generate values outside of `c(0, 1)`
   .progress = FALSE # <- turn on to monitor progress of longer running jobs
 )
@@ -316,29 +311,27 @@ chr1_beta <- sim_mat(n = 10, p = 2000)$input
 
 - `slide_imp()` parameters:
 
-  - `location`: **required** - a sorted numeric vector of length
-    `ncol(obj)` specifying the position of each column (e.g., genomic
-    coordinates in *bp*).
-  - `window_size`: **required** - width of each sliding window (same
-    unit as `location`).
-  - `overlap_size`: **optional** - overlap width between consecutive
-    windows (same units as `location`). Must be strictly less than
-    `window_size`.
-  - `min_window_n`: **required** - minimum number of columns a window
-    must contain to be imputed. Windows with fewer columns than this
+  - `location` (required): a sorted numeric vector of length `ncol(obj)`
+    specifying the position of each column (e.g., genomic coordinates in
+    *bp*).
+  - `window_size` (required): width of each sliding window (same unit as
+    `location`).
+  - `overlap_size`: overlap width between consecutive windows (same
+    units as `location`). Must be strictly less than `window_size`.
+  - `min_window_n` (required): minimum number of columns a window must
+    contain to be imputed. Windows with fewer columns than this
     threshold are dropped. Must be greater than `k` (for K-NN) or `ncp`
     (for PCA).
-  - `dry_run`: **optional** - return only the calculated windows to
-    inspect which are included.
-  - `k`: **required** - *(specifying K-NN imputation)* number of nearest
+  - `dry_run`: return only the calculated windows to inspect which are
+    included.
+  - `k` (required): *(specifying K-NN imputation)* number of nearest
     neighbors to use inside each window.
-  - `ncp`: **required** - *(specifying PCA imputation)* number of
-    principal components to retain. Use this instead of `k` when
-    performing sliding-window PCA imputation.
-  - `subset`: **optional** - impute only a subset of features (e.g.,
-    clock CpGs).
-  - `flank`: **optional** - build flanking windows of `window_size`
-    around features provided in `subset`.
+  - `ncp` (required): *(specifying PCA imputation)* number of principal
+    components to retain. Use this instead of `k` when performing
+    sliding-window PCA imputation.
+  - `subset`: impute only a subset of features (e.g., clock CpGs).
+  - `flank`: build flanking windows of `window_size` around features
+    provided in `subset`.
 
 - First, let’s perform a dry run to examine the windows that will be
   imputed by `slide_imp`.
@@ -399,4 +392,4 @@ slide_imp(
 
 - `col_vars()` / `mean_imp_col()`: Fast column-wise variance and mean
   imputation via `{RcppArmadillo}` and `{RcppThread}`.
-- `mat_miss()`: Efficient column/row missing statistics.
+- `mat_miss()`: Efficient column or row missing statistics.

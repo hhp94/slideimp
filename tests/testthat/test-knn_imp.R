@@ -53,7 +53,7 @@ test_that("Exactly replicate `impute.knn`", {
     method = "euclidean"
   ))
 
-  skip("Manual Testing Only")
+  # "Manual Testing Only"
   # set.seed(1234)
   # # post_imp behavior can cause differences
   # obj <- sim_mat(100, 100, perc_total_na = 0.05)$input
@@ -120,7 +120,7 @@ test_that("Behavior with extreme missing columns and rows", {
   expect_true(!anyNA(knn_imp(to_test, k = 3, post_imp = TRUE)))
 
   to_test[, 1] <- NA
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "All NA/Inf")
+  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "All NA/NaN/Inf")
 
   # not admissible
   mat <- matrix(NA, nrow = 20, ncol = 20)

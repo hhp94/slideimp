@@ -175,7 +175,7 @@ Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),
 (\code{ncp}, \code{coeff.ridge}) on a representative subset.
 
 \strong{Exact vs. LOBPCG with warm-start.} Whether \code{"lobpcg"} beats \code{"exact"}
-depends on size and low-rankness: prefer \code{"lobpcg"} for large, approximately
+depends on size and low-rankness: \code{"lobpcg"} is preferred for large, approximately
 low-rank matrices with small \code{ncp}, and \code{"exact"} for small matrices
 (including \code{slide_imp()} windows), where it is faster and more robust.
 Separately, the warm-start makes each successive solve cheap: \code{pca_imp()}

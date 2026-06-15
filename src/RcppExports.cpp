@@ -52,13 +52,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // find_windows_flank
-List find_windows_flank(NumericVector location, IntegerVector subset, double window_size);
+List find_windows_flank(const NumericVector location, const IntegerVector subset, double window_size);
 RcppExport SEXP _slideimp_find_windows_flank(SEXP locationSEXP, SEXP subsetSEXP, SEXP window_sizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type location(locationSEXP);
-    Rcpp::traits::input_parameter< IntegerVector >::type subset(subsetSEXP);
+    Rcpp::traits::input_parameter< const NumericVector >::type location(locationSEXP);
+    Rcpp::traits::input_parameter< const IntegerVector >::type subset(subsetSEXP);
     Rcpp::traits::input_parameter< double >::type window_size(window_sizeSEXP);
     rcpp_result_gen = Rcpp::wrap(find_windows_flank(location, subset, window_size));
     return rcpp_result_gen;

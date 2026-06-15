@@ -176,7 +176,7 @@ test_that(".crate() honours a custom .parent_env", {
 })
 
 test_that(".crate() works through mirai", {
-  skip_on_cran()
+  skip_if_not_manual()
   skip_if_not_installed("withr")
   crate <- getFromNamespace(".crate", "slideimp")
   mirai::daemons(1L)

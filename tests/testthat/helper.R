@@ -120,11 +120,9 @@ max_abs_diff <- function(a, b) {
   max(abs(a - b))
 }
 
-try_imputePCA <- function(...) {
-  tryCatch(
-    missMDA::imputePCA(...),
-    error = function(e) {
-      skip(paste0("missMDA::imputePCA() errored: ", conditionMessage(e)))
-    }
+skip_if_not_manual <- function() {
+  skip_if_not(
+    identical(Sys.getenv("MANUAL_TESTS"), "true"),
+    "Set MANUAL_TESTS=true to run manually-triggered tests"
   )
 }
