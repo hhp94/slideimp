@@ -157,7 +157,7 @@ iterative <- system.time(invisible(
 
 # diff
 exact[["elapsed"]] - iterative[["elapsed"]]
-#> [1] 0.001
+#> [1] 0.003
 ```
 
 #### Check `threshold`

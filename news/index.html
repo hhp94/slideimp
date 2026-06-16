@@ -48,7 +48,7 @@
 <div class="section level3">
 <h3 id="breaking-changes-1-2-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-1-2-0"></a></h3>
 <ul><li>
-<code><a href="../reference/knn_imp.html">knn_imp()</a></code> no longer supports <a href="https://www.mlpack.org/doc/user/bindings/r.html" class="external-link">mlpack</a> tree-based imputation, which was less accurate than the alternatives.</li>
+<code><a href="../reference/knn_imp.html">knn_imp()</a></code> no longer supports Ball Tree-based imputation due to lower accuracy compared to brute-force K-NN.</li>
 </ul></div>
 <div class="section level3">
 <h3 id="new-features-1-2-0">New features<a class="anchor" aria-label="anchor" href="#new-features-1-2-0"></a></h3>
@@ -58,9 +58,9 @@
 <div class="section level3">
 <h3 id="minor-improvements-and-fixes-1-2-0">Minor improvements and fixes<a class="anchor" aria-label="anchor" href="#minor-improvements-and-fixes-1-2-0"></a></h3>
 <ul><li><p>Fixed <code><a href="../reference/pca_imp.html">pca_imp()</a></code> tests that broke due to upstream changes in <code><a href="https://rdrr.io/pkg/missMDA/man/imputePCA.html" class="external-link">missMDA::imputePCA()</a></code> and <code><a href="https://rdrr.io/pkg/FactoMineR/man/svd.triplet.html" class="external-link">FactoMineR::svd.triplet()</a></code>.</p></li>
-<li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> now uses an internal <code>.crate()</code>, a minimal version of <code>carrier::crate()</code>.</p></li>
+<li><p>Implemented an internal <code>.crate()</code> function, a minimal version of <code>carrier::crate()</code>.</p></li>
 <li><p><code>DESCRIPTION</code> now describes the LOBPCG eigensolver and its warm-start behavior across EM iterations in <code><a href="../reference/pca_imp.html">pca_imp()</a></code>.</p></li>
-<li><p>Minor wording improvements in the PCA solver vignette.</p></li>
+<li><p>Minor wording improvements.</p></li>
 <li><p>Added citation information.</p></li>
 </ul></div>
 </div>

@@ -5,9 +5,8 @@
 ### Breaking changes
 
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
-  no longer supports
-  [mlpack](https://www.mlpack.org/doc/user/bindings/r.html) tree-based
-  imputation, which was less accurate than the alternatives.
+  no longer supports Ball Tree-based imputation due to lower accuracy
+  compared to brute-force K-NN.
 
 ### New features
 
@@ -23,15 +22,14 @@
   and
   [`FactoMineR::svd.triplet()`](https://rdrr.io/pkg/FactoMineR/man/svd.triplet.html).
 
-- [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-  now uses an internal `.crate()`, a minimal version of
+- Implemented an internal `.crate()` function, a minimal version of
   `carrier::crate()`.
 
 - `DESCRIPTION` now describes the LOBPCG eigensolver and its warm-start
   behavior across EM iterations in
   [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
 
-- Minor wording improvements in the PCA solver vignette.
+- Minor wording improvements.
 
 - Added citation information.
 
