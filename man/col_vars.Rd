@@ -21,16 +21,23 @@ Compute the sample variance for each column of a numeric matrix.
 }
 \details{
 Columns with fewer than two non-missing values are assigned \code{NA}.
+
+\code{NA}/\code{NaN} are treated as missing and dropped (equivalent to
+\code{var(x, na.rm = TRUE)}). \code{Inf}/\code{-Inf} are \strong{not} missing. They enter the
+arithmetic, so a column's variance can be \code{NaN}, matching base R.
 }
 \examples{
 set.seed(123)
-obj <- matrix(rnorm(5 * 10), ncol = 5)
-obj[1, 1] <- NA
-obj[1:8, 2] <- NA
+obj <- matrix(rnorm(7 * 10), ncol = 7)
+obj[1, 1] <- Inf
+obj[1, 2] <- NA
 obj[1:8, 3] <- NA
-obj[9, 3] <- obj[10, 3]
-obj[1:9, 4] <- NA
-obj[, 5] <- NA
+obj[8, 3] <- Inf
+obj[1:8, 4] <- NA
+obj[1:8, 5] <- NA
+obj[9, 5] <- obj[10, 5]
+obj[1:9, 6] <- NA
+obj[, 7] <- NA
 obj
 
 col_vars(obj)
