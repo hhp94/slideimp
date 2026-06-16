@@ -190,7 +190,7 @@ warm-start), `threshold`, and `scale`. Tune these first, then accuracy
 parameters (`ncp`, `coeff.ridge`) on a representative subset.
 
 **Exact vs. LOBPCG with warm-start.** Whether `"lobpcg"` beats `"exact"`
-depends on size and low-rankness: prefer `"lobpcg"` for large,
+depends on size and low-rankness: `"lobpcg"` is preferred for large,
 approximately low-rank matrices with small `ncp`, and `"exact"` for
 small matrices (including
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)

@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -85,13 +85,14 @@
 article describes how to make PCA imputation faster by choosing
 <code>threshold</code>, <code>scale</code>, <code>solver</code>, and a
 parallel backend with <a href="https://mirai.r-lib.org" class="external-link">mirai</a>.</p>
-<p>Set <code>.progress = TRUE</code> in <code><a href="../reference/pca_imp.html">pca_imp()</a></code> to get a
-rough sense of progress first before determining if any further tuning
-is needed.</p>
+<p>Before any further tuning, try running <code><a href="../reference/pca_imp.html">pca_imp()</a></code> with
+<code>.progress = TRUE</code> on a meaningful subset of variables
+(e.g. chromosome 22) to gauge how fast it runs (interruptible with
+Ctrl+C mid-run).</p>
 <div class="section level3">
 <h3 id="overview">Overview<a class="anchor" aria-label="anchor" href="#overview"></a>
 </h3>
-<p>For large genomic matrices, runtime can be significantly reduced by
+<p>For large numeric matrices, runtime can be significantly reduced by
 tuning three arguments: <code>threshold</code>, <code>scale</code>, and
 <code>solver</code>.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
@@ -133,25 +134,19 @@ can be both faster and more accurate.</p>
 <p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> supports two PCA eigensolvers:</p>
 <ul>
 <li>
-<code>solver = "exact"</code>: the exact solver. Robust and
+<code>solver = "exact"</code> uses an exact solver. Robust and
 typically faster for small to moderate matrices.</li>
 <li>
-<code>solver = "lobpcg"</code>: LOBPCG with warm start. Two
-independent things drive its speed. First, whether it beats
-<code>"exact"</code> at all depends on matrix size and low-rankness.
-LOBPCG wins on large, approximately low-rank matrices with small
-<code>ncp</code>. Second, the warm start makes each <em>successive</em>
-solve cheap: <code><a href="../reference/pca_imp.html">pca_imp()</a></code> warm-starts LOBPCG with the previous
-eigenblock and search direction, so once imputed values stabilize, later
-solves converge in a few iterations. The warm-start payoff therefore
-grows with the number of EM iterations, independent of
-low-rankness.</li>
+<code>solver = "lobpcg"</code> uses an iterative eigensolver with
+warm starts. It can be faster for large, approximately low-rank matrices
+with small ncp, especially when many EM iterations are needed. For small
+or moderate matrices, “exact” is often faster.</li>
 <li>
 <code>solver = "auto"</code> (default): runs a short timed probe of
 both solvers and picks LOBPCG only when it is clearly faster.</li>
 </ul>
-<p>For most users, <code>solver = "auto"</code> is a good default. But,
-consider setting the solver manually when:</p>
+<p>For most users, <code>solver = "auto"</code> is a good default.
+However, consider setting the solver manually when:</p>
 <ul>
 <li>You are running many independent <code><a href="../reference/pca_imp.html">pca_imp()</a></code> calls (i.e.,
 in <code><a href="../reference/tune_imp.html">tune_imp()</a></code> or <code><a href="../reference/group_imp.html">group_imp()</a></code>), where repeated
@@ -295,10 +290,10 @@ certain DNAm data. We verify this with <code><a href="../reference/tune_imp.html
 </h4>
 <p>After choosing <code>solver</code>, <code>threshold</code>, and
 <code>scale</code>, keep them fixed while tuning accuracy-related PCA
-parameters (<code>ncp</code> and <code>coeff.ridge</code>). Here, the
-<code>solver = "lobpcg"</code> is not clearly faster and
-<code>scale = FALSE</code> doesn’t change <code>rmse</code> too much. On
-this small, well-conditioned subset <code>exact</code> wins. On a large,
+parameters (<code>ncp</code> and <code>coeff.ridge</code>). Here,
+<code>solver = "lobpcg"</code> is not clearly faster, and
+<code>scale = FALSE</code> has little effect on RMSE. On this small,
+well-conditioned subset <code>exact</code> wins. On a large,
 approximately low-rank matrix that needs many EM iterations,
 <code>lobpcg</code> with warm start is typically faster.</p>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
@@ -352,7 +347,7 @@ approximately low-rank matrix that needs many EM iterations,
 </h4>
 <p>The same idea applies when tuning sliding-window PCA imputation.
 <code><a href="../reference/slide_imp.html">slide_imp()</a></code> typically operates on small windows with few
-samples, so <code>solver = "exact"</code> is usually the right choice.
+samples, so <code>solver = "exact"</code> is usually a good default.
 With <code>solver = "auto"</code>, <code><a href="../reference/slide_imp.html">slide_imp()</a></code> probes only
 the first window and reuses the chosen solver for the rest.</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">

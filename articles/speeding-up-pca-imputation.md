@@ -17,14 +17,15 @@ whenever PCA imputation is requested. This article describes how to make
 PCA imputation faster by choosing `threshold`, `scale`, `solver`, and a
 parallel backend with [mirai](https://mirai.r-lib.org).
 
-Set `.progress = TRUE` in
-[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md) to
-get a rough sense of progress first before determining if any further
-tuning is needed.
+Before any further tuning, try running
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+with `.progress = TRUE` on a meaningful subset of variables
+(e.g. chromosome 22) to gauge how fast it runs (interruptible with
+Ctrl+C mid-run).
 
 ### Overview
 
-For large genomic matrices, runtime can be significantly reduced by
+For large numeric matrices, runtime can be significantly reduced by
 tuning three arguments: `threshold`, `scale`, and `solver`.
 
 ``` r
@@ -62,22 +63,16 @@ may amplify low-variance and noise-dominated columns. For such data,
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
 supports two PCA eigensolvers:
 
-- `solver = "exact"`: the exact solver. Robust and typically faster for
-  small to moderate matrices.
-- `solver = "lobpcg"`: LOBPCG with warm start. Two independent things
-  drive its speed. First, whether it beats `"exact"` at all depends on
-  matrix size and low-rankness. LOBPCG wins on large, approximately
-  low-rank matrices with small `ncp`. Second, the warm start makes each
-  *successive* solve cheap:
-  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-  warm-starts LOBPCG with the previous eigenblock and search direction,
-  so once imputed values stabilize, later solves converge in a few
-  iterations. The warm-start payoff therefore grows with the number of
-  EM iterations, independent of low-rankness.
+- `solver = "exact"` uses an exact solver. Robust and typically faster
+  for small to moderate matrices.
+- `solver = "lobpcg"` uses an iterative eigensolver with warm starts. It
+  can be faster for large, approximately low-rank matrices with small
+  ncp, especially when many EM iterations are needed. For small or
+  moderate matrices, “exact” is often faster.
 - `solver = "auto"` (default): runs a short timed probe of both solvers
   and picks LOBPCG only when it is clearly faster.
 
-For most users, `solver = "auto"` is a good default. But, consider
+For most users, `solver = "auto"` is a good default. However, consider
 setting the solver manually when:
 
 - You are running many independent
@@ -235,10 +230,10 @@ compute_metrics(res_scale)
 
 After choosing `solver`, `threshold`, and `scale`, keep them fixed while
 tuning accuracy-related PCA parameters (`ncp` and `coeff.ridge`). Here,
-the `solver = "lobpcg"` is not clearly faster and `scale = FALSE`
-doesn’t change `rmse` too much. On this small, well-conditioned subset
-`exact` wins. On a large, approximately low-rank matrix that needs many
-EM iterations, `lobpcg` with warm start is typically faster.
+`solver = "lobpcg"` is not clearly faster, and `scale = FALSE` has
+little effect on RMSE. On this small, well-conditioned subset `exact`
+wins. On a large, approximately low-rank matrix that needs many EM
+iterations, `lobpcg` with warm start is typically faster.
 
 ``` r
 
@@ -293,7 +288,7 @@ aggregate(
 The same idea applies when tuning sliding-window PCA imputation.
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
 typically operates on small windows with few samples, so
-`solver = "exact"` is usually the right choice. With `solver = "auto"`,
+`solver = "exact"` is usually a good default. With `solver = "auto"`,
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
 probes only the first window and reuses the chosen solver for the rest.
 

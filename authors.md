@@ -18,7 +18,6 @@ Pham H, Lombroso A, Cevik E, Taylor H, O'Donnell K (2026). “slideimp:
 efficient imputation of DNA methylation data.” *Bioinformatics*,
 **42**(6), btag318. ISSN 1367-4811.
 [doi:10.1093/bioinformatics/btag318](https://doi.org/10.1093/bioinformatics/btag318).
-<https://doi.org/10.1093/bioinformatics/btag318>.
 
     @Article{,
       title = {slideimp: efficient imputation of DNA methylation data},
@@ -31,5 +30,4 @@ efficient imputation of DNA methylation data.” *Bioinformatics*,
       pages = {btag318},
       doi = {10.1093/bioinformatics/btag318},
       issn = {1367-4811},
-      url = {https://doi.org/10.1093/bioinformatics/btag318},
     }

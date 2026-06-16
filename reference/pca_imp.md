@@ -1,7 +1,8 @@
 # PCA Imputation for Numeric Matrices
 
 Impute missing values in a numeric matrix using regularized or
-expectation-maximization (EM) PCA imputation.
+expectation-maximization (EM) PCA imputation. Supports warm-start LOBPCG
+with both the previous eigenblock and search direction.
 
 ## Usage
 
@@ -129,9 +130,9 @@ imputed. The returned object has class `slideimp_results`.
 
 ## Details
 
-This algorithm is based on
-[`missMDA::imputePCA()`](https://rdrr.io/pkg/missMDA/man/imputePCA.html)
-and is optimized for tall or wide numeric matrices.
+This function reimplements the PCA imputation method from the `missMDA`
+package by Francois Husson and Julie Josse, based on Josse and Husson
+(2016).
 
 ## PCA Performance tips
 
@@ -140,7 +141,7 @@ warm-start), `threshold`, and `scale`. Tune these first, then accuracy
 parameters (`ncp`, `coeff.ridge`) on a representative subset.
 
 **Exact vs. LOBPCG with warm-start.** Whether `"lobpcg"` beats `"exact"`
-depends on size and low-rankness: prefer `"lobpcg"` for large,
+depends on size and low-rankness: `"lobpcg"` is preferred for large,
 approximately low-rank matrices with small `ncp`, and `"exact"` for
 small matrices (including
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
@@ -180,9 +181,6 @@ Josse J, Husson F (2016). missMDA: A Package for Handling Missing Values
 in Multivariate Data Analysis. *Journal of Statistical Software*, 70(1),
 1-31. [doi:10.18637/jss.v070.i01](https://doi.org/10.18637/jss.v070.i01)
 
-The PCA imputation algorithm is based on the original `missMDA`
-implementation by Francois Husson and Julie Josse.
-
 ## Examples
 
 ``` r
@@ -198,7 +196,7 @@ obj[1:4, 1:4]
 #> sample4 0.5068375 0.37347042 0.6018860 1.0000000
 
 # Randomly initialize missing values 5 times. The first initialization is
-# mean imputation.
+# mean imputation. Select `ncp` with `tune_imp()`.
 pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 #> Method: PCA imputation
 #> Dimensions: 10 x 10

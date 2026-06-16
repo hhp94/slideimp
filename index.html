@@ -11,8 +11,8 @@
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Numeric Matrices K-NN and PCA Imputation">
-<meta name="description" content='Fast k-nearest neighbors (K-NN) and principal component analysis (PCA) imputation algorithms for missing values in epigenetic data or other high-dimensional numeric matrices. For PCA, a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver with warm starts of both the eigenblock and search direction is provided. Two complementary imputation strategies are available. Group-wise imputation (e.g., by chromosome) is recommended for Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other matrices with groupable columns. A sliding window approach for K-NN or PCA imputation is recommended only for whole-genome methylation data such as whole-genome bisulfite sequencing (WGBS) or EM-seq. The package also supports hyperparameter tuning via repeated cross-validation, multi-core parallelization, and optional subset imputation. The K-NN algorithm is described in: Hastie, T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D. (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA imputation is an optimized reimplementation of the imputePCA() function from the missMDA package described in: Josse, J. and Husson, F. (2016) &lt;doi:10.18637/jss.v070.i01&gt; "missMDA: A Package for Handling Missing Values in Multivariate Data Analysis".'>
-<meta property="og:description" content='Fast k-nearest neighbors (K-NN) and principal component analysis (PCA) imputation algorithms for missing values in epigenetic data or other high-dimensional numeric matrices. For PCA, a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver with warm starts of both the eigenblock and search direction is provided. Two complementary imputation strategies are available. Group-wise imputation (e.g., by chromosome) is recommended for Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other matrices with groupable columns. A sliding window approach for K-NN or PCA imputation is recommended only for whole-genome methylation data such as whole-genome bisulfite sequencing (WGBS) or EM-seq. The package also supports hyperparameter tuning via repeated cross-validation, multi-core parallelization, and optional subset imputation. The K-NN algorithm is described in: Hastie, T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D. (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA imputation is an optimized reimplementation of the imputePCA() function from the missMDA package described in: Josse, J. and Husson, F. (2016) &lt;doi:10.18637/jss.v070.i01&gt; "missMDA: A Package for Handling Missing Values in Multivariate Data Analysis".'>
+<meta name="description" content='Fast k-nearest neighbors (K-NN) and principal component analysis (PCA) imputation algorithms for missing values in epigenetic data or other high-dimensional numeric matrices. For PCA, a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver with warm starts of both the eigenblock and search direction is also supported. Two complementary imputation strategies are available. Group-wise imputation (e.g., by chromosome) is recommended for Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other matrices with groupable columns. A sliding window approach for K-NN or PCA imputation is recommended only for whole-genome methylation data such as whole-genome bisulfite sequencing (WGBS) or EM-seq. The package also supports hyperparameter tuning via repeated cross-validation, multi-core parallelization, and optional subset imputation. The K-NN algorithm is described in: Hastie, T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D. (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA imputation is an optimized reimplementation of the imputePCA() function from the missMDA package described in: Josse, J. and Husson, F. (2016) &lt;doi:10.18637/jss.v070.i01&gt; "missMDA: A Package for Handling Missing Values in Multivariate Data Analysis".'>
+<meta property="og:description" content='Fast k-nearest neighbors (K-NN) and principal component analysis (PCA) imputation algorithms for missing values in epigenetic data or other high-dimensional numeric matrices. For PCA, a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver with warm starts of both the eigenblock and search direction is also supported. Two complementary imputation strategies are available. Group-wise imputation (e.g., by chromosome) is recommended for Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other matrices with groupable columns. A sliding window approach for K-NN or PCA imputation is recommended only for whole-genome methylation data such as whole-genome bisulfite sequencing (WGBS) or EM-seq. The package also supports hyperparameter tuning via repeated cross-validation, multi-core parallelization, and optional subset imputation. The K-NN algorithm is described in: Hastie, T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D. (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA imputation is an optimized reimplementation of the imputePCA() function from the missMDA package described in: Josse, J. and Husson, F. (2016) &lt;doi:10.18637/jss.v070.i01&gt; "missMDA: A Package for Handling Missing Values in Multivariate Data Analysis".'>
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -66,11 +66,11 @@
 </h1></div>
 <!-- badges: start -->
 
-<p><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> is a lightweight R package for fast K-NN and PCA imputation of missing values in high-dimensional numeric matrices (numeric matrix, samples in rows, variables in columns). Two “meta-callers” wrap the workhorse functions <code><a href="reference/knn_imp.html">knn_imp()</a></code> and <code><a href="reference/pca_imp.html">pca_imp()</a></code>:</p>
+<p><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> is a lightweight R package for fast K-NN and PCA imputation of missing values in high-dimensional numeric matrices (samples in rows, variables in columns). Two “meta-callers” wrap the workhorse functions <code><a href="reference/knn_imp.html">knn_imp()</a></code> and <code><a href="reference/pca_imp.html">pca_imp()</a></code>:</p>
 <ul>
 <li><p><code><a href="reference/group_imp.html">group_imp()</a></code>: group-wise K-NN or PCA imputation (e.g., by chromosome for Illumina DNAm microarrays such as 450K, EPIC, EPICv2, MSA).</p></li>
 <li><p><code><a href="reference/slide_imp.html">slide_imp()</a></code>: sliding window K-NN or PCA imputation for whole-genome methylation data (WGBS, EM-seq). <strong>Note</strong>: not intended for Illumina microarrays, use <code><a href="reference/group_imp.html">group_imp()</a></code> instead.</p></li>
-<li><p><code><a href="reference/pca_imp.html">pca_imp()</a></code>: Optimized <a href="http://factominer.free.fr/missMDA/PCA.html" class="external-link"><code>missMDA::imputePCA()</code></a> for high-dimensional matrices. Supports a LOBPCG eigensolver that warm-starts each EM iteration from the previous eigenblock and search direction.</p></li>
+<li><p><code><a href="reference/pca_imp.html">pca_imp()</a></code>: Optimized reimplementation of <a href="http://factominer.free.fr/missMDA/PCA.html" class="external-link"><code>missMDA::imputePCA()</code></a> for high-dimensional matrices. Supports a LOBPCG eigensolver that warm-starts each EM iteration from the previous eigenblock and search direction.</p></li>
 <li><p><code><a href="reference/knn_imp.html">knn_imp()</a></code>: Full K-NN imputation with <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a> multi-threading. Supports <code>subset</code> imputation to restrict work to specific columns (e.g., clock CpGs) for very fast targeted imputation.</p></li>
 </ul>
 <div class="section level2">
@@ -89,22 +89,18 @@
 <div class="section level2">
 <h2 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
 </h2>
-<p>If <a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> is useful in your work, please cite:</p>
-<blockquote>
-<p>Pham, H., Lombroso, A. P., Cevik, E. C., Taylor, H. S., &amp; O’Donnell, K. J. (2026). slideimp: efficient imputation of DNA methylation data. <em>Bioinformatics</em>, 42(6), btag318. <a href="https://doi.org/10.1093/bioinformatics/btag318" class="external-link uri">https://doi.org/10.1093/bioinformatics/btag318</a></p>
-</blockquote>
-<div class="sourceCode" id="cb4"><pre class="sourceCode bibtex"><code class="sourceCode bibtex"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="va">@article</span>{<span class="ot">pham2026slideimp</span>,</span>
-<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  <span class="dt">title</span> = {slideimp: efficient imputation of DNA methylation data},</span>
-<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  <span class="dt">author</span> = {Pham, Hung and Lombroso, Adam P. and Cevik, Esma Cansu and Taylor, Hugh S. and O'Donnell, Kieran J.},</span>
-<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="dt">journal</span> = {Bioinformatics},</span>
-<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>  <span class="dt">year</span> = {2026},</span>
-<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>  <span class="dt">month</span> = {06},</span>
-<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="dt">url</span> = {https://doi.org/10.1093/bioinformatics/btag318},</span>
-<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="dt">volume</span> = {42},</span>
-<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>  <span class="dt">number</span> = {6},</span>
-<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>  <span class="dt">pages</span> = {btag318},</span>
-<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>  <span class="dt">doi</span> = {10.1093/bioinformatics/btag318}</span>
-<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a>}</span></code></pre></div>
+<p>If you find <a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> helpful in your work, please cite our Bioinformatics paper:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode bibtex"><code class="sourceCode bibtex"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="va">@article</span>{<span class="ot">10</span>.<span class="ot">1093</span>/<span class="ot">bioinformatics</span>/<span class="ot">btag318</span>,</span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>    <span class="dt">author</span> = {Pham, Hung and Lombroso, Adam P and Cevik, Esma Cansu and Taylor, Hugh S and O'Donnell, Kieran J},</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>    <span class="dt">title</span> = {slideimp: efficient imputation of {DNA} methylation data},</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>    <span class="dt">journal</span> = {Bioinformatics},</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>    <span class="dt">volume</span> = {42},</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>    <span class="dt">number</span> = {6},</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>    <span class="dt">pages</span> = {btag318},</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>    <span class="dt">year</span> = {2026},</span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>    <span class="dt">doi</span> = {10.1093/bioinformatics/btag318},</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a>    <span class="dt">month</span> = <span class="st">jun</span>,</span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a>}</span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="pca-or-k-nn-imputation-of-illumina-dnam-microarrays">PCA or K-NN imputation of Illumina DNAm microarrays<a class="anchor" aria-label="anchor" href="#pca-or-k-nn-imputation-of-illumina-dnam-microarrays"></a>
@@ -132,7 +128,7 @@
 <span><span class="va">imputed</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/group_imp.html">group_imp</a></span><span class="op">(</span></span>
 <span>  obj <span class="op">=</span> <span class="va">MSA_beta_matrix</span>,</span>
 <span>  group <span class="op">=</span> <span class="st">"MSA"</span>, <span class="co"># &lt;- this feature requires the `slideimp.extra` package</span></span>
-<span>  ncp <span class="op">=</span> <span class="fl">10</span>, <span class="co"># &lt;- change to `k` for K-NN imputation</span></span>
+<span>  ncp <span class="op">=</span> <span class="fl">10</span>, <span class="co"># &lt;- change to `k` for K-NN imputation. Optimal value requires `tune_imp()`.</span></span>
 <span>  clamp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span>, <span class="co"># &lt;- PCA imputation can generate values outside of `c(0, 1)`</span></span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- turn on to monitor progress of longer running jobs</span></span>
 <span><span class="op">)</span></span>
@@ -314,23 +310,23 @@
 <p><code><a href="reference/slide_imp.html">slide_imp()</a></code> parameters:</p>
 <ul>
 <li>
-<code>location</code>: <strong>required</strong> - a sorted numeric vector of length <code>ncol(obj)</code> specifying the position of each column (e.g., genomic coordinates in <em>bp</em>).</li>
+<code>location</code> (required): a sorted numeric vector of length <code>ncol(obj)</code> specifying the position of each column (e.g., genomic coordinates in <em>bp</em>).</li>
 <li>
-<code>window_size</code>: <strong>required</strong> - width of each sliding window (same unit as <code>location</code>).</li>
+<code>window_size</code> (required): width of each sliding window (same unit as <code>location</code>).</li>
 <li>
-<code>overlap_size</code>: <strong>optional</strong> - overlap width between consecutive windows (same units as <code>location</code>). Must be strictly less than <code>window_size</code>.</li>
+<code>overlap_size</code>: overlap width between consecutive windows (same units as <code>location</code>). Must be strictly less than <code>window_size</code>.</li>
 <li>
-<code>min_window_n</code>: <strong>required</strong> - minimum number of columns a window must contain to be imputed. Windows with fewer columns than this threshold are dropped. Must be greater than <code>k</code> (for K-NN) or <code>ncp</code> (for PCA).</li>
+<code>min_window_n</code> (required): minimum number of columns a window must contain to be imputed. Windows with fewer columns than this threshold are dropped. Must be greater than <code>k</code> (for K-NN) or <code>ncp</code> (for PCA).</li>
 <li>
-<code>dry_run</code>: <strong>optional</strong> - return only the calculated windows to inspect which are included.</li>
+<code>dry_run</code>: return only the calculated windows to inspect which are included.</li>
 <li>
-<code>k</code>: <strong>required</strong> - <em>(specifying K-NN imputation)</em> number of nearest neighbors to use inside each window.</li>
+<code>k</code> (required): <em>(specifying K-NN imputation)</em> number of nearest neighbors to use inside each window.</li>
 <li>
-<code>ncp</code>: <strong>required</strong> - <em>(specifying PCA imputation)</em> number of principal components to retain. Use this instead of <code>k</code> when performing sliding-window PCA imputation.</li>
+<code>ncp</code> (required): <em>(specifying PCA imputation)</em> number of principal components to retain. Use this instead of <code>k</code> when performing sliding-window PCA imputation.</li>
 <li>
-<code>subset</code>: <strong>optional</strong> - impute only a subset of features (e.g., clock CpGs).</li>
+<code>subset</code>: impute only a subset of features (e.g., clock CpGs).</li>
 <li>
-<code>flank</code>: <strong>optional</strong> - build flanking windows of <code>window_size</code> around features provided in <code>subset</code>.</li>
+<code>flank</code>: build flanking windows of <code>window_size</code> around features provided in <code>subset</code>.</li>
 </ul>
 </li>
 <li><p>First, let’s perform a dry run to examine the windows that will be imputed by <code>slide_imp</code>.</p></li>
@@ -392,7 +388,7 @@
 <li>
 <code><a href="reference/col_vars.html">col_vars()</a></code> / <code><a href="reference/mean_imp_col.html">mean_imp_col()</a></code>: Fast column-wise variance and mean imputation via <a href="https://github.com/RcppCore/RcppArmadillo" class="external-link">RcppArmadillo</a> and <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a>.</li>
 <li>
-<code><a href="reference/mat_miss.html">mat_miss()</a></code>: Efficient column/row missing statistics.</li>
+<code><a href="reference/mat_miss.html">mat_miss()</a></code>: Efficient column or row missing statistics.</li>
 </ul>
 </div>
 </div>

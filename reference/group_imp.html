@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -289,7 +289,7 @@ OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 <code>threshold</code>, and <code>scale</code>. Tune these first, then accuracy parameters
 (<code>ncp</code>, <code>coeff.ridge</code>) on a representative subset.</p>
 <p><strong>Exact vs. LOBPCG with warm-start.</strong> Whether <code>"lobpcg"</code> beats <code>"exact"</code>
-depends on size and low-rankness: prefer <code>"lobpcg"</code> for large, approximately
+depends on size and low-rankness: <code>"lobpcg"</code> is preferred for large, approximately
 low-rank matrices with small <code>ncp</code>, and <code>"exact"</code> for small matrices
 (including <code><a href="slide_imp.html">slide_imp()</a></code> windows), where it is faster and more robust.
 Separately, the warm-start makes each successive solve cheap: <code><a href="pca_imp.html">pca_imp()</a></code>

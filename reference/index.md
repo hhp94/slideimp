@@ -12,7 +12,7 @@
   : Grouped K-NN or PCA Imputation
 
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) :
-  K-Nearest-Neighbor Imputation for Numeric Matrices
+  K-Nearest Neighbor Imputation for Numeric Matrices
 
 - [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md)
   : LOBPCG Eigensolver Control Options
