@@ -25,7 +25,7 @@
 #'
 #' @param .fn A function closure to isolate.
 #' @param ... Named, already-evaluated objects to package with `.fn`.
-#' @param .parent_env Parent environment of the crate's environment; defaults
+#' @param .parent_env Parent environment of the crate's environment. Defaults
 #'   to [baseenv()] so nothing from the calling scope leaks in.
 #' @return A function of class `"crate"` whose enclosing environment holds only
 #'   the supplied objects.

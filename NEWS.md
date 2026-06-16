@@ -2,8 +2,8 @@
 
 ## Breaking changes
 
-* `knn_imp()` no longer supports `{mlpack}` tree-based imputation, which was
-  less accurate than the alternatives.
+* `knn_imp()` no longer supports Ball Tree-based imputation due to lower 
+accuracy compared to brute-force K-NN.
 
 ## New features
 
@@ -12,15 +12,15 @@
 ## Minor improvements and fixes
 
 * Fixed `pca_imp()` tests that broke due to upstream changes in
-  `missMDA::imputePCA()` and `FactoMineR::svd.triplet()`.
+`missMDA::imputePCA()` and `FactoMineR::svd.triplet()`.
 
-* `pca_imp()` now uses an internal `.crate()`, a minimal version of
-  `carrier::crate()`.
+* Implemented an internal `.crate()` function, a minimal version of 
+`carrier::crate()`.
 
 * `DESCRIPTION` now describes the LOBPCG eigensolver and its warm-start
-  behavior across EM iterations in `pca_imp()`.
+behavior across EM iterations in `pca_imp()`.
 
-* Minor wording improvements in the PCA solver vignette.
+* Minor wording improvements.
 
 * Added citation information.
 
