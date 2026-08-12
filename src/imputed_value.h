@@ -4,7 +4,8 @@
 #include <RcppArmadillo.h>
 #include <cstdint>
 #include <vector>
-#include <cmath> // std::isinf (used by stop_on_inf)
+#include <cmath>
+#include "matrix_checks.h"
 
 // single source of truth for the mask storage type
 using mask_t = uint8_t;
@@ -30,29 +31,6 @@ struct GroupLayout
     arma::uword complete_start() const { return n_imp + n_mni; }
     arma::uword n_working() const { return n_imp + n_mni + n_complete; }
 };
-
-static inline void stop_on_inf(const arma::mat &obj)
-{
-    const arma::uword n_rows = obj.n_rows;
-    const arma::uword n_cols = obj.n_cols;
-
-    for (arma::uword c = 0; c < n_cols; ++c)
-    {
-        const double *col = obj.colptr(c);
-        for (arma::uword r = 0; r < n_rows; ++r)
-        {
-            if (std::isinf(col[r]))
-            {
-                Rcpp::stop(
-                    std::string("Infinite value found at row ") +
-                    std::to_string(r + 1) +
-                    ", column " +
-                    std::to_string(c + 1) +
-                    ". Infinite values are not supported.");
-            }
-        }
-    }
-}
 
 static inline void validate_knn_inputs(
     const arma::mat &obj,

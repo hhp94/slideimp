@@ -5,22 +5,11 @@
 //
 
 #include <RcppArmadillo.h>
+#include <chrono>
 #include <limits>
 #include <algorithm>
 #include "eig_sym_sel.h"
 #include "lobpcg_warm.h"
-
-inline bool make_temporal_P(arma::mat &P,
-                            const arma::mat &X_curr,
-                            const arma::mat &X_prev,
-                            const LOBPCGOptions &opt)
-{
-  const double min_temporal_norm =
-      1e-10 * std::sqrt(static_cast<double>(X_curr.n_cols));
-
-  return lobpcg_detail::build_momentum_P(
-      P, X_curr, X_prev, opt, min_temporal_norm);
-}
 
 enum HybridEigPath
 {
@@ -97,11 +86,32 @@ struct HybridEigContext
   int n_lobpcg_ok = 0;
   int n_lobpcg_bad = 0;
 
+  // per-outer-iteration diagnostic logs. Empty unless init_logs() was
+  // called; all five are always sized together.
   std::vector<int> path_log; // 0=exact_direct, 1=lobpcg_ok, 2=exact_fallback
   std::vector<int> reason_log;
   std::vector<int> lobpcg_iter_log;
   std::vector<int> lobpcg_fail_iter_log;
   std::vector<double> lobpcg_max_rel_res_log;
+
+  void init_logs(size_t n)
+  {
+    path_log.assign(n, HYB_NOT_RUN);
+    reason_log.assign(n, HYB_REASON_NOT_RUN);
+    lobpcg_iter_log.assign(n, -1);
+    lobpcg_fail_iter_log.assign(n, -1);
+    lobpcg_max_rel_res_log.assign(
+        n, std::numeric_limits<double>::quiet_NaN());
+  }
+
+  void truncate_logs(size_t n)
+  {
+    path_log.resize(n);
+    reason_log.resize(n);
+    lobpcg_iter_log.resize(n);
+    lobpcg_fail_iter_log.resize(n);
+    lobpcg_max_rel_res_log.resize(n);
+  }
 
   int auto_exact_target() const
   {
@@ -252,41 +262,27 @@ struct HybridEigContext
   }
 };
 
-inline bool hybrid_topk_eig(arma::vec &eigvals,
-                            arma::mat &eigvecs,
-                            arma::mat &A,
-                            HybridEigContext &ctx,
-                            int outer_iter)
+inline bool hybrid_topk_eig_impl(arma::vec &eigvals,
+                                 arma::mat &eigvecs,
+                                 arma::mat &A,
+                                 HybridEigContext &ctx,
+                                 int outer_iter)
 {
   auto log_at = [&](int path, int reason, const LOBPCGResult *res = nullptr)
   {
-    if (outer_iter < 0)
+    if (outer_iter < 0 ||
+        static_cast<size_t>(outer_iter) >= ctx.path_log.size())
     {
       return;
     }
     const size_t oi = static_cast<size_t>(outer_iter);
 
-    if (oi < ctx.path_log.size())
-    {
-      ctx.path_log[oi] = path;
-    }
-    if (oi < ctx.reason_log.size())
-    {
-      ctx.reason_log[oi] = reason;
-    }
-    if (oi < ctx.lobpcg_iter_log.size())
-    {
-      ctx.lobpcg_iter_log[oi] = res ? res->iterations : -1;
-    }
-    if (oi < ctx.lobpcg_fail_iter_log.size())
-    {
-      ctx.lobpcg_fail_iter_log[oi] = res ? res->fail_iter : -1;
-    }
-    if (oi < ctx.lobpcg_max_rel_res_log.size())
-    {
-      ctx.lobpcg_max_rel_res_log[oi] =
-          res ? res->max_rel_res : std::numeric_limits<double>::quiet_NaN();
-    }
+    ctx.path_log[oi] = path;
+    ctx.reason_log[oi] = reason;
+    ctx.lobpcg_iter_log[oi] = res ? res->iterations : -1;
+    ctx.lobpcg_fail_iter_log[oi] = res ? res->fail_iter : -1;
+    ctx.lobpcg_max_rel_res_log[oi] =
+        res ? res->max_rel_res : std::numeric_limits<double>::quiet_NaN();
   };
 
   ctx.last_auto_probe = HybridAutoProbe::None;
@@ -396,11 +392,8 @@ inline bool hybrid_topk_eig(arma::vec &eigvals,
 
       if (!ctx.X_prev.is_empty())
       {
-        arma::mat P_temporal;
-        if (make_temporal_P(P_temporal, eigvecs, ctx.X_prev, ctx.lobpcg_opt))
-        {
-          ctx.lobpcg_state.P = std::move(P_temporal);
-        }
+        refresh_momentum_P(ctx.lobpcg_state, eigvecs, ctx.X_prev,
+                           ctx.lobpcg_opt);
       }
 
       ctx.X_prev = eigvecs;
@@ -439,6 +432,29 @@ inline bool hybrid_topk_eig(arma::vec &eigvals,
   }
 
   return true;
+}
+
+// top-k eigenpairs of the symmetric A. Only A's upper triangle need be valid
+// on entry (matching dsyevr's uplo='U'); A is mutated in place. While the
+// auto probe is undecided, each call is timed and recorded so the context
+// can pick a solver.
+inline bool hybrid_topk_eig(arma::vec &eigvals,
+                            arma::mat &eigvecs,
+                            arma::mat &A,
+                            HybridEigContext &ctx,
+                            int outer_iter)
+{
+  if (!ctx.auto_timing_active())
+  {
+    return hybrid_topk_eig_impl(eigvals, eigvecs, A, ctx, outer_iter);
+  }
+
+  const auto t0 = std::chrono::steady_clock::now();
+  const bool ok = hybrid_topk_eig_impl(eigvals, eigvecs, A, ctx, outer_iter);
+  const auto t1 = std::chrono::steady_clock::now();
+
+  ctx.record_auto_probe_time(std::chrono::duration<double>(t1 - t0).count());
+  return ok;
 }
 
 #endif // HYBRID_TOPK_EIG_H

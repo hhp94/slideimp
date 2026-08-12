@@ -716,7 +716,7 @@ test_that("knn_imp: slideimp_infeasible class is set on both abort sites", {
 
 # slideimp.extra ----
 test_that("slideimp_extra_manifests works with prep_groups", {
-  skip("manual testing with {slideimp.extra} on local machines only")
+  # skip("manual testing with {slideimp.extra} on local machines only")
   # skip_if_not_installed("slideimp.extra")
   # slideimp.extra::set_slideimp_path("dev")
   # msa <- slideimp.extra::ilmn_manifest("MSA", deduped = TRUE, rawdir = "dev")

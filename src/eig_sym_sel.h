@@ -108,6 +108,9 @@ struct EigSymWorkspace
 
 // ---------------------------------------------------------------------------
 // top-k symmetric eigendecomposition via LAPACK dsyevr.
+//
+// destroys A: dsyevr overwrites the upper triangle it reads, so callers must
+// pass a matrix they can discard (the Gram is rebuilt every outer iteration).
 // ---------------------------------------------------------------------------
 inline bool eig_sym_sel(arma::vec &eigvals,
                         arma::mat &eigvecs,
