@@ -2,6 +2,8 @@
 
 ## slideimp 1.2.0
 
+CRAN release: 2026-06-16
+
 ### Breaking changes
 
 - [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
