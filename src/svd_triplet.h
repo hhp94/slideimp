@@ -2,7 +2,6 @@
 #define SVD_TRIPLET_H
 
 #include <RcppArmadillo.h>
-#include <chrono>
 #include "gram_ops.h"
 #include "eig_sym_sel.h"
 #include "hybrid_topk_eig.h"
@@ -10,11 +9,58 @@
 #include "loc_timer.h"
 
 // ---------------------------------------------------------------------------
+// copy the leading ncp eigenvector columns into dst while writing the
+// d_inv-scaled (and, when row_scale is non-null, row-scaled) copy into Vn.
+// ---------------------------------------------------------------------------
+static inline void split_eigvec_block(const arma::mat &eigvecs,
+                                      arma::mat &dst,
+                                      arma::mat &Vn,
+                                      const arma::vec &d_inv,
+                                      const double *row_scale,
+                                      const arma::uword ncp)
+{
+  const arma::uword n = eigvecs.n_rows;
+  dst.set_size(n, ncp);
+  Vn.set_size(n, ncp);
+  const double *EV = eigvecs.memptr();
+  double *Dp = dst.memptr();
+  double *Vnp = Vn.memptr();
+  const double *dp = d_inv.memptr();
+  for (arma::uword j = 0; j < ncp; ++j)
+  {
+    const double dj = dp[j];
+    const double *ecol = EV + j * n;
+    double *dcol = Dp + j * n;
+    double *ncol = Vnp + j * n;
+    if (row_scale)
+    {
+      for (arma::uword i = 0; i < n; ++i)
+      {
+        const double e = ecol[i];
+        dcol[i] = e;
+        ncol[i] = e * dj * row_scale[i];
+      }
+    }
+    else
+    {
+      for (arma::uword i = 0; i < n; ++i)
+      {
+        const double e = ecol[i];
+        dcol[i] = e;
+        ncol[i] = e * dj;
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // SVD_triplet
+//
+// U is returned in sqrt-row-weight space; the caller removes the weighting
+// (fused with its own column scaling of U).
 // ---------------------------------------------------------------------------
 inline void SVD_triplet(const arma::mat &Xhat,
                         const double *sw,
-                        const double *isw,
                         const arma::uword ncp,
                         const bool tall,
                         arma::vec &vs_top,
@@ -28,9 +74,8 @@ inline void SVD_triplet(const arma::mat &Xhat,
                         arma::vec &eigvals,
                         arma::mat &eigvecs,
                         GramWorkspace &gram_ws,
-                        EigSymWorkspace &eig_ws,
                         GramCache &gram_cache,
-                        HybridEigContext *hyb_ctx,
+                        HybridEigContext &hyb_ctx,
                         int outer_iter
                             LOC_TIMER_PARAM(timer))
 {
@@ -41,38 +86,10 @@ inline void SVD_triplet(const arma::mat &Xhat,
   trace_val = arma::trace(AA_NxN);
 
   LOC_TIC(timer, "eig");
-
-  bool ok = false;
-
-  if (hyb_ctx)
+  if (!hybrid_topk_eig(eigvals, eigvecs, AA_NxN, hyb_ctx, outer_iter))
   {
-    if (hyb_ctx->auto_timing_active())
-    {
-      const auto t0 = std::chrono::steady_clock::now();
-
-      ok = hybrid_topk_eig(eigvals, eigvecs, AA_NxN, *hyb_ctx, outer_iter);
-
-      const auto t1 = std::chrono::steady_clock::now();
-
-      const double seconds = std::chrono::duration<double>(t1 - t0).count();
-
-      hyb_ctx->record_auto_probe_time(seconds);
-    }
-    else
-    {
-      ok = hybrid_topk_eig(eigvals, eigvecs, AA_NxN, *hyb_ctx, outer_iter);
-    }
+    Rcpp::stop("top-k symmetric eigensolver failed to converge");
   }
-  else
-  {
-    ok = eig_sym_sel(eigvals, eigvecs, AA_NxN, eig_ws);
-  }
-
-  if (!ok)
-  {
-    Rcpp::stop("`eig_sym_sel` failed to converge");
-  }
-
   LOC_TOC(timer, "eig");
 
   const arma::uword ke = eigvals.n_elem;
@@ -96,53 +113,14 @@ inline void SVD_triplet(const arma::mat &Xhat,
   LOC_TIC(timer, "recover_factors");
   if (tall)
   {
-    const arma::uword n = eigvecs.n_rows;
-    V.set_size(n, ncp);
-    Vn.set_size(n, ncp);
-    const double *EV = eigvecs.memptr();
-    double *Vp = V.memptr();
-    double *Vnp = Vn.memptr();
-    const double *dp = d_inv.memptr();
-    for (arma::uword j = 0; j < ncp; ++j)
-    {
-      const double dj = dp[j];
-      const double *ecol = EV + j * n;
-      double *vcol = Vp + j * n;
-      double *ncol = Vnp + j * n;
-      for (arma::uword i = 0; i < n; ++i)
-      {
-        const double e = ecol[i];
-        vcol[i] = e;
-        ncol[i] = e * dj;
-      }
-    }
+    split_eigvec_block(eigvecs, V, Vn, d_inv, nullptr, ncp);
     pca_detail::gemm_nn(X_work, Vn, U);
   }
   else
   {
-    const arma::uword n = eigvecs.n_rows;
-    U.set_size(n, ncp);
-    Vn.set_size(n, ncp);
-    const double *EV = eigvecs.memptr();
-    double *Up = U.memptr();
-    double *Vnp = Vn.memptr();
-    const double *dp = d_inv.memptr();
-    for (arma::uword j = 0; j < ncp; ++j)
-    {
-      const double dj = dp[j];
-      const double *ecol = EV + j * n;
-      double *ucol = Up + j * n;
-      double *ncol = Vnp + j * n;
-      for (arma::uword i = 0; i < n; ++i)
-      {
-        const double e = ecol[i];
-        ucol[i] = e;
-        ncol[i] = e * dj * sw[i];
-      }
-    }
+    split_eigvec_block(eigvecs, U, Vn, d_inv, sw, ncp);
     pca_detail::gemm_tn(Xhat, Vn, V);
   }
-  pca_detail::scale_rows_inplace(U.memptr(), isw, U.n_rows, U.n_cols);
   LOC_TOC(timer, "recover_factors");
 }
 

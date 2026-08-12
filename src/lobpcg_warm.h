@@ -38,7 +38,6 @@ struct LOBPCGOptions
   int maxiter = 15;
   int stall_window = 5;
   double qr_rel_tol = 1e-12;
-  bool verbose = false;
 };
 
 enum LOBPCGStatus
@@ -81,24 +80,6 @@ struct LOBPCGState
 namespace lobpcg_detail
 {
 
-  inline bool chol_orthonormalize(arma::mat &V, arma::mat &invR)
-  {
-    if (V.n_cols == 0)
-    {
-      invR.reset();
-      return true;
-    }
-    arma::mat G = V.t() * V;
-    G = 0.5 * (G + G.t());
-    arma::mat R;
-    if (!arma::chol(R, G))
-      return false;
-    if (!arma::inv(invR, arma::trimatu(R)))
-      return false;
-    V = V * invR;
-    return true;
-  }
-
   inline arma::uword qr_orthonormalize(arma::mat &V, double rel_tol,
                                        arma::mat *R_out = nullptr)
   {
@@ -137,6 +118,30 @@ namespace lobpcg_detail
     return r;
   }
 
+  // QR-orthonormalize V, project it out of span(X), and QR again to tighten
+  // orthogonality. required_cols > 0 additionally demands V keep that many
+  // columns through both passes. On failure V may hold a partial result;
+  // callers reset it as needed.
+  inline bool qr_project_out_qr(arma::mat &V, const arma::mat &X,
+                                double rel_tol, arma::uword required_cols)
+  {
+    if (qr_orthonormalize(V, rel_tol) == 0 ||
+        (required_cols > 0 && V.n_cols != required_cols))
+    {
+      return false;
+    }
+
+    V -= X * (X.t() * V);
+
+    if (qr_orthonormalize(V, rel_tol) == 0 ||
+        (required_cols > 0 && V.n_cols != required_cols))
+    {
+      return false;
+    }
+
+    return true;
+  }
+
   inline bool build_momentum_P(arma::mat &P,
                                const arma::mat &X_curr,
                                const arma::mat &X_prev,
@@ -159,17 +164,7 @@ namespace lobpcg_detail
       return false;
     }
 
-    if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 ||
-        P.n_cols != X_curr.n_cols)
-    {
-      P.reset();
-      return false;
-    }
-
-    P -= X_curr * (X_curr.t() * P);
-
-    if (qr_orthonormalize(P, opt.qr_rel_tol) == 0 ||
-        P.n_cols != X_curr.n_cols)
+    if (!qr_project_out_qr(P, X_curr, opt.qr_rel_tol, X_curr.n_cols))
     {
       P.reset();
       return false;
@@ -249,11 +244,7 @@ namespace lobpcg_detail
       return false;
     }
 
-    Z.set_size(n, n);
-    for (arma::blas_int j = 0; j < n; ++j)
-    {
-      Z.col(j) = M.col(n - 1 - j);
-    }
+    Z = arma::fliplr(M);
     w = arma::reverse(w);
     return true;
   }
@@ -275,6 +266,47 @@ namespace lobpcg_detail
         r[i + j * n] = ax[i + j * n] - lj * x[i + j * n];
       }
     }
+  }
+
+  // Rayleigh-Ritz over the joint basis [X, B]. small_eig_desc symmetrizes
+  // the assembled Gram, so the diagonal blocks need no pre-symmetrization.
+  // On success X/AX are updated in place and (pp, app) hold the B-part of
+  // the update (B*VB, AB*VB) for callers that commit it as the next P.
+  inline bool rr_two_block(arma::mat &X, arma::mat &AX,
+                           const arma::mat &B, const arma::mat &AB,
+                           const arma::uword k, arma::vec &lam,
+                           arma::mat &pp, arma::mat &app,
+                           std::vector<double> &work_buf,
+                           std::vector<arma::blas_int> &iwork_buf)
+  {
+    arma::mat XAX = X.t() * AX;
+    arma::mat XAB = X.t() * AB;
+    arma::mat BAB = B.t() * AB;
+
+    const arma::uword sX = X.n_cols, sB = B.n_cols;
+    const arma::uword sT = sX + sB;
+    arma::mat gramA(sT, sT);
+    gramA.submat(0, 0, sX - 1, sX - 1) = XAX;
+    gramA.submat(0, sX, sX - 1, sT - 1) = XAB;
+    gramA.submat(sX, 0, sT - 1, sX - 1) = XAB.t();
+    gramA.submat(sX, sX, sT - 1, sT - 1) = BAB;
+
+    arma::vec lam_s;
+    arma::mat V_s;
+    if (!small_eig_desc(gramA, lam_s, V_s, work_buf, iwork_buf))
+    {
+      return false;
+    }
+    lam = lam_s.head(k);
+    const arma::mat Vtop = V_s.head_cols(k);
+    const arma::mat VX = Vtop.rows(0, sX - 1);
+    const arma::mat VB = Vtop.rows(sX, sT - 1);
+
+    pp = B * VB;
+    app = AB * VB;
+    X = X * VX + pp;
+    AX = AX * VX + app;
+    return true;
   }
 
 } // namespace lobpcg_detail
@@ -305,7 +337,32 @@ inline void seed_lobpcg_state(LOBPCGState &state,
 }
 
 // ---------------------------------------------------------------------------
+// after a successful solve: rebuild P as the temporal momentum direction
+// between two consecutive sign-canonicalized eigenvector blocks. When the
+// temporal direction is degenerate (norm below the floor), the committed
+// post-RR P is kept instead.
+// ---------------------------------------------------------------------------
+inline void refresh_momentum_P(LOBPCGState &state,
+                               const arma::mat &X_curr,
+                               const arma::mat &X_prev,
+                               const LOBPCGOptions &opt = LOBPCGOptions())
+{
+  const double min_temporal_norm =
+      1e-10 * std::sqrt(static_cast<double>(X_curr.n_cols));
+
+  arma::mat P;
+  if (lobpcg_detail::build_momentum_P(P, X_curr, X_prev, opt,
+                                      min_temporal_norm))
+  {
+    state.P = std::move(P);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // lobpcg_solve: warm start only, top-k, standard symmetric eigenproblem.
+//
+// requires a seeded state: an unseeded or mis-shaped (X, P) hard-errors via
+// Rcpp::stop instead of falling back, so callers must check seeded() first.
 // ---------------------------------------------------------------------------
 inline LOBPCGResult lobpcg_solve(const arma::mat &A,
                                  LOBPCGState &state,
@@ -331,20 +388,10 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   // (it is the post-RR search direction pp = Ract*VR + Pact*VP). Project
   // out X, then orthonormalize.
   P -= X * (X.t() * P);
-  bool have_P = (qr_orthonormalize(P, opt.qr_rel_tol) == k);
+  bool have_P = qr_project_out_qr(P, X, opt.qr_rel_tol, k);
   if (!have_P)
   {
     P.reset();
-  }
-  // tighten orthogonality after QR.
-  if (have_P)
-  {
-    P -= X * (X.t() * P);
-    have_P = (qr_orthonormalize(P, opt.qr_rel_tol) == k);
-    if (!have_P)
-    {
-      P.reset();
-    }
   }
   // fresh matvecs: A has changed since the last call.
   arma::mat AX = A * X;
@@ -358,41 +405,18 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   const double rel_tol_abs = opt.tol * normA;
 
   arma::vec lam;
+  arma::mat rr_pp, rr_app; // B-part outputs of rr_two_block
   // initial RR over the JOINT basis [X, P] (not span(X) alone)
   if (have_P)
   {
-    arma::mat XAX = X.t() * AX;
-    arma::mat XAP = X.t() * AP;
-    arma::mat PAP = P.t() * AP;
-    XAX = 0.5 * (XAX + XAX.t());
-    PAP = 0.5 * (PAP + PAP.t());
-
-    const arma::uword sX = X.n_cols, sP = P.n_cols;
-    const arma::uword sT = sX + sP;
-    arma::mat gramA(sT, sT);
-    gramA.submat(0, 0, sX - 1, sX - 1) = XAX;
-    gramA.submat(0, sX, sX - 1, sT - 1) = XAP;
-    gramA.submat(sX, 0, sT - 1, sX - 1) = XAP.t();
-    gramA.submat(sX, sX, sT - 1, sT - 1) = PAP;
-
-    arma::vec lam_s;
-    arma::mat V_s;
-    if (!small_eig_desc(gramA, lam_s, V_s, state.work, state.iwork))
+    if (!rr_two_block(X, AX, P, AP, k, lam, rr_pp, rr_app,
+                      state.work, state.iwork))
     {
       out.converged = false;
       out.status = LOBPCG_INITIAL_RR_FAILED;
       out.fail_iter = 0;
       return out;
     }
-    lam = lam_s.head(k);
-    const arma::mat Vtop = V_s.head_cols(k);
-    const arma::mat VX = Vtop.rows(0, sX - 1);
-    const arma::mat VP = Vtop.rows(sX, sT - 1);
-
-    arma::mat X_new = X * VX + P * VP;
-    arma::mat AX_new = AX * VX + AP * VP;
-    X = std::move(X_new);
-    AX = std::move(AX_new);
     // P, AP intentionally not rotated; loop's [X,R]-vs-P projection handles it.
   }
   else
@@ -410,6 +434,10 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     X = X * V;
     AX = AX * V;
   }
+
+  // periodically recompute AX/AP from scratch to shed accumulated
+  // linear-update rounding error.
+  constexpr int MATVEC_REFRESH = 20;
 
   arma::mat R;
   double smallest_res = std::numeric_limits<double>::infinity();
@@ -450,11 +478,6 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     }
     else if (++stall >= opt.stall_window)
     {
-      if (opt.verbose)
-      {
-        Rcpp::Rcout << "lobpcg: stall at iter " << it
-                    << ", rel_res=" << out.max_rel_res << '\n';
-      }
       out.status = LOBPCG_STALLED;
       out.fail_iter = it;
       break;
@@ -470,15 +493,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     arma::mat Ract = R.cols(act_idx);
 
     Ract -= X * (X.t() * Ract);
-    if (qr_orthonormalize(Ract, opt.qr_rel_tol) == 0)
-    {
-      out.status = LOBPCG_RESIDUAL_COLLAPSED;
-      out.fail_iter = it;
-      break;
-    }
-    // tighten X-orthogonality after QR.
-    Ract -= X * (X.t() * Ract);
-    if (qr_orthonormalize(Ract, opt.qr_rel_tol) == 0)
+    if (!qr_project_out_qr(Ract, X, opt.qr_rel_tol, 0))
     {
       out.status = LOBPCG_RESIDUAL_COLLAPSED;
       out.fail_iter = it;
@@ -489,46 +504,17 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     // if we have no P this iteration, do RR on [X, Ract] only.
     if (!have_P)
     {
-      arma::mat XAX_s = X.t() * AX;
-      arma::mat XAR = X.t() * ARact;
-      arma::mat RAR = Ract.t() * ARact;
-      XAX_s = 0.5 * (XAX_s + XAX_s.t());
-      RAR = 0.5 * (RAR + RAR.t());
-
-      const arma::uword sX = X.n_cols, sR = Ract.n_cols;
-      const arma::uword sT = sX + sR;
-      arma::mat gramA(sT, sT);
-      gramA.submat(0, 0, sX - 1, sX - 1) = XAX_s;
-      gramA.submat(0, sX, sX - 1, sT - 1) = XAR;
-      gramA.submat(sX, 0, sT - 1, sX - 1) = XAR.t();
-      gramA.submat(sX, sX, sT - 1, sT - 1) = RAR;
-
-      arma::vec lam_s;
-      arma::mat V_s;
-      if (!small_eig_desc(gramA, lam_s, V_s, state.work, state.iwork))
+      if (!rr_two_block(X, AX, Ract, ARact, k, lam, rr_pp, rr_app,
+                        state.work, state.iwork))
       {
-        if (opt.verbose)
-        {
-          Rcpp::Rcout << "lobpcg: RR failed at iter " << it << '\n';
-        }
         out.status = LOBPCG_RR_FAILED;
         out.fail_iter = it;
         break;
       }
-      lam = lam_s.head(k);
-      const arma::mat Vtop = V_s.head_cols(k);
-      const arma::mat VX = Vtop.rows(0, sX - 1);
-      const arma::mat VR = Vtop.rows(sX, sT - 1);
-
-      const arma::mat pp = Ract * VR;
-      const arma::mat app = ARact * VR;
-
-      X = X * VX + pp;
-      AX = AX * VX + app;
-      P = pp;
-      AP = app;
+      P = std::move(rr_pp);
+      AP = std::move(rr_app);
       have_P = (P.n_cols > 0);
-      if (((it + 1) % 20) == 0)
+      if (((it + 1) % MATVEC_REFRESH) == 0)
       {
         AX = A * X;
         AP = A * P;
@@ -548,10 +534,6 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
 
       if (!qr_orthonormalize_update_matvec(Pact, APact, A, opt.qr_rel_tol))
       {
-        if (opt.verbose)
-        {
-          Rcpp::Rcout << "lobpcg: Pact collapsed at iter " << it << '\n';
-        }
         out.status = LOBPCG_P_COLLAPSED;
         out.fail_iter = it;
         break;
@@ -567,25 +549,20 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
 
       if (!qr_orthonormalize_update_matvec(Pact, APact, A, opt.qr_rel_tol))
       {
-        if (opt.verbose)
-        {
-          Rcpp::Rcout << "lobpcg: Pact collapsed at iter " << it << '\n';
-        }
         out.status = LOBPCG_P_COLLAPSED;
         out.fail_iter = it;
         break;
       }
     }
 
+    // diagonal blocks need no pre-symmetrization; small_eig_desc
+    // symmetrizes the assembled Gram.
     arma::mat XAX_s = X.t() * AX;
     arma::mat XAR = X.t() * ARact;
     arma::mat XAP = X.t() * APact;
     arma::mat RAR = Ract.t() * ARact;
     arma::mat RAP = Ract.t() * APact;
     arma::mat PAP = Pact.t() * APact;
-    XAX_s = 0.5 * (XAX_s + XAX_s.t());
-    RAR = 0.5 * (RAR + RAR.t());
-    PAP = 0.5 * (PAP + PAP.t());
 
     const arma::uword sX = X.n_cols, sR = Ract.n_cols, sP = Pact.n_cols;
     const arma::uword sT = sX + sR + sP;
@@ -605,10 +582,6 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     arma::mat V_s;
     if (!small_eig_desc(gramA, lam_s, V_s, state.work, state.iwork))
     {
-      if (opt.verbose)
-      {
-        Rcpp::Rcout << "lobpcg: RR failed at iter " << it << '\n';
-      }
       out.status = LOBPCG_RR_FAILED;
       out.fail_iter = it;
       break;
@@ -627,7 +600,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     AX = AX * VX + app;
     P = pp;
     AP = app;
-    if (((it + 1) % 20) == 0)
+    if (((it + 1) % MATVEC_REFRESH) == 0)
     {
       AX = A * X;
       AP = A * P;

@@ -4,7 +4,18 @@ load_all1 <- function(timer = TRUE, debug = FALSE) {
 
   flags <- character()
   if (timer) {
-    flags <- c(flags, "-DLOC_TIMER")
+    # rcpptimer is a dev-only dependency: src/loc_timer.h includes its header
+    # only under -DLOC_TIMER. It is deliberately absent from LinkingTo so that
+    # ordinary builds do not require it, which means its include directory has
+    # to be added by hand here.
+    inc <- system.file("include", package = "rcpptimer")
+    if (!nzchar(inc)) {
+      cli::cli_abort(c(
+        "{.pkg rcpptimer} is required by {.code timer = TRUE}.",
+        i = 'Install it, or call {.code load_all1(timer = FALSE)}.'
+      ))
+    }
+    flags <- c(flags, "-DLOC_TIMER", sprintf('-I"%s"', inc))
   }
   flags <- c(flags, sprintf("-DPCA_IMP_DIAGNOSTICS=%d", as.integer(debug)))
 

@@ -21,7 +21,7 @@ struct GramWorkspace
   arma::blas_int lda = 0;
   arma::blas_int ldc = 0;
 
-  bool init(arma::uword nrows_A, arma::uword ncols_A, bool tall)
+  void init(arma::uword nrows_A, arma::uword ncols_A, bool tall)
   {
     nr = static_cast<arma::blas_int>(nrows_A);
     nc = static_cast<arma::blas_int>(ncols_A);
@@ -30,7 +30,6 @@ struct GramWorkspace
     k = tall ? nr : nc;
     lda = nr;
     ldc = n;
-    return true;
   }
 };
 
@@ -40,7 +39,6 @@ struct GramWorkspace
 struct GramCache
 {
   arma::uword n_fixed = 0;
-  bool tall = false;
   bool active = false;
   arma::mat Gram_fixed;
   arma::mat X_chg_scaled;
@@ -62,7 +60,7 @@ inline void syrk_upper(const arma::mat &A, arma::mat &C,
 // ---------------------------------------------------------------------------
 // initialize the fixed-block cache.
 // ---------------------------------------------------------------------------
-inline bool gram_cache_init(GramCache &cache,
+inline void gram_cache_init(GramCache &cache,
                             const arma::mat &Xhat_perm,
                             const double *sw,
                             const arma::uword nrX,
@@ -72,12 +70,14 @@ inline bool gram_cache_init(GramCache &cache,
                             arma::mat &X_work)
 {
   cache.n_fixed = n_fixed;
-  cache.tall = tall;
   cache.active = (n_fixed > 0);
   if (n_fixed == 0)
   {
-    return true;
+    return;
   }
+
+  GramWorkspace fixed_ws;
+  fixed_ws.init(nrX, n_fixed, tall);
 
   if (tall)
   {
@@ -86,16 +86,7 @@ inline bool gram_cache_init(GramCache &cache,
     // zero-fill so the lower triangle is well-defined. dsyrk only writes the
     // upper triangle
     cache.Gram_fixed.zeros(n_fixed, n_fixed);
-    const arma::blas_int nn = static_cast<arma::blas_int>(n_fixed);
-    const arma::blas_int kk = static_cast<arma::blas_int>(nrX);
-    const arma::blas_int lda = static_cast<arma::blas_int>(nrX);
-    const arma::blas_int ldc = nn;
-    const char uplo = 'U';
-    const char trans = 'T';
-    arma::dsyrk_(&uplo, &trans, &nn, &kk,
-                 &SYRK_ALPHA, X_work.memptr(), &lda,
-                 &SYRK_BETA, cache.Gram_fixed.memptr(), &ldc,
-                 1, 1);
+    syrk_upper(X_work, cache.Gram_fixed, fixed_ws);
   }
   else
   {
@@ -105,20 +96,50 @@ inline bool gram_cache_init(GramCache &cache,
 
     // zero-fill so the lower triangle is well-defined.
     cache.Gram_fixed.zeros(nrX, nrX);
-    const arma::blas_int nn = static_cast<arma::blas_int>(nrX);
-    const arma::blas_int kk = static_cast<arma::blas_int>(n_fixed);
-    const arma::blas_int lda = static_cast<arma::blas_int>(nrX);
-    const arma::blas_int ldc = nn;
-    const char uplo = 'U';
-    const char trans = 'N';
-    arma::dsyrk_(&uplo, &trans, &nn, &kk,
-                 &SYRK_ALPHA, X_fixed_scaled.memptr(), &lda,
-                 &SYRK_BETA, cache.Gram_fixed.memptr(), &ldc,
-                 1, 1);
+    syrk_upper(X_fixed_scaled, cache.Gram_fixed, fixed_ws);
 
     cache.X_chg_scaled.set_size(nrX, n_mc);
   }
-  return true;
+}
+
+// ---------------------------------------------------------------------------
+// where the sw-scaled changing-column block lives, if anywhere. The caller
+// must keep that block scaled by sw between form_weighted_gram() calls.
+//   tall:            the tail columns of X_work
+//   wide, cached:    the compact GramCache::X_chg_scaled block
+//   wide, non-cached: nowhere (form_weighted_gram scales the Gram instead)
+// ---------------------------------------------------------------------------
+inline double *gram_changing_block(GramCache &cache,
+                                   arma::mat &X_work,
+                                   const arma::uword n_fixed,
+                                   const arma::uword n_mc,
+                                   const bool tall)
+{
+  if (n_mc == 0)
+  {
+    return nullptr;
+  }
+  if (tall)
+  {
+    return X_work.colptr(n_fixed);
+  }
+  if (cache.active)
+  {
+    return cache.X_chg_scaled.memptr();
+  }
+  return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// copy the upper-triangular part (rows 0..j) of the leading ncols columns.
+// ---------------------------------------------------------------------------
+inline void copy_upper_cols(arma::mat &dst, const arma::mat &src,
+                            const arma::uword ncols)
+{
+  for (arma::uword j = 0; j < ncols; ++j)
+  {
+    std::memcpy(dst.colptr(j), src.colptr(j), (j + 1) * sizeof(double));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -155,12 +176,7 @@ inline void form_weighted_gram(const arma::mat &Xhat,
       const arma::blas_int ldAA = gram_ws.ldc;
       const arma::blas_int lda = gram_ws.lda;
 
-      for (arma::uword j = 0; j < n_fixed; ++j)
-      {
-        std::memcpy(AA_NxN.colptr(j),
-                    gram_cache.Gram_fixed.colptr(j),
-                    (j + 1) * sizeof(double));
-      }
+      copy_upper_cols(AA_NxN, gram_cache.Gram_fixed, n_fixed);
 
       if (n_mc > 0)
       {
@@ -207,12 +223,7 @@ inline void form_weighted_gram(const arma::mat &Xhat,
     if (use_cache)
     {
       // gram_cache.X_chg_scaled already contains sw * X_changing.
-      for (arma::uword j = 0; j < nr; ++j)
-      {
-        std::memcpy(AA_NxN.colptr(j),
-                    gram_cache.Gram_fixed.colptr(j),
-                    (j + 1) * sizeof(double));
-      }
+      copy_upper_cols(AA_NxN, gram_cache.Gram_fixed, nr);
 
       if (n_mc > 0)
       {
