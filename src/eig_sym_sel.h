@@ -7,6 +7,17 @@
 #include <vector>
 #include "pca_linalg_utils.h"
 
+// dsyevr is not one of the LAPACK routines Armadillo declares, so it is
+// declared here rather than pulled from <R_ext/Lapack.h>: that header
+// redeclares C-linkage symbols Armadillo has already declared with different
+// types (Rcomplex* vs blas_cxd*, const mismatches), which warns on every
+// translation unit that includes both.
+//
+// jobz/range/uplo are Fortran CHARACTER arguments, so the ABI appends a hidden
+// length for each. They are declared and passed explicitly (arma::blas_len ==
+// ARMA_FORTRAN_CHARLEN_TYPE == R's FC_LEN_T), matching the trailing 1, 1 on the
+// arma::dsyrk_/dgemm_ calls elsewhere in the package. Omitting them is UB; see
+// Writing R Extensions 6.6.
 extern "C"
 {
   void dsyevr_(const char *jobz, const char *range, const char *uplo,
@@ -18,7 +29,9 @@ extern "C"
                arma::blas_int *isuppz,
                double *work, arma::blas_int *lwork,
                arma::blas_int *iwork, arma::blas_int *liwork,
-               arma::blas_int *info);
+               arma::blas_int *info,
+               arma::blas_len jobz_len, arma::blas_len range_len,
+               arma::blas_len uplo_len);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +91,8 @@ struct EigSymWorkspace
             isuppz.data(),
             &work_opt, &lw_flag,
             &iwork_opt, &liw_flag,
-            &info);
+            &info,
+            1, 1, 1);
 
     if (info != 0)
     {
@@ -136,7 +150,8 @@ inline bool eig_sym_sel(arma::vec &eigvals,
           ws.isuppz.data(),
           ws.work.data(), &ws.lwork,
           ws.iwork.data(), &ws.liwork,
-          &info);
+          &info,
+          1, 1, 1);
 
   if (info != 0 || m_out != ws.topk)
   {
