@@ -52,7 +52,9 @@ Suggests:
 LinkingTo:
     Rcpp,
     RcppArmadillo,
-    RcppThread
+    RcppEigen,
+    RcppThread,
+    RSpectra
 VignetteBuilder: 
     knitr
 Config/Needs/website: rmarkdown

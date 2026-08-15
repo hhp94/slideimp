@@ -45,3 +45,7 @@ sample_each_rep_cpp <- function(obj, pool_idx_in, na_per_col, row_room, col_room
     .Call(`_slideimp_sample_each_rep_cpp`, obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts)
 }
 
+pca_imp_spectra_cpp <- function(obj, eligible_idx, ncp, scale, regularized, threshold, maxiter, miniter, row_w, coeff_ridge, spectra_tol, spectra_maxiter, spectra_ncv) {
+    .Call(`_slideimp_pca_imp_spectra_cpp`, obj, eligible_idx, ncp, scale, regularized, threshold, maxiter, miniter, row_w, coeff_ridge, spectra_tol, spectra_maxiter, spectra_ncv)
+}
+

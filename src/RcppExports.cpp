@@ -2,6 +2,7 @@
 // Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 #include <RcppArmadillo.h>
+#include <RcppEigen.h>
 #include <RcppThread.h>
 #include <Rcpp.h>
 
@@ -167,6 +168,29 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// pca_imp_spectra_cpp
+Rcpp::List pca_imp_spectra_cpp(const arma::mat& obj, const arma::uvec& eligible_idx, const arma::uword ncp, const bool scale, const bool regularized, const double threshold, const arma::uword maxiter, const arma::uword miniter, arma::rowvec row_w, const double coeff_ridge, const double spectra_tol, const arma::uword spectra_maxiter, const arma::uword spectra_ncv);
+RcppExport SEXP _slideimp_pca_imp_spectra_cpp(SEXP objSEXP, SEXP eligible_idxSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP, SEXP spectra_tolSEXP, SEXP spectra_maxiterSEXP, SEXP spectra_ncvSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type eligible_idx(eligible_idxSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type ncp(ncpSEXP);
+    Rcpp::traits::input_parameter< const bool >::type scale(scaleSEXP);
+    Rcpp::traits::input_parameter< const bool >::type regularized(regularizedSEXP);
+    Rcpp::traits::input_parameter< const double >::type threshold(thresholdSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type maxiter(maxiterSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type miniter(miniterSEXP);
+    Rcpp::traits::input_parameter< arma::rowvec >::type row_w(row_wSEXP);
+    Rcpp::traits::input_parameter< const double >::type coeff_ridge(coeff_ridgeSEXP);
+    Rcpp::traits::input_parameter< const double >::type spectra_tol(spectra_tolSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type spectra_maxiter(spectra_maxiterSEXP);
+    Rcpp::traits::input_parameter< const arma::uword >::type spectra_ncv(spectra_ncvSEXP);
+    rcpp_result_gen = Rcpp::wrap(pca_imp_spectra_cpp(obj, eligible_idx, ncp, scale, regularized, threshold, maxiter, miniter, row_w, coeff_ridge, spectra_tol, spectra_maxiter, spectra_ncv));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 16},
@@ -180,6 +204,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_col_miss_internal", (DL_FUNC) &_slideimp_col_miss_internal, 1},
     {"_slideimp_row_miss_internal", (DL_FUNC) &_slideimp_row_miss_internal, 1},
     {"_slideimp_sample_each_rep_cpp", (DL_FUNC) &_slideimp_sample_each_rep_cpp, 6},
+    {"_slideimp_pca_imp_spectra_cpp", (DL_FUNC) &_slideimp_pca_imp_spectra_cpp, 13},
     {NULL, NULL, 0}
 };
 
