@@ -185,6 +185,19 @@ OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 \code{pin_blas = TRUE} may have no effect on macOS.
 }
 
+\section{Missing values and non-finite input}{
+
+
+\code{NA} and \code{NaN} are both treated as missing. No function in the package
+distinguishes between them.
+
+\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
+with \code{which(is.infinite(x), arr.ind = TRUE)}.
+
+A column with no observed values (every cell \code{NA} or \code{NaN}) is also
+rejected.
+}
+
 \section{PCA Performance tips}{
 
 Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),

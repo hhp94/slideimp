@@ -322,7 +322,9 @@ Rcpp::List pca_imp_internal_cpp(
 {
   LOC_TIMER_OBJ(pca_imp_gram);
   LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
-  stop_on_inf(obj);
+  // No Inf scan here. pca_imp() calls this once per `nb.init` on an unchanged
+  // `obj`, so a guard at this level would re-scan the whole matrix on every
+  // initialization. check_finite() in pca_imp() is the gate, and it runs once.
 
   // -------------------------------------------------------------------------
   // basic argument validation before we set up workspaces.

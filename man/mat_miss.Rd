@@ -16,8 +16,12 @@ compute row-wise.}
 return missing-value proportions.}
 }
 \value{
-A numeric vector containing missing-value counts or proportions for
-columns or rows, named when the corresponding dimension names are present.
+When \code{prop = FALSE}, an integer vector of missing-value counts.
+When \code{prop = TRUE}, a double vector of missing-value proportions. Either
+is per column when \code{col = TRUE} and per row otherwise, and is named when
+the corresponding dimension names are present.
+
+\code{NA} and \code{NaN} both count as missing. \code{Inf} and \code{-Inf} do not.
 }
 \description{
 Calculate the number or proportion of missing values per column or per row

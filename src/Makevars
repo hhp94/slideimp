@@ -1,2 +1,9 @@
+# RcppArmadillo defaults to 32-bit Armadillo indices so that arma::uvec maps
+# onto R integer vectors. That caps a matrix at 2^32-1 elements, and the
+# zero-copy constructor used for `const arma::mat&` arguments does not check
+# the bound: past it, n_elem and colptr() arithmetic wrap silently. At 850k
+# columns the cap lands around 5,052 rows, which is reachable. Opt in to 64-bit
+# indices, the override RcppArmadillo documents for this.
+PKG_CPPFLAGS = -DARMA_64BIT_WORD=1
 PKG_CXXFLAGS = $(SHLIB_OPENMP_CXXFLAGS)
 PKG_LIBS = `"$(R_HOME)/bin/Rscript" -e "RcppThread::LdFlags()"` $(SHLIB_OPENMP_CXXFLAGS) $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)

@@ -119,6 +119,19 @@ method's own \code{colmax} argument, include a \code{colmax} column in \code{par
 Tuning results can be summarized with \code{\link[=compute_metrics]{compute_metrics()}} or evaluated with
 external packages such as \code{yardstick}.
 }
+\section{Missing values and non-finite input}{
+
+
+\code{NA} and \code{NaN} are both treated as missing. No function in the package
+distinguishes between them.
+
+\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
+with \code{which(is.infinite(x), arr.ind = TRUE)}.
+
+A column with no observed values (every cell \code{NA} or \code{NaN}) is also
+rejected.
+}
+
 \section{Parallelization}{
 
 \itemize{

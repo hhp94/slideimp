@@ -514,6 +514,8 @@ prep_groups <- function(
 #' OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 #' `pin_blas = TRUE` may have no effect on macOS.
 #'
+#' @inheritSection slideimp-package Missing values and non-finite input
+#'
 #' @inheritSection pca_imp PCA Performance tips
 #'
 #' @note

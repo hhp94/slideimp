@@ -36,6 +36,8 @@
 #' When `dist_pow > 0`, imputed values are computed as distance-weighted
 #' averages. Weights are inverse distances raised to the power of `dist_pow`.
 #'
+#' @inheritSection slideimp-package Missing values and non-finite input
+#'
 #' @section K-NN performance optimization:
 #' - Use `subset` when only specific columns need imputation.
 #' - Use grouped or sliding-window imputation for very large matrices.
