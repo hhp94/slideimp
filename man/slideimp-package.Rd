@@ -10,6 +10,19 @@ Provides K-nearest-neighbor, PCA, grouped, and sliding-window imputation
 methods for numeric matrices, along with utilities for simulation and
 parameter tuning.
 }
+\section{Missing values and non-finite input}{
+
+
+\code{NA} and \code{NaN} are both treated as missing. No function in the package
+distinguishes between them.
+
+\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
+with \code{which(is.infinite(x), arr.ind = TRUE)}.
+
+A column with no observed values (every cell \code{NA} or \code{NaN}) is also
+rejected.
+}
+
 \seealso{
 Useful links:
 \itemize{

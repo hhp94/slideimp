@@ -249,6 +249,8 @@ new_lobpcg_control <- function(
 #' This function reimplements the PCA imputation method from the `missMDA`
 #' package by Francois Husson and Julie Josse, based on Josse and Husson (2016).
 #'
+#' @inheritSection slideimp-package Missing values and non-finite input
+#'
 #' @section PCA Performance tips:
 #' Speed comes from three levers: `solver` (through LOBPCG with warm-start),
 #' `threshold`, and `scale`. Tune these first, then accuracy parameters

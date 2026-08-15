@@ -715,3 +715,83 @@ test_that("slide_imp: all windows infeasible under 'skip' returns original matri
   expect_length(attr(res, "fallback"), length(attr(res, "fallback"))) # sanity
   expect_equal(attr(res, "fallback_action"), "skip")
 })
+
+test_that("slide_imp scans the union of covered columns, not window by window", {
+  set.seed(1234)
+  mat <- sim_mat(20, 30, perc_total_na = 0.2)$input
+  location <- 1:30
+
+  args <- list(
+    location = location,
+    k = 3,
+    window_size = 10,
+    overlap_size = 5,
+    min_window_n = 5,
+    .progress = FALSE
+  )
+
+  # an Inf anywhere under a window is refused
+  inf_mat <- mat
+  inf_mat[3, 12] <- Inf
+  expect_error(
+    suppressMessages(do.call(slide_imp, c(list(inf_mat), args))),
+    "Infinite"
+  )
+
+  # so is an all-NA column, including one sitting in an overlap region
+  na_mat <- mat
+  na_mat[, 8] <- NA
+  expect_error(
+    suppressMessages(do.call(slide_imp, c(list(na_mat), args))),
+    "All NA/NaN"
+  )
+})
+
+test_that("slide_imp scopes the all-NA check to covered columns but Inf to all", {
+  set.seed(1234)
+  mat <- sim_mat(20, 60, perc_total_na = 0.2)$input
+  location <- 1:60
+
+  # subset = 25:35 keeps two windows covering columns 21:40, so 1:20 and 41:60
+  # are covered by no window.
+  args <- list(
+    location = location,
+    k = 3,
+    window_size = 10,
+    overlap_size = 0,
+    min_window_n = 5,
+    subset = 25:35,
+    .progress = FALSE
+  )
+
+  # an all-NA column outside every window is never imputed, so it is allowed
+  uncovered_na <- mat
+  uncovered_na[, 5] <- NA
+  expect_no_error(
+    suppressMessages(do.call(slide_imp, c(list(uncovered_na), args)))
+  )
+
+  # the same column inside a window is refused
+  covered_na <- mat
+  covered_na[, 25] <- NA
+  expect_error(
+    suppressMessages(do.call(slide_imp, c(list(covered_na), args))),
+    "All NA/NaN"
+  )
+
+  # Inf is refused wherever it sits, and the reported position refers to the
+  # caller's matrix rather than to the window slice
+  uncovered_inf <- mat
+  uncovered_inf[3, 5] <- Inf
+  expect_error(
+    suppressMessages(do.call(slide_imp, c(list(uncovered_inf), args))),
+    "row 3, column 5"
+  )
+
+  covered_inf <- mat
+  covered_inf[4, 25] <- Inf
+  expect_error(
+    suppressMessages(do.call(slide_imp, c(list(covered_inf), args))),
+    "row 4, column 25"
+  )
+})

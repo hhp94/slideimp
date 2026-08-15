@@ -564,6 +564,26 @@ test_that("Throw on Inf", {
   expect_error(pca_imp(to_test, ncp = 3), "Infinite")
 })
 
+test_that("Inf is refused ahead of the paths that used to hide it", {
+  set.seed(1234)
+
+  # no missing cells at all: the "No missing values" early return used to hand
+  # the matrix back with the Inf still in it.
+  complete <- sim_mat(20, 20, perc_total_na = 0)$input
+  complete[3, 4] <- Inf
+  expect_error(pca_imp(complete, ncp = 2), "Infinite")
+
+  # otherwise infeasible: the infeasibility abort used to win the race and
+  # report eligible columns without ever mentioning the Inf.
+  infeasible <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
+  infeasible[3, 4] <- Inf
+  infeasible[, 6:20] <- 1
+  expect_error(pca_imp(infeasible, ncp = 8), "Infinite")
+
+  # and the Inf scan runs once, not once per `nb.init`
+  expect_error(pca_imp(complete, ncp = 2, nb.init = 3), "Infinite")
+})
+
 # lobpcg ----
 test_that("LOBPCG mode during warmup matches forced exact path", {
   set.seed(1234)

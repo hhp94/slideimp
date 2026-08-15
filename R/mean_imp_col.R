@@ -34,6 +34,8 @@
 mean_imp_col <- function(obj, subset = NULL, cores = 1) {
   # pre-cond
   checkmate::assert_matrix(obj, mode = "numeric", .var.name = "obj")
+  # before the subset early return, which would skip this check
+  check_inf(obj)
   checkmate::assert_count(cores, positive = TRUE)
 
   # subset resolution

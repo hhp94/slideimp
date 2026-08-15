@@ -168,6 +168,19 @@ that feature using the supplied \code{window_size}.
 Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, or \code{ncp} and related
 arguments to use \code{\link[=pca_imp]{pca_imp()}}.
 }
+\section{Missing values and non-finite input}{
+
+
+\code{NA} and \code{NaN} are both treated as missing. No function in the package
+distinguishes between them.
+
+\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
+with \code{which(is.infinite(x), arr.ind = TRUE)}.
+
+A column with no observed values (every cell \code{NA} or \code{NaN}) is also
+rejected.
+}
+
 \section{PCA Performance tips}{
 
 Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),

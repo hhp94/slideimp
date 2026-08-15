@@ -1,3 +1,27 @@
+# slideimp (development version)
+
+## Breaking changes
+
+* `Inf` and `-Inf` are now rejected on entry by every imputation function,
+before any other validation.
+
+* `mat_miss()` returns an integer vector when `prop = FALSE` (still a double
+vector when `prop = TRUE`).
+
+* `tune_imp()` now errors when a supplied `na_loc` position points at a cell
+that is already `NA` or `NaN`. Positions from `sample_na_loc()` are unaffected.
+
+## Minor improvements and fixes
+
+* The package is now compiled with 64-bit Armadillo indices
+(`-DARMA_64BIT_WORD=1`).
+
+* `pca_imp()` scans for infinities once per call rather than once per
+`nb.init` initialization.
+
+* Documented that `NA` and `NaN` are both treated as missing, and that
+infinities are rejected rather than imputed.
+
 # slideimp 1.2.0
 
 ## Breaking changes

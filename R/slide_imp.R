@@ -81,6 +81,8 @@ find_overlap_regions <- function(start, end) {
 #' Specify `k` and related arguments to use [knn_imp()], or `ncp` and related
 #' arguments to use [pca_imp()].
 #'
+#' @inheritSection slideimp-package Missing values and non-finite input
+#'
 #' @inheritSection pca_imp PCA Performance tips
 #'
 #' @returns If `dry_run = FALSE`, a numeric matrix of the same dimensions as
@@ -365,10 +367,19 @@ slide_imp <- function(
     overlap <- find_overlap_regions(start, end)
   }
 
-  # check for all NA/inf column
-  for (i in seq_along(start)) {
-    window_cols <- start[i]:end[i]
-    check_finite(obj[, window_cols, drop = FALSE])
+  # validate covered columns once (not a submatrix per window)
+  covered_cols <- collapse::funique(
+    sequence(end - start + 1L, from = start),
+    sort = TRUE
+  )
+
+  if (length(covered_cols) == ncol(obj)) {
+    check_finite(obj)
+  } else {
+    # Inf: whole matrix so the reported row/col refer to obj
+    check_inf(obj)
+    # all-NA: only columns a window will impute
+    check_finite(obj[, covered_cols, drop = FALSE])
   }
 
   # early return: window statistics only ----

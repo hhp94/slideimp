@@ -127,6 +127,19 @@ test_that("pre-check aborts on columns with zero variance", {
   )
 })
 
+test_that("a non-finite cell is reported as Inf, not as zero variance", {
+  m <- sim_mat(20, 5, perc_total_na = 0)$input
+  m[3, 4] <- Inf
+
+  # col_vars() returns NaN for this column, which the zero-variance pre-check
+  # used to claim as a variance problem. The Inf gate now runs first.
+  expect_true(is.nan(col_vars(m)[4]))
+  expect_error(
+    sample_na_loc(m, n_cols = 4, n_rows = 1, na_col_subset = 1:5),
+    "Infinite"
+  )
+})
+
 test_that("aborts when requested n_cols exceeds available pool", {
   m <- sim_mat(20, 5, perc_total_na = 0)$input
   expect_error(
@@ -1027,4 +1040,83 @@ test_that("slide_imp flank mode is tuned correctly", {
     tune_imp_pca$result[[1]]$truth,
     truth
   )
+})
+
+test_that("supplied na_loc positions must point at observed cells", {
+  set.seed(1234)
+  obj <- sim_mat(20, 20, perc_total_na = 0.2)$input
+  obj[5, 5] <- NA
+  obj[6, 6] <- NaN
+  observed <- which(!is.na(obj), arr.ind = TRUE)
+
+  fill0 <- function(obj, dummy = 1) {
+    obj[is.na(obj)] <- 0
+    obj
+  }
+  params <- data.frame(dummy = 1)
+
+  # a position sitting on an existing hole has no truth behind it
+  on_hole <- rbind(observed[1:3, ], c(5L, 5L))
+  expect_error(
+    tune_imp(obj, params, .f = fill0, na_loc = list(on_hole), .progress = FALSE),
+    "observed cells"
+  )
+
+  # NaN is a hole too
+  on_nan <- rbind(observed[1:3, ], c(6L, 6L))
+  expect_error(
+    tune_imp(obj, params, .f = fill0, na_loc = list(on_nan), .progress = FALSE),
+    "observed cells"
+  )
+
+  # linear positions go through the same check
+  expect_error(
+    tune_imp(
+      obj,
+      params,
+      .f = fill0,
+      na_loc = list(c(which(is.na(obj))[1], which(!is.na(obj))[1])),
+      .progress = FALSE
+    ),
+    "observed cells"
+  )
+
+  # and fully observed positions are scored in full, with no silent shrink
+  clean <- observed[1:6, ]
+  res <- tune_imp(
+    obj,
+    params,
+    .f = fill0,
+    na_loc = list(clean),
+    .progress = FALSE
+  )
+  d <- res$result[[1]]
+  expect_equal(nrow(d), 6L)
+  expect_false(anyNA(d$truth))
+  expect_equal(sum(is.finite(d$truth - d$estimate)), 6L)
+})
+
+test_that("sample_na_loc positions are always observed cells", {
+  set.seed(1234)
+  obj <- sim_mat(20, 20, perc_total_na = 0.2)$input
+  locs <- sample_na_loc(obj, n_cols = 5, n_rows = 2, n_reps = 3)
+
+  for (pos in locs) {
+    expect_false(anyNA(obj[pos]))
+  }
+})
+
+test_that("sample_na_loc returns integer index matrices", {
+  # sample_each_rep_cpp() hands back an arma::umat, which under 64-bit arma
+  # indices arrives as doubles. Indices are bounded by dim(), so they are
+  # coerced back to integer to match the documented return type.
+  set.seed(1234)
+  obj <- sim_mat(20, 30, perc_total_na = 0.2)$input
+  locs <- sample_na_loc(obj, n_cols = 5, n_rows = 2, n_reps = 3)
+
+  for (pos in locs) {
+    expect_type(pos, "integer")
+    expect_equal(colnames(pos), c("row", "col"))
+    expect_length(obj[pos], nrow(pos))
+  }
 })

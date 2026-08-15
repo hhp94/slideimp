@@ -1,11 +1,14 @@
 #include <RcppArmadillo.h>
 #include <RcppThread.h>
 
+#include "matrix_checks.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <vector>
 
 // [[Rcpp::export]]
@@ -169,6 +172,27 @@ arma::mat mean_imp_col_internal(const arma::mat &mat,
   return out;
 }
 
+// Width of an Armadillo index, in bytes. Exists so the test suite can assert
+// that -DARMA_64BIT_WORD=1 survived in src/Makevars: without it arma indices
+// are 32 bits and a matrix past 2^32-1 elements wraps silently rather than
+// erroring. Nothing else calls this.
+// [[Rcpp::export]]
+int arma_uword_bytes()
+{
+  return static_cast<int>(sizeof(arma::uword));
+}
+
+// Inf/-Inf only. For callers that reject infinities but legitimately accept a
+// column with no observed value: `mean_imp_col()` leaves such columns
+// untouched by design, and `sample_na_loc()` reports them through its own
+// variance pre-check.
+// [[Rcpp::export]]
+void check_inf(const arma::mat &mat)
+{
+  stop_on_inf(mat);
+}
+
+// Inf/-Inf and all-NA/NaN columns. The gate for the imputation entry points.
 // [[Rcpp::export]]
 void check_finite(const arma::mat &mat)
 {
@@ -181,18 +205,34 @@ void check_finite(const arma::mat &mat)
 
     bool has_finite = false;
 
+    // one pass per column, two refusals:
+    // Inf/-Inf is rejected outright, wherever it appears. A column that ends
+    // the pass with no finite cell holds nothing but NA/NaN and is rejected
+    // too. Inf is checked first, so the second message never has to mention it.
     for (arma::uword row = 0; row < nr; ++row)
     {
-      if (std::isfinite(cp[row]))
+      const double x = cp[row];
+
+      if (std::isinf(x))
+      {
+        Rcpp::stop(
+            std::string("Infinite value found at row ") +
+            std::to_string(row + 1) +
+            ", column " +
+            std::to_string(col + 1) +
+            ". Infinite values are not supported.");
+      }
+
+      // Inf is already ruled out, so not-NaN means finite here.
+      if (!std::isnan(x))
       {
         has_finite = true;
-        break;
       }
     }
 
     if (!has_finite)
     {
-      Rcpp::stop("All NA/NaN/Inf column detected");
+      Rcpp::stop("All NA/NaN column detected");
     }
   }
 }

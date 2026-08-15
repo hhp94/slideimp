@@ -119,6 +119,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// arma_uword_bytes
+int arma_uword_bytes();
+RcppExport SEXP _slideimp_arma_uword_bytes() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(arma_uword_bytes());
+    return rcpp_result_gen;
+END_RCPP
+}
+// check_inf
+void check_inf(const arma::mat& mat);
+RcppExport SEXP _slideimp_check_inf(SEXP matSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
+    check_inf(mat);
+    return R_NilValue;
+END_RCPP
+}
 // check_finite
 void check_finite(const arma::mat& mat);
 RcppExport SEXP _slideimp_check_finite(SEXP matSEXP) {
@@ -176,6 +196,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 1},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
     {"_slideimp_mean_imp_col_internal", (DL_FUNC) &_slideimp_mean_imp_col_internal, 3},
+    {"_slideimp_arma_uword_bytes", (DL_FUNC) &_slideimp_arma_uword_bytes, 0},
+    {"_slideimp_check_inf", (DL_FUNC) &_slideimp_check_inf, 1},
     {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},
     {"_slideimp_col_miss_internal", (DL_FUNC) &_slideimp_col_miss_internal, 1},
     {"_slideimp_row_miss_internal", (DL_FUNC) &_slideimp_row_miss_internal, 1},

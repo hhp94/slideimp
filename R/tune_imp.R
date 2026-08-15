@@ -58,6 +58,8 @@ sample_na_loc <- function(
   max_attempts = 100
 ) {
   checkmate::assert_matrix(obj, min.rows = 1, min.cols = 1, .var.name = "obj")
+  # Inf makes col_vars() NaN, which the zero-variance check would misreport
+  check_inf(obj)
   checkmate::assert_count(
     n_cols,
     positive = TRUE,
@@ -220,6 +222,8 @@ sample_na_loc <- function(
       col_room = col_room,
       max_attempts = max_attempts
     )
+    # arma::umat is a double matrix under 64-bit indices
+    storage.mode(result) <- "integer"
     colnames(result) <- c("row", "col")
     result
   })
@@ -352,6 +356,19 @@ resolve_na_loc <- function(
     }
   })
 
+  for (i in seq_along(na_loc)) {
+    on_hole <- is.na(obj[na_loc[[i]]])
+    if (any(on_hole)) {
+      bad <- which(on_hole)
+      cli::cli_abort(c(
+        "{.arg na_loc} positions must point at observed cells.",
+        "x" = "{.code na_loc[[{i}]]} has {length(bad)} position{?s} on a cell
+               that is already NA or NaN: {fmt_trunc(bad, 6)}.",
+        "i" = "Use observed cells only, or omit {.arg na_loc} to sample them."
+      ))
+    }
+  }
+
   return(na_loc)
 }
 
@@ -408,6 +425,8 @@ resolve_na_loc <- function(
 #'
 #' Tuning results can be summarized with [compute_metrics()] or evaluated with
 #' external packages such as `yardstick`.
+#'
+#' @inheritSection slideimp-package Missing values and non-finite input
 #'
 #' @inheritSection group_imp Parallelization
 #'

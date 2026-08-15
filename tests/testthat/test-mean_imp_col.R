@@ -17,3 +17,19 @@ test_that("`mean_imp_col` works", {
   }
   expect_equal(mean_imp_col(to_test, subset = c(1, 5, 10)), c_subset)
 })
+
+test_that("`mean_imp_col` refuses Inf, including when subset resolves to NULL", {
+  set.seed(1234)
+  to_test <- sim_mat(20, 10, perc_total_na = 0.2)$input
+  to_test[3, 4] <- Inf
+
+  expect_error(mean_imp_col(to_test), "Infinite")
+  expect_error(mean_imp_col(to_test, subset = 4), "Infinite")
+
+  # the Inf sits in a column that is not selected, and the selected columns
+  # have no missingness, so `subset` resolves to NULL and the old code path
+  # returned the input unchanged with the Inf still in it.
+  complete <- sim_mat(20, 10, perc_total_na = 0)$input
+  complete[3, 4] <- Inf
+  expect_error(mean_imp_col(complete, subset = 1), "Infinite")
+})

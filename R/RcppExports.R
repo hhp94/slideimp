@@ -29,6 +29,14 @@ mean_imp_col_internal <- function(mat, col_idx, cores = 1L) {
     .Call(`_slideimp_mean_imp_col_internal`, mat, col_idx, cores)
 }
 
+arma_uword_bytes <- function() {
+    .Call(`_slideimp_arma_uword_bytes`)
+}
+
+check_inf <- function(mat) {
+    invisible(.Call(`_slideimp_check_inf`, mat))
+}
+
 check_finite <- function(mat) {
     invisible(.Call(`_slideimp_check_finite`, mat))
 }

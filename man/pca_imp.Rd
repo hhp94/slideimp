@@ -127,6 +127,19 @@ See \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.h
 for the full workflow.
 }
 
+\section{Missing values and non-finite input}{
+
+
+\code{NA} and \code{NaN} are both treated as missing. No function in the package
+distinguishes between them.
+
+\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
+with \code{which(is.infinite(x), arr.ind = TRUE)}.
+
+A column with no observed values (every cell \code{NA} or \code{NaN}) is also
+rejected.
+}
+
 \examples{
 set.seed(123)
 obj <- sim_mat(10, 10)$input

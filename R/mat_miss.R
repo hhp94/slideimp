@@ -9,8 +9,12 @@
 #' @param prop Logical. If `FALSE`, return missing-value counts. If `TRUE`,
 #'   return missing-value proportions.
 #'
-#' @returns A numeric vector containing missing-value counts or proportions for
-#'   columns or rows, named when the corresponding dimension names are present.
+#' @returns When `prop = FALSE`, an integer vector of missing-value counts.
+#'   When `prop = TRUE`, a double vector of missing-value proportions. Either
+#'   is per column when `col = TRUE` and per row otherwise, and is named when
+#'   the corresponding dimension names are present.
+#'
+#'   `NA` and `NaN` both count as missing. `Inf` and `-Inf` do not.
 #'
 #' @examples
 #' obj <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)
@@ -35,12 +39,13 @@ mat_miss <- function(obj, col = TRUE, prop = FALSE) {
   )
   checkmate::assert_flag(col, .var.name = "col")
   checkmate::assert_flag(prop, .var.name = "prop")
+  # counts are bounded by nrow/ncol, so they fit in an integer
   if (col) {
-    vec_miss <- as.numeric(col_miss_internal(obj))
+    vec_miss <- as.integer(col_miss_internal(obj))
     names(vec_miss) <- colnames(obj)
     denom <- nrow(obj)
   } else {
-    vec_miss <- as.numeric(row_miss_internal(obj))
+    vec_miss <- as.integer(row_miss_internal(obj))
     names(vec_miss) <- rownames(obj)
     denom <- ncol(obj)
   }
