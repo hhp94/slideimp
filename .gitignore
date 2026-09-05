@@ -3,7 +3,6 @@
 .RData
 .Renviron
 .Ruserdata
-dev
 *.Rproj
 .vscode
 src/*.o
@@ -16,3 +15,8 @@ inst/doc
 docs
 cran-comments.md
 .positai
+
+# Illumina manifest fixtures for the (currently commented-out) slideimp.extra
+# test in test-group_imp.R. Regenerable: the CSV is a public vendor download
+# and the .fst is derived from it.
+tests/testthat/dev/

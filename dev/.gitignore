@@ -1,0 +1,23 @@
+# dev/ is TRACKED. Design notes, prototype scripts, reference PDFs and small
+# benchmark results belong in git so they travel between machines -- see the
+# "do not add an ignore rule for something the maintainer produced or fetched
+# by hand" rule in CLAUDE.md. Papers are tracked at whatever size they are.
+#
+# The exception is large REGENERABLE data: cohort matrices, cached downloads,
+# serialized fixtures. Those are rebuilt from source, not authored, so losing
+# them costs compute rather than work. They are listed below so a stray `git
+# add dev/` cannot pull a hundred megabytes into history by accident.
+#
+# This file is allow-by-default on purpose. A new note or PDF dropped here is
+# tracked with no further action; only the formats named below are excluded.
+
+*.qs2
+*.qs
+*.rda
+*.RData
+*.fst
+*.feather
+*.parquet
+*.h5
+*.bigmemory
+*.bin

@@ -19,3 +19,4 @@
 ^vignettes/articles$
 ^[.]?air[.]toml$
 ^R/dev-utils\.R$
+^CLAUDE\.md$

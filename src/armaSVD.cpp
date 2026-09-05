@@ -3,10 +3,11 @@
 #endif
 
 #include "svd_triplet.h"
-#include "matrix_checks.h"
 #include "loc_timer.h"
-#include <limits>
+#include <cmath>
 #include <iomanip>
+#include <limits>
+#include <string>
 
 template <typename F>
 static inline void for_each_missing_in_col(arma::uword cidx,
