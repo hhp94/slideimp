@@ -119,7 +119,7 @@ imputed <- group_imp(
 )
 # Found cleaned manifest for 'MSA'
 # ! 1 group dropped: no features remaining after matching `obj_cn`.
-# ℹ Dropped group indices: 24
+# i Dropped group indices: 24
 # Imputing 25 groups using PCA.
 # Running mode: sequential
 

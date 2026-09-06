@@ -71,8 +71,11 @@ filtering rules are applied. In this mode, \code{k} and \code{ncp} are not requi
 \item{cores}{Integer. Number of cores to use for K-NN imputation.}
 
 \item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
-the weighted average. \code{dist_pow = 0} gives an unweighted average of the
-nearest neighbors.}
+the weighted average, applied to the distance defined by \code{method}, which
+is a mean squared difference for \code{"euclidean"} and a mean absolute
+difference for \code{"manhattan"}. \code{dist_pow = 0} gives an unweighted average
+of the nearest neighbors. The full weighting rule is given under Details
+in \code{\link[=knn_imp]{knn_imp()}}.}
 
 \item{ncp}{Integer. Number of principal components used to predict missing
 entries.}

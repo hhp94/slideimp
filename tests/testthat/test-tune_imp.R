@@ -534,7 +534,7 @@ test_that("tune_imp works when n_reps is a list of NA locations", {
     )
   })
 
-  # Should have 2 parameters × 3 repetitions = 6 rows
+  # Should have 2 parameters x 3 repetitions = 6 rows
   expect_equal(nrow(knn_imp_res), 6)
 
   # Check that results contain numeric estimates
@@ -565,7 +565,7 @@ test_that("tune_imp works when n_reps is a list of NA locations", {
     )
   })
 
-  # Should have 2 parameters × 3 repetitions = 6 rows
+  # Should have 2 parameters x 3 repetitions = 6 rows
   expect_equal(nrow(custom_res), 6)
 
   # Verify custom function fills with the specified values
@@ -1058,7 +1058,13 @@ test_that("supplied na_loc positions must point at observed cells", {
   # a position sitting on an existing hole has no truth behind it
   on_hole <- rbind(observed[1:3, ], c(5L, 5L))
   expect_error(
-    tune_imp(obj, params, .f = fill0, na_loc = list(on_hole), .progress = FALSE),
+    tune_imp(
+      obj,
+      params,
+      .f = fill0,
+      na_loc = list(on_hole),
+      .progress = FALSE
+    ),
     "observed cells"
   )
 

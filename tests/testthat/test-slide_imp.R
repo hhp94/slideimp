@@ -406,7 +406,7 @@ test_that("slide_imp PCA skips windows not covering any subset features", {
     dimnames = dimnames(to_test)
   )
   final_imputed <- counts
-  # window 1: 1–20 - covers subset cols 1, 6
+  # window 1: 1-20 - covers subset cols 1, 6
   window_cols <- 1:20
   imp <- pca_imp(obj = to_test[, window_cols], ncp = 2, scale = TRUE, seed = 1)
   local_sub <- intersect(subset, window_cols)
@@ -414,9 +414,9 @@ test_that("slide_imp PCA skips windows not covering any subset features", {
     imp[, match(local_sub, window_cols), drop = FALSE]
   counts[, local_sub] <- counts[, local_sub] + 1
 
-  # window 2: 16–35 - no subset features, SKIPPED
+  # window 2: 16-35 - no subset features, SKIPPED
 
-  # window 3: 31–50 - covers subset cols 45, 50
+  # window 3: 31-50 - covers subset cols 45, 50
   window_cols <- 31:50
   imp <- pca_imp(obj = to_test[, window_cols], ncp = 2, scale = TRUE, seed = 1)
   local_sub <- intersect(subset, window_cols)
@@ -556,9 +556,10 @@ test_that("slide_imp: on_infeasible = 'mean' fills skipped windows with column m
   set.seed(1234)
   mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
   location <- 1:100
-  # Make cols 1:10 infeasible but not fully NA (leave a few rows so mean exists)
-  mat[1:18, 1:10] <- NA
-  mat[19:20, 1:10] <- matrix(rnorm(20), nrow = 2)
+  # Make cols 1:10 infeasible (0.95 > colmax) but not fully NA, so a column
+  # mean exists. colmax is inclusive: 18/20 = 0.9 would still be eligible.
+  mat[1:19, 1:10] <- NA
+  mat[20, 1:10] <- rnorm(10)
 
   res <- suppressMessages(slide_imp(
     mat,

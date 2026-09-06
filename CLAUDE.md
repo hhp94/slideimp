@@ -221,6 +221,12 @@ code is right and the map needs fixing in the same change.
   dump: code here is exploratory by declaration and nothing in the package
   may depend on it, so anything that turns durable gets promoted to `R/` or
   `src/`.
+- [dev/to-do.md](dev/to-do.md) - work that is agreed on but not yet done.
+  Read it before starting anything in `R/` or `src/`: an entry there may
+  already cover the change, or may constrain how it has to be made. Add an
+  entry when a change is decided on but deferred, and DELETE the entry when
+  the change lands rather than marking it done - git history records what
+  happened, this file records only what has not.
 - `NEWS.md` - the maintainer's, see the rule above
 - `CLAUDE.md` - this file
 

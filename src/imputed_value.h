@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 #include <cmath>
+#include <string>
 #include "matrix_checks.h"
 
 // single source of truth for the mask storage type
@@ -86,6 +87,55 @@ static inline void validate_knn_inputs(
     check_group(grp_impute, "grp_impute");
     check_group(grp_miss_no_imp, "grp_miss_no_imp");
     check_group(grp_complete, "grp_complete");
+
+    // The three groups partition the working set. The kernel relies on that
+    // when it tags a group-3 neighbor by its offset into grp_complete, and a
+    // column listed twice would appear as its own neighbor at distance zero
+    // and take the whole weight, so the partition is checked, not assumed.
+    std::vector<mask_t> seen(obj.n_cols, 0);
+    auto claim_group = [&](const arma::uvec &g, const char *name)
+    {
+        for (arma::uword i = 0; i < g.n_elem; ++i)
+        {
+            if (seen[g(i)])
+            {
+                Rcpp::stop(
+                    std::string(name) +
+                    " contains column index " +
+                    std::to_string(g(i)) +
+                    ", which already belongs to another group. The three "
+                    "groups must be disjoint.");
+            }
+            seen[g(i)] = 1;
+        }
+    };
+
+    claim_group(grp_impute, "grp_impute");
+    claim_group(grp_miss_no_imp, "grp_miss_no_imp");
+    claim_group(grp_complete, "grp_complete");
+
+    // Group 3 is read straight out of obj with no mask
+    // (impute_column_values), because its columns are declared complete. A
+    // NaN there is never excluded from the weighted sum, so it produces a
+    // missing imputed value with no error. This is where "complete" is
+    // enforced; it costs one pass over the group-3 block, against the
+    // k * n_complete distance passes the kernel is about to do.
+    for (arma::uword i = 0; i < grp_complete.n_elem; ++i)
+    {
+        const double *col = obj.colptr(grp_complete(i));
+        for (arma::uword r = 0; r < obj.n_rows; ++r)
+        {
+            if (std::isnan(col[r]))
+            {
+                Rcpp::stop(
+                    std::string("grp_complete column ") +
+                    std::to_string(grp_complete(i) + 1) +
+                    " has a missing value at row " +
+                    std::to_string(r + 1) +
+                    ". grp_complete columns must be fully observed.");
+            }
+        }
+    }
 
     const arma::uword n_working =
         grp_impute.n_elem + grp_miss_no_imp.n_elem + grp_complete.n_elem;

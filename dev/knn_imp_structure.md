@@ -6,93 +6,123 @@ down to the C++ kernel. Descriptive only: what the code is and how it connects.
 Orientation: `knn_imp()` documents rows as samples and columns as features, and
 the neighbor search runs **between columns** -- a "neighbor" is another column of
 `obj`, and the distance loop walks rows. Hence `k` is capped at `ncol(obj) - 1`
-(`R/knn_imp.R:84`), and `tests/testthat/test-knn_imp.R:64-66` transposes when
-comparing against `impute::impute.knn`, which searches rows.
+(`R/knn_imp.R:121`), and `dev/probe_impute_knn.R` transposes both sides when
+comparing against `impute::impute.knn`, which searches rows. That comparison is
+real and asserted -- it agrees to 2.2e-16 absolute and 4.5e-16 relative, not
+bitwise. It lives in `dev/` rather than under `tests/` because `impute` is a
+Bioconductor package outside `Suggests`, and any `impute::` call under `tests/`
+makes `R CMD check` report an unstated dependency regardless of skips; the
+reasoning is repeated at `tests/testthat/test-knn_imp.R:59-65` so a future
+session does not put it back.
 
 ## Call chain overview
 
 ```
-R/knn_imp.R:61                      knn_imp()  -- user entry, validation, partition
-  +- src/mat_stats.cpp:197          check_finite()  (Inf + all-NA column gate)
+R/knn_imp.R:98                      knn_imp()  -- user entry, validation, partition
+  +- src/mat_stats.cpp:198          check_finite()  (Inf + all-NA column gate)
   +- R/utils.R:56                   resolve_subset()  -- names/ints -> col indices
   +- R/mat_miss.R:33                mat_miss()
-  |    +- src/mat_stats.cpp:241     col_miss_internal() via R/RcppExports.R:44
-  +- [abort site 1] R/knn_imp.R:115-123   k > n_elig - 1
-  +- [abort site 2] R/knn_imp.R:134-142   all subset cols exceed colmax
+  |    +- src/mat_stats.cpp:242     col_miss_internal() via R/RcppExports.R:44
+  +- [abort site 1] R/knn_imp.R:175-183   k > n_elig - 1
+  +- [abort site 2] R/knn_imp.R:194-202   all subset cols exceed colmax
   +- R/RcppExports.R:16             impute_knn_brute()  -- .Call shim
   |    +- src/RcppExports.cpp:69    _slideimp_impute_knn_brute (SEXP wrapper)
-  |         +- src/impute_knn_brute.cpp:365  impute_knn_brute()   <-- C++ entry
-  |              +- src/imputed_value.h:35        validate_knn_inputs()
+  |         +- src/impute_knn_brute.cpp:393  impute_knn_brute()   <-- C++ entry
+  |              +- src/imputed_value.h:36        validate_knn_inputs()
   |              +- src/matrix_checks.h:8         stop_on_inf()
-  |              +- src/impute_knn_brute.cpp:387  copy_with_mask lambda
+  |              +- src/impute_knn_brute.cpp:415  copy_with_mask lambda
   |              +- src/imputed_value.cpp:18      initialize_result_matrix()
-  |              +- RcppThread::parallelFor       (src/impute_knn_brute.cpp:450)
-  |                   +- src/impute_knn_brute.cpp:279  distance_vector()
-  |                   |    +- :183  distance_vector_impl<Metric>()
-  |                   |         +- :41   calc_distance_raw<Metric, Bound>()
-  |                   |         +- :97   calc_distance_raw_complete<Metric, Bound>()
-  |                   |         +- :153  insert_before_k()
-  |                   |         +- :159  insert_if_better_than_worst()
-  |                   +- src/impute_knn_brute.cpp:305  knn_weights()
+  |              +- par_for()                     (src/impute_knn_brute.cpp:478)
+  |                   +- src/impute_knn_brute.cpp:306  distance_vector()
+  |                   |    +- :192  distance_vector_impl<Metric>()
+  |                   |         +- :46   calc_distance_raw<Metric, Bound>()
+  |                   |         +- :102  calc_distance_raw_complete<Metric, Bound>()
+  |                   |         +- :158  insert_before_k()
+  |                   |         +- :164  insert_if_better_than_worst()
+  |                   +- src/impute_knn_brute.cpp:332  knn_weights()
   |                   +- src/imputed_value.cpp:178     impute_column_values()
-  +- R/knn_imp.R:160-163            NaN -> NA, scatter triplets back into obj
-  +- R/mean_imp_col.R:34            mean_imp_col()  (only when post_imp = TRUE)
-  |    +- src/mat_stats.cpp:190     check_inf()
-  |    +- src/mat_stats.cpp:78      mean_imp_col_internal()
+  +- R/knn_imp.R:220-223            NaN -> NA, scatter triplets back into obj
+  +- R/mean_imp_col.R:34            mean_imp_col()  (post_imp, and only if
+  |                                 anything is still missing)
+  |    +- src/mat_stats.cpp:191     check_inf()
+  |    +- src/mat_stats.cpp:79      mean_imp_col_internal()
   +- R/utils.R:5                    new_slideimp_results()
 ```
 
 ## Layer 1 -- R entry point (`R/knn_imp.R`)
 
-Signature at `R/knn_imp.R:61-72`. Validation block, in order
-(`R/knn_imp.R:74-90`): numeric matrix with `>= 1` row and `>= 2` columns
-(`:74-81`); `check_finite(obj)` (`:82`); `method` matched against
-`"euclidean"` / `"manhattan"` (`:83`); `k` integer in `[1, ncol(obj) - 1]`
-(`:84`); `cores >= 1` (`:85`); `colmax` in `[0, 1]` (`:86`); `dist_pow` scalar,
-`>= 0`, not infinite (`:88`); the `post_imp`, `.progress` and `na_check` flags
-(`:87`, `:89-90`).
+Signature at `R/knn_imp.R:98-109`. Validation block, in order
+(`R/knn_imp.R:110-132`): numeric matrix with `>= 1` row and `>= 2` columns
+(`:111-118`); `check_finite(obj)` (`:119`); `method` matched against
+`"euclidean"` / `"manhattan"` (`:120`); `k` integer in `[1, ncol(obj) - 1]`
+(`:121`); `cores >= 1` (`:122`); `colmax` in `[0, 1]` (`:123`); `dist_pow` a
+finite number `>= 0` (`:125-130`); the `post_imp`, `.progress` and `na_check`
+flags (`:124`, `:131-132`). Every one goes through `checkmate` with an explicit
+`.var.name`, so a rejection names the user's argument;
+`tests/testthat/test-knn_imp.R:448-461` pins that for `dist_pow`, which used to
+be checked with a bare `stopifnot()` that let a character value through to the
+`.Call`.
 
 Missing-value gating is delegated to C++. `check_finite()`
-(`src/mat_stats.cpp:197`) makes one pass per column and refuses twice: any
+(`src/mat_stats.cpp:198`) makes one pass per column and refuses twice: any
 `Inf`/`-Inf` aborts with the row and column of the offender
-(`src/mat_stats.cpp:218-223`), and a column ending the pass with no finite cell
-aborts with "All NA/NaN column detected" (`src/mat_stats.cpp:233-236`).
-`check_inf()` (`src/mat_stats.cpp:190`) is the weaker Inf-only variant, called
+(`src/mat_stats.cpp:219-224`), and a column ending the pass with no finite cell
+aborts with "All NA/NaN column detected" (`src/mat_stats.cpp:234-237`).
+`check_inf()` (`src/mat_stats.cpp:191`) is the weaker Inf-only variant, called
 from `mean_imp_col()` at `R/mean_imp_col.R:38` but not from `knn_imp()`. Both
 are declared in `R/RcppExports.R:36-42`. `NA` and `NaN` are indistinguishable
 throughout; the policy is stated at `R/slideimp-package.R:7-16`.
 
-`subset` (`R/knn_imp.R:92`) goes through `resolve_subset()` (`R/utils.R:56-99`),
+`subset` (`R/knn_imp.R:134`) goes through `resolve_subset()` (`R/utils.R:56-99`),
 which accepts `NULL` (all columns, `:60-61`), a character vector matched against
 `colnames(obj)` with unmatched names dropped and reported (`:62-77`), or
 integerish indices (`:78-89`). It returns `NULL` for "nothing to do" (`:91-96`),
-which becomes an early return of the untouched input (`R/knn_imp.R:93-96`).
+after reporting it itself, which becomes an early return of the unchanged input
+(`R/knn_imp.R:135-147`).
+
+Both early returns hand back the input through `new_slideimp_results()`, not as
+a bare matrix, so the class and attributes of the result do not depend on which
+path the data takes; `tests/testthat/test-knn_imp.R:412-446` pins that, and pins
+that the empty-subset path emits exactly one message. `pca_imp()` still returns
+a bare matrix on its own no-missing-values path (`R/pca_imp.R:383-386`); see
+`dev/to-do.md`.
 
 Missingness and partitioning. `cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)`
-at `R/knn_imp.R:99`; `mat_miss()` (`R/mat_miss.R:33`) calls `col_miss_internal()`
-(`src/mat_stats.cpp:241`), which counts `std::isnan` per column and does not
-count `Inf` as missing (`src/mat_stats.cpp:256-259`). A second early return fires
-if no subset column has any missing value (`R/knn_imp.R:102-107`). `colmax` then
-becomes an eligibility mask, `eligible <- miss_rate < min(colmax, 1)`
-(`R/knn_imp.R:112`); a column at or above the threshold is dropped from the K-NN
-stage entirely -- neither imputed nor usable as a neighbor. Three disjoint index
-groups follow at `R/knn_imp.R:125-132`: `grp_impute` (eligible, has missing
+at `R/knn_imp.R:150`; `mat_miss()` (`R/mat_miss.R:33`) calls `col_miss_internal()`
+(`src/mat_stats.cpp:242`), which counts `std::isnan` per column and does not
+count `Inf` as missing (`src/mat_stats.cpp:257-260`). A second early return fires
+if no subset column has any missing value (`R/knn_imp.R:152-166`). `colmax` then
+becomes an eligibility mask, `eligible <- miss_rate <= min(colmax, 1)`
+(`R/knn_imp.R:172`); the test is inclusive, matching `pca_imp()`
+(`R/pca_imp.R:392`), so a column strictly above the threshold is dropped from
+the K-NN stage entirely -- neither imputed nor usable as a neighbor. Three
+disjoint index groups follow at `R/knn_imp.R:185-192`: `grp_impute` (eligible, has missing
 values, in `subset` -- these get imputed), `grp_miss_no_imp` (eligible, has
 missing values, not in `subset` -- neighbor candidate only), and `grp_complete`
 (eligible, fully observed -- neighbor candidate only). `method` is remapped to
 the integer the kernel expects, `0` = euclidean, `1` = manhattan
-(`R/knn_imp.R:144`). So `subset` narrows only the *target* set: every eligible
+(`R/knn_imp.R:204`). So `subset` narrows only the *target* set: every eligible
 column stays a neighbor candidate regardless of `subset`.
 
 `rowmax` is not an argument of `knn_imp()`: it belongs to the tuning path
 (`R/tune_imp.R:55`, `:184`), capping injected missingness per row.
 
-After the `.Call`, `R/knn_imp.R:160` maps `NaN` back to `NA_real_` (the kernel
-emits `NaN` for cells it could not fill), `R/knn_imp.R:162-163` uses the returned
+After the `.Call`, `R/knn_imp.R:220` maps `NaN` back to `NA_real_` (the kernel
+emits `NaN` for cells it could not fill), `R/knn_imp.R:222-223` uses the returned
 `(row, col)` pairs as a two-column index matrix to scatter values into `obj`,
-`R/knn_imp.R:166-168` optionally runs column-mean fill over `subset`, and
-`R/knn_imp.R:170-178` attaches the `slideimp_results` class and attributes via
+`R/knn_imp.R:232-240` optionally runs column-mean fill, and
+`R/knn_imp.R:242-250` attaches the `slideimp_results` class and attributes via
 `new_slideimp_results()` (`R/utils.R:5-19`).
+
+**Which columns post-imputation touches.** Only two kinds of subset column can
+still be missing after the kernel: one `colmax` held out of `grp_impute`, and
+one the kernel could not finish because no candidate shared an observed row
+with it. Both sets are already in hand at `R/knn_imp.R:233-236` -- the first
+from `has_miss_idx` minus `grp_impute`, the second from the `NA`s in the third
+result column -- so `mean_imp_col()` is called with just those columns, and not
+at all when there are none. That is the usual case, and skipping it avoids a
+second full-matrix allocation plus a per-column copy of everything K-NN already
+filled. Both branches are pinned at `tests/testthat/test-knn_imp.R:383-410`.
 
 ## Layer 2 -- the .Call boundary
 
@@ -104,8 +134,8 @@ The generated C wrapper is `src/RcppExports.cpp:69-85`; it converts each SEXP
 through `Rcpp::traits::input_parameter<...>` (`:73-81`) and calls the C++ symbol
 at `:82`. Registration is `:195` inside the `CallEntries` table, installed by
 `R_init_slideimp` at `:208`. The exact C++ entry symbol is `impute_knn_brute`,
-defined at `src/impute_knn_brute.cpp:365` under the `// [[Rcpp::export]]` marker
-on `:364`. It is the only C++ entry point the K-NN stage needs; `check_finite`,
+defined at `src/impute_knn_brute.cpp:393` under the `// [[Rcpp::export]]` marker
+on `:392`. It is the only C++ entry point the K-NN stage needs; `check_finite`,
 `col_miss_internal`, and `mean_imp_col_internal` are separate `.Call`s made from
 R around it.
 
@@ -120,14 +150,25 @@ wrappers), `src/impute_knn_brute.cpp` (K-NN kernel and entry point),
 Project headers reached, following the `#include` graph:
 
 - `src/imputed_value.h` -- included by `src/impute_knn_brute.cpp:1` and
-  `src/imputed_value.cpp:1`. Defines `mask_t` / `MaskMat` (`:11-12`),
-  `GroupLayout` (`:24-33`), the header-inline `validate_knn_inputs()`
-  (`:35-110`), and the two out-of-line declarations (`:116`, `:128`).
-- `src/matrix_checks.h` -- pulled in by `src/imputed_value.h:8` and
+  `src/imputed_value.cpp:1`. Defines `mask_t` / `MaskMat` (`:12-13`),
+  `GroupLayout` (`:25-34`), the header-inline `validate_knn_inputs()`
+  (`:37-160`), and the two out-of-line declarations (`:166`, `:178`).
+- `src/matrix_checks.h` -- pulled in by `src/imputed_value.h:9` and
   `src/mat_stats.cpp:4`. Holds only `stop_on_inf()` (`src/matrix_checks.h:8-29`).
+- `src/par_for.h` -- included by `src/impute_knn_brute.cpp:6` and
+  `src/mat_stats.cpp:5`. One function template: `par_for()` runs the loop body
+  inline when `n_threads <= 1` and hands off to `RcppThread::parallelFor()`
+  otherwise. The reason is in the header's own comment -- RcppThread's free
+  `parallelFor()` sets the global pool's thread count and restores it, and
+  quickpool implements a change of count by joining every worker and spawning
+  new ones, so a one-thread call rebuilds the pool twice for nothing. That is
+  the default configuration of the whole chain: `slide_imp()` runs each window
+  at one core and `group_imp()` forces one core per worker under mirai. The
+  serial and parallel paths are pinned equal at
+  `tests/testthat/test-knn_imp.R:320-341`.
 - `src/loc_timer.h` -- included at `src/impute_knn_brute.cpp:2`. Every macro
   compiles to `((void)0)` unless `LOC_TIMER` is defined (`:26-34`), so the
-  `LOC_*` calls at `src/impute_knn_brute.cpp:447-448` and `485-486` vanish in a
+  `LOC_*` calls at `src/impute_knn_brute.cpp:475-476` and `515-516` vanish in a
   normal build.
 
 Plus the external `RcppArmadillo.h` (`src/imputed_value.h:4`) and `RcppThread.h`
@@ -144,32 +185,37 @@ that flag survived.
 
 ## Layer 4 -- kernel setup and result skeleton
 
-1. `validate_knn_inputs()` (`src/imputed_value.h:35`) re-checks everything R
-   already checked, so the kernel is safe when called directly: shape (`:44-52`),
-   `k >= 1` (`:54-57`), `method` in `{0, 1}` (`:59-62`), `dist_pow` finite and
-   non-negative (`:64-67`), every group index in range (`:69-88`), and
-   `k <= n_working - 1` for `n_working` = sum of the three group sizes
-   (`:90-109`). Then `stop_on_inf(obj)` at `src/impute_knn_brute.cpp:378`
-   rescans for infinities.
-2. `GroupLayout layout{...}` at `src/impute_knn_brute.cpp:379` is the single
+1. `validate_knn_inputs()` (`src/imputed_value.h:36-160`) re-checks everything R
+   already checked, so the kernel is safe when called directly: shape (`:45-53`),
+   `k >= 1` (`:55-58`), `method` in `{0, 1}` (`:60-63`), `dist_pow` finite and
+   non-negative (`:65-68`), every group index in range (`:70-89`), the three
+   groups disjoint (`:91-115`), every `grp_complete` column free of `NaN`
+   (`:117-138`), and `k <= n_working - 1` for `n_working` = sum of the three
+   group sizes (`:140-159`). The last two are not redundant with the R layer:
+   group 3 is read unmasked by `impute_column_values()`, so a `NaN` there would
+   flow into the weighted sum and produce a missing value with no error, and a
+   column claimed by two groups would be its own neighbor at distance zero.
+   `tests/testthat/test-knn_imp.R:343-381` exercises both. Then
+   `stop_on_inf(obj)` at `src/impute_knn_brute.cpp:406` rescans for infinities.
+2. `GroupLayout layout{...}` at `src/impute_knn_brute.cpp:407` is the single
    source of truth for group boundaries: groups 1 and 2 occupy local columns
    `[0, n_masked())` of the working matrices, and `complete_start()`
-   (`src/imputed_value.h:31`) is a *virtual* index used as a tag -- a neighbor id
+   (`src/imputed_value.h:32`) is a *virtual* index used as a tag -- a neighbor id
    `>= complete_start()` means "group 3, offset `id - complete_start()` into
    `grp_complete`".
 3. Working buffers `obj_masked` (`arma::mat`), `nmiss_masked`
    (`arma::Mat<uint8_t>`) and `n_col_valid` are allocated at
-   `src/impute_knn_brute.cpp:383-385` and filled by `copy_with_mask`
-   (`:387-405`), which calls `std::isnan` once per cell and reuses the result as
-   the mask byte, the count increment, and the zeroing test (`:399-402`). Missing
+   `src/impute_knn_brute.cpp:411-413` and filled by `copy_with_mask`
+   (`:415-433`), which calls `std::isnan` once per cell and reuses the result as
+   the mask byte, the count increment, and the zeroing test (`:427-430`). Missing
    cells therefore hold a literal `0.0` in `obj_masked` and are excluded by the
    mask, never by a branch in the distance loop.
-4. Group 1 is copied at `src/impute_knn_brute.cpp:408-411`, group 2 at `:425-428`.
+4. Group 1 is copied at `src/impute_knn_brute.cpp:436-439`, group 2 at `:453-456`.
    Group 3 is **not** copied: the kernel reads it straight out of `obj` through
-   `grp_complete` (`:430`, and the lambdas at `:220-234`).
+   `grp_complete` (`:458`, and the lambdas at `:239-253`).
 5. `initialize_result_matrix()` (`src/imputed_value.cpp:18-165`) runs between the
-   group-1 and group-2 copies (`src/impute_knn_brute.cpp:416-417`) so the call
-   can bail early when there is nothing to impute (`:419-422`).
+   group-1 and group-2 copies (`src/impute_knn_brute.cpp:444-445`) so the call
+   can bail early when there is nothing to impute (`:447-450`).
 
 **Result skeleton.** The return value is a triplet matrix: 1-based row, original
 1-based column, value. Missing counts per target column come from `n_col_valid`
@@ -182,69 +228,93 @@ with `NaN` (`:107-108`), columns 0 and 1 are populated up front (`:152-161`), an
 `Rcpp::stop` consistency guards surround the bookkeeping (`:39-67`, `:78-88`,
 `:124-131`, `:137-147`).
 
-## Layer 5 -- neighbor search (`src/impute_knn_brute.cpp:41-302`)
+## Layer 5 -- neighbor search (`src/impute_knn_brute.cpp:46-329`)
 
-**Metrics.** `EuclideanMetric` (`:18-21`) accumulates `diff * diff`,
-`ManhattanMetric` (`:23-26`) accumulates `std::abs(diff)`. The metric is a
-template parameter and `distance_vector()` (`:279`) dispatches once per target
-column on `method` (`:290-301`), so the inner body is monomorphized.
+**Metrics.** `EuclideanMetric` (`:20-23`) accumulates `diff * diff`,
+`ManhattanMetric` (`:25-28`) accumulates `std::abs(diff)`. The metric is a
+template parameter and `distance_vector()` (`:306`) dispatches once per target
+column on `method` (`:317-328`), so the inner body is monomorphized.
 
-**Distance over incomplete data.** `calc_distance_raw<Metric, Bound>` (`:41-88`)
+**Distance over incomplete data.** `calc_distance_raw<Metric, Bound>` (`:46-93`)
 handles a pair where either side may be missing. Per row it forms
-`valid = target_nmiss[r] & other_nmiss[r]` (`:60`) and adds
-`valid * Metric::accumulate(diff)` (`:62`) -- branchless, and correct because
+`valid = target_nmiss[r] & other_nmiss[r]` (`:65`) and adds
+`valid * Metric::accumulate(diff)` (`:67`) -- branchless, and correct because
 missing values were zeroed during the masked copy. It returns `dist / n_valid`
-(`:87`), the mean per-coordinate contribution over rows observed in *both*
+(`:92`), the mean per-coordinate contribution over rows observed in *both*
 columns, or `arma::datum::inf` when the two columns share no observed row
-(`:82-85`). No square root is taken for the euclidean case, so the stored
+(`:87-90`). No square root is taken for the euclidean case, so the stored
 quantity is a mean squared difference.
-`calc_distance_raw_complete<Metric, Bound>` (`:97-140`) is the group-3 variant:
-the other side is fully observed, so only the target mask matters (`:122`) and
-`n_valid` is known up front and passed in (`:104`).
+`calc_distance_raw_complete<Metric, Bound>` (`:102-145`) is the group-3 variant:
+the other side is fully observed, so only the target mask matters (`:127`) and
+`n_valid`, the target's own observed count, is known up front and passed in
+(`:107`). It has no zero-`n_valid` branch of its own -- see the guard below.
 
-**Pruning.** Both kernels chunk rows in blocks of `GRAIN = 16` (`:29`) and, when
+**Pruning.** Both kernels chunk rows in blocks of `GRAIN = 16` (`:31`) and, when
 `Bound` is true, test a partial-sum bound at each chunk boundary, returning `inf`
-on a prune (`:66-72`, `:125-131`; derivations in the comments at `:34-39`,
-`:93-95`). `Bound = false` instantiations pass the default `worst_dist = +inf`
-(`:48`, `:104`), making the check vacuous.
+on a prune (`:71-77`, `:130-136`; derivations in the comments at `:36-43`,
+`:95-97`). The check sits under `if constexpr (Bound)`, so it is not compiled
+into the `Bound = false` instantiations at all; the `worst_dist = +inf` default
+(`:53`, `:109`) only covers a `Bound = true` caller with no worst distance yet.
+The pruned and unpruned paths are compared against each other implicitly at
+`tests/testthat/test-knn_imp.R:233-318`, where the pure-R reference computes
+every distance unpruned and the kernel prunes past the first `k`.
 
-**Top-k selection.** `distance_vector_impl` (`:183-276`) keeps a
-`std::vector<NeighborInfo>` of capacity `k` (`:201-202`) and runs two phases with
-three shared cursors `p1`, `p2`, `c` (`:236-238`) so every candidate column is
-visited exactly once:
+**Top-k selection.** `distance_vector_impl` (`:192-303`) keeps a
+`std::vector<NeighborInfo>` of capacity `k` (`:219-220`) and runs two phases with
+three shared cursors `p1`, `p2`, `c` (`:255-257`) so every candidate column is
+visited exactly once. Before any of it, `:213-216` returns an empty vector when
+the target column has no observed row: it then overlaps nothing, and
+`calc_distance_raw_complete` would divide by a zero `n_valid`. `check_finite()`
+keeps that case away from the R entry point, so the guard exists for direct
+callers of the kernel; `tests/testthat/test-knn_imp.R:374-380` is one.
 
-- *Fill* (`:241-252`): append the first `k` candidates with no pruning via
-  `insert_before_k` (`:153-156`), in the order group 3, masked columns below the
-  target, masked columns above it. `p2` starts at `index + 1` (`:237`) and the
+- *Fill* (`:260-271`): append the first `k` candidates with no pruning via
+  `insert_before_k` (`:158-161`), in the order group 3, masked columns below the
+  target, masked columns above it. `p2` starts at `index + 1` (`:256`) and the
   `p1` loop stops at `index`, so the target column is never its own neighbor.
-  Then one full `std::sort` on those `k` entries (`:254-256`).
-- *Replacement* (`:259-273`): resume each cursor, compute the distance with
+  Then one full `std::sort` on those `k` entries (`:273-275`).
+- *Replacement* (`:278-292`): resume each cursor, compute the distance with
   `Bound = true` against the current worst (`top_k.back().distance`), and hand it
-  to `insert_if_better_than_worst` (`:159-172`), which rejects anything not
-  strictly better than the worst (`:161-164`), overwrites the last slot, and
-  bubbles it into position (`:168-171`).
+  to `insert_if_better_than_worst` (`:164-177`), which rejects anything not
+  strictly better than the worst (`:166-169`), overwrites the last slot, and
+  bubbles it into position (`:173-176`).
+- *Tail drop* (`:294-300`): the result is sorted ascending, so candidates at
+  distance `+inf` (no observed row in common with the target) sit at the tail
+  and are popped before returning. The caller can therefore receive fewer than
+  `k` neighbors, or none at all; when none, the column's result rows keep their
+  initial `NaN` (`:492-497`).
 
 The structure is therefore a sorted fixed-size array with insertion, not a heap
 and not a full sort of all candidates: exactly one `std::sort`, over `k` elements.
 
-**Ties.** Both comparisons are strict `<` (`:168` for the bubble, and the
-`dist >= top_k.back().distance` early return at `:161`), so an equal-distance
+**Ties.** Both comparisons are strict `<` (`:173` for the bubble, and the
+`dist >= top_k.back().distance` early return at `:166`), so an equal-distance
 candidate never displaces an incumbent: ties resolve in favor of the
 first-encountered column under the fixed scan order above, independent of thread
 count.
 
 ## Layer 6 -- weights and imputation
 
-**Weights.** `knn_weights()` (`src/impute_knn_brute.cpp:305-359`) returns a
-vector of ones when `dist_pow == 0` (`:311-314`) -- the plain unweighted mean of
+**Weights.** `knn_weights()` (`src/impute_knn_brute.cpp:332-387`) returns a
+vector of ones when `dist_pow == 0` (`:338-341`) -- the plain unweighted mean of
 neighbors. Otherwise it finds the smallest strictly positive finite distance
-`min_pos` and notes whether any distance is zero (`:316-330`); if no positive
-finite distance exists, weights stay equal (`:333-336`). Two live branches: when
-some distance is exactly zero (`:338-348`), `floor = min_pos * sqrt(DBL_EPSILON)`
-and `w_j = (floor / max(d_j, floor)) ^ dist_pow`, so duplicate columns get
-weight 1 and everything else a tiny positive weight; otherwise (`:350-356`)
-`w_j = (min_pos / d_j) ^ dist_pow`. Either way the largest weight is 1, and a
-neighbor at infinite distance gets weight 0.
+`min_pos` and notes whether any distance is zero (`:343-357`). Infinite
+distances never reach this function (Layer 5 drops them), so `min_pos` is
+non-finite only when every neighbor is an exact duplicate, and weights then
+stay equal (`:361-364`). Two live branches: when some distance is exactly zero
+(`:366-377`), `floor = min_pos * sqrt(DBL_EPSILON)` and
+`w_j = (floor / max(d_j, floor)) ^ dist_pow`, so duplicate columns get
+weight 1 and everything else a tiny positive weight; otherwise (`:378-384`)
+`w_j = (min_pos / d_j) ^ dist_pow`. Either way the largest weight is 1.
+
+The `d_j` here is the Layer 5 quantity, so under `method = "euclidean"` it is a
+mean SQUARED difference and `dist_pow` is an exponent of `2 * dist_pow` on the
+square-rooted euclidean distance. The `min_pos` factor is common to every weight
+and cancels out of the weighted average; it only keeps the weights near 1. Both
+facts are stated on the help page (`R/knn_imp.R:47-73`) and pinned against a
+pure-R reference at `tests/testthat/test-knn_imp.R:233-318`, which reproduces
+the kernel to 1e-12 on max absolute and max relative error over both metrics,
+three `dist_pow` values, and two candidate layouts.
 
 **Accumulation.** `impute_column_values()` (`src/imputed_value.cpp:178-269`)
 splits the neighbor ids into a masked bucket and a complete bucket by comparing
@@ -254,7 +324,13 @@ neighbor that is itself missing in a given row drops out for that row only.
 Complete neighbors add `w * value` per row and a single shared
 `total_complete_w` to every row's weight total (`:243-262`). The final value is
 `weighted_sum / weight_total`, or `NaN` when the total is zero (`:264-268`),
-which R converts to `NA` at `R/knn_imp.R:160`.
+which R converts to `NA` at `R/knn_imp.R:220`.
+
+That per-row drop-out is user-visible and is stated on the help page
+(`R/knn_imp.R:61-66`): neighbors are chosen once per column, but the set that
+actually contributes can differ from row to row, and a row where none of the
+chosen `k` is observed comes back missing. The "mixed candidates" half of
+`tests/testthat/test-knn_imp.R:233-318` is the case that exercises it.
 
 ## Feasibility and abort paths
 
@@ -262,68 +338,80 @@ which R converts to `NA` at `R/knn_imp.R:160`.
 wrappers can catch a per-group or per-window failure and fall back instead of
 dying. `knn_imp()` has exactly two sites:
 
-1. `R/knn_imp.R:115-123` -- `k > n_elig - 1`, where `n_elig` is the number of
-   columns passing `colmax` (`R/knn_imp.R:113`); message "`k` (...) exceeds
-   usable columns (...)". Exercised at `tests/testthat/test-knn_imp.R:126-128`
+1. `R/knn_imp.R:175-183` -- `k > n_elig - 1`, where `n_elig` is the number of
+   columns passing `colmax` (`R/knn_imp.R:173`); message "`k` (...) exceeds
+   usable columns (...)". Exercised at `tests/testthat/test-knn_imp.R:115-118`
    and `tests/testthat/test-group_imp.R:702-704`.
-2. `R/knn_imp.R:134-142` -- `length(grp_impute) == 0`, i.e. every subset column
+2. `R/knn_imp.R:194-202` -- `length(grp_impute) == 0`, i.e. every subset column
    with missing values also exceeds `colmax`; message "All subset columns with
    missing values exceed `colmax` (...)". Exercised at
-   `tests/testthat/test-group_imp.R:706-714`.
+   `tests/testthat/test-group_imp.R:706-714` and, for the inclusive boundary,
+   `tests/testthat/test-knn_imp.R:121-137`.
 
 Everything else that aborts here is a plain error, not `slideimp_infeasible`:
 `check_finite()` for `Inf` and all-`NA` columns
-(`tests/testthat/test-knn_imp.R:122-123` and `131-137`), plus the C++ guards in
-`validate_knn_inputs()` and `initialize_result_matrix()`. Catch sites are in the
+(`tests/testthat/test-knn_imp.R:463-469` and `:112-113`), plus the C++ guards in
+`validate_knn_inputs()` (`tests/testthat/test-knn_imp.R:343-381`) and
+`initialize_result_matrix()`. Catch sites are in the
 wrappers only (next section); each switches on `on_infeasible` to rethrow, skip
 the block unchanged, or fall back to `mean_imp_col()`.
 
 ## Data structures and ownership
 
-- The R matrix is deep-copied at the boundary:
-  `Rcpp::traits::input_parameter<const arma::mat&>` (`src/RcppExports.cpp:73`)
-  resolves to a `ConstReferenceInputParameter` holding an `arma::mat` built by
-  Rcpp's `MatrixExporter`, which allocates and copies element by element. The
-  kernel's `const arma::mat& obj` references that copy, not R's memory, and is
-  never written to.
+- The R matrix is **not** copied at the boundary. `input_parameter<const
+  arma::mat&>` (`src/RcppExports.cpp:73`) resolves to
+  `ConstReferenceInputParameter`, which for a double matrix is
+  `ArmaMat_InputParameter<..., false_type>`
+  (`RcppArmadillo/interface/RcppArmadilloAs.h:573-585`): it constructs
+  `arma::mat(ptr, nrow, ncol, false)` over R's own memory, `copy_aux_mem =
+  false`. Only integer-storage input takes the copying branch (`:587-599`), and
+  `knn_imp()` never passes one. The kernel's `const arma::mat& obj` therefore
+  aliases the R matrix and is never written to.
 - The kernel returns a freshly allocated `(n_missing x 3)` `arma::mat` of
   triplets, not an imputed matrix. The only in-place mutation of the user's
-  matrix happens in R, at `R/knn_imp.R:163`.
+  matrix happens in R, at `R/knn_imp.R:223`.
+- So the real full-matrix copies on this path are both on the R side: R's
+  copy-on-modify at the scatter (`R/knn_imp.R:223`), and, when
+  `mean_imp_col()` actually has work to do, the second `n x m` allocation in
+  `mean_imp_col_internal()` (`src/mat_stats.cpp:120`). The second one is now
+  skipped whenever nothing is still missing.
 - Groups 1 and 2 are materialized a second time into `obj_masked` /
-  `nmiss_masked` (`src/impute_knn_brute.cpp:383-384`) with NaNs zeroed and a
+  `nmiss_masked` (`src/impute_knn_brute.cpp:411-412`) with NaNs zeroed and a
   parallel byte mask; `nmiss_masked` is `arma::Mat<uint8_t>`
-  (`src/imputed_value.h:11-12`), one byte per cell rather than a `umat`. Group 3
+  (`src/imputed_value.h:12-13`), one byte per cell rather than a `umat`. Group 3
   is read in place from `obj`, so a matrix dominated by complete columns pays no
   second copy.
-- Column indices cross the boundary 0-based (`R/knn_imp.R:150-152` subtracts 1)
+- Column indices cross the boundary 0-based (`R/knn_imp.R:210-212` subtracts 1)
   and come back 1-based (`src/imputed_value.cpp:159-160` adds 1).
 - Per-thread scratch is small and local: `top_k`
-  (`src/impute_knn_brute.cpp:201`), `nn_columns` and `weights` (`:468-473`), and
+  (`src/impute_knn_brute.cpp:220`), `nn_columns` and `weights` (`:498-503`), and
   the two accumulators in `impute_column_values` (`src/imputed_value.cpp:196-197`).
-  `mean_imp_col_internal()` (`src/mat_stats.cpp:78`) is likewise out-of-place: a
-  fresh matrix with untouched columns `memcpy`d (`src/mat_stats.cpp:136-140`),
+  `mean_imp_col_internal()` (`src/mat_stats.cpp:79`) is likewise out-of-place: a
+  fresh matrix with untouched columns `memcpy`d (`src/mat_stats.cpp:137-141`),
   and `R/mean_imp_col.R:54` reattaches dimnames.
 
 ## Parallelism
 
-`RcppThread::parallelFor` at `src/impute_knn_brute.cpp:450-483` runs over
+`par_for()` at `src/impute_knn_brute.cpp:478-513` runs over
 `[0, layout.n_imp)` -- one task per target column. `n_threads` and `n_batches`
-are both set to `cores`, floored at 1 (`src/impute_knn_brute.cpp:439-441`, passed
-at `:483`), so the index range splits into as many contiguous batches as threads.
+are both set to `cores`, floored at 1 (`src/impute_knn_brute.cpp:467-469`, passed
+at `:513`), so the index range splits into as many contiguous batches as threads.
+At one thread `par_for()` (`src/par_for.h`) runs the body inline instead, for
+the reason given in Layer 3.
 
 All threads read `obj`, `obj_masked`, `nmiss_masked`, and `grp_complete` without
 writing them, and each writes only rows `[col_offsets(i), col_offsets(i+1))` of
 `result`, a disjoint slice per target column, so no locks are taken. Interruption
 is checked with `RcppThread::checkUserInterrupt()` on every fifth index
-(`src/impute_knn_brute.cpp:455-458`), which RcppThread routes to the main thread
+(`src/impute_knn_brute.cpp:483-486`), which RcppThread routes to the main thread
 to unwind the pool. The optional progress bar is an `RcppThread::ProgressBar` in
-a `unique_ptr` created only when `pb` is true (`:442-446`) and incremented from
-the workers at `:478-481`.
+a `unique_ptr` created only when `pb` is true (`:470-474`) and incremented from
+the workers at `:508-511`.
 
 `src/Makevars:2-3` adds the OpenMP flags and links `RcppThread::LdFlags()`;
-`src/Makevars.win:2-3` omits the RcppThread link line. `mean_imp_col_internal()`
-uses the same pattern (`src/mat_stats.cpp:126-170`), reached when
-`post_imp = TRUE`.
+`src/Makevars.win:2-3` omits the RcppThread link line. `col_vars_internal()`
+(`src/mat_stats.cpp:30-75`) and `mean_imp_col_internal()`
+(`src/mat_stats.cpp:79-173`) go through the same `par_for()`.
 
 ## How the wrappers reach knn_imp()
 

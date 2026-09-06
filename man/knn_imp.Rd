@@ -41,8 +41,11 @@ the main imputation method with column means when possible.}
 target for imputation. If \code{NULL}, all eligible columns are targeted.}
 
 \item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
-the weighted average. \code{dist_pow = 0} gives an unweighted average of the
-nearest neighbors.}
+the weighted average, applied to the distance defined by \code{method}, which
+is a mean squared difference for \code{"euclidean"} and a mean absolute
+difference for \code{"manhattan"}. \code{dist_pow = 0} gives an unweighted average
+of the nearest neighbors. The full weighting rule is given under Details
+in \code{\link[=knn_imp]{knn_imp()}}.}
 
 \item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
 contains missing values.}
@@ -60,10 +63,44 @@ Impute missing values in a numeric matrix using full K-nearest neighbors (K-NN).
 \code{knn_imp()} performs imputation column-wise, treating rows as observations
 and columns as features.
 
-Nearest neighbors are found using brute-force K-NN.
+Nearest neighbors are found using brute-force K-NN. The distance between
+the target column and a candidate column is computed over the rows where
+both are observed, then divided by the number of those rows, so that
+candidates overlapping the target on different numbers of rows stay
+comparable. \code{method = "euclidean"} averages squared differences and does
+not take a square root; \code{method = "manhattan"} averages absolute
+differences. A candidate that shares no observed row with the target is
+not a neighbor and is never used, so a column may be imputed from fewer
+than \code{k} neighbors, or left missing when nothing overlaps it at all.
 
-When \code{dist_pow > 0}, imputed values are computed as distance-weighted
-averages. Weights are inverse distances raised to the power of \code{dist_pow}.
+When \code{dist_pow > 0}, imputed values are distance-weighted averages of the
+selected neighbors: a neighbor at distance \code{d} is weighted
+\code{(d_min / d)^dist_pow}, where \code{d_min} is the smallest positive distance
+among the neighbors chosen for that column. \code{d_min} is common to every
+weight and cancels out of the average; it serves only to keep the largest
+weight at \code{1}.
+
+Because the euclidean distance above is a mean squared difference,
+\code{dist_pow} acts on that squared quantity. Weighting by
+\code{1 / d^dist_pow} there is equivalent to weighting by
+\code{1 / d^(2 * dist_pow)} on the square-rooted euclidean distance that is
+more commonly written. A given \code{dist_pow} is therefore a harsher penalty
+under \code{"euclidean"} than under \code{"manhattan"}, and a value tuned for one
+\code{method} does not carry the same meaning under the other.
+
+Neighbors are selected once per column, but a neighbor that is itself
+missing at the row being imputed contributes nothing to that row: it drops
+out of the weighted sum and out of the total weight, so the average is
+taken over whichever of the \code{k} are observed there. The contributing set
+can therefore differ from row to row within one column, and a row where
+none of the selected neighbors is observed is left missing.
+
+A neighbor at distance zero, one that agrees with the target on every
+co-observed row, would otherwise take an infinite weight. Such neighbors
+are given weight \code{1} while the remaining neighbors are weighted against a
+small positive floor, so exact matches dominate the average without the
+other neighbors dropping out of it entirely. When every selected neighbor
+is at distance zero, all weights are \code{1}.
 }
 \section{K-NN performance optimization}{
 

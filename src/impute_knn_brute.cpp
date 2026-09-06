@@ -2,12 +2,14 @@
 #include "loc_timer.h"
 
 // parallelism
-#include <RcppThread.h> // RcppThread::parallelFor + thread pool
+#include <RcppThread.h> // RcppThread::ProgressBar, checkUserInterrupt
+#include "par_for.h"    // parallelFor with a serial path at one thread
 
 // standard library
 #include <stdexcept> // Errors
 #include <algorithm> // std::min, std::max, std::sort, std::swap
 #include <cmath>     // std::isnan
+#include <cstddef>   // std::size_t
 #include <limits>    // std::numeric_limits<double>::infinity()
 #include <vector>    // std::vector<NeighborInfo>
 
@@ -35,8 +37,10 @@ constexpr arma::uword GRAIN = 16;
 //   final_dist >= partial_dist (all terms non-negative)
 //   final_n_valid <= partial_n_valid + remaining_rows
 //   => if partial_dist > worst * (partial_n_valid + remaining), prune.
-// With worst_dist = +inf (the default), the bound check is always false, so the
-// fill-phase callers effectively run the unbounded computation.
+// The check sits under `if constexpr (Bound)`, so the fill-phase callers, which
+// instantiate Bound = false, do not run a vacuous comparison - the branch is
+// not compiled into them at all. The `worst_dist = +inf` default only covers a
+// Bound = true caller that has no worst distance yet.
 // -----------------------------------------------------------------------------
 template <typename Metric, bool Bound>
 inline double calc_distance_raw(
@@ -135,7 +139,8 @@ inline double calc_distance_raw_complete(
         const double diff = target_ptr[r] - other_ptr[r];
         dist += target_nmiss[r] * Metric::accumulate(diff);
     }
-    // n_valid guaranteed to be larger than zero by the all NA column scanner.
+    // n_valid is the target's own observed count, guaranteed positive by the
+    // guard at the top of distance_vector_impl().
     return dist / n_valid;
 }
 
@@ -179,6 +184,9 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
 //  2. Replacement: keep scanning, pruning against the current worst (Bound=true).
 // Each counter (p1, p2, c) is advanced by the fill phase and resumed by the
 // replacement phase, so every column is visited exactly once.
+// A candidate that shares no observed row with the target has distance +inf.
+// It is not a neighbor: such entries are dropped from the tail of the sorted
+// result before it is returned, so the caller may receive fewer than k.
 // -----------------------------------------------------------------------------
 template <typename Metric>
 std::vector<NeighborInfo> distance_vector_impl(
@@ -197,6 +205,17 @@ std::vector<NeighborInfo> distance_vector_impl(
     const double *target_ptr = obj_masked.colptr(index);
     const mask_t *target_nmiss_ptr = nmiss_masked.colptr(index);
     const double target_n_valid = n_valid_vec(index);
+
+    // A target with no observed row shares no row with any candidate, so by
+    // the rule above it has no neighbors at all. calc_distance_raw() reaches
+    // that answer on its own, but calc_distance_raw_complete() divides by
+    // this count and would return 0/0 = NaN, which is not ordered against
+    // anything and would corrupt the selection. Settling it once per target
+    // column costs one branch and keeps the two distance functions agreeing.
+    if (target_n_valid == 0.0)
+    {
+        return {};
+    }
 
     std::vector<NeighborInfo> top_k;
     top_k.reserve(k);
@@ -272,6 +291,14 @@ std::vector<NeighborInfo> distance_vector_impl(
             top_k, masked_dist_bounded(p2, top_k.back().distance), p2);
     }
 
+    // top_k is sorted ascending, so zero-overlap candidates (distance +inf)
+    // sit at the tail. Drop them: they carry no information about the target
+    // and must not enter the weighted average with a nonzero weight.
+    while (!top_k.empty() && !std::isfinite(top_k.back().distance))
+    {
+        top_k.pop_back();
+    }
+
     return top_k;
 }
 
@@ -329,7 +356,8 @@ static arma::vec knn_weights(const std::vector<NeighborInfo> &top_k,
         }
     }
 
-    // no positive finite distances (all zero/degenerate): equal weights.
+    // distance_vector() has already dropped infinite distances, so this means
+    // every neighbor is an exact duplicate (all distances zero): equal weights.
     if (!std::isfinite(min_pos))
     {
         return w;
@@ -447,10 +475,10 @@ arma::mat impute_knn_brute(
     LOC_TIMER_OBJ(knn_tm);
     LOC_TIC(knn_tm, "impute_total");
 
-    RcppThread::parallelFor(
+    par_for(
         0,
         layout.n_imp,
-        [&](arma::uword i)
+        [&](std::size_t i)
         {
             if (i % 5 == 0)
             {
@@ -463,6 +491,8 @@ arma::mat impute_knn_brute(
             const arma::uword n_neighbors = top_k.size();
             if (n_neighbors == 0)
             {
+                // no candidate shares an observed row with this column: its
+                // result rows keep the NaN they were initialized with.
                 return;
             }
             arma::uvec nn_columns(n_neighbors);

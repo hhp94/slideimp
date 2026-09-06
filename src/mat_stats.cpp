@@ -2,6 +2,7 @@
 #include <RcppThread.h>
 
 #include "matrix_checks.h"
+#include "par_for.h"
 
 #include <algorithm>
 #include <cmath>
@@ -35,7 +36,7 @@ arma::rowvec col_vars_internal(const arma::mat &mat, int cores = 1)
   const size_t n_threads = static_cast<size_t>(cores);
   const size_t n_cols = static_cast<size_t>(mat.n_cols);
 
-  RcppThread::parallelFor(
+  par_for(
       0,
       n_cols,
       [&](size_t kk)
@@ -123,7 +124,7 @@ arma::mat mean_imp_col_internal(const arma::mat &mat,
   const size_t n_cols = static_cast<size_t>(mat.n_cols);
   const size_t col_bytes = static_cast<size_t>(n_rows) * sizeof(double);
 
-  RcppThread::parallelFor(
+  par_for(
       0,
       n_cols,
       [&](size_t cc)

@@ -18,8 +18,11 @@
 #' @param subset Optional character or integer vector specifying columns to
 #'  target for imputation. If `NULL`, all eligible columns are targeted.
 #' @param dist_pow Numeric. Power used to penalize more distant neighbors in
-#'  the weighted average. `dist_pow = 0` gives an unweighted average of the
-#'  nearest neighbors.
+#'  the weighted average, applied to the distance defined by `method`, which
+#'  is a mean squared difference for `"euclidean"` and a mean absolute
+#'  difference for `"manhattan"`. `dist_pow = 0` gives an unweighted average
+#'  of the nearest neighbors. The full weighting rule is given under Details
+#'  in [knn_imp()].
 #' @param na_check Logical. If `TRUE`, check whether the returned matrix still
 #'  contains missing values.
 #' @param .progress Logical. If `TRUE`, show imputation progress.
@@ -31,10 +34,44 @@
 #' `knn_imp()` performs imputation column-wise, treating rows as observations
 #' and columns as features.
 #'
-#' Nearest neighbors are found using brute-force K-NN.
+#' Nearest neighbors are found using brute-force K-NN. The distance between
+#' the target column and a candidate column is computed over the rows where
+#' both are observed, then divided by the number of those rows, so that
+#' candidates overlapping the target on different numbers of rows stay
+#' comparable. `method = "euclidean"` averages squared differences and does
+#' not take a square root; `method = "manhattan"` averages absolute
+#' differences. A candidate that shares no observed row with the target is
+#' not a neighbor and is never used, so a column may be imputed from fewer
+#' than `k` neighbors, or left missing when nothing overlaps it at all.
 #'
-#' When `dist_pow > 0`, imputed values are computed as distance-weighted
-#' averages. Weights are inverse distances raised to the power of `dist_pow`.
+#' When `dist_pow > 0`, imputed values are distance-weighted averages of the
+#' selected neighbors: a neighbor at distance `d` is weighted
+#' `(d_min / d)^dist_pow`, where `d_min` is the smallest positive distance
+#' among the neighbors chosen for that column. `d_min` is common to every
+#' weight and cancels out of the average; it serves only to keep the largest
+#' weight at `1`.
+#'
+#' Because the euclidean distance above is a mean squared difference,
+#' `dist_pow` acts on that squared quantity. Weighting by
+#' `1 / d^dist_pow` there is equivalent to weighting by
+#' `1 / d^(2 * dist_pow)` on the square-rooted euclidean distance that is
+#' more commonly written. A given `dist_pow` is therefore a harsher penalty
+#' under `"euclidean"` than under `"manhattan"`, and a value tuned for one
+#' `method` does not carry the same meaning under the other.
+#'
+#' Neighbors are selected once per column, but a neighbor that is itself
+#' missing at the row being imputed contributes nothing to that row: it drops
+#' out of the weighted sum and out of the total weight, so the average is
+#' taken over whichever of the `k` are observed there. The contributing set
+#' can therefore differ from row to row within one column, and a row where
+#' none of the selected neighbors is observed is left missing.
+#'
+#' A neighbor at distance zero, one that agrees with the target on every
+#' co-observed row, would otherwise take an infinite weight. Such neighbors
+#' are given weight `1` while the remaining neighbors are weighted against a
+#' small positive floor, so exact matches dominate the average without the
+#' other neighbors dropping out of it entirely. When every selected neighbor
+#' is at distance zero, all weights are `1`.
 #'
 #' @inheritSection slideimp-package Missing values and non-finite input
 #'
@@ -85,14 +122,28 @@ knn_imp <- function(
   checkmate::assert_int(cores, lower = 1, .var.name = "cores")
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
-  stopifnot(length(dist_pow) == 1, dist_pow >= 0, !is.infinite(dist_pow))
+  checkmate::assert_number(
+    dist_pow,
+    lower = 0,
+    finite = TRUE,
+    .var.name = "dist_pow"
+  )
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(na_check, .var.name = "na_check")
 
   subset <- resolve_subset(subset, obj)
   if (is.null(subset)) {
-    cli::cli_inform("No columns to impute. Returning input unchanged.")
-    return(obj)
+    # resolve_subset() has already reported the empty subset. The input is
+    # returned unchanged, but still as a slideimp_results as @returns promises.
+    return(
+      new_slideimp_results(
+        obj,
+        "knn",
+        fallback = FALSE,
+        post_imp = post_imp,
+        na_check = na_check
+      )
+    )
   }
 
   # compute per-column missingness
@@ -103,13 +154,22 @@ knn_imp <- function(
     cli::cli_inform(
       "No missing values in subset columns. Returning input unchanged."
     )
-    return(obj)
+    return(
+      new_slideimp_results(
+        obj,
+        "knn",
+        fallback = FALSE,
+        post_imp = post_imp,
+        na_check = na_check
+      )
+    )
   }
 
   miss_rate <- cmiss / nrow(obj)
 
-  # partitioning: determine eligible columns under colmax threshold
-  eligible <- miss_rate < min(colmax, 1)
+  # partitioning: determine eligible columns under colmax threshold.
+  # Inclusive, matching pca_imp() and the roxygen ("greater than colmax").
+  eligible <- miss_rate <= min(colmax, 1)
   n_elig <- sum(eligible)
 
   if (k > n_elig - 1L) {
@@ -162,9 +222,21 @@ knn_imp <- function(
   imp_indices <- cbind(imputed_values[, 1], imputed_values[, 2])
   obj[imp_indices] <- imputed_values[, 3]
 
-  # post-imputation: fill any remaining NAs with column means
+  # post-imputation: fill any remaining NAs with column means.
+  # Only two kinds of subset column can still hold one: a column K-NN was not
+  # allowed to touch (missing but over colmax), and a column K-NN could not
+  # finish (no candidate shared an observed row, leaving NA in the third
+  # result column). Both are known here without another pass over obj, and
+  # naming them keeps mean_imp_col() from copying the whole matrix to fill
+  # nothing, which is the usual case.
   if (post_imp) {
-    obj <- mean_imp_col(obj, subset = subset, cores = cores)
+    na_cols <- sort(unique(c(
+      setdiff(intersect(subset, has_miss_idx), grp_impute),
+      imputed_values[is.na(imputed_values[, 3]), 2]
+    )))
+    if (length(na_cols) > 0L) {
+      obj <- mean_imp_col(obj, subset = na_cols, cores = cores)
+    }
   }
 
   return(
