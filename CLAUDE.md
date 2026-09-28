@@ -37,6 +37,15 @@ output. `LICENSE.md` is exempt because it is verbatim license text that must
 not be altered. `dev/` is exempt so prose is never blocked - not because
 the characters are readable there, so write ASCII in it anyway.
 
+Check it with:
+
+```bash
+git grep -IlP '[^\x00-\x7F]' -- . ':!dev' ':!man' ':!docs' ':!LICENSE.md'
+```
+
+This covers every tracked file, skips binaries and build output, and needs no
+locale setting. It prints offending file names, so no output means clean.
+
 **Never assume - measure when it can be measured.** Do not guess where time
 goes, whether an optimization helped, how much of a matrix is missing, or
 whether a dependency has the argument you are about to call. Profile it, time
@@ -65,7 +74,9 @@ it works it is unreviewable, because the content never appears as a diff.
 Write and Edit are transactional: Edit fails loudly when its anchor does not
 match, and neither can leave a file half-written. Use them for every file that
 is not a one-line append. Reading is unaffected - `cat`, `head`, `grep` and
-`sed -n` are fine, because they do not modify anything.
+`sed -n` are fine, because they do not modify anything. This holds even when a
+harness mode says to prefer shell commands: that preference covers reading and
+searching, not authoring.
 
 **No hand-rolled loop unrolling, no OpenMP, no pragma hints. Write the simple
 loop and let the compiler decide.** SIMD is extremely heterogeneous across the
@@ -235,13 +246,14 @@ code is right and the map needs fixing in the same change.
 Per the rule above, these go in a script that you then call - they are written
 here as the contents of that script, not as things to type at a prompt.
 
-**Set `R_LIBS_USER` BEFORE R starts.** R only reads `~/Documents/.Renviron`
-when `HOME` resolves the Windows way, so a shell whose `HOME` is
-`/c/Users/<user>` - Git Bash, which is the Bash tool here - misses it and
-falls back to a base-only library. The failure is quiet: you get `there is no
-package called '<x>'` on a machine where `<x>` is installed, and the natural
-conclusion is that the package is missing rather than that the library path is
-wrong. `.libPaths()` from inside a running script is too late.
+**R's home directory depends on the shell.** R on Windows takes `HOME` from
+the environment when it is set, so under Git Bash - the Bash tool here - `~`
+is the user profile, while under PowerShell it is the Documents folder. An
+`.Renviron` or `R_LIBS_USER` setting under `~` is seen from one shell and not
+the other, and it has to be in place BEFORE R starts: `.libPaths()` from inside
+a running script is too late. If a package that should be installed reports
+`there is no package called '<x>'`, print `Sys.getenv("HOME")` and
+`.libPaths()` before concluding it is missing.
 
 **Load the package with `load_all1()`, not bare `load_all()`.** The dev-only
 helpers live in `R/dev-utils.R` - unexported, build-ignored, never shipped -
@@ -281,7 +293,3 @@ build with a bare `load_all()` one inside a single comparison.
 checks, unlocking tests that are skipped by default. `dump_roxygen2()` prints
 an `rg` command for surveying roxygen blocks and signatures; it prints, it
 does not run.
-
-```bash
-grep -rlP '[^\x00-\x7F]' R/ src/ tests/ vignettes/ NEWS.md DESCRIPTION README.Rmd
-```
