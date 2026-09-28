@@ -46,14 +46,21 @@ a positive numeric vector of length \code{nrow(obj)}, or \code{"n_miss"}
 
 \item{threshold}{Numeric. Convergence threshold.}
 
-\item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.}
+\item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.
+Initialization \code{i} is seeded with \code{seed * (i - 1)}, exactly as
+\code{missMDA::imputePCA()} does. \code{seed = 0} therefore seeds every
+initialization with \code{0}, so all random restarts draw the same start and
+\code{nb.init} collapses to two distinct solves: the mean initialization and
+one random one. Because the product has to stay within integer range, the
+largest admissible value is \code{.Machine$integer.max \%/\% (nb.init - 1)}.}
 
 \item{nb.init}{Integer. Number of random initializations. The first
 initialization is always mean imputation.}
 
 \item{maxiter}{Integer. Maximum number of iterations.}
 
-\item{miniter}{Integer. Minimum number of iterations.}
+\item{miniter}{Integer. Minimum number of iterations. Must be less than or
+equal to \code{maxiter}.}
 
 \item{solver}{Character. Eigensolver: \code{"auto"} (default), \code{"exact"}, or
 \code{"lobpcg"}. \code{"auto"} runs a short timed probe and picks \code{"lobpcg"} only
@@ -62,8 +69,10 @@ previous eigenblock and search direction. When \code{nb.init > 1}, the auto
 choice from the first init is reused. See Performance tips.}
 
 \item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
-created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted.
-Ignored when \code{solver = "exact"}.}
+created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. Its
+fields are validated on every call, so an object modified after
+construction is checked again rather than trusted. Ignored when
+\code{solver = "exact"}.}
 
 \item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
 proportion greater than \code{colmax} are excluded from the main imputation

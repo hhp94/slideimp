@@ -285,6 +285,93 @@ test_that("slide_imp handling of errors on zero-variance features in PCA mode", 
   )
 })
 
+test_that("slide_imp does not pin the solver on a window that was never probed", {
+  set.seed(1234)
+  # 260 rows, so a full-width flank window clears pca_imp()'s n_gram >= 250
+  # threshold and gets probed. The window centered on column 1 is truncated to
+  # 201 columns, so it is demoted to exact WITHOUT a probe.
+  x <- sim_mat(260, 1000, perc_total_na = 0.1, perc_col_na = 1)$input
+  location <- seq_len(ncol(x))
+  targets <- c(1L, 400L, 800L)
+
+  args <- list(
+    x,
+    location = location,
+    window_size = 200,
+    flank = TRUE,
+    subset = targets,
+    min_window_n = 50,
+    .progress = FALSE
+  )
+
+  windows <- do.call(slide_imp, c(args, list(dry_run = TRUE)))
+  first_cols <- windows$start[[1L]]:windows$end[[1L]]
+  expect_lt(length(first_cols), 250L)
+  expect_gt(nrow(windows), 1L)
+
+  # the fixture really is the case in question: window 1 reports "exact"
+  # without ever probing.
+  first <- pca_imp(
+    x[, first_cols, drop = FALSE],
+    ncp = 2,
+    solver = "auto",
+    seed = 1,
+    na_check = FALSE
+  )
+  expect_identical(attr(first, "solver_chosen"), "exact")
+  expect_false(attr(first, "solver_probed"))
+
+  res <- suppressMessages(do.call(
+    slide_imp,
+    c(args, list(ncp = 2, solver = "auto", seed = 1, na_check = FALSE))
+  ))
+
+  # Regression: slide_imp pinned every later window to window 1's reported
+  # `solver_chosen`, so an unprobed "exact" locked at window 1 and the wider
+  # windows, which auto would have probed, never got the chance. Measured on
+  # 400 x 4000 with eight windows: 1.66s pinned against 1.25s unpinned, the
+  # pinned figure being bit-for-bit the cost of forcing solver = "exact".
+  # Which solver a probed window picks is timing-based and not assertable;
+  # that the lock did not land on window 1 is.
+  expect_false(identical(attr(res, "solver_lock_window"), 1L))
+})
+
+test_that("slide_imp rejects ncp above the row cap pca_imp enforces", {
+  set.seed(1234)
+  # 10 rows, so pca_imp() allows at most nrow - 2 = 8 components. The column
+  # half of its cap is n_elig - 1, well above 8 for a 50-column window.
+  to_test <- sim_mat(10, 300, perc_total_na = 0.2, perc_col_na = 1)$input
+  location <- seq_len(ncol(to_test))
+
+  run <- function(ncp) {
+    slide_imp(
+      to_test,
+      location = location,
+      window_size = 50,
+      overlap_size = 0,
+      min_window_n = 10,
+      ncp = ncp,
+      miniter = 2,
+      colmax = 1,
+      seed = 1234,
+      .progress = FALSE
+    )
+  }
+
+  # Regression: slide_imp() bounded `ncp` at min(nrow, ncol) - 1 = 9, one above
+  # pca_imp()'s row cap. `ncp = 9` passed validation and then aborted EVERY
+  # window with `slideimp_infeasible`, which the default on_infeasible = "skip"
+  # turned into the input returned unimputed - no error, no warning, every NA
+  # still there.
+  expect_error(run(9), "ncp")
+
+  # the value one below is genuinely feasible and imputes, so the bound is not
+  # simply rejecting everything.
+  res <- suppressMessages(run(8))
+  expect_true(anyNA(to_test))
+  expect_false(anyNA(res[, ]))
+})
+
 test_that("slide_imp flank works with knn", {
   set.seed(1234)
   to_test <- sim_mat(10, 50, perc_total_na = 0.5, perc_col_na = 1)$input

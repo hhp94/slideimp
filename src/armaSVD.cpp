@@ -877,7 +877,13 @@ Rcpp::List pca_imp_internal_cpp(
     {
       stop_now = true;
       converged = false;
-      Rcpp::warning("Stopped after " + std::to_string(maxiter) + " iterations");
+      // deliberately silent. The std::string overload of Rcpp::warning is a
+      // bare Rf_warning, so under options(warn = 2) - or any calling handler
+      // that invokes a restart - R longjmps straight out of this frame.
+      // END_RCPP catches C++ exceptions, not longjmps, so Xhat, fittedX,
+      // X_work, AA_NxN, the eigen workspaces, PrecGuard and the wrapper's
+      // RNGScope would all be skipped. `converged` is already in the returned
+      // list and pca_imp() warns on it once, for the winning restart only.
     }
 
     if (trace_iter > 0)

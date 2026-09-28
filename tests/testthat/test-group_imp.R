@@ -392,6 +392,44 @@ test_that("group-specific parameters work correctly in parallel, pca", {
   expect_true(cor(grouped_values, expected_values) > 0.999)
 })
 
+test_that("group_imp aborts when a group fails inside a mirai daemon", {
+  skip_if_not_manual()
+  skip_if_not_installed("withr")
+  set.seed(1234)
+  to_test <- sim_mat(30, 12, perc_total_na = 0.2, perc_col_na = 1)
+  obj <- to_test$input
+  group_1 <- subset(to_test$col_group, group == "group1")$feature
+  group_2 <- subset(to_test$col_group, group == "group2")$feature
+
+  # `coeff.ridge = -1` passes group_imp()'s own validation untouched and is
+  # rejected by pca_imp() as an ordinary error, not a `slideimp_infeasible`
+  # condition, so the worker's tryCatch never sees it. Regression: the mirai
+  # path used to collect that failure silently - the flags were coerced to
+  # character, `big_out` was never written for the group, and group 2 came
+  # back all NA with observed values destroyed and no condition raised.
+  group_df <- data.frame(
+    feature = I(list(group_1, group_2)),
+    aux = I(list(character(0), character(0))),
+    parameters = I(list(
+      list(ncp = 2, coeff.ridge = 1),
+      list(ncp = 2, coeff.ridge = -1)
+    ))
+  )
+
+  # the sequential path lets the error propagate; the mirai path must match
+  expect_error(
+    suppressMessages(group_imp(obj, group = group_df, seed = 1234)),
+    regexp = "coeff.ridge"
+  )
+
+  mirai::daemons(2, seed = 1234)
+  withr::defer(mirai::daemons(0))
+  expect_error(
+    suppressMessages(group_imp(obj, group = group_df, seed = 1234)),
+    regexp = "Imputation failed in group 2"
+  )
+})
+
 # prep_groups ----
 test_that("prep_groups returns correct structure without k/ncp", {
   obj <- matrix(

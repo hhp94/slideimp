@@ -401,7 +401,19 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     AP = A * P;
   }
 
-  const double normA = std::max(1.0, arma::norm(A, "inf"));
+  // ||A||_inf scales both the convergence test below and the divergence
+  // guard's max_rel_res, so it has to be A's actual norm. Substitute 1.0 only
+  // for the degenerate Gram whose norm is zero or non-finite, where the ratio
+  // is undefined; a zero Gram has an exactly zero residual, so any positive
+  // tolerance converges on the first pass either way. Flooring at 1.0
+  // unconditionally would make the test ABSOLUTE for every Gram with a norm
+  // under 1 - the ordinary case under scale = FALSE on bounded data, where
+  // A's diagonal is a weighted column variance - and would leave the
+  // divergence guard unreachable, since max_rel_res would be under-reported
+  // by the same factor.
+  const double normA_inf = arma::norm(A, "inf");
+  const double normA =
+      (normA_inf > 0.0 && std::isfinite(normA_inf)) ? normA_inf : 1.0;
   const double rel_tol_abs = opt.tol * normA;
 
   arma::vec lam;

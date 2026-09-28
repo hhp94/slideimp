@@ -98,22 +98,8 @@ lobpcg_control <- function(warmup_iters = 10L, tol = 1e-9, maxiter = 20) {
     maxiter = !missing(maxiter)
   )
 
-  checkmate::assert_int(
-    warmup_iters,
-    lower = 0L,
-    .var.name = "warmup_iters"
-  )
-  checkmate::assert_number(
-    tol,
-    lower = 0,
-    finite = TRUE,
-    .var.name = "tol"
-  )
-  checkmate::assert_int(
-    maxiter,
-    lower = 0L,
-    .var.name = "maxiter"
-  )
+  check_lobpcg_fields(warmup_iters, tol, maxiter)
+
   structure(
     list(
       warmup_iters = as.integer(warmup_iters),
@@ -123,6 +109,46 @@ lobpcg_control <- function(warmup_iters = 10L, tol = 1e-9, maxiter = 20) {
     class = "slideimp_lobpcg_control",
     explicit = explicit
   )
+}
+
+#' Validate LOBPCG Control Field Values
+#'
+#' @description
+#' Internal helper holding the field rules for a LOBPCG control object, so that
+#' [lobpcg_control()] and `new_lobpcg_control()` cannot drift apart. The latter
+#' re-checks the fields of an object that already carries the class, because a
+#' control object is an ordinary list and nothing stops a caller from assigning
+#' into it after construction.
+#'
+#' @param warmup_iters,tol,maxiter The three control fields.
+#' @param prefix Character prepended to each `.var.name`, so the message names
+#'   the argument the user actually passed.
+#'
+#' @returns `NULL`, invisibly. Called for the side effect of aborting.
+#'
+#' @keywords internal
+#' @noRd
+check_lobpcg_fields <- function(warmup_iters, tol, maxiter, prefix = "") {
+  # `assert_int` rejects anything outside integer range as non-integerish, so
+  # the `arma::uword` overflow the C++ backend guards against cannot get past
+  # here; no explicit upper bound is needed for it.
+  checkmate::assert_int(
+    warmup_iters,
+    lower = 0L,
+    .var.name = paste0(prefix, "warmup_iters")
+  )
+  checkmate::assert_number(
+    tol,
+    lower = 0,
+    finite = TRUE,
+    .var.name = paste0(prefix, "tol")
+  )
+  checkmate::assert_int(
+    maxiter,
+    lower = 0L,
+    .var.name = paste0(prefix, "maxiter")
+  )
+  invisible(NULL)
 }
 
 #' Validate a LOBPCG Control Object
@@ -157,8 +183,35 @@ new_lobpcg_control <- function(
   if (is.null(x)) {
     return(lobpcg_control())
   }
-  # validate an already created control object.
+  # validate an already created control object. Carrying the class is not
+  # evidence the fields are still sound: a control object is an ordinary list,
+  # so `ctrl$tol <- -1` or `ctrl$maxiter <- NULL` survives construction and is
+  # only noticed further down - a negative `tol` not at all, a NULL field as
+  # `missing value where TRUE/FALSE needed`, a negative `maxiter` as an
+  # `arma::uword` overflow reported by the C++ backend as an int-range error.
+  # Re-check the fields here, against the same rules the constructor uses.
+  control_names <- names(formals(lobpcg_control))
   if (inherits(x, "slideimp_lobpcg_control")) {
+    checkmate::assert_list(
+      x,
+      types = c("numeric", "integer"),
+      any.missing = FALSE,
+      names = "unique",
+      .var.name = "lobpcg_control"
+    )
+    absent <- setdiff(control_names, names(x))
+    if (length(absent) > 0L) {
+      cli::cli_abort(c(
+        "{.arg lobpcg_control} is missing {cli::qty(length(absent))}field{?s} {.field {absent}}.",
+        "i" = "Rebuild it with {.fn lobpcg_control} rather than assigning into it."
+      ))
+    }
+    check_lobpcg_fields(
+      x$warmup_iters,
+      x$tol,
+      x$maxiter,
+      prefix = "lobpcg_control$"
+    )
     out <- x
   } else {
     if (!is.list(x)) {
@@ -169,17 +222,15 @@ new_lobpcg_control <- function(
     if (length(x) > 0L && (is.null(names(x)) || any(!nzchar(names(x))))) {
       cli::cli_abort("{.arg lobpcg_control} must be a named list.")
     }
-    allowed <- names(formals(lobpcg_control))
-    unknown <- setdiff(names(x), allowed)
+    unknown <- setdiff(names(x), control_names)
     if (length(unknown) > 0L) {
       cli::cli_abort(c(
         "{cli::qty(length(unknown))}Unknown LOBPCG control option{?s}: {fmt_trunc(unknown, 10)}.",
-        "i" = "Allowed options are: {.arg {allowed}}."
+        "i" = "Allowed options are: {.arg {control_names}}."
       ))
     }
     out <- do.call(lobpcg_control, x)
   }
-  control_names <- names(formals(lobpcg_control))
   explicit <- attr(out, "explicit", exact = TRUE)
 
   if (is.null(explicit)) {
@@ -226,18 +277,27 @@ new_lobpcg_control <- function(
 #'   (down-weight rows with more missing values).
 #' @param threshold Numeric. Convergence threshold.
 #' @param seed Integer, numeric, or `NULL`. Random seed for reproducibility.
+#'   Initialization `i` is seeded with `seed * (i - 1)`, exactly as
+#'   `missMDA::imputePCA()` does. `seed = 0` therefore seeds every
+#'   initialization with `0`, so all random restarts draw the same start and
+#'   `nb.init` collapses to two distinct solves: the mean initialization and
+#'   one random one. Because the product has to stay within integer range, the
+#'   largest admissible value is `.Machine$integer.max %/% (nb.init - 1)`.
 #' @param nb.init Integer. Number of random initializations. The first
 #'   initialization is always mean imputation.
 #' @param maxiter Integer. Maximum number of iterations.
-#' @param miniter Integer. Minimum number of iterations.
+#' @param miniter Integer. Minimum number of iterations. Must be less than or
+#'   equal to `maxiter`.
 #' @param solver Character. Eigensolver: `"auto"` (default), `"exact"`, or
 #'   `"lobpcg"`. `"auto"` runs a short timed probe and picks `"lobpcg"` only
 #'   when clearly faster. Consecutive EM calls warm-start LOBPCG with both the
 #'   previous eigenblock and search direction. When `nb.init > 1`, the auto
 #'   choice from the first init is reused. See Performance tips.
 #' @param lobpcg_control A list of LOBPCG eigensolver control options, usually
-#'   created by [lobpcg_control()]. A plain named list is also accepted.
-#'   Ignored when `solver = "exact"`.
+#'   created by [lobpcg_control()]. A plain named list is also accepted. Its
+#'   fields are validated on every call, so an object modified after
+#'   construction is checked again rather than trusted. Ignored when
+#'   `solver = "exact"`.
 #' @param clamp Optional numeric vector `c(lower, upper)` bounding PCA-imputed
 #'   values (use `-Inf`/`Inf` for one-sided, `NULL` for none). E.g., `c(0, 1)`
 #'   for DNAm beta values. Observed values are not clamped.
@@ -350,12 +410,29 @@ pca_imp <- function(
   )
   checkmate::assert_number(threshold, lower = 0, .var.name = "threshold")
   checkmate::assert_int(nb.init, lower = 1, .var.name = "nb.init")
-  checkmate::assert_int(seed, null.ok = TRUE, lower = 0, .var.name = "seed")
-  if (!is.null(seed) && nb.init > 1L && seed > 2147483647L / (nb.init - 1L)) {
-    stop("`seed` too large")
-  }
+  # initialization `i` is seeded with `seed * (i - 1)` (missMDA parity, see the
+  # `@param seed` note), so the largest value ever handed to set.seed() is
+  # `seed * (nb.init - 1)` and THAT is what has to stay inside integer range.
+  # Folding the bound into the assertion keeps the message in checkmate's voice
+  # and names the argument the caller passed.
+  checkmate::assert_int(
+    seed,
+    null.ok = TRUE,
+    lower = 0,
+    upper = .Machine$integer.max %/% max(nb.init - 1L, 1L),
+    .var.name = "seed"
+  )
   checkmate::assert_int(maxiter, lower = 1, .var.name = "maxiter")
   checkmate::assert_int(miniter, lower = 1, .var.name = "miniter")
+  # the C++ backend enforces this too, but only as a bare `Rcpp::stop` that
+  # names neither argument nor value; validation belongs on the R side.
+  if (miniter > maxiter) {
+    cli::cli_abort(c(
+      "{.arg miniter} must be less than or equal to {.arg maxiter}.",
+      "x" = "{.arg miniter} is {miniter} and {.arg maxiter} is {maxiter}.",
+      "i" = "The EM loop runs at least {.arg miniter} and at most {.arg maxiter} iterations."
+    ))
+  }
   # solver resolves
   solver <- match.arg(solver)
   lobpcg_control <- new_lobpcg_control(
@@ -486,6 +563,14 @@ pca_imp <- function(
   #   2 = auto had no reason/opportunity to choose. Treat as exact
   #   3 = auto chose exact
   #   4 = auto chose lobpcg
+  #
+  # only 3 and 4 are verdicts from a completed probe. `solver_chosen` below
+  # says which solver RAN, and reports "exact" for four different reasons:
+  # forced, demoted by `auto_force_exact` before the kernel was ever called,
+  # code 2, and code 3. A caller that wants to reuse the decision - as
+  # `slide_imp()` does across windows - has to be able to tell a verdict from
+  # the other three, so `solver_probed` is reported alongside it.
+  solver_probed <- FALSE
   locked_solver <- NULL
   resolved_solver_code <- if (isTRUE(auto_force_exact)) {
     0L
@@ -531,6 +616,7 @@ pca_imp <- function(
       }
       locked_solver <- if (chosen %in% c(1L, 4L)) 1L else 0L
       resolved_solver_code <- locked_solver
+      solver_probed <- chosen %in% c(3L, 4L)
     }
 
     cur_obj <- res.impute$mse
@@ -553,6 +639,20 @@ pca_imp <- function(
     cli::cli_abort("Internal error: PCA imputation produced no imputed values.")
   }
 
+  # the non-convergence warning is raised here, not in the kernel. Warning from
+  # C++ goes through Rf_warning, which longjmps out of the EM frame whenever the
+  # caller has set options(warn = 2) or established a handler that invokes a
+  # restart, and a longjmp skips every C++ destructor in that frame. Raising it
+  # from R also means one warning per call rather than one per `nb.init`
+  # restart, and it reports the restart whose values were actually kept.
+  if (!isTRUE(best_diag$converged)) {
+    cli::cli_warn(c(
+      "Stopped after {maxiter} iteration{?s} without converging.",
+      "i" = "Final criterion {signif(best_diag$criterion_final, 3)} is above {.arg threshold} ({threshold}).",
+      "i" = "Increase {.arg maxiter} or relax {.arg threshold}."
+    ))
+  }
+
   if (!is.null(clamp)) {
     best_imputed[, 3] <- pmin(
       pmax(best_imputed[, 3], clamp[1L]),
@@ -566,8 +666,21 @@ pca_imp <- function(
   )
   obj[imp_indices] <- best_imputed[, 3]
 
+  # after the write-back, NA can remain only in the ineligible columns that had
+  # any, plus wherever the kernel handed back NA for a cell it was asked to
+  # fill. Mean-impute exactly those columns, and skip the call when there are
+  # none. An unconditional `mean_imp_col(obj)` copied the matrix twice more -
+  # once into the C++ result, once when Rcpp wrapped it - and scanned every
+  # column for Inf and for its mean, all to change nothing on an all-eligible
+  # input. Same shape as the post step in knn_imp().
   if (post_imp) {
-    obj <- mean_imp_col(obj)
+    na_cols <- sort(unique(c(
+      which(!eligible & cmiss > 0L),
+      as.integer(best_imputed[is.na(best_imputed[, 3]), 2])
+    )))
+    if (length(na_cols) > 0L) {
+      obj <- mean_imp_col(obj, subset = na_cols)
+    }
   }
 
   solver_chosen <- if (resolved_solver_code == 1L) "lobpcg" else "exact"
@@ -582,6 +695,7 @@ pca_imp <- function(
 
   attr(out, "solver_requested") <- solver
   attr(out, "solver_chosen") <- solver_chosen
+  attr(out, "solver_probed") <- solver_probed
   attr(out, "n_iter") <- best_diag$n_iter
   attr(out, "criterion_final") <- best_diag$criterion_final
   attr(out, "converged") <- best_diag$converged

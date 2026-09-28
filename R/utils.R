@@ -10,6 +10,12 @@ new_slideimp_results <- function(
   na_check,
   has_remaining_na = if (na_check) anyNA(obj) else NULL
 ) {
+  # the default is lazy, so left alone it would be evaluated at the attr()
+  # call below, after the class is attached. anyNA() on an object carrying a
+  # class falls back to any(is.na(x)), which allocates an n x p logical and
+  # scans the whole matrix even when the first cell is NA; on the bare matrix
+  # it allocates nothing and stops at the first NA. Force it first.
+  force(has_remaining_na)
   class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- imp_method
   attr(obj, "fallback") <- fallback

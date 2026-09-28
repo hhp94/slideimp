@@ -899,7 +899,24 @@ group_imp <- function(
       mean_imp_col = mean_imp_col
     )
     m <- mirai::mirai_map(iter, crated_fn)
-    fallback_flags <- unlist(m[.progress = .progress])
+    res <- m[.progress = .progress]
+
+    # A daemon that fails returns an `errorValue` in place of the flag, and
+    # never writes its slice of `big_out`. Abort before the write-back: the
+    # sequential path lets a non-`slideimp_infeasible` error propagate, and
+    # collecting silently here would coerce the flags to character and hand
+    # back a matrix whose columns for that group are all NA.
+    failed <- which(vapply(res, mirai::is_error_value, logical(1)))
+    if (length(failed)) {
+      first_msg <- conditionMessage(res[[failed[[1L]]]])
+      cli::cli_abort(c(
+        "{cli::qty(length(failed))}Imputation failed in group{?s} {fmt_trunc(group_ids[failed])}.",
+        "x" = "Group {group_ids[[failed[[1L]]]]}: {first_msg}",
+        "i" = "The error was raised inside a {.pkg mirai} daemon."
+      ))
+    }
+
+    fallback_flags <- unlist(res)
     obj[, all_feats_pos] <- big_out[,]
   } else {
     if (.progress) {

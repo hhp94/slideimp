@@ -268,10 +268,30 @@ slide_imp <- function(
       match.arg(method, c("regularized", "EM"))
     }
     solver <- match.arg(solver)
+    # every window is handed to pca_imp(), which caps `ncp` at
+    # `min(nrow(obj) - 2, n_elig - 1)` and raises `slideimp_infeasible` above
+    # it. The row half of that cap is knowable here and has to be enforced
+    # here: `nrow(obj) - 1L` passes this check and then makes EVERY window
+    # infeasible, which the default `on_infeasible = "skip"` turns into the
+    # input returned unimputed with no error and no warning. The column half
+    # depends on `colmax` and per-window variance, so `min_window_n - 1L` is
+    # the tightest static bound available for it.
+    max_ncp <- min(min_window_n - 1L, ncol(obj) - 1L, nrow(obj) - 2L)
+    if (max_ncp < 1L) {
+      cli::cli_abort(
+        c(
+          "PCA imputation is infeasible with the current data and settings.",
+          "i" = "Number of rows: {nrow(obj)}. PCA needs at least 3.",
+          "i" = "Number of columns: {ncol(obj)}.",
+          "i" = "{.arg min_window_n}: {min_window_n}."
+        ),
+        class = "slideimp_infeasible"
+      )
+    }
     checkmate::assert_int(
       ncp,
       lower = 1,
-      upper = min(min_window_n - 1L, min(nrow(obj), ncol(obj)) - 1L),
+      upper = max_ncp,
       .var.name = "ncp"
     )
     # other PCA arguments, including `lobpcg_control`, are checked in pca_imp().
@@ -494,9 +514,20 @@ slide_imp <- function(
         pca_solver_current == "auto" &&
         !fallback_flags[i]
     ) {
+      # only a COMPLETED auto probe is a verdict worth reusing. pca_imp() also
+      # reports solver_chosen = "exact" when its own size heuristic demoted the
+      # window before the kernel ran (n_gram < 250, or k_eig / n_gram > 0.10),
+      # and when the EM loop ended before the probe finished. Pinning on either
+      # hands every later window a decision that was never made - and a pinned
+      # solver bypasses the per-window size demotion and the warmup_iters raise
+      # that solver = "auto" applies. Leaving `pca_solver_current` at "auto"
+      # lets the next window decide for itself, which costs nothing measurable:
+      # the probe is cheap relative to the window it is deciding about.
+      probed <- isTRUE(attr(imputed_window, "solver_probed", exact = TRUE))
       chosen_solver <- attr(imputed_window, "solver_chosen", exact = TRUE)
       if (
-        is.character(chosen_solver) &&
+        probed &&
+          is.character(chosen_solver) &&
           length(chosen_solver) == 1L &&
           chosen_solver %in% c("exact", "lobpcg")
       ) {

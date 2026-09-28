@@ -38,10 +38,11 @@ R/pca_imp.R:302            pca_imp()                       user-facing entry
   |              +- :900  postprocessing, imputed_values triplets
   |              +- :1003 Rcpp::List back to R
   |
-  +- R/pca_imp.R:556       clamp
-  +- R/pca_imp.R:567       write imputed triplets back into obj
-  +- R/pca_imp.R:570       mean_imp_col()               -> src/mat_stats.cpp:78
-  +- R/pca_imp.R:575       new_slideimp_results()          R/utils.R:5
+  +- R/pca_imp.R:656       clamp
+  +- R/pca_imp.R:667       write imputed triplets back into obj
+  +- R/pca_imp.R:676       post_imp: mean_imp_col() on the columns that can
+  |                        still hold NA, skipped when none  -> src/mat_stats.cpp:78
+  +- R/pca_imp.R:688       new_slideimp_results()          R/utils.R:5
 ```
 
 C++ files in the chain: 3 translation units (`src/armaSVD.cpp`, `src/RcppExports.cpp`,
@@ -94,15 +95,20 @@ explicitly, `warmup_iters` is raised to `min(50, max(10, ceiling(1.5 * k_eig)))`
 first restart and `init = i` afterwards (`:514`); `init == 0` means mean imputation (zeros
 in centered space), anything else a Gaussian random start. After the first call under
 `solver = "auto"`, the returned `solver_chosen` code is collapsed to a forced `0`/`1` and
-locked in `locked_solver` (`:527-534`) so later restarts skip the probe; the restart with
-the lowest `mse` wins (`:536-548`). `clamp` is applied to the value column of the triplet
-matrix at `:556-561` (imputed values only), and `:563-567` writes the triplets back through
+locked in `locked_solver` (`:612-620`) so later restarts skip the probe; the restart with
+the lowest `mse` wins (`:622-634`). `clamp` is applied to the value column of the triplet
+matrix at `:656-661` (imputed values only), and `:663-667` writes the triplets back through
 a two-column index matrix, the indices from C++ already being 1-based original-matrix
-indices. `post_imp = TRUE` runs `mean_imp_col(obj)` (`:570`). `new_slideimp_results()`
-(`R/utils.R:5`) sets class and standard attributes; `:583-590` adds `solver_requested`,
+indices. `post_imp = TRUE` collects the columns that can still hold NA -- ineligible
+columns that had any, plus the columns of NA rows in the triplet -- and runs
+`mean_imp_col(obj, subset = na_cols)` only when that set is non-empty (`:676-685`), so
+an all-eligible input pays no extra copy here. `new_slideimp_results()`
+(`R/utils.R:5`) forces `has_remaining_na` before attaching the class (a classed object
+routes `anyNA()` through `any(is.na(x))`, an `n x p` logical), then sets class and
+standard attributes; `:696-704` adds `solver_requested`,
 `solver_chosen`, `n_iter`, `criterion_final`, `converged`, `n_exact`, `n_lobpcg_ok`,
 `n_lobpcg_bad`. `slide_imp()` reads `attr(x, "solver_chosen")` back from the first
-non-fallback window and pins every later window to it (`R/slide_imp.R:491-506`).
+non-fallback window and pins every later window to it (`R/slide_imp.R:511-537`).
 
 ## Layer 2: the Rcpp boundary
 
@@ -321,7 +327,8 @@ QRs plus a `3k x 3k` dsyevd.
 - `src/matrix_checks.h` is included by `src/armaSVD.cpp:6`, but its only function
   `stop_on_inf()` (`:8-29`) is never called from that translation unit. It is reached from
   `src/mat_stats.cpp:192` via `check_inf()`, which `pca_imp()` hits indirectly through
-  `mean_imp_col()` (`R/mean_imp_col.R:38`).
+  `mean_imp_col()` (`R/mean_imp_col.R:38`), and only when `post_imp` has columns left
+  to fill.
 
 ## Compile-time switches
 

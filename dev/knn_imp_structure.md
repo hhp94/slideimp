@@ -20,7 +20,7 @@ session does not put it back.
 ```
 R/knn_imp.R:98                      knn_imp()  -- user entry, validation, partition
   +- src/mat_stats.cpp:198          check_finite()  (Inf + all-NA column gate)
-  +- R/utils.R:56                   resolve_subset()  -- names/ints -> col indices
+  +- R/utils.R:62                   resolve_subset()  -- names/ints -> col indices
   +- R/mat_miss.R:33                mat_miss()
   |    +- src/mat_stats.cpp:242     col_miss_internal() via R/RcppExports.R:44
   +- [abort site 1] R/knn_imp.R:175-183   k > n_elig - 1
@@ -73,7 +73,7 @@ from `mean_imp_col()` at `R/mean_imp_col.R:38` but not from `knn_imp()`. Both
 are declared in `R/RcppExports.R:36-42`. `NA` and `NaN` are indistinguishable
 throughout; the policy is stated at `R/slideimp-package.R:7-16`.
 
-`subset` (`R/knn_imp.R:134`) goes through `resolve_subset()` (`R/utils.R:56-99`),
+`subset` (`R/knn_imp.R:134`) goes through `resolve_subset()` (`R/utils.R:62-105`),
 which accepts `NULL` (all columns, `:60-61`), a character vector matched against
 `colnames(obj)` with unmatched names dropped and reported (`:62-77`), or
 integerish indices (`:78-89`). It returns `NULL` for "nothing to do" (`:91-96`),
@@ -420,14 +420,14 @@ the workers at `:508-511`.
 parameter list injecting `cores` and a group-local `subset` (`:803-806`), and
 invokes it via `do.call()` inside a `tryCatch` -- `:859-882` in the mirai branch,
 `:912-932` in the sequential branch. Each group is a column slice
-`obj[, indices[[i]]$col_idx]` (`:857`, `:910`), so `knn_imp()` sees a submatrix
+`obj[, indices[[i]]$col_idx]` (`:857`, `:927`), so `knn_imp()` sees a submatrix
 and group-local indices.
 
-`slide_imp()` calls `knn_imp()` directly at `R/slide_imp.R:440-451` for each
-window `obj[, start[i]:end[i]]` (`R/slide_imp.R:434-435`), passing
+`slide_imp()` calls `knn_imp()` directly at `R/slide_imp.R:460-471` for each
+window `obj[, start[i]:end[i]]` (`R/slide_imp.R:454-455`), passing
 `na_check = FALSE`, `.progress = FALSE`, and a window-local `subset`
-(`R/slide_imp.R:450`), wrapped in the same `slideimp_infeasible` handler
-(`R/slide_imp.R:475-485`). Both wrappers set `na_check = FALSE`
+(`R/slide_imp.R:470`), wrapped in the same `slideimp_infeasible` handler
+(`R/slide_imp.R:495-505`). Both wrappers set `na_check = FALSE`
 (`R/group_imp.R:800`) and do the final NA accounting themselves.
 
 ## Test entry points

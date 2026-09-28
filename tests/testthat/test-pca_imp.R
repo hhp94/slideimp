@@ -423,9 +423,21 @@ test_that("pca_imp handles ineligible columns (high miss rate / zero variance) c
   )
 
   expect_true(anyNA(res_no_post))
-  expect_gt(mean(is.na(res_no_post[, 1])), mean_1)
+  # the ineligible columns keep their ORIGINAL NAs, in the original positions,
+  # and nothing else is touched. `expect_gt(mean(is.na(res_no_post[, 1])),
+  # mean_1)` used to stand in for this, comparing an NA PROPORTION (0.95)
+  # against the column's DATA mean (0.448) - two quantities with nothing in
+  # common. It passed on the coincidence that sim_mat() draws near zero:
+  # measured on the same fixture shifted by +10, a CORRECT result fails it.
+  # rows 1:37 were forced NA, and sim_mat() left one more NA further down, so
+  # the set is taken from the input rather than written out.
+  na_1 <- unname(which(is.na(to_test[, 1])))
+  expect_gt(length(na_1), 37L)
+  expect_identical(unname(which(is.na(res_no_post[, 1]))), na_1)
+  expect_identical(unname(res_no_post[-na_1, 1]), unname(to_test[-na_1, 1]))
   expect_equal(unique(res_no_post[, 2]), 69)
-  expect_equal(sum(is.na(res_no_post[, 3])), 3L)
+  expect_identical(unname(which(is.na(res_no_post[, 3]))), 1:3)
+  expect_identical(unname(res_no_post[4:40, 3]), unname(to_test[4:40, 3]))
   expect_false(anyNA(res_no_post[, 4:12]))
 })
 
@@ -584,33 +596,291 @@ test_that("Inf is refused ahead of the paths that used to hide it", {
   expect_error(pca_imp(complete, ncp = 2, nb.init = 3), "Infinite")
 })
 
+test_that("pca_imp reports whether the auto verdict came from a probe", {
+  set.seed(1234)
+  # n_gram = min(nrow, n_elig) = 60, below the 250 threshold, so the R-side
+  # heuristic demotes this to exact before the kernel is ever called and no
+  # probe runs. `solver_chosen` still says "exact", because that is what ran.
+  small <- sim_mat(60, 60, perc_total_na = 0.2, perc_col_na = 1)$input
+
+  res <- pca_imp(small, ncp = 2, solver = "auto", seed = 1, na_check = FALSE)
+  expect_identical(attr(res, "solver_chosen"), "exact")
+  expect_false(attr(res, "solver_probed"))
+
+  # a forced solver is not a verdict either: auto never ran
+  for (s in c("exact", "lobpcg")) {
+    r <- pca_imp(small, ncp = 2, solver = s, seed = 1, na_check = FALSE)
+    expect_identical(attr(r, "solver_chosen"), s)
+    expect_false(attr(r, "solver_probed"))
+  }
+
+  # and the TRUE side, so this is not one-sided. n_gram = 260 clears the
+  # threshold, and threshold = 0 forces 60 EM iterations, comfortably more than
+  # the auto_min_exact_iter warmup plus the 5 LOBPCG probe iterations the
+  # decision needs, so the probe always completes here. WHICH solver it picks
+  # is a wall-clock comparison and is deliberately not asserted.
+  big <- sim_mat(260, 400, perc_total_na = 0.1, perc_col_na = 1)$input
+  probed <- suppressWarnings(pca_imp(
+    big,
+    ncp = 2,
+    solver = "auto",
+    threshold = 0,
+    maxiter = 60,
+    miniter = 60,
+    seed = 1,
+    na_check = FALSE
+  ))
+  expect_true(attr(probed, "solver_probed"))
+  expect_true(attr(probed, "solver_chosen") %in% c("exact", "lobpcg"))
+})
+
+test_that("pca_imp warns from R when the EM loop hits maxiter", {
+  set.seed(1234)
+  x <- sim_mat(30, 40, perc_total_na = 0.2, perc_col_na = 1)$input
+
+  # threshold = 0 is unreachable (the criterion and the objective are both
+  # non-negative), so every restart runs out at `maxiter`.
+  run <- function(nb.init = 1L) {
+    pca_imp(
+      x,
+      ncp = 2,
+      solver = "exact",
+      threshold = 0,
+      maxiter = 3,
+      miniter = 3,
+      nb.init = nb.init,
+      seed = 1,
+      post_imp = FALSE,
+      na_check = FALSE
+    )
+  }
+
+  w <- expect_warning(run(), "Stopped after")
+
+  # Regression: this warning used to be raised by Rcpp::warning() inside the EM
+  # loop, which for a std::string is a bare Rf_warning. Under options(warn = 2),
+  # or any calling handler that invokes a restart, R longjmps out of the C++
+  # frame; END_RCPP catches exceptions, not longjmps, so the Armadillo working
+  # matrices, the Rcout precision guard and the wrapper's RNGScope were all
+  # skipped. A cli/rlang condition is the proof that R raises it now.
+  expect_s3_class(w, "rlang_warning")
+  expect_false(inherits(w, "simpleWarning"))
+
+  # one warning per call, not one per restart: only the winning restart's
+  # `converged` flag reaches the caller, so only it may warn.
+  msgs <- character(0)
+  withCallingHandlers(
+    run(nb.init = 3L),
+    warning = function(w) {
+      msgs <<- c(msgs, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_length(grep("Stopped after", msgs), 1L)
+
+  # the warning has to agree with the flag it is derived from
+  res <- suppressWarnings(run())
+  expect_false(attr(res, "converged"))
+
+  # and a converging call stays silent
+  expect_no_warning(
+    pca_imp(
+      x,
+      ncp = 2,
+      solver = "exact",
+      threshold = 1e-6,
+      maxiter = 1000,
+      seed = 1,
+      post_imp = FALSE,
+      na_check = FALSE
+    )
+  )
+})
+
+# argument validation ----
+test_that("a tampered lobpcg_control object is re-validated, not taken as-is", {
+  set.seed(1234)
+  x <- sim_mat(30, 40, perc_total_na = 0.2, perc_col_na = 1)$input
+
+  run <- function(ctrl) {
+    pca_imp(
+      x, ncp = 2, solver = "lobpcg", lobpcg_control = ctrl,
+      miniter = 2, maxiter = 5, seed = 1, na_check = FALSE
+    )
+  }
+
+  # the fixture is a VALID control object, so anything below that errors does
+  # so because of the field that was assigned into, not because of the object.
+  ok <- lobpcg_control()
+  expect_s3_class(ok, "slideimp_lobpcg_control")
+  expect_no_error(suppressWarnings(run(ok)))
+
+  # Regression: new_lobpcg_control() took any object carrying the class with
+  # `out <- x` and no field checks. A control object is an ordinary list, so
+  # each of these survived construction. Before the fix: `tol = -1` ran to
+  # completion silently, `maxiter = NULL` raised `missing value where
+  # TRUE/FALSE needed` from the `out$maxiter == 0L` test, and `maxiter = -5L`
+  # reached C++ and came back as an int-range error naming no argument.
+  bad_tol <- ok
+  bad_tol$tol <- -1
+  expect_error(run(bad_tol), "lobpcg_control\\$tol")
+
+  bad_maxiter <- ok
+  bad_maxiter$maxiter <- -5L
+  expect_error(run(bad_maxiter), "lobpcg_control\\$maxiter")
+
+  bad_warmup <- ok
+  bad_warmup$warmup_iters <- -1L
+  expect_error(run(bad_warmup), "lobpcg_control\\$warmup_iters")
+
+  # above INT_MAX the C++ backend aborts on the uword conversion; catch it here
+  big <- ok
+  big$maxiter <- 2^40
+  expect_error(run(big), "lobpcg_control\\$maxiter")
+
+  # a dropped field is an error, not a silent fall back to the default
+  dropped <- ok
+  dropped$maxiter <- NULL
+  expect_error(run(dropped), "maxiter")
+
+  # a field replaced by something that is not a number at all
+  wrong_type <- ok
+  wrong_type$tol <- "small"
+  expect_error(run(wrong_type), "lobpcg_control")
+
+  # and the constructor itself still refuses the same values
+  expect_error(lobpcg_control(tol = -1), "tol")
+  expect_error(lobpcg_control(maxiter = -5L), "maxiter")
+  expect_error(lobpcg_control(warmup_iters = 2^40), "warmup_iters")
+})
+
+test_that("pca_imp validates seed and the miniter/maxiter ordering from R", {
+  set.seed(1234)
+  x <- sim_mat(20, 20, perc_total_na = 0.1, perc_col_na = 1)$input
+
+  # maxiter is deliberately small everywhere below, so the non-convergence
+  # warning is expected and not what any of these assertions are about.
+  run <- function(...) {
+    suppressWarnings(pca_imp(x, ncp = 2, solver = "exact", na_check = FALSE, ...))
+  }
+
+  # Regression: this was `stop("`seed` too large")` - base stop, no condition
+  # class, a hard-coded 2147483647L, and no mention of `nb.init`, which is the
+  # argument that makes the bound what it is. `seed * (nb.init - 1)` is what
+  # reaches set.seed(), so the bound moves with `nb.init`.
+  cap <- .Machine$integer.max %/% 4L
+  expect_error(run(seed = cap + 1L, nb.init = 5), "Assertion on 'seed'")
+
+  # the bound is not simply rejecting everything: the largest admissible value
+  # is accepted, and the SAME value is rejected only once `nb.init` raises the
+  # multiplier past what that value leaves room for.
+  expect_no_error(run(seed = cap, nb.init = 5, miniter = 2, maxiter = 5))
+  expect_no_error(run(
+    seed = .Machine$integer.max, nb.init = 1L, miniter = 2, maxiter = 5
+  ))
+  expect_error(
+    run(seed = .Machine$integer.max, nb.init = 3L),
+    "Assertion on 'seed'"
+  )
+
+  # Regression: `miniter > maxiter` was unchecked on the R side and fell
+  # through to a bare `Rcpp::stop("miniter must be <= maxiter")`, which is not
+  # an rlang condition and names neither value.
+  err <- tryCatch(run(miniter = 10, maxiter = 5), error = function(e) e)
+  expect_s3_class(err, "rlang_error")
+  expect_match(conditionMessage(err), "miniter")
+  expect_match(conditionMessage(err), "maxiter")
+  expect_no_error(run(miniter = 5, maxiter = 5))
+})
+
+# return path ----
+test_that("post_imp mean-imputes only the columns that can still hold NA", {
+  set.seed(1234)
+  x <- sim_mat(40, 30, perc_total_na = 0.1, perc_col_na = 1)$input
+
+  run <- function(m, post_imp) {
+    suppressWarnings(pca_imp(
+      m, ncp = 2, solver = "exact", miniter = 2, maxiter = 5, seed = 1,
+      post_imp = post_imp
+    ))
+  }
+
+  # Regression: pca_imp() ran mean_imp_col(obj) over every column whenever
+  # post_imp = TRUE. On an all-eligible input that copied the matrix twice
+  # more (the C++ result, then Rcpp's wrap of it) and scanned every column,
+  # to change nothing. knn_imp() already restricted the call to the columns
+  # that could still hold NA and skipped it when there were none.
+  real_mean_imp_col <- mean_imp_col
+  calls <- list()
+  local_mocked_bindings(
+    mean_imp_col = function(obj, subset = NULL, cores = 1) {
+      # wrapped in list() so that a NULL subset - the whole-matrix call this
+      # test exists to catch - is recorded rather than dropped by `[[<-`
+      calls <<- c(calls, list(subset))
+      real_mean_imp_col(obj, subset = subset, cores = cores)
+    }
+  )
+
+  # every column of x is eligible, so the kernel fills every NA and the post
+  # step has nothing to do. Check that premise before asserting on it.
+  res_no_post <- run(x, post_imp = FALSE)
+  expect_false(anyNA(res_no_post))
+  res_post <- run(x, post_imp = TRUE)
+  expect_length(calls, 0L)
+  expect_identical(as.vector(res_post), as.vector(res_no_post))
+  expect_true(attr(res_post, "post_imp"))
+
+  # column 1 above colmax, column 2 zero variance with NA, column 3 zero
+  # variance without NA. The first two are the only columns that can still
+  # hold NA after the kernel; the third is ineligible but has nothing to fill.
+  y <- x
+  y[sample(40, 38), 1] <- NA
+  y[, 2] <- 7
+  y[1:3, 2] <- NA
+  y[, 3] <- 7
+  # sim_mat() may already have left NA in column 1, so take the count from y
+  n_na_1 <- sum(is.na(y[, 1]))
+  expect_gte(n_na_1, 38L)
+  calls <- list()
+  res_y <- run(y, post_imp = TRUE)
+  expect_length(calls, 1L)
+  expect_identical(calls[[1L]], c(1L, 2L))
+  expect_false(anyNA(res_y))
+  expect_equal(
+    unname(res_y[is.na(y[, 1]), 1]),
+    rep(mean(y[, 1], na.rm = TRUE), n_na_1)
+  )
+  expect_identical(unname(res_y[, 2]), rep(7, 40L))
+
+  # and the result is what the unconditional call used to produce
+  old_way <- real_mean_imp_col(matrix(as.vector(run(y, post_imp = FALSE)), 40L))
+  expect_identical(as.vector(res_y), as.vector(old_way))
+})
+
 # lobpcg ----
 test_that("LOBPCG mode during warmup matches forced exact path", {
   set.seed(1234)
   x <- sim_mat(20, 80)$input
   pca_iters <- 12L
 
-  expect_warning(
-    ref <- run_pca_fixed_iters(
-      x,
-      solver = "exact",
-      pca_iters = pca_iters
-    ),
-    "Stopped after"
+  # `run_pca_fixed_iters()` drives pca_imp_internal_cpp() directly, and the
+  # kernel is silent on non-convergence by design - pca_imp() raises that
+  # warning from R. See "pca_imp warns from R when the EM loop hits maxiter".
+  ref <- run_pca_fixed_iters(
+    x,
+    solver = "exact",
+    pca_iters = pca_iters
   )
 
-  expect_warning(
-    got <- run_pca_fixed_iters(
-      x,
-      solver = "lobpcg",
-      ctrl = lobpcg_control(
-        maxiter = 50L,
-        warmup_iters = pca_iters + 1L,
-        tol = 1e-10
-      ),
-      pca_iters = pca_iters
+  got <- run_pca_fixed_iters(
+    x,
+    solver = "lobpcg",
+    ctrl = lobpcg_control(
+      maxiter = 50L,
+      warmup_iters = pca_iters + 1L,
+      tol = 1e-10
     ),
-    "Stopped after"
+    pca_iters = pca_iters
   )
 
   expect_false(anyNA(ref$mat))
@@ -645,27 +915,22 @@ test_that("LOBPCG enabled agrees with exact eigensolver branch", {
     pca_iters <- 14L
     warmup <- 2L
 
-    expect_warning(
-      ref <- run_pca_fixed_iters(
-        x,
-        solver = "exact",
-        pca_iters = pca_iters
-      ),
-      "Stopped after"
+    # kernel-direct, so no non-convergence warning. See the note above.
+    ref <- run_pca_fixed_iters(
+      x,
+      solver = "exact",
+      pca_iters = pca_iters
     )
 
-    expect_warning(
-      got <- run_pca_fixed_iters(
-        x,
-        solver = "lobpcg",
-        ctrl = lobpcg_control(
-          maxiter = 100L,
-          warmup_iters = warmup,
-          tol = 1e-8
-        ),
-        pca_iters = pca_iters
+    got <- run_pca_fixed_iters(
+      x,
+      solver = "lobpcg",
+      ctrl = lobpcg_control(
+        maxiter = 100L,
+        warmup_iters = warmup,
+        tol = 1e-8
       ),
-      "Stopped after"
+      pca_iters = pca_iters
     )
 
     expect_false(anyNA(ref$mat))
@@ -688,35 +953,101 @@ test_that("LOBPCG enabled agrees with exact eigensolver branch", {
   }
 })
 
+test_that("LOBPCG tolerance stays relative when the Gram norm is below 1", {
+  # `A` is the row-weight-scaled Gram and `row.w` sums to 1, so A's diagonal is
+  # a weighted column variance. Under `scale = TRUE` that diagonal is exactly 1
+  # and ||A||_inf >= 1; under `scale = FALSE` on bounded data it lands well
+  # below 1 (0.16 for the matrix below). Regression: lobpcg_solve() floored
+  # normA at 1.0, so for those Grams the convergence test became ABSOLUTE and
+  # the error grew in lock step with the data scale - 6.2e-09 at factor 1 but
+  # 3.0e-04 at factor 0.01, against a requested tol of 1e-9. The invariant is
+  # that the RELATIVE error does not move when the data is rescaled.
+  set.seed(11)
+  n <- 60L
+  p <- 20L
+  latent <- matrix(rnorm(n * 3L), n, 3L)
+  loadings <- matrix(rnorm(3L * p), 3L, p)
+  base <- plogis(scale(latent %*% loadings) * 0.6)
+  na_idx <- sample(seq_len(n * p), round(0.2 * n * p))
+
+  ctrl <- lobpcg_control(warmup_iters = 3L, tol = 1e-9, maxiter = 40L)
+  run <- function(x, solver) {
+    pca_imp(
+      x,
+      ncp = 3,
+      scale = FALSE,
+      solver = solver,
+      seed = 1,
+      nb.init = 1,
+      maxiter = 200,
+      miniter = 5,
+      threshold = 1e-8,
+      post_imp = FALSE,
+      na_check = FALSE,
+      lobpcg_control = ctrl
+    )
+  }
+
+  factors <- c(1, 0.01)
+  max_abs <- numeric(length(factors))
+  max_rel <- numeric(length(factors))
+
+  for (i in seq_along(factors)) {
+    x <- base * factors[[i]]
+    x[na_idx] <- NA_real_
+
+    ref <- run(x, "exact")
+    got <- run(x, "lobpcg")
+
+    a <- ref[is.na(x)]
+    b <- got[is.na(x)]
+    err <- abs(a - b)
+
+    # the relative figure is taken over the imputed cells whose exact value is
+    # not effectively zero; near zero it says nothing.
+    keep <- abs(a) > 1e-12
+    expect_gt(sum(keep), 0L)
+
+    max_abs[[i]] <- max(err)
+    max_rel[[i]] <- max(err[keep] / abs(a[keep]))
+  }
+
+  # worst case, both figures. The absolute bound tracks the data scale; the
+  # relative bound does not, which is the whole point.
+  expect_lt(max_abs[[1L]], 1e-8 * factors[[1L]])
+  expect_lt(max_abs[[2L]], 1e-8 * factors[[2L]])
+  expect_lt(max_rel[[1L]], 1e-8)
+  expect_lt(max_rel[[2L]], 1e-8)
+
+  # scale invariance: rescaling the data by 100x must not move the relative
+  # error. Before the fix this ratio was ~5e4.
+  expect_lt(max(max_rel) / min(max_rel), 10)
+})
+
 test_that("LOBPCG fallback to exact still produces correct result", {
   set.seed(1234)
   x <- sim_mat(60, 30)$input
   pca_iters <- 10L
   warmup <- 2L
 
-  expect_warning(
-    ref <- run_pca_fixed_iters(
-      x,
-      solver = "exact",
-      pca_iters = pca_iters
-    ),
-    "Stopped after"
+  # kernel-direct, so no non-convergence warning. See the note above.
+  ref <- run_pca_fixed_iters(
+    x,
+    solver = "exact",
+    pca_iters = pca_iters
   )
 
   # tol below machine precision + maxiter = 1 forces LOBPCG to fail every
   # post-warmup iteration, exercising the exact fallback path.
-  expect_warning(
-    got <- run_pca_fixed_iters(
-      x,
-      solver = "lobpcg",
-      ctrl = lobpcg_control(
-        maxiter = 1L,
-        warmup_iters = warmup,
-        tol = 1e-20
-      ),
-      pca_iters = pca_iters
+  got <- run_pca_fixed_iters(
+    x,
+    solver = "lobpcg",
+    ctrl = lobpcg_control(
+      maxiter = 1L,
+      warmup_iters = warmup,
+      tol = 1e-20
     ),
-    "Stopped after"
+    pca_iters = pca_iters
   )
 
   expect_false(anyNA(got$mat))
