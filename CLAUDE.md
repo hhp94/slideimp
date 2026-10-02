@@ -142,7 +142,8 @@ pluralization. `cli` is a hard dependency and the error surface is public API:
 callers pin on wording and condition class, so a message changes deliberately,
 not in passing. Input validation goes through `checkmate` with an explicit
 `.var.name` so the message names the user's argument rather than an internal
-one.
+one. How the text of a message, a help page or a vignette is written lives in
+[dev/WRITING.md](dev/WRITING.md); read it before writing any of them.
 
 **Full roxygen, markdown on.** Every exported function carries `@title`,
 `@description`, `@param`, `@returns`, and runnable `@examples`. Shared prose
