@@ -1,23 +1,14 @@
-# dev/ is TRACKED. Design notes, prototype scripts, reference PDFs and small
-# benchmark results belong in git so they travel between machines -- see the
-# "do not add an ignore rule for something the maintainer produced or fetched
-# by hand" rule in CLAUDE.md. Papers are tracked at whatever size they are.
+# dev/ is OPT-IN. Everything here is ignored unless it is listed below, so
+# drafts, scratch scripts and private notes stay on this machine by default.
 #
-# The exception is large REGENERABLE data: cohort matrices, cached downloads,
-# serialized fixtures. Those are rebuilt from source, not authored, so losing
-# them costs compute rather than work. They are listed below so a stray `git
-# add dev/` cannot pull a hundred megabytes into history by accident.
-#
-# This file is allow-by-default on purpose. A new note or PDF dropped here is
-# tracked with no further action; only the formats named below are excluded.
+# To track a file, add a `!` line for it below and commit it. A file that is
+# already tracked stays tracked whatever this file says.
 
-*.qs2
-*.qs
-*.rda
-*.RData
-*.fst
-*.feather
-*.parquet
-*.h5
-*.bigmemory
-*.bin
+*
+!.gitignore
+
+!bench_knn_overhead.R
+!knn_imp_structure.md
+!pca_imp_structure.md
+!probe_impute_knn.R
+!to-do.md

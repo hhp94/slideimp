@@ -49,6 +49,30 @@ row_miss_internal <- function(obj) {
     .Call(`_slideimp_row_miss_internal`, obj)
 }
 
+.spectra_topk <- function(g, k, tol, ncv_req, maxitr) {
+    .Call(`_slideimp_spectra_topk`, g, k, tol, ncv_req, maxitr)
+}
+
+.build_block <- function(src, src_off, j1, nb, transformed, scratch, Xd, g_fixed, et, col_ss, mi_row, cnt, col_ptr, dirty_pos, resume) {
+    invisible(.Call(`_slideimp_build_block`, src, src_off, j1, nb, transformed, scratch, Xd, g_fixed, et, col_ss, mi_row, cnt, col_ptr, dirty_pos, resume))
+}
+
+.sym_from_lower <- function(g) {
+    invisible(.Call(`_slideimp_sym_from_lower`, g))
+}
+
+.mipca_da_loop_multi <- function(xd_list, g_fixed, etd_list, xtild_list, sigma_in, disp, resuming, rng_state_in, miss_idx_l, mi_row, mi_col_l, store_idx, mi_col_store, draws_list, streams, nthreads, S, K, p, dfP, nu, warmup, ndraws, thin, gram_max_cond, spectra_tol, spectra_ncv, spectra_maxitr, refresh) {
+    .Call(`_slideimp_mipca_da_loop_multi`, xd_list, g_fixed, etd_list, xtild_list, sigma_in, disp, resuming, rng_state_in, miss_idx_l, mi_row, mi_col_l, store_idx, mi_col_store, draws_list, streams, nthreads, S, K, p, dfP, nu, warmup, ndraws, thin, gram_max_cond, spectra_tol, spectra_ncv, spectra_maxitr, refresh)
+}
+
+crps_block <- function(d, truth) {
+    .Call(`_slideimp_crps_block`, d, truth)
+}
+
+mipca_cell_diag <- function(draws, rows, tile_cells, nthreads) {
+    .Call(`_slideimp_mipca_cell_diag`, draws, rows, tile_cells, nthreads)
+}
+
 sample_each_rep_cpp <- function(obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts) {
     .Call(`_slideimp_sample_each_rep_cpp`, obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts)
 }

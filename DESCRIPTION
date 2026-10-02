@@ -1,12 +1,15 @@
 Type: Package
 Package: slideimp
 Title: Numeric Matrices K-NN and PCA Imputation
-Version: 1.2.0.11
+Version: 1.2.0.12
 Authors@R: c(
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355")),
     person("Posit Software, PBC", role = "cph",
-           comment = "Copyright holder of code adapted from the 'carrier' package, MIT licensed")
+           comment = "Copyright holder of code adapted from the 'carrier' package, MIT licensed"),
+    person("Francois", "Husson", role = "cph",
+           comment = c(ORCID = "0000-0002-7271-8877")),
+    person("Julie", "Josse", role = "cph")
   )
 Description: Fast k-nearest neighbors (K-NN) and principal component
     analysis (PCA) imputation algorithms for missing values in epigenetic
@@ -27,6 +30,11 @@ Description: Fast k-nearest neighbors (K-NN) and principal component
     imputePCA() function from the 'missMDA' package described in: Josse,
     J. and Husson, F. (2016) <doi:10.18637/jss.v070.i01> "missMDA: A
     Package for Handling Missing Values in Multivariate Data Analysis".
+    The Bayesian multiple imputation sampler implements the method of
+    the 'missMDA' function MIPCA() described in: Audigier, V., Husson, F.
+    and Josse, J. (2016) <doi:10.1080/00949655.2015.1104683> "Multiple
+    Imputation for Continuous Variables Using a Bayesian Principal
+    Component Analysis".
 License: GPL (>= 2)
 URL: https://github.com/hhp94/slideimp, https://hhp94.github.io/slideimp/
 BugReports: https://github.com/hhp94/slideimp/issues
@@ -37,6 +45,7 @@ Imports:
     checkmate,
     cli,
     collapse,
+    dqrng (>= 0.4.1),
     mirai,
     Rcpp,
     stats,
@@ -50,9 +59,14 @@ Suggests:
     testthat (>= 3.0.0),
     withr
 LinkingTo:
+    BH,
+    dqrng,
     Rcpp,
     RcppArmadillo,
-    RcppThread
+    RcppEigen,
+    RcppThread,
+    RSpectra,
+    sitmo
 VignetteBuilder: 
     knitr
 Config/Needs/website: rmarkdown

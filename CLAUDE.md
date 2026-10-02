@@ -225,10 +225,10 @@ code is right and the map needs fixing in the same change.
 - `vignettes/`, `README.Rmd`, `_pkgdown.yml` - user-facing documentation.
   `README.md` and `docs/` are generated; edit the sources.
 - `dev/` - design notes, structural maps (see "Internals" above), exploratory
-  scripts, reference PDFs, benchmark results. Tracked in git so it travels
-  between machines, build-ignored so it never ships. `dev/.gitignore` is
-  allow-by-default: a note or PDF dropped here is tracked with no further
-  action, and only large regenerable data formats are excluded. Not a code
+  scripts, reference PDFs, benchmark results. Build-ignored so it never
+  ships. `dev/.gitignore` is opt-in: everything here is ignored unless it has
+  a `!` line in that file, so a file only travels between machines once it is
+  listed there and committed. Not a code
   dump: code here is exploratory by declaration and nothing in the package
   may depend on it, so anything that turns durable gets promoted to `R/` or
   `src/`.

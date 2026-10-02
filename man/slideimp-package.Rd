@@ -43,6 +43,8 @@ Authors:
 Other contributors:
 \itemize{
   \item Posit Software, PBC (Copyright holder of code adapted from the 'carrier' package, MIT licensed) [copyright holder]
+  \item Francois Husson (\href{https://orcid.org/0000-0002-7271-8877}{ORCID}) [copyright holder]
+  \item Julie Josse [copyright holder]
 }
 
 }

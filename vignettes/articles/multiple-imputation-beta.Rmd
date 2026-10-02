@@ -1,0 +1,216 @@
+---
+title: "Multiple imputation of a beta matrix"
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(slideimp)
+```
+
+`pca_imp()` and `knn_imp()` fill each missing value with one best guess. That
+is enough for many uses, but an analysis run on a singly imputed matrix treats
+the guesses as if they had been measured, so its standard errors come out too
+small. Multiple imputation instead draws several plausible values for every
+hole, so the uncertainty about the missing cells carries through to the final
+estimate.
+
+slideimp does this with a Bayesian low-rank (PCA) model, the method of
+Audigier, Husson and Josse (2016) <doi:10.1080/00949655.2015.1104683>. This
+article walks through the whole path for a beta-value matrix (DNA methylation,
+values in `[0, 1]`):
+
+1. tune the model with `mipca_tune()`,
+2. fit it with `mipca_fit()`,
+3. check that the chains converged,
+4. extract completed matrices with `as.matrix()`, and
+5. pool an estimate across them.
+
+## Simulate a beta matrix
+
+The matrix below is built on the logit scale - a mean per CpG with the two
+modes typical of methylation, a rank-2 signal, and heavy-tailed noise - and
+then mapped into `[0, 1]` with `plogis()`. Half of the columns have 16 of
+their 80 samples set to `NA`.
+
+This data follows the model the sampler assumes, so the fit will look good.
+It is here to show the steps, not to show how well the method works on real
+data.
+
+```{r}
+set.seed(2)
+n <- 80
+p <- 300
+mu <- ifelse(runif(p) < 0.5, rnorm(p, -2, 0.7), rnorm(p, 2, 0.7))
+U <- matrix(rnorm(n * 2), n, 2)
+V <- matrix(rnorm(p * 2, 0, 0.5), p, 2)
+noise <- 0.4 * sqrt(4 / 6) * matrix(rt(n * p, df = 6), n, p)
+truth <- plogis(matrix(mu, n, p, byrow = TRUE) + U %*% t(V) + noise)
+dimnames(truth) <- list(sprintf("s%02d", seq_len(n)), sprintf("cpg%03d", seq_len(p)))
+
+obj <- truth
+na_cols <- sample.int(p, p / 2)
+for (j in na_cols) obj[sample.int(n, 16), j] <- NA
+obj[1:4, 1:4]
+mean(is.na(obj))
+```
+
+Row and column names are required: the fit uses them to keep track of which
+cell is which.
+
+## Tune the model with `mipca_tune()`
+
+Two choices shape the model: the `rank` (how many components) and `nu`, the
+degrees of freedom of the noise (`Inf` is Gaussian noise; smaller values allow
+heavier tails).
+
+`mipca_tune()` hides some observed cells, imputes them at each candidate rank,
+and scores the draws against the hidden truth with the continuous ranked
+probability score (CRPS, lower is better). From the same draws it also
+estimates the `nu` implied at each rank, so one call settles both.
+
+`transform = "logit_biwhiten"` is the transform for beta values. It maps the
+data onto the logit scale (after squeezing exact 0 and 1 inwards so the logit
+stays finite) and then rescales rows and columns. The sampler works on that
+scale, and every value it hands back is mapped back into `[0, 1]`. The
+argument has no default: pass `transform = "identity"` for data that is
+already roughly Gaussian.
+
+```{r}
+tuned <- mipca_tune(
+  obj,
+  parameters = data.frame(rank = 1:4),
+  transform = "logit_biwhiten",
+  seed = 1
+)
+tuned
+```
+
+How to read the grid:
+
+- `crps`: the mean score on the hidden cells. The best rank is where it
+  bottoms out.
+- `ess10` and `essOK`: effective sample size (the 10th percentile across
+  cells, and the share of cells above the ESS bar). Low values mean the chains
+  are short, not that the rank is wrong. `update(tuned, iter_sampling = ...)`
+  extends every arm.
+- `rhatMx`: the worst R-hat across the diagnostic cells. Values well above
+  1.05 mean the chains disagree.
+- `impl.nu` and `band`: the noise degrees of freedom implied by the draws at
+  that rank, with an uncertainty band.
+
+The per-cell scores are in `tuned$cells` if you want to look closer:
+
+```{r}
+tapply(tuned$cells$crps, tuned$cells$rank, mean)
+```
+
+## Fit the model with `mipca_fit()`
+
+`mipca_fit(tuned)` runs the production fit at the rank with the lowest CRPS,
+with `nu` taken from that rank's estimate and the chain settings carried over
+from the tuner. A `nu` below 5 is raised to 5, because noise that heavy can
+occasionally produce an extreme draw that destabilizes the sampler. The
+transform is refitted on the full matrix.
+
+```{r}
+fit <- mipca_fit(tuned, seed = 2)
+fit
+```
+
+By default this runs 4 chains with 100 warm-up and 100 sampling iterations
+each, so 400 draws are kept for every missing cell.
+
+To set the rank and `nu` yourself, call `mipca()` directly. `mipca()` also
+takes `subset`, which limits which columns have their draws stored. Every
+hole is still imputed at every iteration, because the low-rank structure ties
+the columns together, so `subset` saves memory, not time. On a genome-scale
+matrix that matters: the draws take cells x draws of memory.
+
+## Check convergence
+
+`summary()` reports R-hat and effective sample size for a sample of the
+imputed cells.
+
+```{r}
+summary(fit)
+```
+
+The five numbers for each row are the minimum, lower hinge, median, upper hinge
+and maximum across cells. Most cells here have R-hat near 1 and an ESS in the
+hundreds, so the chains agree and the 400 draws are worth a few hundred
+independent ones. The worst cells are listed below the summary. If many of
+them sit above an R-hat of 1.05, or the ESS is low, run longer chains:
+`mipca_fit(tuned, iter_sampling = 400)`, for example.
+
+## Extract completed matrices
+
+`as.matrix(fit, draw = b)` returns one completed matrix: the observed values,
+with draw `b` filled into the holes. We follow two CpGs with missing values
+from here on.
+
+```{r}
+two <- names(sort(colSums(is.na(obj)), decreasing = TRUE))[1:2]
+completed_1 <- as.matrix(fit, draw = 1)
+dim(completed_1)
+head(completed_1[, two])
+```
+
+Completed matrices are built one at a time, so the draws are never all
+expanded into memory at once. A typical analysis takes a few dozen draws
+spread across the chains:
+
+```{r}
+draws <- round(seq(1, fit$nkeep, length.out = 20))
+completed <- lapply(draws, function(b) as.matrix(fit, draw = b)[, two])
+length(completed)
+```
+
+Each hole now has a distribution rather than a single value. For one missing
+cell, here are its draws next to the value that was hidden:
+
+```{r}
+hole <- which(is.na(obj[, two[1]]))[1]
+cell_draws <- vapply(seq_len(fit$nkeep), function(b) {
+  as.matrix(fit, draw = b)[hole, two[1]]
+}, numeric(1))
+quantile(cell_draws, c(0.05, 0.5, 0.95))
+truth[hole, two[1]]
+```
+
+## Pool an estimate
+
+Run the analysis on every completed matrix and combine the results with
+Rubin's rules. As an example, estimate the mean beta value of the first CpG:
+
+```{r}
+est <- vapply(completed, function(m) mean(m[, 1]), numeric(1))
+within <- vapply(completed, function(m) var(m[, 1]) / nrow(m), numeric(1))
+
+M <- length(completed)
+q_bar <- mean(est)                  # pooled estimate
+w <- mean(within)                   # average within-imputation variance
+b <- var(est)                       # between-imputation variance
+total <- w + (1 + 1 / M) * b        # total variance
+
+c(estimate = q_bar, se = sqrt(total), se_single = sqrt(w))
+mean(truth[, two[1]])
+```
+
+`se_single` is the standard error you would report from one completed matrix.
+The pooled `se` adds the between-imputation variance `b`, which is the
+uncertainty about the missing cells that single imputation leaves out. Here
+only 16 of 80 values are missing and the model fits well, so the difference
+is small; it grows with the share of missing values.
+
+## Reference
+
+Audigier, V., Husson, F. and Josse, J. (2016). Multiple imputation for
+continuous variables using a Bayesian principal component analysis. *Journal
+of Statistical Computation and Simulation*, 86(11), 2140-2156.
+<doi:10.1080/00949655.2015.1104683>

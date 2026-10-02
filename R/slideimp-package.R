@@ -17,5 +17,6 @@
 #'
 #' @keywords internal
 #' @importFrom Rcpp sourceCpp
+#' @importFrom stats update
 #' @useDynLib slideimp, .registration = TRUE
 "_PACKAGE"
