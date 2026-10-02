@@ -10,10 +10,6 @@ and the fact that the exported API, the error surface and the documentation are 
 by callers. Everything about how the text itself is written -- R1 to R9, the cli mechanics, the
 roxygen template -- lives here.
 
-Ported from the methylCIPHERv2 rules of the same name. What carried over is what is about English
-and about cli and roxygen mechanics. What did not is everything specific to that package's objects,
-its assets, its `@seealso` groups and its linters, none of which exist here.
-
 ---
 
 ## 0. Existing text is public API
@@ -99,9 +95,9 @@ apply.
 - **R8. No internal vocabulary.** Name an object the way the reader's own code names it. The test
   is mechanical: if the word is not a function name, an argument name, a class name, a column name
   in a returned object, or a word already in a message the user sees, it is jargon. Words that live
-  in `dev/*_structure.md` and in `src/` -- the kernel, the chain, the eigenblock, the hole
-  enumeration -- are ours, not the reader's. A word in the package `Description` (LOBPCG, warm
-  start) has been put in front of the reader on purpose and passes.
+  in `dev/*_structure.md` and in `src/` -- the kernel, the chain, the hole enumeration -- are ours,
+  not the reader's. A word in the package `Description` (LOBPCG, warm start, eigenblock) has been
+  put in front of the reader on purpose and passes.
 - **R9. State the fix. Do not editorialise about the reader.** Cut the words that assign effort or
   blame: "yourself", "simply", "just", "manually", "you forgot", "of course". The test is
   mechanical: **delete the word and see whether the instruction changed.** If it did not, the word
@@ -150,9 +146,9 @@ while writing the source are usually obvious on one reading of the output.
 - **cli reflows whitespace.** A pre-aligned block collapses onto one line. Use `cli_verbatim()`
   where alignment matters. Inside `cli_abort()` / `cli_inform()`, bullets carry no alignment and
   each emits one self-contained bullet per row.
-- **Tests assert the condition, never its wording.** `expect_error(..., class = "slideimp_*")`
-  where the condition has a class, otherwise `expect_error()` alone. The wording is public API, and
-  a deliberate rewording should be one change in `R/`, not a second hunt through `tests/`.
+- **Tests assert the class where the condition has one**, with `expect_error(..., class =
+  "slideimp_*")`. Where there is no class, or a test has to tell two messages apart, match a
+  short, stable fragment of the wording, not the whole message.
 
 ### How many bullets, and which
 
@@ -209,10 +205,8 @@ Description: one or more sentences. What it does.
 @export
 ```
 
-- **The title and description are the first two paragraphs, untagged.** That is the form the
-  package uses, and it is what `CLAUDE.md`'s "`@title`, `@description`" means: every exported topic
-  carries both, not that both tags are written out. An explicit `@description` is right only where
-  the description has to sit after something else.
+- **The title and description are the first two paragraphs, untagged.** An explicit
+  `@description` is right only where the description has to sit after something else.
 - **Titles are noun phrases.** `K-Nearest Neighbor Imputation for Numeric Matrices`, `Column Mean
   Imputation`. Title case, no trailing period. A verb-first title (`Calculate Matrix Column
   Variances`) is a breach.

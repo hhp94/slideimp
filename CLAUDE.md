@@ -145,8 +145,8 @@ not in passing. Input validation goes through `checkmate` with an explicit
 one. How the text of a message, a help page or a vignette is written lives in
 [dev/WRITING.md](dev/WRITING.md); read it before writing any of them.
 
-**Full roxygen, markdown on.** Every exported function carries `@title`,
-`@description`, `@param`, `@returns`, and runnable `@examples`. Shared prose
+**Full roxygen, markdown on.** Every exported function carries a title, a
+description, `@param`, `@returns`, and runnable `@examples`. Shared prose
 is written once and pulled in with `@inheritSection` or `@inheritParams`
 rather than duplicated - a claim that appears in five help pages has to stay
 true in five places otherwise. Run `devtools::document()` after touching any
@@ -273,8 +273,8 @@ devtools::check()                      # before proposing anything release-shape
 ```
 
 `timer = TRUE` is the DEFAULT and adds `-DLOC_TIMER` plus rcpptimer's include
-directory. `src/loc_timer.h` compiles the whole `LOC_TIMER_*` family down to
-`((void)0)` without it, so a bare `load_all()` silently produces a package
+directory. `src/loc_timer.h` compiles the whole `LOC_TIMER_*` family away
+without it, so a bare `load_all()` silently produces a package
 with no phase timers at all. rcpptimer is deliberately absent from
 `LinkingTo`, which is why the include path is added by hand rather than
 resolved by the build - ordinary and CRAN builds must not require it.
