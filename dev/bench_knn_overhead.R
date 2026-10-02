@@ -10,9 +10,11 @@
 # real arithmetic is small enough for them to matter.
 #
 # Run it the same way before and after a change and compare the two tables.
-# Usage: Rscript dev/bench_knn_overhead.R [label]
+# Usage, from the repository root: Rscript dev/bench_knn_overhead.R [label]
 
-setwd("C:/Users/amser/Projects/slideimp")
+if (!file.exists("DESCRIPTION") || !file.exists("R/dev-utils.R")) {
+  stop("run this from the repository root: Rscript dev/bench_knn_overhead.R")
+}
 source("R/dev-utils.R")
 suppressMessages(load_all1(timer = FALSE))
 
