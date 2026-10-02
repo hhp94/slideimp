@@ -57,11 +57,11 @@ Signature at `R/knn_imp.R:98-109`. Validation block, in order
 `"euclidean"` / `"manhattan"` (`:120`); `k` integer in `[1, ncol(obj) - 1]`
 (`:121`); `cores >= 1` (`:122`); `colmax` in `[0, 1]` (`:123`); `dist_pow` a
 finite number `>= 0` (`:125-130`); the `post_imp`, `.progress` and `na_check`
-flags (`:124`, `:131-132`). Every one goes through `checkmate` with an explicit
-`.var.name`, so a rejection names the user's argument;
-`tests/testthat/test-knn_imp.R:538-551` pins that for `dist_pow`, which used to
-be checked with a bare `stopifnot()` that let a character value through to the
-`.Call`.
+flags (`:124`, `:131-132`). All but two go through `checkmate` with an explicit
+`.var.name`, so a rejection names the user's argument. The exceptions are `method`,
+matched with `match.arg()`, and `check_finite()`, which raises from C++ through
+`Rcpp::stop` (`src/mat_stats.cpp:219-224`). `tests/testthat/test-knn_imp.R:538-551`
+pins the `checkmate` path for `dist_pow`.
 
 Missing-value gating is delegated to C++. `check_finite()`
 (`src/mat_stats.cpp:198`) makes one pass per column and refuses twice: any
@@ -74,9 +74,9 @@ are declared in `R/RcppExports.R:36-42`. `NA` and `NaN` are indistinguishable
 throughout; the policy is stated at `R/slideimp-package.R:7-16`.
 
 `subset` (`R/knn_imp.R:134`) goes through `resolve_subset()` (`R/utils.R:62-105`),
-which accepts `NULL` (all columns, `:60-61`), a character vector matched against
-`colnames(obj)` with unmatched names dropped and reported (`:62-77`), or
-integerish indices (`:78-89`). It returns `NULL` for "nothing to do" (`:91-96`),
+which accepts `NULL` (all columns, `:66-67`), a character vector matched against
+`colnames(obj)` with unmatched names dropped and reported (`:68-83`), or
+integerish indices (`:84-95`). It returns `NULL` for "nothing to do" (`:97-102`),
 after reporting it itself, which becomes an early return of the unchanged input
 (`R/knn_imp.R:135-147`).
 
@@ -84,7 +84,7 @@ Both early returns hand back the input through `new_slideimp_results()`, not as
 a bare matrix, so the class and attributes of the result do not depend on which
 path the data takes; `tests/testthat/test-knn_imp.R:502-536` pins that, and pins
 that the empty-subset path emits exactly one message. `pca_imp()` still returns
-a bare matrix on its own no-missing-values path (`R/pca_imp.R:383-386`); see
+a bare matrix on its own no-missing-values path (`R/pca_imp.R:460-463`); see
 `dev/to-do.md`.
 
 Missingness and partitioning. `cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)`
@@ -94,7 +94,7 @@ count `Inf` as missing (`src/mat_stats.cpp:257-260`). A second early return fire
 if no subset column has any missing value (`R/knn_imp.R:152-166`). `colmax` then
 becomes an eligibility mask, `eligible <- miss_rate <= min(colmax, 1)`
 (`R/knn_imp.R:172`); the test is inclusive, matching `pca_imp()`
-(`R/pca_imp.R:392`), so a column strictly above the threshold is dropped from
+(`R/pca_imp.R:469`), so a column strictly above the threshold is dropped from
 the K-NN stage entirely -- neither imputed nor usable as a neighbor. Three
 disjoint index groups follow at `R/knn_imp.R:185-192`: `grp_impute` (eligible, has missing
 values, in `subset` -- these get imputed), `grp_miss_no_imp` (eligible, has
@@ -112,7 +112,7 @@ emits `NaN` for cells it could not fill), `R/knn_imp.R:222-223` uses the returne
 `(row, col)` pairs as a two-column index matrix to scatter values into `obj`,
 `R/knn_imp.R:232-240` optionally runs column-mean fill, and
 `R/knn_imp.R:242-250` attaches the `slideimp_results` class and attributes via
-`new_slideimp_results()` (`R/utils.R:5-19`).
+`new_slideimp_results()` (`R/utils.R:5-25`).
 
 **Which columns post-imputation touches.** Only two kinds of subset column can
 still be missing after the kernel: one `colmax` held out of `grp_impute`, and
@@ -152,7 +152,7 @@ Project headers reached, following the `#include` graph:
 - `src/imputed_value.h` -- included by `src/impute_knn_brute.cpp:1` and
   `src/imputed_value.cpp:1`. Defines `mask_t` / `MaskMat` (`:12-13`),
   `GroupLayout` (`:25-34`), the header-inline `validate_knn_inputs()`
-  (`:37-160`), and the two out-of-line declarations (`:166`, `:178`).
+  (`:36-160`), and the two out-of-line declarations (`:166`, `:178`).
 - `src/matrix_checks.h` -- pulled in by `src/imputed_value.h:9` and
   `src/mat_stats.cpp:4`. Holds only `stop_on_inf()` (`src/matrix_checks.h:8-29`).
 - `src/par_for.h` -- included by `src/impute_knn_brute.cpp:6` and
@@ -166,8 +166,9 @@ Project headers reached, following the `#include` graph:
   at one core and `group_imp()` forces one core per worker under mirai. The
   serial and parallel paths are pinned equal at
   `tests/testthat/test-knn_imp.R:410-431`.
-- `src/loc_timer.h` -- included at `src/impute_knn_brute.cpp:2`. Every macro
-  compiles to `((void)0)` unless `LOC_TIMER` is defined (`:26-34`), so the
+- `src/loc_timer.h` -- included at `src/impute_knn_brute.cpp:2`. Unless `LOC_TIMER`
+  is defined, the statement macros compile to `((void)0)` and `LOC_TIMER_PARAM` /
+  `LOC_TIMER_ARG` to nothing (`:26-34`), so the
   `LOC_*` calls at `src/impute_knn_brute.cpp:479-480` and `519-520` vanish in a
   normal build.
 
@@ -180,13 +181,16 @@ and simulation paths and are not reached from `knn_imp()`.
 
 `src/Makevars:1` sets `-DARMA_64BIT_WORD=1`, so `arma::uword` is 64-bit and
 kernel index arithmetic does not wrap on matrices past `2^32 - 1` elements;
-`src/mat_stats.cpp:180` exposes `arma_uword_bytes()` so the test suite can assert
+`src/mat_stats.cpp:181` exposes `arma_uword_bytes()` so the test suite can assert
 that flag survived.
 
 ## Layer 4 -- kernel setup and result skeleton
 
-1. `validate_knn_inputs()` (`src/imputed_value.h:36-160`) re-checks everything R
-   already checked, so the kernel is safe when called directly: shape (`:45-53`),
+1. `validate_knn_inputs()` (`src/imputed_value.h:36-160`) re-checks most of what R
+   already checked, so the kernel is safe when called directly. All-`NA` columns are
+   left to the zero-`n_valid` guard (`src/impute_knn_brute.cpp:215-218`), `cores` is
+   floored rather than validated (`:471`), and the `k` bound applies only when a column
+   needs imputing. It checks shape (`:45-53`),
    `k >= 1` (`:55-58`), `method` in `{0, 1}` (`:60-63`), `dist_pow` finite and
    non-negative (`:65-68`), every group index in range (`:70-89`), the three
    groups disjoint (`:91-115`), every `grp_complete` column free of `NaN`
@@ -252,7 +256,7 @@ the other side is fully observed, so only the target mask matters (`:126`) and
 **Pruning.** Both kernels chunk rows in blocks of `GRAIN = 16` (`:31`) and, when
 `Bound` is true, test a partial-sum bound at each chunk boundary, returning `inf`
 on a prune (`:70-76`, `:129-135`; derivations in the comments at `:36-43`,
-`:95-97`). The check sits under `if constexpr (Bound)`, so it is not compiled
+`:97-99`). The check sits under `if constexpr (Bound)`, so it is not compiled
 into the `Bound = false` instantiations at all; the `worst_dist = +inf` default
 (`:52`, `:108`) only covers a `Bound = true` caller with no worst distance yet.
 The pruned and unpruned paths are compared against each other implicitly at
@@ -341,7 +345,7 @@ The `d_j` here is the Layer 5 quantity, so under `method = "euclidean"` it is a
 mean SQUARED difference and `dist_pow` is an exponent of `2 * dist_pow` on the
 square-rooted euclidean distance. The `min_pos` factor is common to every weight
 and cancels out of the weighted average; it only keeps the weights near 1. Both
-facts are stated on the help page (`R/knn_imp.R:47-73`) and pinned against a
+facts are stated on the help page (`R/knn_imp.R:47-74`) and pinned against a
 pure-R reference at `tests/testthat/test-knn_imp.R:237-325`, which reproduces
 the kernel to 1e-12 on max absolute and max relative error over both metrics,
 three `dist_pow` values, and two candidate layouts.
@@ -357,7 +361,7 @@ Complete neighbors add `w * value` per row and a single shared
 which R converts to `NA` at `R/knn_imp.R:220`.
 
 That per-row drop-out is user-visible and is stated on the help page
-(`R/knn_imp.R:61-66`): neighbors are chosen once per column, but the set that
+(`R/knn_imp.R:62-67`): neighbors are chosen once per column, but the set that
 actually contributes can differ from row to row, and a row where none of the
 chosen `k` is observed comes back missing. The "mixed candidates" half of
 `tests/testthat/test-knn_imp.R:237-325` is the case that exercises it.
@@ -371,11 +375,11 @@ dying. `knn_imp()` has exactly two sites:
 1. `R/knn_imp.R:175-183` -- `k > n_elig - 1`, where `n_elig` is the number of
    columns passing `colmax` (`R/knn_imp.R:173`); message "`k` (...) exceeds
    usable columns (...)". Exercised at `tests/testthat/test-knn_imp.R:115-118`
-   and `tests/testthat/test-group_imp.R:702-704`.
+   and `tests/testthat/test-group_imp.R:739-742`.
 2. `R/knn_imp.R:194-202` -- `length(grp_impute) == 0`, i.e. every subset column
    with missing values also exceeds `colmax`; message "All subset columns with
    missing values exceed `colmax` (...)". Exercised at
-   `tests/testthat/test-group_imp.R:706-714` and, for the inclusive boundary,
+   `tests/testthat/test-group_imp.R:744-752` and, for the inclusive boundary,
    `tests/testthat/test-knn_imp.R:121-137`.
 
 Everything else that aborts here is a plain error, not `slideimp_infeasible`:
@@ -383,7 +387,8 @@ Everything else that aborts here is a plain error, not `slideimp_infeasible`:
 (`tests/testthat/test-knn_imp.R:553-560` and `:112-113`), plus the C++ guards in
 `validate_knn_inputs()` (`tests/testthat/test-knn_imp.R:433-471`) and
 `initialize_result_matrix()`. Catch sites are in the
-wrappers only (next section); each switches on `on_infeasible` to rethrow, skip
+wrappers only (next section); each switches on `on_infeasible` to abort (`slide_imp()`
+rethrows, `group_imp()` raises a new `cli_abort()` with the original as `parent`), skip
 the block unchanged, or fall back to `mean_imp_col()`.
 
 ## Data structures and ownership
@@ -393,17 +398,19 @@ the block unchanged, or fall back to `mean_imp_col()`.
   `ConstReferenceInputParameter`, which for a double matrix is
   `ArmaMat_InputParameter<..., false_type>`
   (`RcppArmadillo/interface/RcppArmadilloAs.h:573-585`): it constructs
-  `arma::mat(ptr, nrow, ncol, false)` over R's own memory, `copy_aux_mem =
-  false`. Only integer-storage input takes the copying branch (`:587-599`), and
-  `knn_imp()` never passes one. The kernel's `const arma::mat& obj` therefore
-  aliases the R matrix and is never written to.
+  `arma::mat(ptr, nrow, ncol, false)` over an `Rcpp::NumericMatrix`, `copy_aux_mem =
+  false`. The branch is chosen by the Armadillo element type, so a `double` matrix
+  always takes it; `:587-599` is for element types that need a cast. For double-storage
+  input the `NumericMatrix` wraps R's own memory, so the kernel's `const arma::mat& obj`
+  aliases the R matrix and is never written to. Integer-storage input is coerced to a
+  fresh double copy when the `NumericMatrix` is built.
 - The kernel returns a freshly allocated `(n_missing x 3)` `arma::mat` of
   triplets, not an imputed matrix. The only in-place mutation of the user's
   matrix happens in R, at `R/knn_imp.R:223`.
 - So the real full-matrix copies on this path are both on the R side: R's
   copy-on-modify at the scatter (`R/knn_imp.R:223`), and, when
   `mean_imp_col()` actually has work to do, the second `n x m` allocation in
-  `mean_imp_col_internal()` (`src/mat_stats.cpp:120`). The second one is now
+  `mean_imp_col_internal()` (`src/mat_stats.cpp:120`). The second one is
   skipped whenever nothing is still missing.
 - Groups 1 and 2 are materialized a second time into `obj_masked` /
   `nmiss_masked` (`src/impute_knn_brute.cpp:415-416`) with NaNs zeroed and a
@@ -412,7 +419,7 @@ the block unchanged, or fall back to `mean_imp_col()`.
   is read in place from `obj`, so a matrix dominated by complete columns pays no
   second copy.
 - Column indices cross the boundary 0-based (`R/knn_imp.R:210-212` subtracts 1)
-  and come back 1-based (`src/imputed_value.cpp:159-160` adds 1).
+  and come back 1-based (`src/imputed_value.cpp:152` and `:159` add 1).
 - Per-thread scratch is small and local: `top_k`
   (`src/impute_knn_brute.cpp:220`), whatever temporary buffer `std::stable_sort`
   takes for it (`:277`), `nn_columns` and `weights` (`:502-507`), and the two
@@ -441,8 +448,8 @@ the workers at `:512-515`.
 
 `src/Makevars:2-3` adds the OpenMP flags and links `RcppThread::LdFlags()`;
 `src/Makevars.win:2-3` omits the RcppThread link line. `col_vars_internal()`
-(`src/mat_stats.cpp:30-75`) and `mean_imp_col_internal()`
-(`src/mat_stats.cpp:79-173`) go through the same `par_for()`.
+(`src/mat_stats.cpp:30-76`) and `mean_imp_col_internal()`
+(`src/mat_stats.cpp:79-174`) go through the same `par_for()`.
 
 ## How the wrappers reach knn_imp()
 
@@ -450,7 +457,7 @@ the workers at `:512-515`.
 (`imp_fn <- if (is_knn_mode) knn_imp else pca_imp`), pre-builds a per-group
 parameter list injecting `cores` and a group-local `subset` (`:803-806`), and
 invokes it via `do.call()` inside a `tryCatch` -- `:859-882` in the mirai branch,
-`:912-932` in the sequential branch. Each group is a column slice
+`:929-949` in the sequential branch. Each group is a column slice
 `obj[, indices[[i]]$col_idx]` (`:857`, `:927`), so `knn_imp()` sees a submatrix
 and group-local indices.
 
@@ -468,5 +475,5 @@ asserts the returned `(row, col)` triplet locations match `which(is.na(...))`;
 `:67-102` covers `subset` by index and by name with `post_imp` both ways;
 `:104-119` covers all-NA rows and columns plus abort site 1; `:327-408` pins
 the tie rule; `:553-560` covers `Inf` rejection;
-`tests/testthat/test-group_imp.R:700-715` pins the `slideimp_infeasible` class
+`tests/testthat/test-group_imp.R:738-753` pins the `slideimp_infeasible` class
 on both abort sites.

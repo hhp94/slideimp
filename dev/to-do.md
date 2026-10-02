@@ -17,7 +17,7 @@ Both functions bail out early on inputs that need no work - an empty `subset`,
 no missing values in the subset, no missing values at all - and the two
 functions do it differently. `knn_imp()` returns through
 `new_slideimp_results()` on both of its early paths; `pca_imp()` returns a bare
-matrix at `R/pca_imp.R:459-462`, so the class and attributes of its result
+matrix at `R/pca_imp.R:460-463`, so the class and attributes of its result
 depend on which path the data took. That asymmetry is the thing to remove.
 
 What the hoisted form has to preserve:
