@@ -7,7 +7,7 @@
 
 // standard library
 #include <stdexcept> // Errors
-#include <algorithm> // std::min, std::max, std::sort, std::swap
+#include <algorithm> // std::min, std::max, std::stable_sort, std::swap
 #include <cmath>     // std::isnan
 #include <cstddef>   // std::size_t
 #include <limits>    // std::numeric_limits<double>::infinity()
@@ -270,9 +270,13 @@ std::vector<NeighborInfo> distance_vector_impl(
         insert_before_k(top_k, masked_dist_unbounded(p2), p2);
     }
 
-    std::sort(top_k.begin(), top_k.end(),
-              [](const NeighborInfo &a, const NeighborInfo &b)
-              { return a.distance < b.distance; });
+    // stable_sort, not sort: the fill is in scan order and the replacement
+    // phase evicts top_k.back(), so the order of equal distances decides which
+    // tied neighbor is dropped. Keeping it makes the first-encountered
+    // candidate win, as the strict < comparisons below already do.
+    std::stable_sort(top_k.begin(), top_k.end(),
+                     [](const NeighborInfo &a, const NeighborInfo &b)
+                     { return a.distance < b.distance; });
 
     // replacing worst distance
     for (; c < layout.n_complete; ++c)

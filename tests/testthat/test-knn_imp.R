@@ -324,6 +324,89 @@ test_that("the documented weighting rule reproduces the kernel", {
   }
 })
 
+test_that("tied neighbors are settled by scan order, not by the library sort", {
+  # Regression test. The fill phase of distance_vector_impl() used to order
+  # its first k candidates with std::sort, which leaves equal distances in an
+  # order of the library's choosing, and a closer candidate then evicts the
+  # LAST entry - so the library decided which of several tied neighbors was
+  # dropped. libstdc++ insertion-sorts up to 16 elements, which keeps ties in
+  # order, so the bug showed only from k = 17, where it evicted tied
+  # candidates from the front of the run. The rule is first-encountered wins,
+  # in the kernel's scan order: complete columns, then columns with missing
+  # values, each in column order. knn_ref() above breaks ties by column order
+  # instead, and agrees with the kernel only because its rnorm data has none.
+  #
+  # Column 1 is the target, missing at row 1 only. The first k candidates in
+  # scan order are the target plus a +-1 pattern on its observed rows, at
+  # distance exactly 1 under both metrics; the n_closer after them use +-1/2
+  # and each evicts one tied candidate. Candidate column j holds 2^(j - 2) at
+  # row 1, so with dist_pow = 0 the imputed value times k is a sum of distinct
+  # powers of two, one per chosen neighbor: the set can be read back from it.
+  # Every sum here is of integers below 2^53, so both sides are exact.
+  n_obs <- 8L
+  n_closer <- 4L
+  ks <- c(5L, 17L, 32L)
+  # k > 16 is where libstdc++'s std::sort stops keeping ties in order
+  expect_gt(max(ks), 16L)
+
+  for (layout in c("complete", "masked", "mixed")) {
+    for (k in ks) {
+      m <- k + n_closer
+      kind <- switch(
+        layout,
+        complete = rep("c", m),
+        masked = rep("m", m),
+        # complete and incomplete alternate, so scan order is not column order
+        mixed = c(rep_len(c("c", "m"), k), rep("m", n_closer))
+      )
+      set.seed(k)
+      t_obs <- sample(-5:5, n_obs, replace = TRUE)
+      sgn <- matrix(sample(c(-1, 1), n_obs * m, replace = TRUE), n_obs, m)
+      step <- rep(c(1, 0.5), c(k, n_closer))
+      cand <- t_obs + sweep(sgn, 2, step, "*")
+      for (j in which(kind == "m")) {
+        cand[1L + j %% n_obs, j] <- NA # in a row the target observes
+      }
+      obj <- unname(rbind(c(NA, 2^(seq_len(m) - 1)), cbind(t_obs, cand)))
+
+      # the case is the one it claims: every fill candidate is tied, every
+      # candidate after the fill is strictly closer, and evictions happen
+      gap <- abs(cand - t_obs)
+      expect_true(all(gap[, step == 1] == 1, na.rm = TRUE))
+      expect_true(all(gap[, step < 1] == 0.5, na.rm = TRUE))
+      cols <- seq_len(m) + 1L
+      scan <- c(cols[kind == "c"], cols[kind == "m"])
+      tied <- scan[seq_len(k)]
+      expect_identical(sort(tied), cols[step == 1])
+
+      # the last n_closer tied candidates in scan order are the ones evicted
+      closer <- cols[step < 1]
+      want_nn <- sort(c(tied[seq_len(k - n_closer)], closer))
+      want <- sum(obj[1L, want_nn]) / k
+      # and any other eviction is detectable - here, evicting the first ones
+      wrong_nn <- c(tied[-seq_len(n_closer)], closer)
+      expect_gt(abs(sum(obj[1L, wrong_nn]) / k - want), 0.5)
+
+      for (method in c("euclidean", "manhattan")) {
+        r <- knn_imp(
+          obj,
+          k = k,
+          method = method,
+          dist_pow = 0,
+          subset = 1,
+          post_imp = FALSE,
+          na_check = FALSE
+        )
+        got <- unname(r[1L, 1L])
+        expect_close(got, want)
+        s <- round(got * k)
+        got_nn <- cols[floor(s / 2^(seq_len(m) - 1)) %% 2 == 1]
+        expect_identical(got_nn, want_nn, info = paste(layout, k, method))
+      }
+    }
+  }
+})
+
 test_that("the parallel path gives the same answer as the serial one", {
   # par_for() (src/par_for.h) runs the loop body inline at one thread and
   # through RcppThread's pool above that, so the two have to agree. Each
