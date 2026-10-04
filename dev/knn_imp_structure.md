@@ -26,7 +26,7 @@ R/knn_imp.R:98                      knn_imp()  -- user entry, validation, partit
   +- [abort site 1] R/knn_imp.R:175-183   k > n_elig - 1
   +- [abort site 2] R/knn_imp.R:194-202   all subset cols exceed colmax
   +- R/RcppExports.R:16             impute_knn_brute()  -- .Call shim
-  |    +- src/RcppExports.cpp:69    _slideimp_impute_knn_brute (SEXP wrapper)
+  |    +- src/RcppExports.cpp:70    _slideimp_impute_knn_brute (SEXP wrapper)
   |         +- src/impute_knn_brute.cpp:397  impute_knn_brute()   <-- C++ entry
   |              +- src/imputed_value.h:36        validate_knn_inputs()
   |              +- src/matrix_checks.h:8         stop_on_inf()
@@ -130,10 +130,10 @@ filled. Both branches are pinned at `tests/testthat/test-knn_imp.R:473-500`.
 grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores, pb)`, whose
 body is a single `.Call` to `_slideimp_impute_knn_brute`.
 
-The generated C wrapper is `src/RcppExports.cpp:69-85`; it converts each SEXP
-through `Rcpp::traits::input_parameter<...>` (`:73-81`) and calls the C++ symbol
-at `:82`. Registration is `:195` inside the `CallEntries` table, installed by
-`R_init_slideimp` at `:208`. The exact C++ entry symbol is `impute_knn_brute`,
+The generated C wrapper is `src/RcppExports.cpp:70-86`; it converts each SEXP
+through `Rcpp::traits::input_parameter<...>` (`:74-82`) and calls the C++ symbol
+at `:83`. Registration is `:310` inside the `CallEntries` table, installed by
+`R_init_slideimp` at `:329`. The exact C++ entry symbol is `impute_knn_brute`,
 defined at `src/impute_knn_brute.cpp:397` under the `// [[Rcpp::export]]` marker
 on `:396`. It is the only C++ entry point the K-NN stage needs; `check_finite`,
 `col_miss_internal`, and `mean_imp_col_internal` are separate `.Call`s made from
@@ -394,7 +394,7 @@ the block unchanged, or fall back to `mean_imp_col()`.
 ## Data structures and ownership
 
 - The R matrix is **not** copied at the boundary. `input_parameter<const
-  arma::mat&>` (`src/RcppExports.cpp:73`) resolves to
+  arma::mat&>` (`src/RcppExports.cpp:74`) resolves to
   `ConstReferenceInputParameter`, which for a double matrix is
   `ArmaMat_InputParameter<..., false_type>`
   (`RcppArmadillo/interface/RcppArmadilloAs.h:573-585`): it constructs

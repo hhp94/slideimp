@@ -17,7 +17,7 @@ R/pca_imp.R:362            pca_imp()                       user-facing entry
   |    |
   |    +- R/pca_imp.R:592  pca_imp_internal_cpp()
   |         +- R/RcppExports.R:4        .Call(`_slideimp_pca_imp_internal_cpp`)
-  |         +- src/RcppExports.cpp:17   SEXP wrapper (BEGIN_RCPP/END_RCPP)
+  |         +- src/RcppExports.cpp:18   SEXP wrapper (BEGIN_RCPP/END_RCPP)
   |         +- src/armaSVD.cpp:306      pca_imp_internal_cpp()   C++ entry symbol
   |              |
   |              +- :463  pass 1: per-column NA counts
@@ -117,11 +117,11 @@ leaves the next window on `"auto"` (`R/slide_imp.R:511-537`).
 
 `R/RcppExports.R:4-6` is the generated shim, calling
 `.Call(`_slideimp_pca_imp_internal_cpp`, ...)` with 16 arguments.
-`src/RcppExports.cpp:16` declares the C++ signature; `:17-40` is the `RcppExport` SEXP
-wrapper, converting each argument through `Rcpp::traits::input_parameter<>` (`:21-36`). An
-`Rcpp::RNGScope` (`:20`) makes `Rcpp::rnorm()` inside the kernel use R's RNG stream.
-Registration is `src/RcppExports.cpp:192` in `CallEntries`, with `R_init_slideimp` at
-`:208-211` and `R_useDynamicSymbols(dll, FALSE)`. The C++ entry symbol is
+`src/RcppExports.cpp:17` declares the C++ signature; `:18-41` is the `RcppExport` SEXP
+wrapper, converting each argument through `Rcpp::traits::input_parameter<>` (`:22-37`). An
+`Rcpp::RNGScope` (`:21`) makes `Rcpp::rnorm()` inside the kernel use R's RNG stream.
+Registration is `src/RcppExports.cpp:307` in `CallEntries`, with `R_init_slideimp` at
+`:329-332` and `R_useDynamicSymbols(dll, FALSE)`. The C++ entry symbol is
 `pca_imp_internal_cpp` (`src/armaSVD.cpp:306`, marked `// [[Rcpp::export]]` at `:305`).
 
 `obj` arrives as `const arma::mat&`, so Rcpp constructs a read-only Armadillo view over the
