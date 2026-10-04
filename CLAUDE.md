@@ -44,7 +44,11 @@ git grep -IlP '[^\x00-\x7F]' -- . ':!dev' ':!man' ':!docs' ':!LICENSE.md'
 ```
 
 This covers every tracked file, skips binaries and build output, and needs no
-locale setting. It prints offending file names, so no output means clean.
+locale setting. It prints offending file names, so no output means clean. The
+one legitimate hit is `README.md` when an evaluated chunk captures the glyphs
+cli prints, which section 7 of [dev/WRITING.md](dev/WRITING.md) keeps. Any
+other character there is a leak to fix in `README.Rmd`, never in the generated
+file.
 
 **Never assume - measure when it can be measured.** Do not guess where time
 goes, whether an optimization helped, how much of a matrix is missing, or

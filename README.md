@@ -10,7 +10,7 @@
 
 `{slideimp}` is a lightweight R package for fast K-NN and PCA imputation
 of missing values in high-dimensional numeric matrices (samples in rows,
-variables in columns). Two “meta-callers” wrap the workhorse functions
+variables in columns). Two "meta-callers" wrap the workhorse functions
 `knn_imp()` and `pca_imp()`:
 
 - `group_imp()`: group-wise K-NN or PCA imputation (e.g., by chromosome
@@ -109,7 +109,7 @@ imputed <- group_imp(
 )
 # Found cleaned manifest for 'MSA'
 # ! 1 group dropped: no features remaining after matching `obj_cn`.
-# ℹ Dropped group indices: 24
+# i Dropped group indices: 24
 # Imputing 25 groups using PCA.
 # Running mode: sequential
 
@@ -130,7 +130,7 @@ print(imputed, n = 4, p = 4)
 - `group_imp()` fails with unmapped probes: your matrix likely contains
   [`sesame`](https://bioconductor.org/packages/release/bioc/html/sesame.html)-generated
   control probes (prefixed `ctl_`) or you picked the wrong manifest
-  (`"EPICv2"` vs. `"EPICv2_deduped"`). Check the manifest, remove
+  (`"EPICv2"` vs. `"EPICv2_deduped"`). Check the manifest, remove
   `"ctl"` probes with `obj <- obj[, !grepl("^ctl", colnames(obj))]`, or
   pass `allow_unmapped = TRUE` to bypass.
 - Impute the MSA or EPICv2 data **with** the duplicated probes, then
@@ -149,10 +149,10 @@ print(imputed, n = 4, p = 4)
   MKL, set `pin_blas = TRUE` so BLAS threads and `{mirai}` workers do
   not compete for cores. This requires `{RhpcBLASctl}`.
 - For faster PCA imputation on Windows machines, advanced users can
-  replace R’s default reference BLAS with OpenBLAS. See [this community
+  replace R's default reference BLAS with OpenBLAS. See [this community
   guide](https://github.com/david-cortes/R-openblas-in-windows).
 - For parallel K-NN imputation, use the `cores` argument, which uses
-  `{RcppThread}`’s `parallelFor`, instead of `{mirai}`. If you only need
+  `{RcppThread}`'s `parallelFor`, instead of `{mirai}`. If you only need
   clock CpGs, pass `subset` to skip all other probes.
 
 ## Extended Workflow
@@ -333,7 +333,7 @@ chr1_beta <- sim_mat(n = 10, p = 2000)$input
   - `flank`: build flanking windows of `window_size` around features
     provided in `subset`.
 
-- First, let’s perform a dry run to examine the windows that will be
+- First, let's perform a dry run to examine the windows that will be
   imputed by `slide_imp`.
 
 ``` r
