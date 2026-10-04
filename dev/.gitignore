@@ -7,8 +7,10 @@
 *
 !.gitignore
 
+!WRITING.md
 !bench_knn_overhead.R
 !knn_imp_structure.md
 !pca_imp_structure.md
 !probe_impute_knn.R
+!probe_knn_ties.R
 !to-do.md
