@@ -180,15 +180,18 @@ vacuous `max()` over nothing returns `-Inf` and passes silently. The same goes
 for a comparator you have just relaxed: prove it can still fail. When you fix
 a bug, add the regression test pinned to that bug.
 
-**Do not add an ignore rule for something the maintainer produced or fetched
-by hand.** Papers, benchmark results, hand-built fixtures, design notes. The
-maintainer works from more than one machine, and an ignored file does not
-travel: a session on the other machine sees a cited file that is not there,
-reasons about why, and produces a confident wrong answer. A gitignore entry is
-durable, invisible in every later diff, and its cost lands on a future session
-rather than the one adding it. Large regenerable DATA is the exception and
-stays out. If a file genuinely cannot be tracked, say so and ask; never decide
-it silently.
+**Anything a tracked file cites must itself be tracked.** The maintainer
+works from more than one machine, and an ignored file does not travel: a
+session on the other machine sees a cited file that is not there, reasons
+about why, and produces a confident wrong answer. `dev/` is opt-in, so a note,
+paper, benchmark result or probe script there stays on the machine that made
+it until it has a `!` line in `dev/.gitignore` - add that line in the same
+commit that first cites the file. Elsewhere in the repo, do not add an ignore
+rule for something the maintainer produced or fetched by hand. A gitignore
+entry is durable, invisible in every later diff, and its cost lands on a
+future session rather than the one adding it. Large regenerable DATA is the
+exception and stays out. If a file genuinely cannot be tracked, say so and
+ask; never decide it silently.
 
 ## Internals
 
@@ -229,10 +232,9 @@ code is right and the map needs fixing in the same change.
   scripts, reference PDFs, benchmark results. Build-ignored so it never
   ships. `dev/.gitignore` is opt-in: everything here is ignored unless it has
   a `!` line in that file, so a file only travels between machines once it is
-  listed there and committed. Not a code
-  dump: code here is exploratory by declaration and nothing in the package
-  may depend on it, so anything that turns durable gets promoted to `R/` or
-  `src/`.
+  listed there and committed. Not a code dump: code here is exploratory by
+  declaration and nothing in the package may depend on it, so anything that
+  turns durable gets promoted to `R/` or `src/`.
 - [dev/to-do.md](dev/to-do.md) - work that is agreed on but not yet done.
   Read it before starting anything in `R/` or `src/`: an entry there may
   already cover the change, or may constrain how it has to be made. Add an
