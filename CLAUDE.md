@@ -195,9 +195,9 @@ ask; never decide it silently.
 
 ## Internals
 
-The two imputation kernels each cross from R into C++ through several layers,
-and the boundary is not obvious from either side alone. Structural maps of
-both chains live in `dev/`, with file-and-line citations throughout:
+`pca_imp()` and `knn_imp()` each cross from R into C++ through several
+layers, and the boundary is not obvious from either side alone. Structural
+maps of both chains live in `dev/`, with file-and-line citations throughout:
 
 - [dev/pca_imp_structure.md](dev/pca_imp_structure.md) - `pca_imp()` from the
   R entry point through the Rcpp boundary, the EM-style outer loop, the
@@ -214,8 +214,9 @@ code is right and the map needs fixing in the same change.
 
 ## Layout
 
-- `R/`, `src/` - package source. `src/` is Rcpp/RcppArmadillo with RcppThread
-  for parallelism; `R/RcppExports.R` and `src/RcppExports.cpp` are generated.
+- `R/`, `src/` - package source. `src/` is Rcpp with RcppArmadillo, plus
+  RcppEigen in the multiple-imputation sampler, and RcppThread for
+  parallelism; `R/RcppExports.R` and `src/RcppExports.cpp` are generated.
 - `R/dev-utils.R` - dev-only helpers (`load_all1()`, `check_manual()`,
   `dump_roxygen2()`, `scratch()`). Unexported and build-ignored, so it never
   ships. See "Working commands" below.
