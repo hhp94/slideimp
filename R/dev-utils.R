@@ -19,11 +19,16 @@ load_all1 <- function(timer = TRUE, debug = FALSE) {
   }
   flags <- c(flags, sprintf("-DPCA_IMP_DIAGNOSTICS=%d", as.integer(debug)))
 
-  old <- Sys.getenv("PKG_CPPFLAGS", unset = "")
-  new <- paste(c(old, flags), collapse = " ")
-
   devtools::clean_dll()
-  withr::with_envvar(c(PKG_CPPFLAGS = new), devtools::load_all())
+  # src/Makevars assigns PKG_CPPFLAGS, and a makefile assignment overrides an
+  # environment variable of the same name, so the macros cannot go in through
+  # the environment. They go in through the user Makevars instead, which R
+  # reads after the package's, as an append on top of -DARMA_64BIT_WORD=1.
+  withr::with_makevars(
+    c(PKG_CPPFLAGS = paste(flags, collapse = " ")),
+    devtools::load_all(),
+    assignment = "+="
+  )
 }
 
 scratch <- function() {
