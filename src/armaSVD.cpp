@@ -908,6 +908,13 @@ Rcpp::List pca_imp_internal_cpp(
   // the changing columns of fittedX hold the final reconstruction from the
   // last hot-loop DGEMM (U carries the isw/lambda_shrinked scaling); the
   // fixed block was skipped in the loop and is completed here for the SSE.
+  // In the wide case SVD_triplet() also left the fixed rows of V unwritten:
+  // they come from the last Vn and the fixed columns of Xhat, which nothing
+  // has written since pass2_scan. The tall case returns V complete.
+  if (!tall)
+  {
+    pca_detail::gemm_tn_block(Xhat, 0, n_fixed, Vn, V);
+  }
   reconstruct_cols(U, V, fittedX, 0, n_fixed);
   const double *fxp = fittedX.memptr();
 

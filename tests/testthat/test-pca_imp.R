@@ -1058,3 +1058,88 @@ test_that("LOBPCG fallback to exact still produces correct result", {
   expect_equal(got$n_lobpcg_bad, pca_iters - warmup)
   expect_equal(got$n_exact, pca_iters) # warmup exact + fallback exact
 })
+
+test_that("wide recover_factors block agrees with the stored reference", {
+  # SVD_triplet()'s wide branch forms V = Xhat' * Vn only for the changing
+  # (NA-containing) columns inside the EM loop, and the fixed columns' rows
+  # once after it (src/svd_triplet.h, src/armaSVD.cpp postprocessing). The
+  # fixed rows reach R only through `mse`, the nb.init selection statistic;
+  # the imputed values never read them. So both are compared, for a wide
+  # input with fixed columns (Gram cache active), a wide input with an NA in
+  # every column (no fixed block, cache inactive), and a tall input, whose
+  # path is unchanged.
+  #
+  # The reference was recorded by dev/gen_pca_recover_block_ref.R from the
+  # code before the change, so it is bytes from another build: the
+  # comparison is on a tolerance, and bitwise agreement is reported, not
+  # asserted.
+  ref <- readRDS(test_path("fixtures", "pca_recover_block_ref.rds"))
+  claims <- list(
+    wide_fixed = list(wide = TRUE, fixed = TRUE),
+    wide_all = list(wide = TRUE, fixed = FALSE),
+    tall_fixed = list(wide = FALSE, fixed = TRUE)
+  )
+  expect_setequal(names(ref$cases), names(claims))
+
+  for (nm in names(claims)) {
+    case <- ref$cases[[nm]]
+    x <- case$x
+    n_fixed <- sum(colSums(is.na(x)) == 0L)
+
+    # the input exercises the branch the case is named for
+    expect_true(anyNA(x), label = nm)
+    expect_identical(ncol(x) > nrow(x), claims[[nm]]$wide, label = nm)
+    expect_identical(n_fixed > 0L, claims[[nm]]$fixed, label = nm)
+
+    got <- pca_imp_internal_cpp(
+      obj = x,
+      eligible_idx = seq_len(ncol(x)) - 1L,
+      ncp = ref$ncp,
+      scale = TRUE,
+      regularized = TRUE,
+      threshold = 0,
+      init = 0L,
+      maxiter = ref$iters,
+      miniter = ref$iters,
+      row_w = case$row_w,
+      coeff_ridge = 1,
+      solver = 0L,
+      warmup_iters = 0L,
+      lobpcg_tol = 1e-8,
+      lobpcg_maxiter = 1L
+    )
+    want <- case$imputed_values
+
+    # structural: the same cells, in the same order
+    expect_identical(dim(got$imputed_values), dim(want), label = nm)
+    expect_identical(got$imputed_values[, 1:2], want[, 1:2], label = nm)
+
+    a <- got$imputed_values[, 3]
+    b <- want[, 3]
+    expect_gt(length(b), 0L)
+    err <- abs(a - b)
+    # the relative figure is taken over the imputed cells whose reference
+    # value is not near zero
+    keep <- abs(b) >= 1e-3
+    expect_gt(sum(keep), 0L)
+    max_abs <- max(err)
+    max_rel <- max(err[keep] / abs(b[keep]))
+    expect_gt(case$mse, 0)
+    mse_abs <- abs(got$mse - case$mse)
+    mse_rel <- mse_abs / abs(case$mse)
+
+    cat(sprintf(
+      paste0(
+        "\n%s: imputed max abs %.3g, max rel %.3g over %d of %d cells; ",
+        "mse abs %.3g, rel %.3g; bitwise imputed %s, mse %s\n"
+      ),
+      nm, max_abs, max_rel, sum(keep), length(b), mse_abs, mse_rel,
+      identical(a, b), identical(got$mse, case$mse)
+    ))
+
+    expect_lt(max_abs, 1e-8, label = nm)
+    expect_lt(max_rel, 1e-8, label = nm)
+    expect_lt(mse_abs, 1e-8, label = nm)
+    expect_lt(mse_rel, 1e-8, label = nm)
+  }
+})

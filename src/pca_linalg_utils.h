@@ -119,19 +119,23 @@ namespace pca_detail
                  1, 1);
   }
 
-  static inline void gemm_tn(const arma::mat &A,
-                             const arma::mat &B,
-                             arma::mat &C)
+  // C.rows(j0 .. j0+nj-1) = A.cols(j0 .. j0+nj-1).t() * B, written in place:
+  // C must already be sized A.n_cols x B.n_cols and is not resized. A column
+  // block of a column-major matrix is contiguous with leading dimension
+  // A.n_rows, and a row block of C is an offset with leading dimension
+  // C.n_rows, so the product is one dgemm_ whatever the block.
+  static inline void gemm_tn_block(const arma::mat &A,
+                                   const arma::uword j0,
+                                   const arma::uword nj,
+                                   const arma::mat &B,
+                                   arma::mat &C)
   {
-    // C = A.t() * B
-    C.set_size(A.n_cols, B.n_cols);
-
-    if (A.n_cols == 0 || B.n_cols == 0)
+    if (nj == 0 || B.n_cols == 0)
       return;
 
     if (A.n_rows == 0)
     {
-      C.zeros();
+      C.rows(j0, j0 + nj - 1).zeros();
       return;
     }
 
@@ -140,7 +144,7 @@ namespace pca_detail
     const double alpha = 1.0;
     const double beta = 0.0;
 
-    const arma::blas_int m = static_cast<arma::blas_int>(A.n_cols);
+    const arma::blas_int m = static_cast<arma::blas_int>(nj);
     const arma::blas_int n = static_cast<arma::blas_int>(B.n_cols);
     const arma::blas_int k = static_cast<arma::blas_int>(A.n_rows);
 
@@ -151,10 +155,10 @@ namespace pca_detail
     arma::dgemm_(&trT, &trN,
                  &m, &n, &k,
                  &alpha,
-                 A.memptr(), &lda,
+                 A.colptr(j0), &lda,
                  B.memptr(), &ldb,
                  &beta,
-                 C.memptr(), &ldc,
+                 C.memptr() + j0, &ldc,
                  1, 1);
   }
 

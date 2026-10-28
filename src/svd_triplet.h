@@ -58,6 +58,10 @@ static inline void split_eigvec_block(const arma::mat &eigvecs,
 //
 // U is returned in sqrt-row-weight space; the caller removes the weighting
 // (fused with its own column scaling of U).
+//
+// In the wide case V is written only for the changing columns, rows
+// n_fixed .. n_elig-1; the caller fills the fixed rows once after the EM
+// loop from the same Vn. In the tall case V is complete.
 // ---------------------------------------------------------------------------
 inline void SVD_triplet(const arma::mat &Xhat,
                         const double *sw,
@@ -119,7 +123,14 @@ inline void SVD_triplet(const arma::mat &Xhat,
   else
   {
     split_eigvec_block(eigvecs, U, Vn, d_inv, sw, ncp);
-    pca_detail::gemm_tn(Xhat, Vn, V);
+    // inside the EM loop only the changing columns' rows of V are read, and
+    // the permutation keeps those columns in the tail block of Xhat, so one
+    // dgemm over that block fills rows n_fixed .. n_elig-1 in place. V is
+    // sized here once; set_size with the same dimensions does not
+    // reallocate, so the rows written earlier stay where they are.
+    const arma::uword n_fixed = gram_cache.n_fixed;
+    V.set_size(Xhat.n_cols, ncp);
+    pca_detail::gemm_tn_block(Xhat, n_fixed, Xhat.n_cols - n_fixed, Vn, V);
   }
   LOC_TOC(timer, "recover_factors");
 }

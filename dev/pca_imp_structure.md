@@ -26,17 +26,17 @@ R/pca_imp.R:362            pca_imp()                       user-facing entry
   |              +- :671  gram_cache_init()            gram_ops.h:63  -> dsyrk_
   |              +- :745  EM outer loop
   |                   +- :754 impute_restandardize<>() armaSVD.cpp:32
-  |                   +- :771 SVD_triplet()            svd_triplet.h:62
+  |                   +- :771 SVD_triplet()            svd_triplet.h:66
   |                   |    +- form_weighted_gram()     gram_ops.h:156 -> dsyrk_/dgemm_
   |                   |    +- hybrid_topk_eig()        hybrid_topk_eig.h:441
   |                   |    |    +- lobpcg_solve()      lobpcg_warm.h:367 -> dsyevd_
   |                   |    |    +- eig_sym_sel()       eig_sym_sel.h:129  -> dsyevr_
-  |                   |    +- gemm_nn/gemm_tn()        pca_linalg_utils.h:85,122 -> dgemm_
+  |                   |    +- gemm_nn/gemm_tn_block()  pca_linalg_utils.h:85,127 -> dgemm_
   |                   +- :818 reconstruct_cols()       armaSVD.cpp:276 -> dgemm_
   |                   +- :825 missing_weighted_residual_ss()  armaSVD.cpp:236
   |                   +- :864 convergence test
   |              +- :907  postprocessing, imputed_values triplets
-  |              +- :1010 Rcpp::List back to R
+  |              +- :1017 Rcpp::List back to R
   |
   +- R/pca_imp.R:656       clamp
   +- R/pca_imp.R:667       write imputed triplets back into obj
@@ -184,7 +184,8 @@ One iteration:
 5. Reconstruction (`:806-820`). `scale_rows_cols_inplace()` (`pca_linalg_utils.h:42`) fuses
    the row de-weighting of `U` with the shrunk column scaling, mutating `U` in place;
    `reconstruct_cols()` (`:276-303`) then does one `dgemm_` writing only the changing block
-   of `fittedX` (`:818`). The fixed block is never read inside the loop.
+   of `fittedX` (`:818`). The fixed block is never read inside the loop, and in the wide
+   case the fixed rows of `V` it would need are not even computed there (Layer 5).
 6. Objective (`:822-836`): `objective_full` minus the weighted residual sum of squares over
    missing cells only (`missing_weighted_residual_ss()`, `:236-272`), floored at 0.
 
@@ -199,14 +200,19 @@ is `for (arma::uword nb_iter = 1;; ++nb_iter)` (`:745`), whose only exits are at
 iteration 1, every `trace_iter` iterations, and on the last (`:889-894`); print precision is
 restored by the `PrecGuard` RAII struct (`:699-711`).
 
-**Postprocessing** (`:907-976`): `reconstruct_cols(U, V, fittedX, 0, n_fixed)` (`:911`)
-completes the fixed block the loop skipped, purely so the SSE covers the whole matrix. The
-SSE loop (`:914-946`) computes the full residual in original units (times `et^2` per column)
-then subtracts the missing-cell contribution, giving an observed-cells-only `mse` (`:948`),
-the `nb.init` selection statistic. `imputed_values` (`:950-974`) is an `n_missing x 3`
+**Postprocessing** (`:907-983`): in the wide case `gemm_tn_block(Xhat, 0, n_fixed, Vn, V)`
+(`:916`) first fills the fixed rows of `V` that `SVD_triplet()` leaves unwritten, from the
+last iteration's `Vn` and the fixed columns of `Xhat`, which nothing writes after
+`pass2_scan`; the tall case returns `V` complete. `reconstruct_cols(U, V, fittedX, 0, n_fixed)`
+(`:918`) then completes the fixed block of `fittedX` the loop skipped, purely so the SSE
+covers the whole matrix. Both calls no-op when `n_fixed == 0`. The fixed rows of `V` reach R
+only through `mse`; `imputed_values` never reads them. The
+SSE loop (`:921-953`) computes the full residual in original units (times `et^2` per column)
+then subtracts the missing-cell contribution, giving an observed-cells-only `mse` (`:955`),
+the `nb.init` selection statistic. `imputed_values` (`:957-981`) is an `n_missing x 3`
 matrix of `(row_1based, orig_col_1based, value)`, where the value comes from the final
-`Xhat` at the missing position, de-standardized -- not from `fittedX` (`:960-962`). The
-ordinary-build return list (`:1010-1019`) carries `imputed_values`, `mse`, `n_iter`,
+`Xhat` at the missing position, de-standardized -- not from `fittedX` (`:967-969`). The
+ordinary-build return list (`:1017-1026`) carries `imputed_values`, `mse`, `n_iter`,
 `criterion_final`, `converged`, `solver_chosen`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`.
 `solver_chosen` comes from `HybridEigContext::solver_chosen_code()`
 (`hybrid_topk_eig.h:239-262`): 0 forced exact, 1 forced lobpcg, 2 auto never decided, 3 auto
@@ -215,14 +221,19 @@ collapses 1 and 4 to "lobpcg" and everything else to "exact"; the string is set 
 
 ## Layer 5: Gram formation and factor recovery
 
-`SVD_triplet()` (`src/svd_triplet.h:62-125`) never forms an SVD directly. It builds the
-weighted Gram into `AA_NxN` via `form_weighted_gram()` (`:83`), takes
-`trace_val = arma::trace(AA_NxN)` (`:86`) for the tail energy, calls `hybrid_topk_eig()`
-(`:89`, failure being an `Rcpp::stop` at `:91`), converts eigenvalues to singular values and
-inverses with a `PCA_TOL` floor (`:95-111`), and recovers the other factor with one `dgemm_`
-(`:113-124`): tall gives eigenvectors as `V` and `U = X_work * Vn` (`gemm_nn`, `:117`), wide
-gives them as `U` and `V = Xhat' * Vn` (`gemm_tn`, `:122`). `split_eigvec_block()` (`:15-54`)
-writes the plain and `d_inv`-scaled copies in a single pass.
+`SVD_triplet()` (`src/svd_triplet.h:66-136`) never forms an SVD directly. It builds the
+weighted Gram into `AA_NxN` via `form_weighted_gram()` (`:87`), takes
+`trace_val = arma::trace(AA_NxN)` (`:90`) for the tail energy, calls `hybrid_topk_eig()`
+(`:93`, failure being an `Rcpp::stop` at `:95`), converts eigenvalues to singular values and
+inverses with a `PCA_TOL` floor (`:99-115`), and recovers the other factor with one `dgemm_`
+(`:117-135`): tall gives eigenvectors as `V` and `U = X_work * Vn` (`gemm_nn`, `:121`); wide
+gives them as `U` and forms only the changing rows of `V`,
+`V[n_fixed.., ] = Xhat[, n_fixed..]' * Vn`, as one strided-block `dgemm_`
+(`gemm_tn_block()`, `pca_linalg_utils.h:127`, called at `:133`), reading `n_fixed` from the
+Gram cache (`:131`) the way `form_weighted_gram()` does. `V` is sized once (`:132`;
+`set_size` with unchanged dimensions does not reallocate) and its fixed rows stay unwritten
+until postprocessing fills them from the same `Vn` (Layer 4). `split_eigvec_block()`
+(`:15-54`) writes the plain and `d_inv`-scaled copies in a single pass.
 
 `form_weighted_gram()` (`src/gram_ops.h:156-265`) has four branches:
 
@@ -302,7 +313,7 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 | --- | --- | --- |
 | `dsyrk_` | `gram_ops.h:54`, `:207`, `:238` | Gram formation |
 | `dgemm_` | `gram_ops.h:191` | fixed-changing Gram cross block |
-| `dgemm_` | `pca_linalg_utils.h:112`, `:151` | `gemm_nn` / `gemm_tn` factor recovery |
+| `dgemm_` | `pca_linalg_utils.h:112`, `:155` | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`armaSVD.cpp:916`) |
 | `dgemm_` | `armaSVD.cpp:296` | `reconstruct_cols`, strided column block |
 | `dsyevr_` | `eig_sym_sel.h:86`, `:145` | workspace query, exact top-k eigen |
 | `dsyevd_` | `lobpcg_warm.h:221`, `:239` | LOBPCG Rayleigh-Ritz |
@@ -327,13 +338,18 @@ QRs plus a `3k x 3k` dsyevd.
   dsyevd `work`/`iwork` buffers), `X_prev`, `auto_choice`, the auto counters and timing sums,
   and `n_exact`/`n_lobpcg_ok`/`n_lobpcg_bad` (`hybrid_topk_eig.h:65-87`). When auto picks
   exact, only `lobpcg_state.X`, `lobpcg_state.P` and `X_prev` are reset (`:132-134`).
-- Return crosses as an `Rcpp::List` (`src/armaSVD.cpp:1010`), copying the triplet matrix
+- `V` is sized once by `SVD_triplet()` (`svd_triplet.h:132`). In the wide case its rows
+  `0 .. n_fixed-1` hold whatever the allocation held until postprocessing writes them
+  (`armaSVD.cpp:916`); nothing reads them inside the loop. `Vn` is written only by
+  `split_eigvec_block()` (`svd_triplet.h:24-51`) and read only by the factor-recovery
+  `dgemm_` calls, which is what lets the post-loop fill reuse the last iteration's copy.
+- Return crosses as an `Rcpp::List` (`src/armaSVD.cpp:1017`), copying the triplet matrix
   into R. Only missing cells are transported, never the full imputed matrix. The
   `mat_stats.cpp` entry points instead return by value: `mean_imp_col()` an `n x p` matrix
   (`:79`, `:120`) and `col_vars()` a length-`p` row vector (`:30`), each copied into a SEXP.
 - `PCA_TOL = 1e-15` (`src/pca_linalg_utils.h:9`) is the shared floor in `armaSVD.cpp` and
   `svd_triplet.h`: scale floors (`armaSVD.cpp:124`, `:600`), inverse row-weight floor
-  (`:644`), shrinkage guard (`:797`), singular-value inverse guard (`svd_triplet.h:109`).
+  (`:644`), shrinkage guard (`:797`), singular-value inverse guard (`svd_triplet.h:113`).
   LOBPCG has its own floors (`lobpcg_warm.h:40`, `:350-351`), and R applies a `1e-10`
   row-weight floor (`R/pca_imp.R:405`, `:553`) and a `.Machine$double.eps` variance floor (`:470`).
 - `src/matrix_checks.h` is not in `armaSVD.cpp`'s include chain. It is included by
@@ -355,13 +371,13 @@ the flag survived.
 `Rcpp::Timer`, `LOC_TIC`/`LOC_TOC` bracket a phase, and `LOC_TIMER_PARAM`/`LOC_TIMER_ARG`
 thread the timer through signatures. When undefined, everything collapses to `((void)0)` and
 the parameter macros expand to nothing (`:26-34`) -- which is why `SVD_triplet()`'s
-signature ends with `LOC_TIMER_PARAM(timer)` (`svd_triplet.h:80`) and its call site ends
+signature ends with `LOC_TIMER_PARAM(timer)` (`svd_triplet.h:84`) and its call site ends
 with `LOC_TIMER_ARG(pca_imp_gram)` (`armaSVD.cpp:775`). Timed phases:
 `pca_imp_internal_cpp_total` (`armaSVD.cpp:325`), `pass1_count_missing` (`:463`),
 `pass2_scan` (`:512`), `gram_cache_init` (`:669`), `restandardize` (`:751`), `svd` (`:770`),
 `post_svd` (`:778`), `reconstruct` (`:806`), `objective` (`:822`), `postprocessing`
 (`:907`), and inside `SVD_triplet` the `form_gram`, `eig` and `recover_factors` phases
-(`svd_triplet.h:82`, `:88`, `:113`). `rcpptimer` is deliberately absent from `LinkingTo`, so
+(`svd_triplet.h:86`, `:92`, `:117`). `rcpptimer` is deliberately absent from `LinkingTo`, so
 its include directory is added by hand in `load_all1()` (`R/dev-utils.R:11-18`).
 
 **`-DPCA_IMP_DIAGNOSTICS`** (`src/armaSVD.cpp`) -- defaulted to 0 at `:1-3`, set by
@@ -371,7 +387,7 @@ vectors in `HybridEigContext` (`hybrid_topk_eig.h:97-105`) -- without it they st
 `log_at()` (`hybrid_topk_eig.h:271-286`) is a no-op because its bounds check fails; the
 history buffers `eigval_hist`, `obj_hist`, `subspace_cos_hist` (`:738-743`) and their update
 block (`:838-854`), which adds an `arma::svd` of `V_prev' * V_new` per iteration to track
-subspace rotation; and a wider return list (`:985-1008`). The counters `n_exact`,
+subspace rotation; and a wider return list (`:992-1015`). The counters `n_exact`,
 `n_lobpcg_ok`, `n_lobpcg_bad` are always maintained and returned; only the per-iteration
 logs are gated.
 
