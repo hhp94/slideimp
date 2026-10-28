@@ -19,6 +19,11 @@ that is already `NA` or `NaN`. Positions from `sample_na_loc()` are unaffected.
 * `pca_imp()` scans for infinities once per call rather than once per
 `nb.init` initialization.
 
+* `pca_imp()` no longer recomputes the loadings of columns without missing
+values on every EM iteration when the input has more columns than rows.
+Only the columns being imputed are updated inside the loop; the rest are
+computed once at the end.
+
 * Documented that `NA` and `NaN` are both treated as missing, and that
 infinities are rejected rather than imputed.
 
