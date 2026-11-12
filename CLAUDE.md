@@ -240,6 +240,19 @@ code is right and the map needs fixing in the same change.
   listed there and committed. Not a code dump: code here is exploratory by
   declaration and nothing in the package may depend on it, so anything that
   turns durable gets promoted to `R/` or `src/`.
+- `dev/GSE286313.EPICv1_chr21.qs2` - real data, tracked on purpose, for
+  measuring a claim on something other than `sim_mat()` output. It is a
+  matrix of Illumina EPIC v1 beta values for the chromosome 21 probes of GEO
+  series GSE286313. Read it with `qs2::qs_read()`. It is stored probes x
+  samples, so `t()` it first: every function here takes samples in rows. It
+  keeps its real missingness, which simulated data does not have: probes
+  with no observed value at all, probes over the default `colmax`, and
+  samples with scattered `NA`. It carries probe IDs and no genomic
+  coordinates, so it cannot supply a `location` vector for `slide_imp()`.
+  `dev/probe_epic_chr21_shape.R` prints its dimensions and missingness. It
+  is for dev scripts only: `dev/` is build-ignored and `qs2` is not a
+  declared dependency, so nothing under `R/`, `tests/` or `vignettes/` may
+  read it.
 - [dev/to-do.md](dev/to-do.md) - work that is agreed on but not yet done.
   Read it before starting anything in `R/` or `src/`: an entry there may
   already cover the change, or may constrain how it has to be made. Add an
