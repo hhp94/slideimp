@@ -9,8 +9,14 @@
   list(start = start, end = end, local = local)
 }
 
-.flank_door <- function(obj, location, window_size, subset, min_window_n,
-                        colmax) {
+.flank_door <- function(
+  obj,
+  location,
+  window_size,
+  subset,
+  min_window_n,
+  colmax
+) {
   .chk_matrix(obj)
   checkmate::assert_numeric(
     location,
@@ -42,15 +48,27 @@
   )
 }
 
-.flank_census <- function(obj, location, window_size, tg, min_window_n,
-                          colmax) {
+.flank_census <- function(
+  obj,
+  location,
+  window_size,
+  tg,
+  min_window_n,
+  colmax
+) {
   p <- ncol(obj)
   cen <- .admissible_census(obj, colmax)
   if (any(cen$nonfin)) {
     k <- which(cen$nonfin)
     stop(
-      "`obj` has ", length(k), " column", .s(length(k)), " with a non-finite ",
-      "variance (an Inf cell, or overflow) [", fmt_trunc(k, 8), "]; remove or ",
+      "`obj` has ",
+      length(k),
+      " column",
+      .s(length(k)),
+      " with a non-finite ",
+      "variance (an Inf cell, or overflow) [",
+      fmt_trunc(k, 8),
+      "]; remove or ",
       "repair them before imputing.",
       call. = FALSE
     )
@@ -92,7 +110,8 @@
 
   if (any(status == "window_small") && !any(status == "impute")) {
     stop(
-      "All windows have fewer than `min_window_n` (", min_window_n,
+      "All windows have fewer than `min_window_n` (",
+      min_window_n,
       ") columns. Consider increasing `window_size` or decreasing ",
       "`min_window_n`.",
       call. = FALSE
@@ -129,7 +148,12 @@ mipca_flank_plan <- function(
 ) {
   door <- .flank_door(obj, location, window_size, subset, min_window_n, colmax)
   cen <- .flank_census(
-    obj, location, window_size, door$tg, door$min_window_n, door$colmax
+    obj,
+    location,
+    window_size,
+    door$tg,
+    door$min_window_n,
+    door$colmax
   )
   structure(
     list(
@@ -181,23 +205,33 @@ print.si_flank_plan <- function(x, n = 10L, ...) {
   st <- tg$status
   cat(sprintf(
     "si_flank_plan: %d target%s on a %d x %d matrix, nothing fitted\n",
-    nt, .s(nt), nrow(x$obj), ncol(x$obj)
+    nt,
+    .s(nt),
+    nrow(x$obj),
+    ncol(x$obj)
   ))
   cat(sprintf(
     "  windows: within %s of each target, at least %d admissible columns (colmax %s)\n",
-    format(x$window_size), x$min_window_n, format(x$colmax)
+    format(x$window_size),
+    x$min_window_n,
+    format(x$colmax)
   ))
   cat(sprintf(
     "  status:  %d to impute, %d clean, %d inadmissible, %d in windows under %d columns\n",
-    sum(st == "impute"), sum(st == "clean"), sum(st == "inadmissible"),
-    sum(st == "window_small"), x$min_window_n
+    sum(st == "impute"),
+    sum(st == "clean"),
+    sum(st == "inadmissible"),
+    sum(st == "window_small"),
+    x$min_window_n
   ))
   k <- min(nt, n)
   print(tg[seq_len(k), , drop = FALSE], row.names = FALSE)
   if (nt > k) {
     cat(sprintf("  ... %d more; x$targets is the whole table\n", nt - k))
   }
-  cat("  next:    mipca_flank_window(x, subset) is one target's window, for mipca_tune()\n")
+  cat(
+    "  next:    mipca_flank_window(x, subset) is one target's window, for mipca_tune()\n"
+  )
   cat("           mipca_flank(x, rank, seed = ) imputes\n")
   invisible(x)
 }
@@ -225,19 +259,24 @@ mipca_flank_window <- function(plan, subset) {
   i <- inv[tg]
   if (i == 0L) {
     stop(
-      "column ", colnames(plan$obj)[tg], " is not a target of this plan; a ",
+      "column ",
+      colnames(plan$obj)[tg],
+      " is not a target of this plan; a ",
       "window exists only for the columns the plan was built around.",
       call. = FALSE
     )
   }
   if (is.na(plan$a_start[i])) {
     stop(
-      "target ", plan$targets$name[i], " has no window to hand back: ",
+      "target ",
+      plan$targets$name[i],
+      " has no window to hand back: ",
       if (plan$tg_adm[i] == 0L) {
         "the column is inadmissible."
       } else {
         paste0(
-          "fewer than `min_window_n` (", plan$min_window_n,
+          "fewer than `min_window_n` (",
+          plan$min_window_n,
           ") admissible columns lie within `window_size` of it."
         )
       },
@@ -278,7 +317,11 @@ mipca_flank <- function(
   need <- rank + 2L
   if (need > n) {
     stop(
-      "rank must be at most ", n - 2L, " with ", n, " rows: the sampler ",
+      "rank must be at most ",
+      n - 2L,
+      " with ",
+      n,
+      " rows: the sampler ",
       "solves rank + 1 eigenpairs, and its eigensolver needs that many below ",
       "the smaller dimension.",
       call. = FALSE
@@ -286,8 +329,14 @@ mipca_flank <- function(
   }
   if (min_window_n < need) {
     stop(
-      "the plan's `min_window_n` (", min_window_n, ") must be at least ",
-      "rank + 2 = ", need, " at rank ", rank, ": a narrower window ",
+      "the plan's `min_window_n` (",
+      min_window_n,
+      ") must be at least ",
+      "rank + 2 = ",
+      need,
+      " at rank ",
+      rank,
+      ": a narrower window ",
       "cannot be fitted, and a window that is kept must be one the sampler ",
       "accepts. Rebuild the plan with a larger `min_window_n`.",
       call. = FALSE
@@ -304,8 +353,12 @@ mipca_flank <- function(
   if (.progress) {
     message(sprintf(
       "mipca_flank: %d of %d target%s to impute (%d clean, %d inadmissible, %d in windows under %d columns)",
-      nwin, nt, .s(nt), sum(status == "clean"),
-      sum(status == "inadmissible"), sum(status == "window_small"),
+      nwin,
+      nt,
+      .s(nt),
+      sum(status == "clean"),
+      sum(status == "inadmissible"),
+      sum(status == "window_small"),
       min_window_n
     ))
   }
@@ -362,8 +415,12 @@ mipca_flank <- function(
       ),
       error = function(e) {
         stop(
-          "target ", targets$name[i], " (window of ", length(wcols),
-          " columns): ", conditionMessage(e),
+          "target ",
+          targets$name[i],
+          " (window of ",
+          length(wcols),
+          " columns): ",
+          conditionMessage(e),
           call. = FALSE
         )
       }

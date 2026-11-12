@@ -42,16 +42,18 @@ slide_imp(
 \item{location}{A sorted numeric vector of length \code{ncol(obj)} giving the
 position of each column, such as genomic coordinates.}
 
-\item{window_size}{Numeric. Window width in the same units as \code{location}.}
+\item{window_size}{Numeric. Window width in the same units as \code{location}.
+When \code{flank = TRUE}, the distance covered on each side of a feature.}
 
 \item{overlap_size}{Numeric. Overlap between consecutive windows in the
 same units as \code{location}. Must be less than \code{window_size}. Ignored when
 \code{flank = TRUE}.}
 
 \item{flank}{Logical. If \code{FALSE}, imputation uses sliding windows across the
-full matrix. If \code{TRUE}, one window of width \code{window_size} is created for
-each feature listed in \code{subset}; \code{overlap_size} is ignored. \code{subset} must
-be supplied when \code{flank = TRUE}.}
+full matrix. If \code{TRUE}, one window is created for each feature listed in
+\code{subset}, and the window extends \code{window_size} on each side of that
+feature. \code{overlap_size} is ignored. \code{subset} must be supplied when
+\code{flank = TRUE}.}
 
 \item{min_window_n}{Integer. Minimum number of columns a window must contain
 to be considered for imputation. For non-dry runs, the selected \code{k} or
@@ -172,13 +174,20 @@ Two windowing modes are supported:
 \itemize{
 \item \code{flank = FALSE}: greedily partition \code{location} into windows of width
 \code{window_size} with the requested \code{overlap_size} between consecutive
-windows.
-\item \code{flank = TRUE}: create one window per feature in \code{subset}, centered on
-that feature using the supplied \code{window_size}.
+windows. A window that would add no column to the window before it is not
+created.
+\item \code{flank = TRUE}: create one window per feature in \code{subset}. Each window
+covers the \code{location} values within \code{window_size} of that feature, on
+both sides, so it spans twice \code{window_size}.
 }
 
 Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, or \code{ncp} and related
 arguments to use \code{\link[=pca_imp]{pca_imp()}}.
+
+\code{on_infeasible = "skip"} does not impute an infeasible window, \code{"mean"}
+fills it with column means, and \code{"error"} stops at the first such window.
+With \code{"skip"} and \code{"mean"}, \code{slide_imp()} raises one warning of class
+\code{slideimp_fallback} that lists the affected windows.
 }
 \section{Missing values and non-finite input}{
 

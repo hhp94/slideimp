@@ -263,7 +263,7 @@ chr1_beta <- sim_mat(n = 10, p = 2000)$input
   - `k` (required): *(specifying K-NN imputation)* number of nearest neighbors to use inside each window.
   - `ncp` (required): *(specifying PCA imputation)* number of principal components to retain. Use this instead of `k` when performing sliding-window PCA imputation.
   - `subset`: impute only a subset of features (e.g., clock CpGs).
-  - `flank`: build flanking windows of `window_size` around features provided in `subset`.
+  - `flank`: build one window for each feature in `subset`. Each window extends `window_size` on each side of the feature.
 
 * First, let's perform a dry run to examine the windows that will be imputed by `slide_imp`.
 

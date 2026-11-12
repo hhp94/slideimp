@@ -74,7 +74,8 @@ imputation, use \code{mirai::daemons()} to parallelize across groups.}
 
 \item{min_group_size}{Integer or \code{NULL}. Minimum total number of columns
 per group, counting both features and auxiliary columns. Groups smaller
-than this are padded with randomly sampled columns from \code{obj}.}
+than this are padded with columns sampled at random from the other
+grouped columns of \code{obj}.}
 
 \item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
 proportion greater than \code{colmax} are excluded from the main imputation
@@ -104,7 +105,8 @@ move toward mean imputation.}
 a positive numeric vector of length \code{nrow(obj)}, or \code{"n_miss"}
 (down-weight rows with more missing values).}
 
-\item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.}
+\item{seed}{Integer, numeric, or \code{NULL}. Random seed used when padding
+small groups and, for PCA imputation, passed to \code{\link[=pca_imp]{pca_imp()}}.}
 
 \item{nb.init}{Integer. Number of random initializations. The first
 initialization is always mean imputation.}
@@ -169,6 +171,10 @@ Per-group \code{k} is capped at the number of usable columns in the group minus
 one. Per-group \code{ncp} is capped at the maximum feasible number of PCA
 components for that group's submatrix. A warning is issued when capping
 occurs.
+
+A group with too few columns for any valid \code{k} or \code{ncp} is infeasible, and
+\code{on_infeasible} decides what happens to it. A group whose features have no
+missing values is not imputed.
 }
 \note{
 A character scalar can be passed to \code{group} to name a supported Illumina
@@ -189,6 +195,10 @@ in \code{\link[=tune_imp]{tune_imp()}} or \code{\link[=group_imp]{group_imp()}} 
 oversubscribing CPU cores. This relies on \code{RhpcBLASctl} and works with
 OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 \code{pin_blas = TRUE} may have no effect on macOS.
+
+The pin is set on the daemons and stays after the call returns. Later tasks
+on the same daemons run with one BLAS thread. Call \code{mirai::daemons(0)} and
+start new daemons to remove it.
 }
 
 \section{Missing values and non-finite input}{

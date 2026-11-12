@@ -34,8 +34,8 @@ zero features after demotion are dropped with a message.}
 
 \item{min_group_size}{Integer or \code{NULL}. Minimum total number of columns
 per group, counting both features and auxiliary columns. Groups smaller
-than this are padded with randomly sampled columns from \code{obj_cn}. If
-\code{NULL} or \code{0}, no padding is performed.}
+than this are padded with columns sampled at random from the other
+grouped columns in \code{obj_cn}. If \code{NULL} or \code{0}, no padding is performed.}
 
 \item{allow_unmapped}{Logical. If \code{FALSE}, every column in \code{colnames(obj)}
 must appear in \code{group}. If \code{TRUE}, columns with no group assignment are

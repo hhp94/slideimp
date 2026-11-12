@@ -10,11 +10,17 @@ new_slideimp_results <- function(
   na_check,
   has_remaining_na = if (na_check) anyNA(obj) else NULL
 ) {
+  # start from a bare matrix. The input can itself be a `slideimp_results`,
+  # from an earlier imputation pass: left as it is, the class would be attached
+  # a second time and the attributes this constructor does not set
+  # (`metacaller`, `fallback_action`) would stay and describe that earlier call.
+  attributes(obj) <- list(dim = dim(obj), dimnames = dimnames(obj))
   # the default is lazy, so left alone it would be evaluated at the attr()
   # call below, after the class is attached. anyNA() on an object carrying a
   # class falls back to any(is.na(x)), which allocates an n x p logical and
   # scans the whole matrix even when the first cell is NA; on the bare matrix
-  # it allocates nothing and stops at the first NA. Force it first.
+  # it allocates nothing and stops at the first NA. Force it first, and after
+  # the line above, which is what makes the matrix bare.
   force(has_remaining_na)
   class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- imp_method
@@ -126,8 +132,62 @@ check_pin_blas <- function(pin_blas) {
     ))
   }
   if (!pin_blas && has_pkg && RhpcBLASctl::blas_get_num_procs() > 1L) {
-    message("Tip: set `pin_blas = TRUE` may improve parallel performance.")
+    cli::cli_inform(
+      "Setting {.code pin_blas = TRUE} may improve parallel performance."
+    )
   }
+}
+
+# mirai ----
+#' Are mirai Daemons Set?
+#'
+#' The one place the drivers ask. `mirai::daemons_set()` is the predicate.
+#' `mirai::require_daemons()` is the prompt built on it: it raises an error
+#' when there are none, and it is newer.
+#'
+#' @returns A logical scalar.
+#'
+#' @noRd
+#' @keywords internal
+mirai_daemons_set <- function() {
+  mirai::daemons_set()
+}
+
+#' Collect a mirai Map
+#'
+#' `[.mirai_map` evaluates its arguments among mirai's own collection options,
+#' so `mapped[.progress = .progress]` asks for the progress bar whatever the
+#' caller's flag holds. Ask for it by name, or not at all.
+#'
+#' @param mapped A `mirai_map` object.
+#' @param .progress Logical scalar. Whether to show mirai's progress bar.
+#'
+#' @returns A list with one element per task. A task that failed outside its
+#'   own error handling is a mirai error value: see `mirai_error_text()`.
+#'
+#' @noRd
+#' @keywords internal
+collect_mirai_map <- function(mapped, .progress) {
+  if (.progress) mapped[.progress] else mapped[]
+}
+
+#' One Line of Text for a mirai Error Value
+#'
+#' An R error raised in a task comes back as a `miraiError`, which carries the
+#' message. A task whose daemon stopped comes back as a bare integer error
+#' code with no `conditionMessage()` method. Its print method names the code.
+#'
+#' @param x An object for which `mirai::is_error_value()` is `TRUE`.
+#'
+#' @returns A character scalar.
+#'
+#' @noRd
+#' @keywords internal
+mirai_error_text <- function(x) {
+  if (inherits(x, "miraiError")) {
+    return(conditionMessage(x))
+  }
+  paste(utils::capture.output(print(x)), collapse = " ")
 }
 
 # Param ----
@@ -191,6 +251,30 @@ check_pin_blas <- function(pin_blas) {
     )
   )
 )
+
+#' Parameter names `tune_imp()` accepts for `slide_imp()`
+#'
+#' @description
+#' The window arguments plus everything the registry allows for K-NN and PCA,
+#' so an argument added to the registry is tunable through `slide_imp()` too.
+#'
+#' @returns A character vector.
+#'
+#' @keywords internal
+#' @noRd
+slide_tune_params <- function() {
+  unique(c(
+    "window_size",
+    "overlap_size",
+    "min_window_n",
+    "k",
+    "ncp",
+    "flank",
+    "on_infeasible",
+    .param_registry$knn$allowed,
+    .param_registry$pca$allowed
+  ))
+}
 
 #' Check parameter names against the method registry
 #'

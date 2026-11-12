@@ -46,8 +46,8 @@ and missing values are distributed as evenly as possible across columns.}
 
 \item{n_reps}{Integer. Number of independent repetitions.}
 
-\item{n_cols}{Integer or \code{NULL}. Must be supplied when both \code{num_na} and
-\code{na_loc} are \code{NULL}, unless the automatic default applies.}
+\item{n_cols}{Integer or \code{NULL}. Number of columns to receive injected
+missing values.}
 
 \item{n_rows}{Integer. Target number of missing values to inject per selected
 column.}
@@ -72,8 +72,8 @@ K-NN imputation. For other methods, use \code{mirai::daemons()}.}
 \item{location}{Numeric vector of column locations. Required when
 \code{.f = "slide_imp"}.}
 
-\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 during parallel
-tuning to reduce thread contention.}
+\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 on the \code{mirai}
+daemons to reduce thread contention.}
 }
 \value{
 A data frame of class \code{slideimp_tune} containing:
@@ -95,10 +95,24 @@ imputing them, and comparing the imputed values with the original values.
 Built-in methods can be selected by passing \code{.f = "knn_imp"},
 \code{.f = "pca_imp"}, or \code{.f = "slide_imp"}. A custom function can also be
 supplied. Custom functions must accept \code{obj} as their first argument and
-return a numeric matrix with the same dimensions as \code{obj}.
+return a numeric matrix with the same dimensions as \code{obj}. The return value
+is checked at every iteration. An iteration that returns something else is
+recorded in the \code{error} column.
 
-When \code{na_loc} is supplied, \code{num_na}, \code{n_cols}, \code{n_rows}, and \code{na_col_subset}
-are ignored.
+The columns of \code{parameters} for a custom function must not use the names
+of the columns that \code{tune_imp()} and \code{\link[=compute_metrics]{compute_metrics()}} add: \code{param_set},
+\code{rep_id}, \code{result}, \code{error}, \code{n}, \code{n_miss}, \code{.metric}, \code{.estimator}, and
+\code{.estimate}.
+
+When \code{mirai} daemons are set, a custom function runs on the daemons. There
+it finds the packages that are attached on the daemons. It does not find
+variables from the session that defined it. Pass such values through
+\code{parameters}.
+
+When \code{na_loc} is supplied, \code{num_na}, \code{n_reps}, \code{n_cols}, \code{n_rows}, \code{rowmax},
+\code{colmax}, \code{na_col_subset}, and \code{max_attempts} are ignored. The supplied
+positions are used as given. They are not checked against \code{rowmax} or
+\code{colmax}.
 
 When \code{.f} is a character string, columns in \code{parameters} are validated
 against the selected method:
@@ -145,6 +159,10 @@ in \code{\link[=tune_imp]{tune_imp()}} or \code{\link[=group_imp]{group_imp()}} 
 oversubscribing CPU cores. This relies on \code{RhpcBLASctl} and works with
 OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 \code{pin_blas = TRUE} may have no effect on macOS.
+
+The pin is set on the daemons and stays after the call returns. Later tasks
+on the same daemons run with one BLAS thread. Call \code{mirai::daemons(0)} and
+start new daemons to remove it.
 }
 
 \section{PCA Performance tips}{

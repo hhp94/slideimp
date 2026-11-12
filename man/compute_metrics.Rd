@@ -28,6 +28,14 @@ unnested metric columns: \code{.metric}, \code{.estimator}, and \code{.estimate}
 \description{
 Compute prediction accuracy metrics for results from \code{\link[=tune_imp]{tune_imp()}}.
 }
+\details{
+\code{"mape"} divides by the true value. It is not finite (\code{Inf} or \code{NaN}) for a
+repetition in which a masked value is exactly \code{0}. Use another metric for
+data that contain zeros.
+
+\code{"rsq"} is \code{NA} when the true values or the estimates of a repetition are
+constant.
+}
 \examples{
 set.seed(1234)
 obj <- sim_mat(20, 30)$input

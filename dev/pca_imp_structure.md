@@ -111,7 +111,11 @@ standard attributes; `:696-704` adds `solver_requested`, `solver_chosen`, `solve
 `n_iter`, `criterion_final`, `converged`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`.
 `slide_imp()` pins every later window to `attr(x, "solver_chosen")`, but only from a window
 whose `solver_probed` is `TRUE`. A size-demoted window, or one whose probe never finished,
-leaves the next window on `"auto"` (`R/slide_imp.R:511-537`).
+leaves the next window on `"auto"` (`R/slide_imp.R:615-641`). `pca_imp()` has no `subset`,
+so `slide_imp()` does not call it at all for a window whose requested columns hold no missing
+value (`R/slide_imp.R:531-547`): such a window can neither be probed nor be infeasible.
+`group_imp()` does the same for a group whose feature columns are complete
+(`R/group_imp.R:649`, `:851`).
 
 ## Layer 2: the Rcpp boundary
 
@@ -403,15 +407,15 @@ logs are gated.
   (`par_for.h:40-47`), and `pca_imp()` reaches both kernels with the default `cores = 1`
   (`R/col_vars.R:37`, `R/mean_imp_col.R:34`). `src/Makevars:3` links `RcppThread::LdFlags()`; `src/Makevars.win:3`
   does not.
-- **mirai** is used from R only, one level above `pca_imp()`: `R/group_imp.R:901`
-  (`mirai::mirai_map` over groups) and `R/tune_imp.R:948` (over tuning replicates). Both
+- **mirai** is used from R only, one level above `pca_imp()`: `R/group_imp.R:1017`
+  (`mirai::mirai_map` over groups) and `R/tune_imp.R:1088` (over tuning replicates). Both
   share the input matrix through `bigmemory` shared memory rather than serializing it
-  (`group_imp.R:831-839`, `tune_imp.R:894-895`) and ship the worker body as a `.crate()`
+  (`group_imp.R:951-959`, `tune_imp.R:1013-1014`) and ship the worker body as a `.crate()`
   closure (`R/crate.R:35`). `slide_imp()` runs its windows sequentially
-  (`R/slide_imp.R:450`).
+  (`R/slide_imp.R:523`).
 - **BLAS threading** is pinned inside the mirai workers, not in the kernel:
   `RhpcBLASctl::blas_set_num_threads(1)` and `RhpcBLASctl::omp_set_num_threads(1)` at
-  `R/group_imp.R:851-852` and `R/tune_imp.R:906-907`, gated by `pin_blas`.
-  `check_pin_blas()` (`R/utils.R:120-131`) errors when `pin_blas = TRUE` without
+  `R/group_imp.R:971-972` and `R/tune_imp.R:1025-1026`, gated by `pin_blas`.
+  `check_pin_blas()` (`R/utils.R:126-139`) errors when `pin_blas = TRUE` without
   `RhpcBLASctl` installed, and otherwise emits a tip when more than one BLAS thread is
   detected.

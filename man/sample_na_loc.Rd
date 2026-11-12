@@ -20,7 +20,7 @@ sample_na_loc(
 \item{obj}{A numeric matrix.}
 
 \item{n_cols}{Integer or \code{NULL}. Number of columns to receive injected
-missing values. Must be supplied when \code{num_na = NULL}.}
+missing values.}
 
 \item{n_rows}{Integer. Target number of missing values to inject per selected
 column.}
@@ -60,6 +60,13 @@ ensures that:
 \item At least two distinct observed values are preserved in every affected
 column.
 }
+
+A column that cannot take \code{n_rows} missing values under these limits is
+never selected. Such a column does not stop the sampling.
+
+When both \code{n_cols} and \code{num_na} are \code{NULL}, \code{num_na} defaults to 5\% of the
+cells of \code{obj}, with a maximum of 500. The default never asks for more
+columns than the number that can take \code{n_rows} missing values.
 }
 \examples{
 set.seed(123)

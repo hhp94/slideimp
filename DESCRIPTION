@@ -30,9 +30,9 @@ Description: Fast k-nearest neighbors (K-NN) and principal component
     imputePCA() function from the 'missMDA' package described in: Josse,
     J. and Husson, F. (2016) <doi:10.18637/jss.v070.i01> "missMDA: A
     Package for Handling Missing Values in Multivariate Data Analysis".
-    The Bayesian multiple imputation sampler implements the method of
-    the 'missMDA' function MIPCA() described in: Audigier, V., Husson, F.
-    and Josse, J. (2016) <doi:10.1080/00949655.2015.1104683> "Multiple
+    The Bayesian multiple imputation sampler implements the method of the
+    'missMDA' function MIPCA() described in: Audigier, V., Husson, F.  and
+    Josse, J. (2016) <doi:10.1080/00949655.2015.1104683> "Multiple
     Imputation for Continuous Variables Using a Bayesian Principal
     Component Analysis".
 License: GPL (>= 2)
@@ -46,8 +46,9 @@ Imports:
     cli,
     collapse,
     dqrng (>= 0.4.1),
-    mirai,
+    mirai (>= 2.3.0),
     Rcpp,
+    rlang,
     stats,
     utils
 Suggests:

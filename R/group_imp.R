@@ -26,7 +26,10 @@ slideimp_resolve_group <- function(x) {
 #' @method slideimp_resolve_group data.frame
 #' @export
 slideimp_resolve_group.data.frame <- function(x) {
-  unique(x)
+  # collapse::funique() does not take list columns, which the list-column form
+  # of `group` is made of. The long format has none, and on a full array
+  # manifest unique() is most of the time prep_groups() takes.
+  if (any(vapply(x, is.list, logical(1)))) unique(x) else collapse::funique(x)
 }
 
 #' @rdname slideimp_resolve_group
@@ -113,19 +116,17 @@ prune_to_A <- function(lst, A, iter) {
 #'
 #' Maps a group's feature and auxiliary column positions (relative to the
 #' original matrix) into the structures needed by the imputation loop:
-#' local feature indices within the submatrix, the combined column index
-#' for submatrix extraction, and the feature names.
+#' local feature indices within the submatrix, and the combined column index
+#' for submatrix extraction.
 #'
 #' @param g Integer scalar. The group index (position in `feat_splits` /
-#'   `aux_splits` / `prep_groups`).
+#'   `aux_splits`).
 #' @param feat_splits A list of integer vectors, one per group, giving each
 #'   group's feature column positions in the original matrix.
 #' @param aux_splits A list of integer vectors (or `NULL`s), one per group,
 #'   giving each group's auxiliary column positions in the original matrix.
-#' @param prep_groups A list of character vectors, one per group, containing
-#'   the feature names (i.e., `group$feature` from the prepped table).
 #'
-#' @returns A named list with three elements:
+#' @returns A named list with two elements:
 #'
 #' * `features_idx_local`: Integer vector of feature positions within the
 #'   extracted submatrix (`1:n_features`), used to slice imputed columns
@@ -133,17 +134,15 @@ prune_to_A <- function(lst, A, iter) {
 #' * `col_idx`: Integer vector of all column positions (features then aux)
 #'   in the original matrix, used to extract the submatrix via
 #'   `obj[, col_idx]`.
-#' * `features_names`: Character vector of feature names for this group.
 #'
 #' @noRd
 #' @keywords internal
-group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
+group_indices <- function(g, feat_splits, aux_splits) {
   f_idx <- feat_splits[[g]]
   col_idx <- c(f_idx, aux_splits[[g]])
   list(
     features_idx_local = seq_along(f_idx),
-    col_idx = col_idx,
-    features_names = prep_groups[[g]]
+    col_idx = col_idx
   )
 }
 
@@ -160,8 +159,8 @@ group_indices <- function(g, feat_splits, aux_splits, prep_groups) {
 #' @inheritParams group_imp
 #' @param min_group_size Integer or `NULL`. Minimum total number of columns
 #'   per group, counting both features and auxiliary columns. Groups smaller
-#'   than this are padded with randomly sampled columns from `obj_cn`. If
-#'   `NULL` or `0`, no padding is performed.
+#'   than this are padded with columns sampled at random from the other
+#'   grouped columns in `obj_cn`. If `NULL` or `0`, no padding is performed.
 #' @param seed Integer, numeric, or `NULL`. Random seed used when padding small
 #'   groups.
 #'
@@ -214,6 +213,7 @@ prep_groups <- function(
     .var.name = "group"
   )
   checkmate::assert_int(min_group_size, lower = 0, .var.name = "min_group_size")
+  checkmate::assert_flag(allow_unmapped, .var.name = "allow_unmapped")
   checkmate::assert_number(seed, null.ok = TRUE, .var.name = "seed")
   checkmate::assert_character(
     subset,
@@ -334,11 +334,16 @@ prep_groups <- function(
   # Step 3: Prune empty groups ----
   empty <- lengths(group$feature) == 0L
   if (any(empty)) {
-    dropped <- which(empty)
-
+    # by label where `group` has labels, by row position where it has none
+    has_label <- "group" %in% names(group)
+    dropped <- if (has_label) as.character(group$group[empty]) else which(empty)
     cli::cli_inform(c(
       "!" = "{length(dropped)} group{?s} dropped: no features remaining after matching {.arg obj_cn}.",
-      "i" = "Dropped group indices: {paste(dropped, collapse = ', ')}"
+      "i" = if (has_label) {
+        "{cli::qty(length(dropped))}Dropped group{?s}: {fmt_trunc(dropped)}"
+      } else {
+        "Dropped group indices: {fmt_trunc(dropped)}"
+      }
     ))
 
     group <- group[!empty, , drop = FALSE]
@@ -369,13 +374,13 @@ prep_groups <- function(
         "i" = "Add them to a group or remove them from {.arg subset}."
       ))
     }
-    # Features in subset stay; the rest are demoted to aux
-    for (i in seq_len(nrow(group))) {
-      feat_g <- intersect(group$feature[[i]], subset)
-      demoted <- setdiff(group$feature[[i]], feat_g)
-      group$aux[[i]] <- c(group$aux[[i]], demoted)
-      group$feature[[i]] <- feat_g
-    }
+    # Features in subset stay; the rest are demoted to aux. One hashed match
+    # over all groups: a per-group intersect() rehashes `subset` every time.
+    iter <- seq_len(nrow(group))
+    feat_kept <- prune_to_A(group$feature, A = subset, iter = iter)
+    demoted <- remove_feat_from_aux(group$feature, feat_kept, iter = iter)
+    group$aux <- Map(c, group$aux, demoted)
+    group$feature <- feat_kept
     keep <- lengths(group$feature) > 0L
     if (!any(keep)) {
       cli::cli_abort(
@@ -383,11 +388,19 @@ prep_groups <- function(
       )
     }
     if (any(!keep)) {
-      dropped <- which(!keep)
-
+      has_label <- "group" %in% names(group)
+      dropped <- if (has_label) {
+        as.character(group$group[!keep])
+      } else {
+        which(!keep)
+      }
       cli::cli_inform(c(
         "!" = "{length(dropped)} group{?s} dropped: no features remaining after applying {.arg subset}.",
-        "i" = "Dropped group indices: {paste(dropped, collapse = ', ')}"
+        "i" = if (has_label) {
+          "{cli::qty(length(dropped))}Dropped group{?s}: {fmt_trunc(dropped)}"
+        } else {
+          "Dropped group indices: {fmt_trunc(dropped)}"
+        }
       ))
 
       group <- group[keep, , drop = FALSE]
@@ -403,12 +416,15 @@ prep_groups <- function(
     group_size <- lengths(group$feature) + lengths(group$aux)
     need <- pmax(min_group_size - group_size, 0L)
     if (any(need > 0)) {
+      # only columns `group` maps. A column it leaves out is left untouched,
+      # and that includes not lending it to another group as an aux column.
+      mapped <- A[A %in% B]
       group$aux <- Map(
         function(feat, aux, n) {
           if (n == 0L) {
             return(aux)
           }
-          pool <- setdiff(A, c(feat, aux))
+          pool <- setdiff(mapped, c(feat, aux))
           if (length(pool) < n) {
             cli::cli_abort(c(
               "{.arg min_group_size} is too large.",
@@ -472,8 +488,10 @@ prep_groups <- function(
 #' @param .progress Logical. If `TRUE`, show progress.
 #' @param min_group_size Integer or `NULL`. Minimum total number of columns
 #'   per group, counting both features and auxiliary columns. Groups smaller
-#'   than this are padded with randomly sampled columns from `obj`.
-#' @param seed Integer, numeric, or `NULL`. Random seed for reproducibility.
+#'   than this are padded with columns sampled at random from the other
+#'   grouped columns of `obj`.
+#' @param seed Integer, numeric, or `NULL`. Random seed used when padding
+#'   small groups and, for PCA imputation, passed to [pca_imp()].
 #' @param pin_blas Logical. If `TRUE`, pin BLAS threads to 1 to reduce
 #'   contention when using parallel PCA on systems linked with multithreaded
 #'   BLAS.
@@ -503,6 +521,10 @@ prep_groups <- function(
 #' components for that group's submatrix. A warning is issued when capping
 #' occurs.
 #'
+#' A group with too few columns for any valid `k` or `ncp` is infeasible, and
+#' `on_infeasible` decides what happens to it. A group whose features have no
+#' missing values is not imputed.
+#'
 #' @section Parallelization:
 #' * K-NN: use the `cores` argument. If `mirai` daemons are active, `cores`
 #'   is automatically set to `1` to avoid nested parallelism.
@@ -513,6 +535,10 @@ prep_groups <- function(
 #' oversubscribing CPU cores. This relies on `RhpcBLASctl` and works with
 #' OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
 #' `pin_blas = TRUE` may have no effect on macOS.
+#'
+#' The pin is set on the daemons and stays after the call returns. Later tasks
+#' on the same daemons run with one BLAS thread. Call `mirai::daemons(0)` and
+#' start new daemons to remove it.
 #'
 #' @inheritSection slideimp-package Missing values and non-finite input
 #'
@@ -603,13 +629,24 @@ group_imp <- function(
     .var.name = "obj"
   )
   check_finite(obj)
+  checkmate::assert_flag(allow_unmapped, .var.name = "allow_unmapped")
+  checkmate::assert_int(k, lower = 1, null.ok = TRUE, .var.name = "k")
+  checkmate::assert_int(ncp, lower = 1, null.ok = TRUE, .var.name = "ncp")
+  checkmate::assert_int(cores, lower = 1, .var.name = "cores")
+  checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
+  checkmate::assert_flag(na_check, .var.name = "na_check")
   on_infeasible <- match.arg(on_infeasible)
   if (!is.null(solver)) {
     solver <- match.arg(solver, c("auto", "exact", "lobpcg"))
   }
   cn <- colnames(obj)
   rn <- rownames(obj)
+  # per-column missing counts, used further down to leave out the groups with
+  # nothing to impute. Taken here, on the caller's matrix: after the next line
+  # `obj` is a wrapper around that matrix's data, and reading it through
+  # mat_miss() makes R copy the data there and again at the first write.
+  cmiss <- unname(mat_miss(obj, col = TRUE, prop = FALSE))
   attributes(obj) <- list(dim = dim(obj))
 
   # Step 1: Build canonical groups via prep_groups() ----
@@ -626,6 +663,8 @@ group_imp <- function(
   )
   feat_lengths <- lengths(group$feature)
   aux_lengths <- lengths(group$aux)
+  # messages name a group by its label, the way the result and print() do
+  group_lab <- as.character(group$group)
 
   # Step 2: Resolve parameters ----
   if (!is.null(k) && !is.null(ncp)) {
@@ -633,6 +672,14 @@ group_imp <- function(
       "Cannot specify both {.arg k} and {.arg ncp} as global parameters."
     )
   }
+
+  # the names each group set for itself, taken before a global fills any gap,
+  # so that an unknown name is reported against `group$parameters` only when
+  # it came from there
+  own_param_names <- unique(unlist(
+    lapply(group$parameters, names),
+    use.names = FALSE
+  ))
 
   # global fills gaps (group-wise wins)
   global_params <- list(
@@ -655,27 +702,35 @@ group_imp <- function(
     clamp = clamp
   )
   global_params <- global_params[!vapply(global_params, is.null, logical(1))]
+  fill_params <- function(parameters, fill) {
+    lapply(parameters, function(p) {
+      for (nm in names(fill)) {
+        if (is.null(p[[nm]])) p[[nm]] <- fill[[nm]]
+      }
+      p
+    })
+  }
 
-  group$parameters <- lapply(group$parameters, function(p) {
-    for (nm in names(global_params)) {
-      if (is.null(p[[nm]])) p[[nm]] <- global_params[[nm]]
-    }
-    p
-  })
+  # `k` and `ncp` first: they decide the backend, and the backend decides
+  # which of the other globals apply
+  group$parameters <- fill_params(
+    group$parameters,
+    global_params[intersect(names(global_params), c("k", "ncp"))]
+  )
 
   # validate: each group has exactly one of k or ncp
   has_k <- vapply(group$parameters, \(p) "k" %in% names(p), logical(1))
   has_ncp <- vapply(group$parameters, \(p) "ncp" %in% names(p), logical(1))
 
   if (any(has_k & has_ncp)) {
-    bad <- which(has_k & has_ncp)
+    bad <- group_lab[has_k & has_ncp]
     cli::cli_abort(c(
       "{cli::qty(length(bad))}Group{?s} {fmt_trunc(bad)} {cli::qty(length(bad))}{?has/have} both {.arg k} and {.arg ncp} in parameters.",
       "i" = "Specify only one imputation method per group."
     ))
   }
   if (any(!has_k & !has_ncp)) {
-    bad <- which(!has_k & !has_ncp)
+    bad <- group_lab[!has_k & !has_ncp]
     cli::cli_abort(c(
       "{cli::qty(length(bad))}Group{?s} {fmt_trunc(bad)} {cli::qty(length(bad))}{?has/have} neither {.arg k} nor {.arg ncp}.",
       "i" = "Specify global {.arg k}/{.arg ncp} or set them in {.code group$parameters}."
@@ -692,6 +747,22 @@ group_imp <- function(
   is_knn_mode <- imp_method == "knn"
   reg <- .param_registry[[imp_method]]
 
+  # a global argument that belongs to the other backend. `seed` is exempt: it
+  # also seeds the padding in prep_groups(), which both backends go through,
+  # and K-NN has no other use for it.
+  wrong_backend <- setdiff(names(global_params), c(reg$allowed, "seed"))
+  if (length(wrong_backend) > 0L) {
+    other_param <- if (is_knn_mode) "ncp" else "k"
+    cli::cli_abort(c(
+      "{cli::qty(length(wrong_backend))}Argument{?s} {.arg {wrong_backend}} {cli::qty(length(wrong_backend))}{?does/do} not apply to {.strong {toupper(imp_method)}} imputation.",
+      "i" = "{cli::qty(length(wrong_backend))}Remove {?it/them}, or use {.arg {other_param}} to select the other method."
+    ))
+  }
+  group$parameters <- fill_params(
+    group$parameters,
+    global_params[intersect(names(global_params), reg$allowed)]
+  )
+
   # validate method values
   valid_methods <- reg$methods
   bad_method <- vapply(
@@ -703,7 +774,7 @@ group_imp <- function(
   )
 
   if (any(bad_method)) {
-    bad <- which(bad_method)
+    bad <- group_lab[bad_method]
     cli::cli_abort(c(
       "{cli::qty(length(bad))}Invalid {.arg method} for {toupper(imp_method)} in group{?s} {fmt_trunc(bad)}.",
       "i" = "Must be one of: {.val {valid_methods}}."
@@ -711,13 +782,8 @@ group_imp <- function(
   }
 
   # validate parameter names
-  all_param_names <- unique(unlist(
-    lapply(group$parameters, names),
-    use.names = FALSE
-  ))
-
   check_unknown_params(
-    param_names = all_param_names,
+    param_names = own_param_names,
     mode = imp_method,
     arg = "group$parameters"
   )
@@ -725,32 +791,37 @@ group_imp <- function(
   # cap per-group k/ncp
   group_size <- feat_lengths + aux_lengths
   required_param <- reg$required
+  # a group that admits no `k` or `ncp` at all: one column, or for PCA an
+  # `obj` of fewer than three rows. Such a group is infeasible, not an input
+  # error, and `on_infeasible` decides what happens to it further down.
+  too_small <- logical(nrow(group))
 
   for (i in seq_len(nrow(group))) {
     p <- group$parameters[[i]]
+    # the value is compared next, and a comparison coerces: a character "3"
+    # is greater than an integer 11
+    checkmate::assert_int(
+      p[[required_param]],
+      lower = 1,
+      .var.name = sprintf("group$parameters[[%d]]$%s", i, required_param)
+    )
     cap <- if (is_knn_mode) {
       group_size[i] - 1L
     } else {
       min(group_size[i] - 1L, nrow(obj) - 2L)
     }
+    if (cap < 1L) {
+      too_small[i] <- TRUE
+      next
+    }
     if (p[[required_param]] > cap) {
       cli::cli_warn(
-        "Group {i}: {.arg {required_param}} capped from {p[[required_param]]} to {cap} (group size = {group_size[i]})."
+        "Group {group_lab[[i]]}: {.arg {required_param}} capped from {p[[required_param]]} to {cap} (group size = {group_size[i]})."
       )
       p[[required_param]] <- cap
     }
-    if (p[[required_param]] < 1L) {
-      cli::cli_abort(c(
-        "Group {i}: {.arg {required_param}} must be {.code >= 1} after capping.",
-        "x" = "Group size = {group_size[i]}."
-      ))
-    }
     group$parameters[[i]] <- p
   }
-
-  cli::cli_inform(
-    "Imputing {nrow(group)} group{?s} using {.strong {toupper(imp_method)}}."
-  )
 
   # Step 3: Imputation loop ----
   # column-index lookups
@@ -771,12 +842,40 @@ group_imp <- function(
     iter,
     group_indices,
     feat_splits = feat_splits,
-    aux_splits = aux_splits,
-    prep_groups = group$feature
+    aux_splits = aux_splits
+  )
+
+  # a group whose feature columns hold no missing value needs no imputation.
+  # pca_imp() has no `subset`: handed such a group it fits every column, aux
+  # included, to change nothing, and aborts when an aux column is infeasible.
+  needs_imp <- vapply(feat_splits, function(f) any(cmiss[f] > 0L), logical(1))
+
+  # a group too small for any `k` or `ncp` goes through `on_infeasible`, like
+  # a group the backend refuses. The backends cannot report it themselves:
+  # they reject a one-column matrix as invalid input, not as infeasible.
+  small_now <- too_small & needs_imp
+  if (on_infeasible == "error" && any(small_now)) {
+    i <- which(small_now)[[1L]]
+    cli::cli_abort(
+      c(
+        "Group {group_lab[[i]]} is infeasible for imputation.",
+        "x" = if (is_knn_mode) {
+          "The group has {group_size[i]} column{?s}. K-NN imputation needs at least 2 columns."
+        } else {
+          "The group has {group_size[i]} column{?s} and {.arg obj} has {nrow(obj)} row{?s}. PCA imputation needs at least 2 columns and 3 rows."
+        },
+        "i" = "Pad small groups with {.arg min_group_size}, or set {.arg on_infeasible} to {.val skip} or {.val mean}."
+      ),
+      class = "slideimp_infeasible"
+    )
+  }
+
+  cli::cli_inform(
+    "Imputing {nrow(group)} group{?s} using {.strong {toupper(imp_method)}}."
   )
 
   # parallelism resolution
-  parallelize <- tryCatch(mirai::require_daemons(), error = function(e) FALSE)
+  parallelize <- mirai_daemons_set()
 
   if (is_knn_mode) {
     if (cores > 1 && parallelize) {
@@ -809,7 +908,6 @@ group_imp <- function(
   })
 
   imp_fn <- if (is_knn_mode) knn_imp else pca_imp
-  group_ids <- group$group
 
   if (parallelize) {
     cli::cli_inform("Running mode: {.strong mirai}")
@@ -820,11 +918,33 @@ group_imp <- function(
   }
 
   # imputation
-  if (parallelize) {
-    feat_cumsum <- cumsum(c(0L, feat_lengths))
-    out_ranges <- lapply(iter, function(i) {
-      (feat_cumsum[i] + 1L):feat_cumsum[i + 1L]
+  # groups too small to impute are settled here, in either running mode.
+  # `on_infeasible` is "skip" or "mean" at this point: "error" aborted above.
+  fallback_flags <- small_now
+  if (on_infeasible == "mean") {
+    for (i in which(small_now)) {
+      f <- feat_splits[[i]]
+      obj[, f] <- suppressMessages(mean_imp_col(obj[, f, drop = FALSE]))
+    }
+  }
+  # the groups that go to the backend
+  run <- which(needs_imp & !too_small)
+
+  if (parallelize && length(run) > 0L) {
+    # one task per group, each holding only its own slice. mirai sends the
+    # function with every task, so anything in the crate travels once per
+    # group: with all groups' indices in it the payload grows as groups^2.
+    feat_cumsum <- cumsum(c(0L, feat_lengths[run]))
+    tasks <- lapply(seq_along(run), function(j) {
+      i <- run[[j]]
+      list(
+        col_idx = indices[[i]]$col_idx,
+        n_feat = feat_lengths[[i]],
+        params = params[[i]],
+        out_range = (feat_cumsum[j] + 1L):feat_cumsum[j + 1L]
+      )
     })
+    run_feats_pos <- unlist(feat_splits[run], use.names = FALSE)
 
     check_pin_blas(pin_blas)
 
@@ -832,7 +952,7 @@ group_imp <- function(
     big_obj_desc <- bigmemory::describe(big_obj)
     big_out <- bigmemory::big.matrix(
       nrow = nrow(obj),
-      ncol = length(all_feats_pos),
+      ncol = length(run_feats_pos),
       type = "double",
       shared = TRUE
     )
@@ -846,7 +966,7 @@ group_imp <- function(
     )
 
     crated_fn <- .crate(
-      function(i) {
+      function(task) {
         if (pin_blas) {
           RhpcBLASctl::blas_set_num_threads(1)
           RhpcBLASctl::omp_set_num_threads(1)
@@ -854,52 +974,47 @@ group_imp <- function(
 
         src <- bigmemory::attach.big.matrix(big_obj_desc)
         dst <- bigmemory::attach.big.matrix(big_out_desc)
-        sub_mat <- src[, indices[[i]]$col_idx, drop = FALSE]
+        sub_mat <- src[, task$col_idx, drop = FALSE]
+        feat_local <- seq_len(task$n_feat)
 
         imputed <- tryCatch(
           suppressMessages(do.call(
             imp_fn,
-            c(list(obj = sub_mat), params[[i]])
+            c(list(obj = sub_mat), task$params)
           )),
           slideimp_infeasible = function(e) {
             switch(
               on_infeasible,
-              error = cli::cli_abort(
-                c(
-                  "Group {group_ids[[i]]} is infeasible for imputation.",
-                  "x" = conditionMessage(e),
-                  "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
-                ),
-                parent = e
+              # handed back as a value. An error raised here reaches the host
+              # as text, without the class a caller matches on, so the host
+              # raises it.
+              error = structure(
+                list(message = conditionMessage(e)),
+                class = "slideimp_infeasible_group"
               ),
               skip = structure(sub_mat, fallback = TRUE),
               mean = structure(
-                mean_imp_col(sub_mat, subset = indices[[i]]$features_idx_local),
+                mean_imp_col(sub_mat, subset = feat_local),
                 fallback = TRUE
               )
             )
           }
         )
+        if (inherits(imputed, "slideimp_infeasible_group")) {
+          return(imputed)
+        }
 
-        dst[, out_ranges[[i]]] <- imputed[,
-          indices[[i]]$features_idx_local,
-          drop = FALSE
-        ]
+        dst[, task$out_range] <- imputed[, feat_local, drop = FALSE]
         return(isTRUE(attr(imputed, "fallback")))
       },
       big_obj_desc = big_obj_desc,
       big_out_desc = big_out_desc,
       imp_fn = imp_fn,
-      indices = indices,
-      params = params,
       pin_blas = pin_blas,
-      out_ranges = out_ranges,
       on_infeasible = on_infeasible,
-      group_ids = group_ids,
       mean_imp_col = mean_imp_col
     )
-    m <- mirai::mirai_map(iter, crated_fn)
-    res <- m[.progress = .progress]
+    res <- collect_mirai_map(mirai::mirai_map(tasks, crated_fn), .progress)
 
     # A daemon that fails returns an `errorValue` in place of the flag, and
     # never writes its slice of `big_out`. Abort before the write-back: the
@@ -908,22 +1023,38 @@ group_imp <- function(
     # back a matrix whose columns for that group are all NA.
     failed <- which(vapply(res, mirai::is_error_value, logical(1)))
     if (length(failed)) {
-      first_msg <- conditionMessage(res[[failed[[1L]]]])
+      first_msg <- mirai_error_text(res[[failed[[1L]]]])
       cli::cli_abort(c(
-        "{cli::qty(length(failed))}Imputation failed in group{?s} {fmt_trunc(group_ids[failed])}.",
-        "x" = "Group {group_ids[[failed[[1L]]]]}: {first_msg}",
+        "{cli::qty(length(failed))}Imputation failed in group{?s} {fmt_trunc(group_lab[run[failed]])}.",
+        "x" = "Group {group_lab[[run[[failed[[1L]]]]]]}: {first_msg}",
         "i" = "The error was raised inside a {.pkg mirai} daemon."
       ))
     }
-
-    fallback_flags <- unlist(res)
-    obj[, all_feats_pos] <- big_out[,]
-  } else {
-    if (.progress) {
-      pb <- cli::cli_progress_bar(name = "Imputing", total = length(iter))
+    infeasible <- which(vapply(
+      res,
+      inherits,
+      logical(1),
+      what = "slideimp_infeasible_group"
+    ))
+    if (length(infeasible)) {
+      first_msg <- res[[infeasible[[1L]]]]$message
+      cli::cli_abort(
+        c(
+          "Group {group_lab[[run[[infeasible[[1L]]]]]]} is infeasible for imputation.",
+          "x" = "{first_msg}",
+          "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
+        ),
+        class = "slideimp_infeasible"
+      )
     }
-    fallback_flags <- logical(length(iter))
-    for (i in iter) {
+
+    fallback_flags[run] <- unlist(res)
+    obj[, run_feats_pos] <- big_out[,]
+  } else {
+    if (.progress && length(run) > 0L) {
+      pb <- cli::cli_progress_bar(name = "Imputing", total = length(run))
+    }
+    for (i in run) {
       sub_mat <- obj[, indices[[i]]$col_idx, drop = FALSE]
 
       imputed <- tryCatch(
@@ -933,11 +1064,12 @@ group_imp <- function(
             on_infeasible,
             error = cli::cli_abort(
               c(
-                "Group {group_ids[[i]]} is infeasible for imputation.",
+                "Group {group_lab[[i]]} is infeasible for imputation.",
                 "x" = conditionMessage(e),
                 "i" = "Set {.code on_infeasible = 'skip'} or {.code on_infeasible = 'mean'} to continue."
               ),
-              parent = e
+              parent = e,
+              class = "slideimp_infeasible"
             ),
             skip = structure(sub_mat, fallback = TRUE),
             mean = structure(
@@ -955,7 +1087,7 @@ group_imp <- function(
       fallback_flags[i] <- isTRUE(attr(imputed, "fallback"))
       if (.progress) cli::cli_progress_update(id = pb)
     }
-    if (.progress) cli::cli_progress_done(id = pb)
+    if (.progress && length(run) > 0L) cli::cli_progress_done(id = pb)
   }
 
   fallback_groups <- group$group[fallback_flags]

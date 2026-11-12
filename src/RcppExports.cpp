@@ -287,8 +287,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // sample_each_rep_cpp
-arma::umat sample_each_rep_cpp(const arma::mat& obj, const arma::uvec& pool_idx_in, const arma::uvec& na_per_col, const arma::uvec& row_room, const arma::uvec& col_room, arma::uword max_attempts);
-RcppExport SEXP _slideimp_sample_each_rep_cpp(SEXP objSEXP, SEXP pool_idx_inSEXP, SEXP na_per_colSEXP, SEXP row_roomSEXP, SEXP col_roomSEXP, SEXP max_attemptsSEXP) {
+arma::umat sample_each_rep_cpp(const arma::mat& obj, const arma::uvec& pool_idx_in, const arma::uvec& na_per_col, const arma::uvec& row_room, const arma::uvec& pool_cap, arma::uword max_attempts);
+RcppExport SEXP _slideimp_sample_each_rep_cpp(SEXP objSEXP, SEXP pool_idx_inSEXP, SEXP na_per_colSEXP, SEXP row_roomSEXP, SEXP pool_capSEXP, SEXP max_attemptsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -296,9 +296,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::uvec& >::type pool_idx_in(pool_idx_inSEXP);
     Rcpp::traits::input_parameter< const arma::uvec& >::type na_per_col(na_per_colSEXP);
     Rcpp::traits::input_parameter< const arma::uvec& >::type row_room(row_roomSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type col_room(col_roomSEXP);
+    Rcpp::traits::input_parameter< const arma::uvec& >::type pool_cap(pool_capSEXP);
     Rcpp::traits::input_parameter< arma::uword >::type max_attempts(max_attemptsSEXP);
-    rcpp_result_gen = Rcpp::wrap(sample_each_rep_cpp(obj, pool_idx_in, na_per_col, row_room, col_room, max_attempts));
+    rcpp_result_gen = Rcpp::wrap(sample_each_rep_cpp(obj, pool_idx_in, na_per_col, row_room, pool_cap, max_attempts));
     return rcpp_result_gen;
 END_RCPP
 }

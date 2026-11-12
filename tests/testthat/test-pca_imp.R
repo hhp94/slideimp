@@ -704,8 +704,14 @@ test_that("a tampered lobpcg_control object is re-validated, not taken as-is", {
 
   run <- function(ctrl) {
     pca_imp(
-      x, ncp = 2, solver = "lobpcg", lobpcg_control = ctrl,
-      miniter = 2, maxiter = 5, seed = 1, na_check = FALSE
+      x,
+      ncp = 2,
+      solver = "lobpcg",
+      lobpcg_control = ctrl,
+      miniter = 2,
+      maxiter = 5,
+      seed = 1,
+      na_check = FALSE
     )
   }
 
@@ -761,7 +767,13 @@ test_that("pca_imp validates seed and the miniter/maxiter ordering from R", {
   # maxiter is deliberately small everywhere below, so the non-convergence
   # warning is expected and not what any of these assertions are about.
   run <- function(...) {
-    suppressWarnings(pca_imp(x, ncp = 2, solver = "exact", na_check = FALSE, ...))
+    suppressWarnings(pca_imp(
+      x,
+      ncp = 2,
+      solver = "exact",
+      na_check = FALSE,
+      ...
+    ))
   }
 
   # Regression: this was `stop("`seed` too large")` - base stop, no condition
@@ -776,7 +788,10 @@ test_that("pca_imp validates seed and the miniter/maxiter ordering from R", {
   # multiplier past what that value leaves room for.
   expect_no_error(run(seed = cap, nb.init = 5, miniter = 2, maxiter = 5))
   expect_no_error(run(
-    seed = .Machine$integer.max, nb.init = 1L, miniter = 2, maxiter = 5
+    seed = .Machine$integer.max,
+    nb.init = 1L,
+    miniter = 2,
+    maxiter = 5
   ))
   expect_error(
     run(seed = .Machine$integer.max, nb.init = 3L),
@@ -800,7 +815,12 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
 
   run <- function(m, post_imp) {
     suppressWarnings(pca_imp(
-      m, ncp = 2, solver = "exact", miniter = 2, maxiter = 5, seed = 1,
+      m,
+      ncp = 2,
+      solver = "exact",
+      miniter = 2,
+      maxiter = 5,
+      seed = 1,
       post_imp = post_imp
     ))
   }
@@ -1069,10 +1089,11 @@ test_that("wide recover_factors block agrees with the stored reference", {
   # every column (no fixed block, cache inactive), and a tall input, whose
   # path is unchanged.
   #
-  # The reference was recorded by dev/gen_pca_recover_block_ref.R from the
-  # code before the change, so it is bytes from another build: the
-  # comparison is on a tolerance, and bitwise agreement is reported, not
-  # asserted.
+  # The reference was recorded from the code before the change, at 96dec4f,
+  # by a generator script committed alongside it in 7d8508c
+  # (`git show 7d8508c:dev/gen_pca_recover_block_ref.R`). It is bytes from
+  # another build: the comparison is on a tolerance, and bitwise agreement is
+  # reported, not asserted.
   ref <- readRDS(test_path("fixtures", "pca_recover_block_ref.rds"))
   claims <- list(
     wide_fixed = list(wide = TRUE, fixed = TRUE),
@@ -1133,8 +1154,15 @@ test_that("wide recover_factors block agrees with the stored reference", {
         "\n%s: imputed max abs %.3g, max rel %.3g over %d of %d cells; ",
         "mse abs %.3g, rel %.3g; bitwise imputed %s, mse %s\n"
       ),
-      nm, max_abs, max_rel, sum(keep), length(b), mse_abs, mse_rel,
-      identical(a, b), identical(got$mse, case$mse)
+      nm,
+      max_abs,
+      max_rel,
+      sum(keep),
+      length(b),
+      mse_abs,
+      mse_rel,
+      identical(a, b),
+      identical(got$mse, case$mse)
     ))
 
     expect_lt(max_abs, 1e-8, label = nm)

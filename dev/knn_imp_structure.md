@@ -6,7 +6,7 @@ down to the C++ kernel. Descriptive only: what the code is and how it connects.
 Orientation: `knn_imp()` documents rows as samples and columns as features, and
 the neighbor search runs **between columns** -- a "neighbor" is another column of
 `obj`, and the distance loop walks rows. Hence `k` is capped at `ncol(obj) - 1`
-(`R/knn_imp.R:121`), and `dev/probe_impute_knn.R` transposes both sides when
+(`R/knn_imp.R:121`), and `dev/check_impute_knn.R` transposes both sides when
 comparing against `impute::impute.knn`, which searches rows. That comparison is
 real and asserted -- it agrees to 2.2e-16 absolute and 4.5e-16 relative, not
 bitwise. It lives in `dev/` rather than under `tests/` because `impute` is a
@@ -20,7 +20,7 @@ session does not put it back.
 ```
 R/knn_imp.R:98                      knn_imp()  -- user entry, validation, partition
   +- src/mat_stats.cpp:198          check_finite()  (Inf + all-NA column gate)
-  +- R/utils.R:62                   resolve_subset()  -- names/ints -> col indices
+  +- R/utils.R:68                   resolve_subset()  -- names/ints -> col indices
   +- R/mat_miss.R:33                mat_miss()
   |    +- src/mat_stats.cpp:242     col_miss_internal() via R/RcppExports.R:44
   +- [abort site 1] R/knn_imp.R:175-183   k > n_elig - 1
@@ -73,10 +73,10 @@ from `mean_imp_col()` at `R/mean_imp_col.R:38` but not from `knn_imp()`. Both
 are declared in `R/RcppExports.R:36-42`. `NA` and `NaN` are indistinguishable
 throughout; the policy is stated at `R/slideimp-package.R:7-16`.
 
-`subset` (`R/knn_imp.R:134`) goes through `resolve_subset()` (`R/utils.R:62-105`),
-which accepts `NULL` (all columns, `:66-67`), a character vector matched against
-`colnames(obj)` with unmatched names dropped and reported (`:68-83`), or
-integerish indices (`:84-95`). It returns `NULL` for "nothing to do" (`:97-102`),
+`subset` (`R/knn_imp.R:134`) goes through `resolve_subset()` (`R/utils.R:68-111`),
+which accepts `NULL` (all columns, `:72-73`), a character vector matched against
+`colnames(obj)` with unmatched names dropped and reported (`:74-89`), or
+integerish indices (`:90-101`). It returns `NULL` for "nothing to do" (`:103-108`),
 after reporting it itself, which becomes an early return of the unchanged input
 (`R/knn_imp.R:135-147`).
 
@@ -105,14 +105,16 @@ the integer the kernel expects, `0` = euclidean, `1` = manhattan
 column stays a neighbor candidate regardless of `subset`.
 
 `rowmax` is not an argument of `knn_imp()`: it belongs to the tuning path
-(`R/tune_imp.R:55`, `:184`), capping injected missingness per row.
+(`R/tune_imp.R:62`, `:204`), capping injected missingness per row.
 
 After the `.Call`, `R/knn_imp.R:220` maps `NaN` back to `NA_real_` (the kernel
 emits `NaN` for cells it could not fill), `R/knn_imp.R:222-223` uses the returned
 `(row, col)` pairs as a two-column index matrix to scatter values into `obj`,
 `R/knn_imp.R:232-240` optionally runs column-mean fill, and
 `R/knn_imp.R:242-250` attaches the `slideimp_results` class and attributes via
-`new_slideimp_results()` (`R/utils.R:5-25`).
+`new_slideimp_results()` (`R/utils.R:5-31`). The constructor first strips its input to
+a bare matrix, so a `slideimp_results` passed back in for a second pass does not carry
+its class or its old attributes into the new result.
 
 **Which columns post-imputation touches.** Only two kinds of subset column can
 still be missing after the kernel: one `colmax` held out of `grp_impute`, and
@@ -310,9 +312,10 @@ depends on thread count.
 It is not "leftmost column wins": a complete column beats a tied column with
 missing values to its left. `knn_ref()` in `tests/testthat/test-knn_imp.R`
 breaks ties by column order, and agrees with the kernel only because its
-`rnorm` data has no ties; on the small-integer matrices of
-`dev/probe_knn_ties.R` the two rules give different values in 2-29% of imputed
-cells.
+`rnorm` data has no ties; on small-integer matrices, where exact ties are
+common, the two rules gave different values in 2-29% of imputed cells. That
+measurement was made by `dev/probe_knn_ties.R`, no longer tracked; it is
+recoverable with `git show c8f6d3d:dev/probe_knn_ties.R`.
 
 The sort used to be `std::sort`, which leaves equal elements in an unspecified
 order, so the standard library chose which tied fill entry was evicted.
@@ -322,7 +325,7 @@ libstdc++ insertion-sorts ranges of up to 16, which is stable, so at
 tied candidates from the front of the run instead of the back, and changed
 4-25% of imputed cells on those matrices (GCC 14.2). libc++, which the macOS
 builds use, was not measured. `std::stable_sort` may take a temporary buffer
-per target column; an A/B in `dev/probe_knn_ties.R` (Part 3) found no cost
+per target column; an A/B in the same probe (Part 3) found no cost
 above run-to-run noise. Pinned at `tests/testthat/test-knn_imp.R:327-408`,
 which reads the chosen neighbor set back out of the imputed value and fails
 against the `std::sort` build at `k = 17` and `k = 32`.
@@ -375,11 +378,11 @@ dying. `knn_imp()` has exactly two sites:
 1. `R/knn_imp.R:175-183` -- `k > n_elig - 1`, where `n_elig` is the number of
    columns passing `colmax` (`R/knn_imp.R:173`); message "`k` (...) exceeds
    usable columns (...)". Exercised at `tests/testthat/test-knn_imp.R:115-118`
-   and `tests/testthat/test-group_imp.R:739-742`.
+   and `tests/testthat/test-group_imp.R:859-862`.
 2. `R/knn_imp.R:194-202` -- `length(grp_impute) == 0`, i.e. every subset column
    with missing values also exceeds `colmax`; message "All subset columns with
    missing values exceed `colmax` (...)". Exercised at
-   `tests/testthat/test-group_imp.R:744-752` and, for the inclusive boundary,
+   `tests/testthat/test-group_imp.R:864-872` and, for the inclusive boundary,
    `tests/testthat/test-knn_imp.R:121-137`.
 
 Everything else that aborts here is a plain error, not `slideimp_infeasible`:
@@ -388,8 +391,9 @@ Everything else that aborts here is a plain error, not `slideimp_infeasible`:
 `validate_knn_inputs()` (`tests/testthat/test-knn_imp.R:433-471`) and
 `initialize_result_matrix()`. Catch sites are in the
 wrappers only (next section); each switches on `on_infeasible` to abort (`slide_imp()`
-rethrows, `group_imp()` raises a new `cli_abort()` with the original as `parent`), skip
-the block unchanged, or fall back to `mean_imp_col()`.
+rethrows, `group_imp()` raises a new `cli_abort()` with the original as `parent`; both
+put the `slideimp_infeasible` class on what they raise), skip the block unchanged, or
+fall back to `mean_imp_col()`.
 
 ## Data structures and ownership
 
@@ -453,20 +457,24 @@ the workers at `:512-515`.
 
 ## How the wrappers reach knn_imp()
 
-`group_imp()` picks the function object at `R/group_imp.R:811`
+`group_imp()` picks the function object at `R/group_imp.R:910`
 (`imp_fn <- if (is_knn_mode) knn_imp else pca_imp`), pre-builds a per-group
-parameter list injecting `cores` and a group-local `subset` (`:803-806`), and
-invokes it via `do.call()` inside a `tryCatch` -- `:859-882` in the mirai branch,
-`:929-949` in the sequential branch. Each group is a column slice
-`obj[, indices[[i]]$col_idx]` (`:857`, `:927`), so `knn_imp()` sees a submatrix
-and group-local indices.
+parameter list injecting `cores` and a group-local `subset` (`:894-897`), and
+invokes it via `do.call()` inside a `tryCatch` -- `:972-994` in the mirai branch,
+`:1056-1077` in the sequential branch. Each group is a column slice of its
+`col_idx` (`:969`, `:1054`), so `knn_imp()` sees a submatrix and group-local
+indices. Two kinds of group never reach the backend: one whose feature columns
+hold no missing value (`:641`, `:843`), and one too small for any `k`, which
+`group_imp()` settles through `on_infeasible` itself (`:845-863`, `:915-921`)
+because `knn_imp()` rejects a one-column matrix as invalid input, not as
+`slideimp_infeasible`.
 
-`slide_imp()` calls `knn_imp()` directly at `R/slide_imp.R:460-471` for each
-window `obj[, start[i]:end[i]]` (`R/slide_imp.R:454-455`), passing
+`slide_imp()` calls `knn_imp()` directly at `R/slide_imp.R:551-562` for each
+window `obj[, start[i]:end[i]]` (`R/slide_imp.R:527-528`), passing
 `na_check = FALSE`, `.progress = FALSE`, and a window-local `subset`
-(`R/slide_imp.R:470`), wrapped in the same `slideimp_infeasible` handler
-(`R/slide_imp.R:495-505`). Both wrappers set `na_check = FALSE`
-(`R/group_imp.R:800`) and do the final NA accounting themselves.
+(`R/slide_imp.R:561`), wrapped in the same `slideimp_infeasible` handler
+(`R/slide_imp.R:586-608`). Both wrappers set `na_check = FALSE`
+(`R/group_imp.R:899`) and do the final NA accounting themselves.
 
 ## Test entry points
 
@@ -475,5 +483,5 @@ asserts the returned `(row, col)` triplet locations match `which(is.na(...))`;
 `:67-102` covers `subset` by index and by name with `post_imp` both ways;
 `:104-119` covers all-NA rows and columns plus abort site 1; `:327-408` pins
 the tie rule; `:553-560` covers `Inf` rejection;
-`tests/testthat/test-group_imp.R:738-753` pins the `slideimp_infeasible` class
+`tests/testthat/test-group_imp.R:858-873` pins the `slideimp_infeasible` class
 on both abort sites.

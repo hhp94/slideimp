@@ -369,7 +369,7 @@ test_that("slide_imp rejects ncp above the row cap pca_imp enforces", {
   # simply rejecting everything.
   res <- suppressMessages(run(8))
   expect_true(anyNA(to_test))
-  expect_false(anyNA(res[, ]))
+  expect_false(anyNA(res[,]))
 })
 
 test_that("slide_imp flank works with knn", {
@@ -616,17 +616,20 @@ test_that("slide_imp: on_infeasible = 'skip' marks windows and retains originals
   mat[1:19, 1:10] <- NA
   mat[20, 1:10] <- rnorm(10)
 
-  res <- suppressMessages(slide_imp(
-    mat,
-    location = location,
-    k = 3,
-    window_size = 10,
-    overlap_size = 0,
-    min_window_n = 5,
-    colmax = 0.9,
-    on_infeasible = "skip",
-    .progress = FALSE
-  ))
+  expect_warning(
+    res <- suppressMessages(slide_imp(
+      mat,
+      location = location,
+      k = 3,
+      window_size = 10,
+      overlap_size = 0,
+      min_window_n = 5,
+      colmax = 0.9,
+      on_infeasible = "skip",
+      .progress = FALSE
+    )),
+    class = "slideimp_fallback"
+  )
 
   # at least one window was skipped
   expect_gt(length(attr(res, "fallback")), 0)
@@ -648,17 +651,21 @@ test_that("slide_imp: on_infeasible = 'mean' fills skipped windows with column m
   mat[1:19, 1:10] <- NA
   mat[20, 1:10] <- rnorm(10)
 
-  res <- suppressMessages(slide_imp(
-    mat,
-    location = location,
-    k = 3,
-    window_size = 10,
-    overlap_size = 0,
-    min_window_n = 5,
-    colmax = 0.9,
-    on_infeasible = "mean",
-    .progress = FALSE
-  ))
+  expect_warning(
+    res <- suppressMessages(slide_imp(
+      mat,
+      location = location,
+      k = 3,
+      window_size = 10,
+      overlap_size = 0,
+      min_window_n = 5,
+      colmax = 0.9,
+      on_infeasible = "mean",
+      .progress = FALSE
+    )),
+    "filled with column means",
+    class = "slideimp_fallback"
+  )
 
   expect_gt(length(attr(res, "fallback")), 0)
   expect_equal(attr(res, "fallback_action"), "mean")
@@ -673,17 +680,20 @@ test_that("slide_imp: mixed feasible + infeasible windows - skip isolates correc
   mat[1:19, 11:20] <- NA
   mat[20, 11:20] <- rnorm(10)
 
-  res <- suppressMessages(slide_imp(
-    mat,
-    location = location,
-    k = 3,
-    window_size = 10,
-    overlap_size = 0,
-    min_window_n = 5,
-    colmax = 0.9,
-    on_infeasible = "skip",
-    .progress = FALSE
-  ))
+  expect_warning(
+    res <- suppressMessages(slide_imp(
+      mat,
+      location = location,
+      k = 3,
+      window_size = 10,
+      overlap_size = 0,
+      min_window_n = 5,
+      colmax = 0.9,
+      on_infeasible = "skip",
+      .progress = FALSE
+    )),
+    class = "slideimp_fallback"
+  )
 
   expect_true(all(is.na(res[1:19, 11:20])))
   expect_false(anyNA(res[, 1:10]))
@@ -703,18 +713,21 @@ test_that("slide_imp: flank mode - infeasible flank window skips only its target
   mat[1:19, 10:20] <- NA
   mat[20, 10:20] <- rnorm(11)
 
-  res <- suppressMessages(slide_imp(
-    mat,
-    location = location,
-    k = 2,
-    window_size = 10,
-    flank = TRUE,
-    subset = c(15, 60),
-    min_window_n = 5,
-    colmax = 0.9,
-    on_infeasible = "skip",
-    .progress = FALSE
-  ))
+  expect_warning(
+    res <- suppressMessages(slide_imp(
+      mat,
+      location = location,
+      k = 2,
+      window_size = 10,
+      flank = TRUE,
+      subset = c(15, 60),
+      min_window_n = 5,
+      colmax = 0.9,
+      on_infeasible = "skip",
+      .progress = FALSE
+    )),
+    class = "slideimp_fallback"
+  )
 
   # target 15's window was skipped -> col 15 retains original NA
   expect_true(is.na(res[1, 15]) || all(is.na(res[which(is.na(mat[, 15])), 15])))
@@ -726,28 +739,55 @@ test_that("slide_imp: overlapping windows - skip decrements overlap counts corre
   set.seed(1234)
   mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
   location <- 1:100
-  # force ONE window infeasible, ensure overlap regions shared with feasible
-  # windows still average only over non-skipped windows.
-  mat[1:19, 1:10] <- NA
-  mat[20, 1:10] <- rnorm(10)
+  # Windows are [1, 20], [11, 30], [21, 40], ... Columns 1:18 are 95% missing,
+  # so window [1, 20] has 2 usable columns against k = 3 and is infeasible,
+  # while [11, 30] still has 12 and is not.
+  mat[1:19, 1:18] <- NA
+  mat[20, 1:18] <- rnorm(18)
 
-  res <- suppressMessages(slide_imp(
-    mat,
-    location = location,
+  expect_warning(
+    res <- suppressMessages(slide_imp(
+      mat,
+      location = location,
+      k = 3,
+      window_size = 20,
+      overlap_size = 10,
+      min_window_n = 10,
+      colmax = 0.9,
+      on_infeasible = "skip",
+      .progress = FALSE
+    )),
+    class = "slideimp_fallback"
+  )
+
+  # the fixture really skips window 1 and nothing else. An earlier version of
+  # this test left 10 usable columns in window 1, so no window was skipped and
+  # the skip-decrement was never reached.
+  expect_identical(attr(res, "fallback"), 1L)
+
+  # columns 11:20 sit under [1, 20] (skipped) and [11, 30] (feasible). After the
+  # decrement their count is 1, so they must equal window [11, 30] alone, with
+  # no division. A count left at 2 halves every value here.
+  alone <- suppressMessages(knn_imp(
+    mat[, 11:30],
     k = 3,
-    window_size = 20,
-    overlap_size = 10,
-    min_window_n = 10,
     colmax = 0.9,
-    on_infeasible = "skip",
+    post_imp = TRUE,
     .progress = FALSE
   ))
+  a <- res[, 11:20]
+  b <- alone[, 1:10]
+  expect_false(anyNA(b))
+  expect_identical(is.na(a), is.na(b))
+  expect_equal(max(abs(a - b)), 0)
+  # relative error over the cells of columns 11:20 whose reference is not
+  # exactly 0, which sim_mat() can produce
+  nz <- b != 0
+  expect_gt(sum(nz), 100L)
+  expect_equal(max(abs(a[nz] - b[nz]) / abs(b[nz])), 0)
 
-  # columns 11:20 are overlapped by windows [1-20] (skipped) and [11-30] (feasible)
-  # after skip-decrement, counts[11:20] == 1, so result == single-window contribution
-  # (no division). Values must be non-NA and finite.
-  expect_false(anyNA(res[, 11:20]))
-  expect_true(all(is.finite(res[, 11:20])))
+  # columns 1:10 sit under the skipped window only, so they come back unchanged
+  expect_identical(res[, 1:10], mat[, 1:10])
 })
 
 test_that("slide_imp: all windows infeasible under 'error' fails with slideimp_infeasible", {
@@ -785,17 +825,31 @@ test_that("slide_imp: all windows infeasible under 'skip' returns original matri
   }
   location <- 1:100
 
-  res <- suppressMessages(slide_imp(
-    mat,
-    location = location,
-    k = 3,
-    window_size = 10,
-    overlap_size = 0,
-    min_window_n = 5,
-    colmax = 0.5,
-    on_infeasible = "skip",
-    .progress = FALSE
-  ))
+  # one warning for the whole run, not one per window, and it is raised with
+  # `.progress = FALSE`. Regression: this run used to return the input
+  # unimputed with no condition of any kind.
+  warns <- list()
+  res <- withCallingHandlers(
+    suppressMessages(slide_imp(
+      mat,
+      location = location,
+      k = 3,
+      window_size = 10,
+      overlap_size = 0,
+      min_window_n = 5,
+      colmax = 0.5,
+      on_infeasible = "skip",
+      .progress = FALSE
+    )),
+    warning = function(w) {
+      warns[[length(warns) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_length(warns, 1L)
+  expect_s3_class(warns[[1L]], "slideimp_fallback")
+  expect_match(conditionMessage(warns[[1L]]), "10 of 10 windows are infeasible")
+  expect_identical(attr(res, "fallback"), 1:10)
 
   # all windows skipped -> every value either original or 0-filled then overwritten
   # subset cols should equal obj (NAs preserved)
@@ -882,4 +936,271 @@ test_that("slide_imp scopes the all-NA check to covered columns but Inf to all",
     suppressMessages(do.call(slide_imp, c(list(covered_inf), args))),
     "row 4, column 25"
   )
+})
+
+test_that("count_window_cover counts every window, duplicate ends included", {
+  # windows 1-2 and 3-4 end on the same column
+  start <- c(1L, 6L, 11L, 16L, 21L)
+  end <- c(10L, 10L, 20L, 20L, 30L)
+  expect_gt(anyDuplicated(end), 0L)
+
+  expected <- integer(32L)
+  for (i in seq_along(start)) {
+    cols <- start[i]:end[i]
+    expected[cols] <- expected[cols] + 1L
+  }
+
+  # Regression: the counts came from `delta[end + 1] <- delta[end + 1] - 1`,
+  # which applies a repeated index once. Two windows ending on column 10
+  # lowered the running count by 1 instead of 2, so every later column was
+  # counted one too high. slide_imp() then halved singly covered columns and
+  # left zeros in columns it should have restored.
+  expect_identical(count_window_cover(start, end, 32L), expected)
+  # columns past the last window are covered by nothing
+  expect_identical(count_window_cover(start, end, 32L)[31:32], c(0L, 0L))
+  # no windows at all
+  expect_identical(count_window_cover(integer(0), integer(0), 4L), integer(4L))
+})
+
+test_that("find_windows emits no window nested inside the one before it", {
+  # five clusters of 10 columns, 0.1 apart, each followed by a gap of 0.6
+  loc <- unlist(lapply(0:4, function(g) g * 1.5 + seq(0, 0.9, by = 0.1)))
+  w <- find_windows(loc, window = 1, overlap = 0.5)
+
+  # Regression: the start found in the trailing overlap region was used even
+  # when the next coordinate was a full window away, which produced [1, 10]
+  # followed by [6, 10]: a window that adds no column and shares its end.
+  expect_identical(w$start, c(1L, 11L, 21L, 31L, 41L))
+  expect_identical(w$end, c(10L, 20L, 30L, 40L, 50L))
+
+  # the property on irregular coordinates, at several overlaps
+  set.seed(1)
+  gappy <- sort(c(runif(200, 0, 10), runif(200, 30, 40), runif(50, 100, 101)))
+  for (ov in c(0, 1, 2.5, 4.9)) {
+    w <- find_windows(gappy, window = 5, overlap = ov)
+    expect_true(all(diff(w$start) > 0))
+    expect_true(all(diff(w$end) > 0))
+    # every column is still inside some window
+    covered <- sort(unique(sequence(w$end - w$start + 1L, from = w$start)))
+    expect_identical(covered, seq_along(gappy))
+    # and a positive overlap still produces overlapping windows, so the fix
+    # did not turn every window disjoint
+    if (ov > 0) {
+      expect_true(any(w$start[-1L] <= w$end[-length(w$end)]))
+    }
+  }
+})
+
+test_that("slide_imp matches a hand-built reference on gappy locations", {
+  set.seed(1234)
+  # three blocks of columns separated by gaps wider than a window. Blocks 1 and
+  # 2 hold 25 columns each, block 3 holds 10 that are 96.7% missing.
+  location <- c(1:25, 41:65, 81:90)
+  x <- matrix(rnorm(30 * 60, mean = 5), 30, 60)
+  x[sample(30 * 50, 150)] <- NA
+  x[1:29, 51:60] <- NA
+
+  args <- list(
+    x,
+    location = location,
+    window_size = 10,
+    overlap_size = 5,
+    min_window_n = 5,
+    .progress = FALSE
+  )
+
+  # the windows, written out by hand. Each block ends on a window that the
+  # trailing overlap cannot extend, which is where a nested window used to be.
+  starts <- c(1L, 6L, 11L, 16L, 26L, 31L, 36L, 41L, 51L)
+  ends <- c(10L, 15L, 20L, 25L, 35L, 40L, 45L, 50L, 60L)
+  windows <- do.call(slide_imp, c(args, list(dry_run = TRUE)))
+  expect_identical(windows$start, starts)
+  expect_identical(windows$end, ends)
+
+  # reference: impute each window alone, add up, divide by the cover count
+  sums <- matrix(0, nrow(x), ncol(x))
+  counts <- integer(ncol(x))
+  for (i in 1:8) {
+    cols <- starts[i]:ends[i]
+    sums[, cols] <- sums[, cols] +
+      suppressMessages(knn_imp(x[, cols], k = 2, .progress = FALSE))[,]
+    counts[cols] <- counts[cols] + 1L
+  }
+  ref <- sweep(sums, 2, pmax(counts, 1L), "/")
+  # window 9 is infeasible, so its columns keep the input
+  expect_error(
+    suppressMessages(knn_imp(x[, 51:60], k = 2, .progress = FALSE)),
+    class = "slideimp_infeasible"
+  )
+  ref[, 51:60] <- x[, 51:60]
+  # the fixture has both singly and doubly covered columns
+  expect_true(any(counts == 1L))
+  expect_true(any(counts == 2L))
+
+  expect_warning(
+    res <- suppressMessages(do.call(slide_imp, c(args, list(k = 2)))),
+    class = "slideimp_fallback"
+  )
+  expect_identical(attr(res, "fallback"), 9L)
+
+  out <- res[,]
+  dimnames(out) <- NULL
+  expect_identical(is.na(out), is.na(ref))
+  ok <- !is.na(ref)
+  # the 290 missing cells of block 3 stay NA. Both errors are taken over every
+  # other cell, 1510 of them.
+  expect_identical(sum(!ok), 290L)
+  expect_lte(max(abs(out[ok] - ref[ok])), 1e-12)
+  expect_lte(max(abs(out[ok] - ref[ok]) / abs(ref[ok])), 1e-12)
+  # block 3 holds NA, so the result has to say so
+  expect_true(attr(res, "has_remaining_na"))
+})
+
+test_that("slide_imp PCA does not call pca_imp on a window with complete targets", {
+  set.seed(2)
+  y <- matrix(rnorm(20 * 30), 20, 30)
+  y[1:19, 5] <- NA # column 5 is 95% missing, above colmax = 0.9
+  expect_false(anyNA(y[, 15]))
+
+  # the flank window of target 15 is columns 5:25. Its only missing values sit
+  # in an ineligible column, so pca_imp() itself refuses it.
+  expect_error(
+    suppressMessages(pca_imp(y[, 5:25], ncp = 2, .progress = FALSE)),
+    class = "slideimp_infeasible"
+  )
+
+  # Regression: slide_imp() handed that window to pca_imp() although the target
+  # needed nothing, so `on_infeasible = "error"` aborted the whole run and
+  # "skip" recorded a fallback. K-NN on the same input did neither.
+  res <- suppressMessages(slide_imp(
+    y,
+    location = seq_len(30),
+    window_size = 10,
+    flank = TRUE,
+    subset = 15L,
+    min_window_n = 5,
+    ncp = 2,
+    on_infeasible = "error",
+    .progress = FALSE
+  ))
+  expect_length(attr(res, "fallback"), 0L)
+  expect_identical(res[, 15], y[, 15])
+  # no window was probed, and the attributes keep one type either way
+  expect_identical(attr(res, "solver_chosen"), NA_character_)
+  expect_identical(attr(res, "solver_lock_window"), NA_integer_)
+})
+
+test_that("slide_imp keeps its return shape when subset resolves to nothing", {
+  set.seed(1234)
+  x <- sim_mat(20, 30, perc_total_na = 0.2)$input
+  colnames(x) <- paste0("c", seq_len(ncol(x)))
+  args <- list(
+    x,
+    location = seq_len(30),
+    window_size = 10,
+    min_window_n = 5,
+    subset = "not_a_column",
+    .progress = FALSE
+  )
+
+  # Regression: both of these returned the bare input matrix.
+  dry <- suppressMessages(do.call(slide_imp, c(args, list(dry_run = TRUE))))
+  expect_s3_class(dry, "slideimp_tbl")
+  expect_identical(nrow(dry), 0L)
+  expect_named(dry, c("start", "end", "window_n", "subset_local"))
+
+  dry_flank <- suppressMessages(do.call(
+    slide_imp,
+    c(args, list(dry_run = TRUE, flank = TRUE))
+  ))
+  expect_s3_class(dry_flank, "slideimp_tbl")
+  expect_named(
+    dry_flank,
+    c("start", "end", "window_n", "target", "subset_local")
+  )
+
+  res <- suppressMessages(do.call(slide_imp, c(args, list(k = 3))))
+  expect_s3_class(res, "slideimp_results")
+  expect_identical(attr(res, "metacaller"), "slide_imp")
+  expect_identical(attr(res, "imp_method"), "knn")
+  expect_length(attr(res, "fallback"), 0L)
+  expect_false(attr(res, "has_remaining_na"))
+  expect_identical(res[,], x)
+  expect_no_error(utils::capture.output(print(res), print(dry)))
+
+  # same attribute set as a run that imputes
+  full <- suppressMessages(slide_imp(
+    x,
+    location = seq_len(30),
+    window_size = 10,
+    min_window_n = 5,
+    k = 3,
+    .progress = FALSE
+  ))
+  expect_setequal(names(attributes(res)), names(attributes(full)))
+})
+
+test_that("slide_imp ignores overlap_size when flank = TRUE", {
+  set.seed(1234)
+  x <- sim_mat(20, 30, perc_total_na = 0.2)$input
+  args <- list(
+    x,
+    location = seq_len(30),
+    window_size = 5,
+    overlap_size = 8,
+    min_window_n = 2,
+    dry_run = TRUE,
+    .progress = FALSE
+  )
+
+  # Regression: the comparison against `window_size` ran before the flank
+  # branch discarded `overlap_size`, so a documented no-op argument errored.
+  expect_no_error(do.call(slide_imp, c(args, list(flank = TRUE, subset = 10L))))
+  # it is still enforced where it means something
+  expect_error(do.call(slide_imp, args), "strictly less than")
+})
+
+test_that("slide_imp: on_infeasible = 'error' names the window that failed", {
+  set.seed(1234)
+  mat <- sim_mat(20, 100, perc_total_na = 0.2)$input
+  # window 3 is columns 21:30
+  mat[1:19, 21:30] <- NA
+  mat[20, 21:30] <- rnorm(10)
+
+  err <- expect_error(
+    suppressMessages(slide_imp(
+      mat,
+      location = 1:100,
+      k = 3,
+      window_size = 10,
+      overlap_size = 0,
+      min_window_n = 5,
+      on_infeasible = "error",
+      .progress = FALSE
+    )),
+    class = "slideimp_infeasible"
+  )
+  expect_match(
+    conditionMessage(err),
+    "Window 3 (columns 21 to 30)",
+    fixed = TRUE
+  )
+  # the backend's own condition travels with it
+  expect_s3_class(err$parent, "slideimp_infeasible")
+
+  err_flank <- expect_error(
+    suppressMessages(slide_imp(
+      mat,
+      location = 1:100,
+      k = 3,
+      window_size = 4,
+      flank = TRUE,
+      subset = 25L,
+      min_window_n = 5,
+      on_infeasible = "error",
+      .progress = FALSE
+    )),
+    class = "slideimp_infeasible"
+  )
+  expect_match(conditionMessage(err_flank), "target column 25", fixed = TRUE)
 })

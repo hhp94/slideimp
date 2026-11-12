@@ -18,11 +18,11 @@
 # post_imp fills what K-NN could not, which impute.knn handles differently, so
 # it is off.
 #
-# Usage, from the repository root: Rscript dev/probe_impute_knn.R
+# Usage, from the repository root: Rscript dev/check_impute_knn.R
 # Exits non-zero if any comparison exceeds the tolerance.
 
 if (!file.exists("DESCRIPTION") || !file.exists("R/dev-utils.R")) {
-  stop("run this from the repository root: Rscript dev/probe_impute_knn.R")
+  stop("run this from the repository root: Rscript dev/check_impute_knn.R")
 }
 source("R/dev-utils.R")
 suppressMessages(load_all1(timer = FALSE))

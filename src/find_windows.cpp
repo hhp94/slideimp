@@ -17,6 +17,8 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
   // - windows are coordinate-based, not count-based
   // - returned start/end indices are R-style 1-based inclusive indices
   // - this function uses half-open windows: [x[i], x[i] + window)
+  // - starts and ends are both strictly increasing: no window is a subset of
+  //   the one before it, so no two windows share an end
   // - if window is very small, singleton windows are valid output.
   //   R-side feasibility checks decide whether those windows are usable
 
@@ -65,8 +67,20 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
     // coordinate in the trailing overlap region.
     const double cutoff = threshold - overlap;
 
-    i = static_cast<int>(
+    int next = static_cast<int>(
         std::lower_bound(x.begin() + i + 1, x.begin() + j + 1, cutoff) - x.begin());
+
+    // a start inside the current window is only worth a window if that window
+    // reaches past j. When the coordinate after j is at least a full window
+    // away from the candidate start, the candidate's window would stop at the
+    // same j: a strict subset of the window just emitted, adding no column.
+    // Start after j instead. j + 1 < n here, because j == n - 1 broke out above.
+    if (next <= j && x[j + 1] >= x[next] + window)
+    {
+      next = j + 1;
+    }
+
+    i = next;
   }
 
   // k >= 1 here because n > 0

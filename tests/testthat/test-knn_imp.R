@@ -56,13 +56,13 @@ test_that("knn_imp fills every missing cell and touches nothing else", {
   expect_identical(r[,][!na_cells], obj[!na_cells])
 })
 
-# The comparison against impute::impute.knn lives in dev/probe_impute_knn.R,
+# The comparison against impute::impute.knn lives in dev/check_impute_knn.R,
 # not here. `impute` is a Bioconductor package and is not in Suggests, so a
 # `impute::` call anywhere under tests/ makes R CMD check report an unstated
 # dependency even when it is guarded by skips. The script asserts the same
 # thing the test would: knn_imp() agrees with impute.knn to 2.2e-16 absolute
 # and 4.5e-16 relative on a 100 x 100 matrix, at k = 3 and k = 10. Run it with
-# `Rscript dev/probe_impute_knn.R` after touching the neighbor search.
+# `Rscript dev/check_impute_knn.R` after touching the neighbor search.
 
 test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   set.seed(1234)

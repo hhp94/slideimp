@@ -34,8 +34,22 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
   invisible(.state)
 }
 
-.seam_new <- function(chains, iter, rank, thin, spectra, nu, n, cnt, mi_row,
-                         g_fixed, fp_clean, forward, store, chain) {
+.seam_new <- function(
+  chains,
+  iter,
+  rank,
+  thin,
+  spectra,
+  nu,
+  n,
+  cnt,
+  mi_row,
+  g_fixed,
+  fp_clean,
+  forward,
+  store,
+  chain
+) {
   structure(
     list(
       seam_version = 8L,
@@ -61,16 +75,26 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
 .chk_store <- function(store, nmiss) {
   s <- as.integer(store)
   if (length(s) < 1L || anyNA(s)) {
-    stop("`store` must be a non-empty integer vector with no NA.",
-         call. = FALSE)
+    stop(
+      "`store` must be a non-empty integer vector with no NA.",
+      call. = FALSE
+    )
   }
   if (min(s) < 1L || max(s) > nmiss) {
-    stop("`store` positions must lie in 1..", nmiss,
-         " (the matrix has ", nmiss, " holes).", call. = FALSE)
+    stop(
+      "`store` positions must lie in 1..",
+      nmiss,
+      " (the matrix has ",
+      nmiss,
+      " holes).",
+      call. = FALSE
+    )
   }
   if (length(s) > 1L && min(diff(s)) <= 0L) {
-    stop("`store` must be strictly increasing (sorted, no duplicates).",
-         call. = FALSE)
+    stop(
+      "`store` must be strictly increasing (sorted, no duplicates).",
+      call. = FALSE
+    )
   }
   s
 }
@@ -97,12 +121,24 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
   out
 }
 
-.start_fresh <- function(Xd, etd, col_ss, cnt, dirty, nmiss, n, p, init_c,
-                         chains) {
+.start_fresh <- function(
+  Xd,
+  etd,
+  col_ss,
+  cnt,
+  dirty,
+  nmiss,
+  n,
+  p,
+  init_c,
+  chains
+) {
   nobs <- n - cnt
   if (min(nobs) < 2L) {
-    stop("internal error: a column with under two observed cells reached ",
-         "the init.")
+    stop(
+      "internal error: a column with under two observed cells reached ",
+      "the init."
+    )
   }
   df_obs <- as.double(n) * p - nmiss - p
   if (df_obs <= 0) {
@@ -170,16 +206,19 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
 
 .seam_check_match <- function(.state, n, cnt, rank, nu, spectra, Z) {
   if (.state$n != n || !identical(.state$cnt, cnt) || .state$rank != rank) {
-    stop("seam state does not match this matrix; resume refused.",
-         call. = FALSE)
+    stop(
+      "seam state does not match this matrix; resume refused.",
+      call. = FALSE
+    )
   }
   if (.state$nu != nu) {
-    stop("seam was written with a different nu; resume refused.",
-         call. = FALSE)
+    stop("seam was written with a different nu; resume refused.", call. = FALSE)
   }
   if (!identical(.state$spectra, spectra)) {
-    stop("seam was written with different spectra settings; resume refused.",
-         call. = FALSE)
+    stop(
+      "seam was written with different spectra settings; resume refused.",
+      call. = FALSE
+    )
   }
   .seam_fp_clean_check(.state, Z, n, cnt)
   invisible(.state)
@@ -204,7 +243,9 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
   cur <- .seam_fp_take(Xd, fp$col, cnt_d)
   if (!identical(cur$holes, fp$holes)) {
     stop(
-      "resume refused: chain ", ch, "'s rebuilt panel disagrees with the ",
+      "resume refused: chain ",
+      ch,
+      "'s rebuilt panel disagrees with the ",
       "seam's fingerprint -- the hole pattern differs in sampled column(s) ",
       fmt_trunc(dirty[fp$col[cur$holes != fp$holes]], 8),
       ".",
@@ -218,9 +259,14 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
   if (max(rel) >= .SEAM_FP_TOL) {
     worst <- which.max(rel)
     stop(
-      "resume refused: chain ", ch, "'s rebuilt panel disagrees with the ",
-      "seam's fingerprint (max rel ", format(max(rel), digits = 3),
-      " at column ", dirty[fp$col[worst]], "; hole pattern matches, so the ",
+      "resume refused: chain ",
+      ch,
+      "'s rebuilt panel disagrees with the ",
+      "seam's fingerprint (max rel ",
+      format(max(rel), digits = 3),
+      " at column ",
+      dirty[fp$col[worst]],
+      "; hole pattern matches, so the ",
       "matrix values or the transform state moved).",
       call. = FALSE
     )
@@ -235,8 +281,10 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
   loc <- clean
   sa <- colSums(abs(Z[, loc, drop = FALSE]))
   if (!all(is.finite(sa)) || any(sa <= 0)) {
-    stop("internal error: a clean column's fingerprint is not positive ",
-         "and finite.")
+    stop(
+      "internal error: a clean column's fingerprint is not positive ",
+      "and finite."
+    )
   }
   list(col = loc, sumabs = sa)
 }
@@ -247,14 +295,24 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
     return(invisible(NULL))
   }
   fp <- .state$fp_clean
-  if (!is.list(fp) || !is.numeric(fp$sumabs) || !is.integer(fp$col) ||
-      length(fp$col) != length(fp$sumabs) || length(fp$col) == 0L) {
-    stop("the seam carries no clean-column fingerprint but was built from a ",
-         "split matrix; resume refused.", call. = FALSE)
+  if (
+    !is.list(fp) ||
+      !is.numeric(fp$sumabs) ||
+      !is.integer(fp$col) ||
+      length(fp$col) != length(fp$sumabs) ||
+      length(fp$col) == 0L
+  ) {
+    stop(
+      "the seam carries no clean-column fingerprint but was built from a ",
+      "split matrix; resume refused.",
+      call. = FALSE
+    )
   }
   if (max(fp$col) > length(cnt) || any(cnt[fp$col] != 0L)) {
-    stop("internal error: the clean fingerprint names a column that is not ",
-         "clean in this census.")
+    stop(
+      "internal error: the clean fingerprint names a column that is not ",
+      "clean in this census."
+    )
   }
   cur <- colSums(abs(Z[, fp$col, drop = FALSE]))
   rel <- abs(cur - fp$sumabs) / fp$sumabs
@@ -262,8 +320,11 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
     worst <- which.max(rel)
     stop(
       "resume refused: a clean column's values disagree with the seam's ",
-      "fingerprint (max rel ", format(max(rel), digits = 3), " at column ",
-      fp$col[worst], "). A resume keeps the clean half's Gram from the ",
+      "fingerprint (max rel ",
+      format(max(rel), digits = 3),
+      " at column ",
+      fp$col[worst],
+      "). A resume keeps the clean half's Gram from the ",
       "seam and never rereads those columns, so continuing would sample ",
       "against data this matrix no longer holds.",
       call. = FALSE
@@ -277,13 +338,23 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
   list(split = split, dirty = if (split) which(cnt > 0L) else seq_len(p))
 }
 
-.mipca_build_stream <- function(X, cnt, forward = identity, block = 1024L,
-                                resume = FALSE) {
+.mipca_build_stream <- function(
+  X,
+  cnt,
+  forward = identity,
+  block = 1024L,
+  resume = FALSE
+) {
   n <- nrow(X)
   p <- ncol(X)
   block <- max(1L, as.integer(block))
-  if (!is.integer(cnt) || length(cnt) != p || anyNA(cnt) || any(cnt < 0L) ||
-      any(cnt > n)) {
+  if (
+    !is.integer(cnt) ||
+      length(cnt) != p ||
+      anyNA(cnt) ||
+      any(cnt < 0L) ||
+      any(cnt > n)
+  ) {
     stop("internal error: the census does not describe this matrix.")
   }
   in_place <- identical(forward, identity)
@@ -314,8 +385,20 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
     nb <- j2 - j1 + 1L
     if (in_place) {
       .build_block(
-        X, j1 - 1L, j1, nb, 0L, scratch,
-        Xd, g_fixed, et, col_ss, mi_row, cnt, col_ptr, dirty_pos,
+        X,
+        j1 - 1L,
+        j1,
+        nb,
+        0L,
+        scratch,
+        Xd,
+        g_fixed,
+        et,
+        col_ss,
+        mi_row,
+        cnt,
+        col_ptr,
+        dirty_pos,
         if (resume) 1L else 0L
       )
     } else {
@@ -324,8 +407,20 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
         storage.mode(blk) <- "double"
       }
       .build_block(
-        blk, 0L, j1, nb, 1L, scratch,
-        Xd, g_fixed, et, col_ss, mi_row, cnt, col_ptr, dirty_pos,
+        blk,
+        0L,
+        j1,
+        nb,
+        1L,
+        scratch,
+        Xd,
+        g_fixed,
+        et,
+        col_ss,
+        mi_row,
+        cnt,
+        col_ptr,
+        dirty_pos,
         if (resume) 1L else 0L
       )
     }
@@ -369,9 +464,12 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
     bad <- subset[is.na(match(subset, cn))]
     if (length(bad) > 0L) {
       stop(
-        "`subset` names ", length(bad), " column",
+        "`subset` names ",
+        length(bad),
+        " column",
         .s(length(bad)),
-        " that do not exist: ", fmt_trunc(bad, 8),
+        " that do not exist: ",
+        fmt_trunc(bad, 8),
         ".\nA requested column decides what the fit stores and what ",
         "realization returns, so a name that matches nothing is refused ",
         "rather than dropped.",
@@ -424,8 +522,12 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
   const <- fin & v < .Machine$double.eps
   too_miss <- fin & !const & cmiss / n > colmax
   list(
-    cmiss = cmiss, nonfin = nonfin, empty = empty, single = single,
-    const = const, too_miss = too_miss
+    cmiss = cmiss,
+    nonfin = nonfin,
+    empty = empty,
+    single = single,
+    const = const,
+    too_miss = too_miss
   )
 }
 
@@ -448,16 +550,24 @@ spectra_opts <- function(tol = 1e-10, ncv = NULL, maxitr = 1000) {
       return(NULL)
     }
     paste0(
-      "  ", what, ": ", length(k), " column",
+      "  ",
+      what,
+      ": ",
+      length(k),
+      " column",
       .s(length(k)),
-      " [", fmt_trunc(k, 8), "]"
+      " [",
+      fmt_trunc(k, 8),
+      "]"
     )
   }
 
   stop(
     "inadmissible columns. Every column reaching the sampler needs finite ",
     "observed values, at least two of them, more than one distinct value ",
-    "among them, and missingness at most colmax (", format(colmax), ").\n",
+    "among them, and missingness at most colmax (",
+    format(colmax),
+    ").\n",
     paste(
       c(
         show(nonfin, "non-finite variance (an Inf cell, or overflow)"),
@@ -499,18 +609,28 @@ mipca_core <- function(
   }
   init_c <- .chk_init(init)
   if (!is.numeric(nu) || length(nu) != 1L || is.na(nu) || !(nu > 2)) {
-    stop("`nu` must be a single number > 2 (Inf for Gaussian noise).",
-         call. = FALSE)
+    stop(
+      "`nu` must be a single number > 2 (Inf for Gaussian noise).",
+      call. = FALSE
+    )
   }
   nu <- as.double(nu)
   if (nu < .NU_FLOOR) {
-    warning("`nu` below ", .NU_FLOOR, " makes the I-step's t heavy enough to ",
-            "destabilise the Gaussian P-step; 6 to 10 is the measured range.",
-            call. = FALSE)
+    warning(
+      "`nu` below ",
+      .NU_FLOOR,
+      " makes the I-step's t heavy enough to ",
+      "destabilise the Gaussian P-step; 6 to 10 is the measured range.",
+      call. = FALSE
+    )
   }
   if (!is.null(.state)) {
     chains <- .seam_check_args(
-      .state, chains, !missing(chains), forward, store
+      .state,
+      chains,
+      !missing(chains),
+      forward,
+      store
     )
   }
   chains <- .chk_count(chains, "chains")
@@ -724,7 +844,8 @@ mipca_core <- function(
     return(tf)
   }
   ok <- is.list(transform) &&
-    is.character(transform$name) && length(transform$name) == 1L &&
+    is.character(transform$name) &&
+    length(transform$name) == 1L &&
     (is.function(transform$fit) ||
       (is.function(transform$forward) && is.function(transform$backward)))
   if (!ok) {
@@ -741,7 +862,9 @@ tf_identity <- function() {
 #' @export
 tf_sv <- function(n) {
   n <- .chk_count(n, "`n`")
-  if (n < 2L) stop("`n` must be at least 2.", call. = FALSE)
+  if (n < 2L) {
+    stop("`n` must be at least 2.", call. = FALSE)
+  }
   nd <- as.double(n)
   list(
     name = paste0("sv-logit(n=", n, ")"),
@@ -759,8 +882,13 @@ tf_sv <- function(n) {
 
 #' @export
 tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
-  if (!is.list(base) || !is.function(base$forward) || !is.function(base$backward)) {
-    stop("`base` must be a transform: list(name, forward, backward).", call. = FALSE)
+  if (
+    !is.list(base) || !is.function(base$forward) || !is.function(base$backward)
+  ) {
+    stop(
+      "`base` must be a transform: list(name, forward, backward).",
+      call. = FALSE
+    )
   }
   if (is.function(base$fit)) {
     stop("`base` must be a stateless transform.", call. = FALSE)
@@ -780,7 +908,8 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
       if (any(df < 1L)) {
         stop(
           "whitening needs more than `rank` observed cells in every column; ",
-          sum(df < 1L), " column(s) have too few.",
+          sum(df < 1L),
+          " column(s) have too few.",
           call. = FALSE
         )
       }
@@ -794,7 +923,10 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
       R2 <- R^2
       s <- sqrt(colSums(R2) / df)
       if (!all(is.finite(s)) || any(s <= 0)) {
-        stop("whitening scale is not finite and positive in every column.", call. = FALSE)
+        stop(
+          "whitening scale is not finite and positive in every column.",
+          call. = FALSE
+        )
       }
       n <- nrow(Z)
       t <- rep(1, n)
@@ -803,13 +935,17 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
         if (any(df_i < 1L)) {
           stop(
             "the row scale needs more than `rank` observed cells in every row; ",
-            sum(df_i < 1L), " row(s) have too few. Use rows = FALSE.",
+            sum(df_i < 1L),
+            " row(s) have too few. Use rows = FALSE.",
             call. = FALSE
           )
         }
         t <- sqrt(rowSums(R2 / rep(s^2, each = nrow(R2))) / df_i)
         if (!all(is.finite(t)) || any(t <= 0)) {
-          stop("the row scale is not finite and positive in every row.", call. = FALSE)
+          stop(
+            "the row scale is not finite and positive in every row.",
+            call. = FALSE
+          )
         }
         t <- t / exp(mean(log(t)))
       }
@@ -824,10 +960,14 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
             stop("whiten forward: `cols` must index every column of the block.")
           }
           if (NROW(y) != n) {
-            stop("whiten forward: the block must carry every row of the fitted matrix.")
+            stop(
+              "whiten forward: the block must carry every row of the fitted matrix."
+            )
           }
           z <- base$forward(y) / rep(s[cols], each = NROW(y))
-          if (rows) z <- z / t
+          if (rows) {
+            z <- z / t
+          }
           z
         },
         backward = function(z, col, row = NULL) {
@@ -839,7 +979,10 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
           }
           if (rows) {
             if (is.null(row)) {
-              stop("whiten backward: this transform has a row scale; `row` is required.", call. = FALSE)
+              stop(
+                "whiten backward: this transform has a row scale; `row` is required.",
+                call. = FALSE
+              )
             }
             if (length(row) != NROW(z)) {
               stop("whiten backward: one row index per cell is required.")
@@ -868,7 +1011,8 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
     nm <- ...names()
     nm <- if (is.null(nm)) character(0) else nm[nzchar(nm)]
     stop(
-      .what, " takes no argument beyond the ones its signature names",
+      .what,
+      " takes no argument beyond the ones its signature names",
       if (length(nm) > 0L) paste0(" (got ", fmt_trunc(nm, 8), ")") else "",
       ".\nIts `...` is there only because R requires an S3 method to carry ",
       "every formal its generic has; nothing downstream reads it.",
@@ -910,13 +1054,23 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
   if (bad) {
     if (is.null(hi)) {
       stop(
-        what, " must be a single integer >= ", lo,
-        if (is.null(note)) "" else paste0(" (", note, ")"), ".",
+        what,
+        " must be a single integer >= ",
+        lo,
+        if (is.null(note)) "" else paste0(" (", note, ")"),
+        ".",
         call. = FALSE
       )
     }
-    stop(what, " must be a single index in [", lo, ", ", hi, "].",
-         call. = FALSE)
+    stop(
+      what,
+      " must be a single index in [",
+      lo,
+      ", ",
+      hi,
+      "].",
+      call. = FALSE
+    )
   }
   v
 }
@@ -929,9 +1083,7 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
 }
 
 .chk_colmax <- function(x) {
-  if (
-    !is.numeric(x) || length(x) != 1L || is.na(x) || x < 0 || x > 1
-  ) {
+  if (!is.numeric(x) || length(x) != 1L || is.na(x) || x < 0 || x > 1) {
     stop("`colmax` must be a single number in [0, 1].", call. = FALSE)
   }
   x
@@ -1037,8 +1189,17 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
   sort(idx)
 }
 
-.si_mi_pca_new <- function(obj, map, draws, cols, subset, transform,
-                              seam, prov, call) {
+.si_mi_pca_new <- function(
+  obj,
+  map,
+  draws,
+  cols,
+  subset,
+  transform,
+  seam,
+  prov,
+  call
+) {
   e <- new.env(parent = emptyenv())
   e$obj <- obj
   e$map <- map
@@ -1072,10 +1233,15 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
 
 .si_mi_new <- function(chunks, rownames, nkeep, call) {
   width <- vapply(chunks, function(ch) ncol(ch$obj), 0L)
-  nms <- unlist(lapply(chunks, function(ch) colnames(ch$obj)), use.names = FALSE)
+  nms <- unlist(
+    lapply(chunks, function(ch) colnames(ch$obj)),
+    use.names = FALSE
+  )
   coff <- c(0L, cumsum(width))
   if (
-    length(chunks) == 0L || min(width) < 1L || !is.character(nms) ||
+    length(chunks) == 0L ||
+      min(width) < 1L ||
+      !is.character(nms) ||
       length(nms) != coff[length(coff)]
   ) {
     stop("internal error: a chunk's columns and their names do not line up.")
@@ -1131,17 +1297,30 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
   list(name = name, backward = function(z, ...) z)
 }
 
-.mipca_empty <- function(obj, subset, rank, transform, prop_diag,
-                         iter_sampling, iter_warmup, thin, nu, chains, call,
-                         leave_na = FALSE) {
+.mipca_empty <- function(
+  obj,
+  subset,
+  rank,
+  transform,
+  prop_diag,
+  iter_sampling,
+  iter_warmup,
+  thin,
+  nu,
+  chains,
+  call,
+  leave_na = FALSE
+) {
   rank <- .chk_count(rank, "rank")
   chains <- .chk_count(chains, "chains")
   .chk_count(iter_warmup, "`iter_warmup`", lo = 0L)
   iter_sampling <- .chk_count(iter_sampling, "iter_sampling")
   thin <- .chk_count(thin, "thin")
   if (!is.numeric(nu) || length(nu) != 1L || is.na(nu) || !(nu > 2)) {
-    stop("`nu` must be a single number > 2 (Inf for Gaussian noise).",
-         call. = FALSE)
+    stop(
+      "`nu` must be a single number > 2 (Inf for Gaussian noise).",
+      call. = FALSE
+    )
   }
   if (!leave_na && !.nothing_to_impute(obj, subset)) {
     stop("internal error: an empty fit was asked for columns that have holes.")
@@ -1220,7 +1399,9 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
   subset <- .resolve_cols(subset, obj)
 
   if (
-    !keep_state && is.null(holdout) && is.null(store) &&
+    !keep_state &&
+      is.null(holdout) &&
+      is.null(store) &&
       .nothing_to_impute(obj, subset)
   ) {
     return(.mipca_empty(
@@ -1234,7 +1415,11 @@ tf_biwhiten <- function(base = tf_identity(), rows = TRUE) {
       thin = thin,
       nu = nu,
       chains = chains,
-      call = if (is.null(call)) .scrub_call(match.call(), ".mipca_run") else call
+      call = if (is.null(call)) {
+        .scrub_call(match.call(), ".mipca_run")
+      } else {
+        call
+      }
     ))
   }
 
@@ -1359,8 +1544,11 @@ mipca <- function(
   if (!identical(lin[rows], ho)) {
     if (length(rows) < length(ho)) {
       stop(
-        "the store set omits ", length(ho) - length(rows), " of the ",
-        length(ho), " holdout cells; a holdout can only be scored on cells ",
+        "the store set omits ",
+        length(ho) - length(rows),
+        " of the ",
+        length(ho),
+        " holdout cells; a holdout can only be scored on cells ",
         "whose draws were kept.",
         call. = FALSE
       )
@@ -1371,7 +1559,10 @@ mipca <- function(
   }
   truth <- X[ho]
   d <- .backward_at(
-    fit$transform, .pool_rows(fit$draws, rows), fit$map, rows
+    fit$transform,
+    .pool_rows(fit$draws, rows),
+    fit$map,
+    rows
   )
   if (is.null(u)) {
     u <- stats::runif(length(truth))
@@ -1418,8 +1609,10 @@ mipca_clone.si_mi_pca <- function(x, ...) {
       call. = FALSE
     )
   }
-  stop("this object's lifecycle field is not one of ok / failed / passed.",
-       call. = FALSE)
+  stop(
+    "this object's lifecycle field is not one of ok / failed / passed.",
+    call. = FALSE
+  )
 }
 
 #' @export
@@ -1483,7 +1676,11 @@ update.si_mi_pca <- function(
 
   if (!is.null(object$holdout)) {
     object$holdout <- .holdout_attach(
-      object, object$obj, hidx, object$holdout$level, object$holdout$u
+      object,
+      object$obj,
+      hidx,
+      object$holdout$level,
+      object$holdout$u
     )
   }
   object$lifecycle <- "ok"
@@ -1497,7 +1694,9 @@ mipca_finalize <- function(x, ...) {
 
 #' @export
 mipca_finalize.si_mi <- function(x, ...) {
-  stop("this fit is already finalized; mipca_finalize() is a one-way transition.")
+  stop(
+    "this fit is already finalized; mipca_finalize() is a one-way transition."
+  )
 }
 
 #' @export
@@ -1519,7 +1718,8 @@ update.si_mi <- function(object, ...) {
   }
   stop(
     "this fit was finalized, which drops the seam; re-run with thin = ",
-    te, " to get this spacing directly."
+    te,
+    " to get this spacing directly."
   )
 }
 
@@ -1558,7 +1758,10 @@ update.si_mi <- function(object, ...) {
 .rebase_subset <- function(x, amap, fr, ho_out) {
   if (identical(x$subset, seq_len(ncol(x$obj)))) {
     return(list(
-      obj = x$obj, loc = NULL, diag = fr, holdout = ho_out,
+      obj = x$obj,
+      loc = NULL,
+      diag = fr,
+      holdout = ho_out,
       transform = x$transform
     ))
   }
@@ -1585,8 +1788,13 @@ update.si_mi <- function(object, ...) {
 }
 
 #' @export
-mipca_finalize.si_mi_pca <- function(x, thin = 1L, prop_diag = .prop_diag_default(),
-                               num_threads = getOption("mc.cores", 1L), ...) {
+mipca_finalize.si_mi_pca <- function(
+  x,
+  thin = 1L,
+  prop_diag = .prop_diag_default(),
+  num_threads = getOption("mc.cores", 1L),
+  ...
+) {
   .life_check(x)
   .chk_no_ndiag(...)
   .chk_no_dots(..., .what = "mipca_finalize()")
@@ -1594,7 +1802,11 @@ mipca_finalize.si_mi_pca <- function(x, thin = 1L, prop_diag = .prop_diag_defaul
   nd <- ncol(x$draws[[1L]])
   if (k > nd) {
     stop(
-      "thin (", k, ") exceeds the ", nd, " stored draws per chain; ",
+      "thin (",
+      k,
+      ") exceeds the ",
+      nd,
+      " stored draws per chain; ",
       "there would be nothing left to keep."
     )
   }
@@ -1638,7 +1850,11 @@ mipca_finalize.si_mi_pca <- function(x, thin = 1L, prop_diag = .prop_diag_defaul
 
   chunk <- list(
     obj = rb$obj,
-    map = if (is.null(rb$loc)) amap else cbind(row = amap[, "row"], col = rb$loc),
+    map = if (is.null(rb$loc)) {
+      amap
+    } else {
+      cbind(row = amap[, "row"], col = rb$loc)
+    },
     draws = if (is.null(alive)) {
       if (length(dl) == 1L) dl[[1L]] else do.call(cbind, dl)
     } else {
@@ -1684,8 +1900,11 @@ cbind.si_mi <- function(..., deparse.level = 0) {
     }
     if (!identical(a$nkeep, b$nkeep)) {
       stop(
-        "chunks disagree on the number of kept draws (", a$nkeep, " vs ",
-        b$nkeep, "); min-trimming would falsify the frozen diagnostics."
+        "chunks disagree on the number of kept draws (",
+        a$nkeep,
+        " vs ",
+        b$nkeep,
+        "); min-trimming would falsify the frozen diagnostics."
       )
     }
   }
@@ -1693,8 +1912,13 @@ cbind.si_mi <- function(..., deparse.level = 0) {
   if (anyDuplicated(nms) > 0L) {
     dup <- unique(nms[duplicated(nms)])
     stop(
-      "chunks repeat ", length(dup), " column name", .s(length(dup)), " [",
-      fmt_trunc(dup, 8), "]; a column may be joined once.",
+      "chunks repeat ",
+      length(dup),
+      " column name",
+      .s(length(dup)),
+      " [",
+      fmt_trunc(dup, 8),
+      "]; a column may be joined once.",
       call. = FALSE
     )
   }
@@ -1765,7 +1989,10 @@ inspect_completion <- function(x, chain = 1L, draw = 1L) {
   idx <- .map_lin(x$map, nrow(out))
   fill <- is.na(out[idx])
   out[idx[fill]] <- .backward_at(
-    x$transform, x$draws[[chain]][fill, draw], x$map, fill
+    x$transform,
+    x$draws[[chain]][fill, draw],
+    x$map,
+    fill
   )
   out
 }
@@ -1803,7 +2030,8 @@ print.si_mi_pca <- function(x, ...) {
   if (!is.null(x$seam$store)) {
     cat(sprintf(
       "  store:   cell-level, %d of %d holes kept\n",
-      nrow(x$map), x$prov$nmiss
+      nrow(x$map),
+      x$prov$nmiss
     ))
   }
   cat(sprintf(
@@ -1819,7 +2047,9 @@ print.si_mi_pca <- function(x, ...) {
   if (!is.null(x$prov$tuned)) {
     cat(x$prov$tuned$line)
   }
-  cat("  next:    update(fit, iter_sampling) to extend, mipca_finalize(fit) to finish\n")
+  cat(
+    "  next:    update(fit, iter_sampling) to extend, mipca_finalize(fit) to finish\n"
+  )
   cat("           summary(fit) for the per-column diagnostics behind that\n")
   invisible(x)
 }
@@ -1968,8 +2198,16 @@ print.si_mi <- function(x, ...) {
   res
 }
 
-.diag_frame <- function(map, draws, p, nms, hrows, hscore, prop_diag,
-                           num_threads) {
+.diag_frame <- function(
+  map,
+  draws,
+  p,
+  nms,
+  hrows,
+  hscore,
+  prop_diag,
+  num_threads
+) {
   prop_diag <- .chk_frac(prop_diag, "prop_diag")
   num_threads <- .chk_count(num_threads, "num_threads")
   if (is.null(nms) || length(nms) != p) {
@@ -2016,8 +2254,12 @@ print.si_mi <- function(x, ...) {
 }
 
 #' @export
-summary.si_mi_pca <- function(object, prop_diag = .prop_diag_default(),
-                              num_threads = getOption("mc.cores", 1L), ...) {
+summary.si_mi_pca <- function(
+  object,
+  prop_diag = .prop_diag_default(),
+  num_threads = getOption("mc.cores", 1L),
+  ...
+) {
   .life_check(object)
   .chk_no_ndiag(...)
   .chk_no_dots(..., .what = "summary()")
@@ -2037,11 +2279,14 @@ summary.si_mi_pca <- function(object, prop_diag = .prop_diag_default(),
 summary.si_mi <- function(object, ...) {
   .chk_no_dots(..., .what = "summary()")
   bind <- function(which) {
-    do.call(rbind, lapply(seq_along(object$chunks), function(i) {
-      d <- object$chunks[[i]]$diag[[which]]
-      d$col <- d$col + object$coff[i]
-      cbind(chunk = rep.int(i, nrow(d)), d)
-    }))
+    do.call(
+      rbind,
+      lapply(seq_along(object$chunks), function(i) {
+        d <- object$chunks[[i]]$diag[[which]]
+        d$col <- d$col + object$coff[i]
+        cbind(chunk = rep.int(i, nrow(d)), d)
+      })
+    )
   }
   agree <- function(nm) {
     .agree(unlist(lapply(object$chunks, function(ch) attr(ch$diag, nm))))
@@ -2113,12 +2358,22 @@ print.si_mi_summary <- function(x, n = 6L, ...) {
 .draw_parts <- function(fit) {
   if (inherits(fit, "si_mi_pca")) {
     return(lapply(fit$draws, function(m) {
-      list(d = m, tf = fit$transform, col = fit$map[, "col"], row = fit$map[, "row"])
+      list(
+        d = m,
+        tf = fit$transform,
+        col = fit$map[, "col"],
+        row = fit$map[, "row"]
+      )
     }))
   }
   if (inherits(fit, "si_mi")) {
     return(lapply(fit$chunks, function(ch) {
-      list(d = ch$draws, tf = ch$transform, col = ch$map[, "col"], row = ch$map[, "row"])
+      list(
+        d = ch$draws,
+        tf = ch$transform,
+        col = ch$map[, "col"],
+        row = ch$map[, "row"]
+      )
     }))
   }
   stop("not a si_mi_pca or si_mi fit.")

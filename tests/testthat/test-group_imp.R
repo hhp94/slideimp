@@ -430,6 +430,73 @@ test_that("group_imp aborts when a group fails inside a mirai daemon", {
   )
 })
 
+test_that("group_imp under mirai matches the sequential run group by group", {
+  skip_if_not_manual()
+  skip_if_not_installed("withr")
+  set.seed(5)
+  obj <- matrix(
+    rnorm(40 * 24),
+    40,
+    24,
+    dimnames = list(NULL, paste0("f", 1:24))
+  )
+  obj[sample(40, 6), 1:8] <- NA # group "a": imputed
+  obj[1:3, 17:23] <- NA # group "c": imputed
+  obj[5, 24] <- NA # group "d": one column, too small
+  grp <- data.frame(
+    feature = colnames(obj),
+    group = rep(c("a", "b", "c", "d"), c(8, 8, 7, 1))
+  )
+  # group "b" is complete, so it never reaches a daemon. The tasks that do
+  # run then write to output columns that are not their own row positions.
+  expect_false(anyNA(obj[, 9:16]))
+  run <- function() {
+    suppressMessages(group_imp(
+      obj,
+      group = grp,
+      k = 3,
+      on_infeasible = "mean",
+      .progress = FALSE
+    ))
+  }
+  seq_res <- run()
+  expect_identical(attr(seq_res, "fallback"), "d")
+
+  mirai::daemons(2, seed = 1234)
+  withr::defer(mirai::daemons(0))
+  par_res <- run()
+  expect_identical(attr(par_res, "fallback"), "d")
+  err_abs <- abs(unclass(par_res) - unclass(seq_res))
+  nz <- seq_res != 0
+  max_abs <- max(err_abs)
+  max_rel <- max(err_abs[nz] / abs(seq_res[nz]))
+  expect_lte(
+    max_abs,
+    1e-12,
+    label = sprintf(
+      "max abs error %.3g (max rel %.3g over nonzero cells)",
+      max_abs,
+      max_rel
+    )
+  )
+  expect_lte(max_rel, 1e-12, label = sprintf("max rel error %.3g", max_rel))
+
+  # an infeasible group keeps its class on the way back from a daemon. Group
+  # "d" is made complete, or the host would refuse it before any daemon ran.
+  bad <- obj
+  bad[5, 24] <- 0
+  bad[1:39, 1:8] <- NA
+  got <- tryCatch(
+    {
+      suppressMessages(group_imp(bad, group = grp, k = 3, .progress = FALSE))
+      "no error"
+    },
+    slideimp_infeasible = function(e) conditionMessage(e),
+    error = function(e) "some other error"
+  )
+  expect_match(got, "Group a is infeasible")
+})
+
 # prep_groups ----
 test_that("prep_groups returns correct structure without k/ncp", {
   obj <- matrix(
@@ -508,17 +575,17 @@ test_that("prep_groups pads groups to min_group_size", {
   rownames(obj) <- paste0("r", seq_len(n))
   colnames(obj) <- letters[1:p]
 
+  # every column is mapped: padding draws from the columns `group` maps
   features_df <- data.frame(
-    feature = c("a", "b", "c"),
-    group = c("g1", "g1", "g2")
+    feature = c("a", "b", "c", "d", "e", "f"),
+    group = c("g1", "g1", "g2", "g3", "g3", "g3")
   )
 
   result <- prep_groups(
     colnames(obj),
     features_df,
     min_group_size = 4,
-    seed = 123,
-    allow_unmapped = TRUE
+    seed = 123
   )
   expect_true("aux" %in% names(result))
   g1_row <- result[result$group == "g1", ]
@@ -527,6 +594,59 @@ test_that("prep_groups pads groups to min_group_size", {
   expect_equal(length(g1_row$feature[[1]]) + length(g1_row$aux[[1]]), 4)
   # g2 has 1 feature, needs 3 more
   expect_equal(length(g2_row$feature[[1]]) + length(g2_row$aux[[1]]), 4)
+})
+
+test_that("prep_groups pads only from columns that group maps", {
+  cn <- paste0("c", 1:20)
+  g <- data.frame(feature = cn[1:8], group = rep(c("g1", "g2"), c(3, 5)))
+  unmapped <- cn[9:20]
+
+  # Regression: the padding pool was every column of `obj`, so under
+  # `allow_unmapped = TRUE` the columns documented as "not used as auxiliary
+  # columns" were drawn as aux. With 12 unmapped columns against 8 mapped
+  # ones, most draws came from them.
+  res <- suppressMessages(prep_groups(
+    cn,
+    g,
+    allow_unmapped = TRUE,
+    min_group_size = 6,
+    seed = 1
+  ))
+  aux <- unlist(res$aux)
+  expect_length(aux, 4L) # g1 needs 3 more columns, g2 needs 1
+  expect_false(any(aux %in% unmapped))
+  expect_identical(lengths(res$feature) + lengths(res$aux), c(6L, 6L))
+
+  # g1 has 3 columns and only the 5 of g2 to draw from, so 9 is out of reach.
+  # The unmapped columns do not make up the difference.
+  expect_error(
+    suppressMessages(prep_groups(
+      cn,
+      g,
+      allow_unmapped = TRUE,
+      min_group_size = 9
+    )),
+    "too large"
+  )
+})
+
+test_that("prep_groups demotes non-subset features and drops emptied groups", {
+  cn <- letters[1:8]
+  g <- data.frame(
+    group = c("g1", "g2", "g3"),
+    feature = I(list(c("a", "b", "c"), c("d", "e"), c("f", "g"))),
+    aux = I(list("h", character(0), "a"))
+  )
+
+  # g1 keeps a and c and demotes b behind its own aux. g2 has no feature in
+  # `subset` and is dropped, named by its label. g3 keeps f and demotes g.
+  expect_message(
+    res <- prep_groups(cn, g, subset = c("c", "a", "f")),
+    "Dropped group: g2"
+  )
+  expect_identical(res$group, c("g1", "g3"))
+  expect_identical(res$feature, list(c("a", "c"), "f"))
+  expect_identical(res$aux, list(c("h", "b"), c("a", "g")))
 })
 
 test_that("prep_groups errors when min_group_size too large", {
@@ -750,6 +870,331 @@ test_that("knn_imp: slideimp_infeasible class is set on both abort sites", {
     knn_imp(mat2, k = 3, colmax = 0.5, subset = 1:5),
     class = "slideimp_infeasible"
   )
+})
+
+test_that("group_imp: the infeasible error reaches a slideimp_infeasible handler", {
+  set.seed(1234)
+  sim <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)
+  mat_bad <- sim$input
+  mat_bad[1:19, 1:5] <- NA
+  bad_grp <- data.frame(feature = colnames(mat_bad)[1:5], group = "bad_group")
+
+  # Regression: the rethrow carried the class only on its parent.
+  # `expect_error(class = )` searches the parent chain and passed all along;
+  # a caller's `tryCatch(slideimp_infeasible = )` matches the condition itself
+  # and did not catch it.
+  for (param in c("k", "ncp")) {
+    args <- list(
+      mat_bad,
+      group = bad_grp,
+      on_infeasible = "error",
+      .progress = FALSE,
+      allow_unmapped = TRUE
+    )
+    args[[param]] <- 3
+    got <- tryCatch(
+      {
+        suppressMessages(suppressWarnings(do.call(group_imp, args)))
+        "no error"
+      },
+      slideimp_infeasible = function(e) "caught",
+      error = function(e) "some other error"
+    )
+    expect_identical(got, "caught", info = param)
+  }
+})
+
+test_that("group_imp routes a one-column group through on_infeasible", {
+  set.seed(1234)
+  sim <- sim_mat(30, 20, perc_total_na = 0.1, perc_col_na = 1)
+  obj <- sim$input
+  grp <- data.frame(
+    feature = colnames(obj)[1:11],
+    group = c(rep("a", 10), "lonely")
+  )
+  # the lone column has something to impute, or the group would be left alone
+  expect_true(anyNA(obj[, 11]))
+  run <- function(...) {
+    suppressMessages(group_imp(
+      obj,
+      group = grp,
+      allow_unmapped = TRUE,
+      .progress = FALSE,
+      ...
+    ))
+  }
+
+  # Regression: the group was capped to `k = 0` with a warning and then
+  # aborted the run as an input error, whatever `on_infeasible` said.
+  err <- tryCatch(run(k = 3), slideimp_infeasible = function(e) e)
+  expect_s3_class(err, "slideimp_infeasible")
+  expect_match(conditionMessage(err), "Group lonely is infeasible")
+
+  expect_no_warning(res <- run(k = 3, on_infeasible = "mean"))
+  expect_identical(attr(res, "fallback"), "lonely")
+  expect_false(anyNA(res[, 1:10]))
+  ref <- obj[, 11]
+  ref[is.na(ref)] <- mean(ref, na.rm = TRUE)
+  err_abs <- abs(res[, 11] - ref)
+  nz <- ref != 0
+  expect_gt(sum(nz), 0L)
+  max_abs <- max(err_abs)
+  max_rel <- max(err_abs[nz] / abs(ref[nz]))
+  expect_lte(
+    max_abs,
+    1e-12,
+    label = sprintf(
+      "max abs error %.3g (max rel %.3g over nonzero cells)",
+      max_abs,
+      max_rel
+    )
+  )
+  expect_lte(max_rel, 1e-12, label = sprintf("max rel error %.3g", max_rel))
+
+  expect_no_warning(res <- run(k = 3, on_infeasible = "skip"))
+  expect_identical(attr(res, "fallback"), "lonely")
+  expect_identical(res[, 11], obj[, 11])
+  expect_false(anyNA(res[, 1:10]))
+  expect_true(attr(res, "has_remaining_na"))
+
+  expect_no_warning(res <- run(ncp = 2, on_infeasible = "skip"))
+  expect_identical(attr(res, "fallback"), "lonely")
+  expect_identical(res[, 11], obj[, 11])
+
+  # a one-column group with nothing to impute is not infeasible
+  obj_full <- obj
+  obj_full[, 11] <- seq_len(30) / 30
+  res <- suppressMessages(group_imp(
+    obj_full,
+    group = grp,
+    k = 3,
+    allow_unmapped = TRUE,
+    .progress = FALSE
+  ))
+  expect_length(attr(res, "fallback"), 0L)
+  expect_identical(res[, 11], obj_full[, 11])
+})
+
+test_that("group_imp does not impute a group whose features are complete", {
+  set.seed(2)
+  obj <- matrix(
+    rnorm(30 * 16),
+    30,
+    16,
+    dimnames = list(NULL, paste0("f", 1:16))
+  )
+  obj[1:29, 6] <- NA # an aux column of group 1, above colmax = 0.9
+  obj[1:4, 11:13] <- NA # group 2 has features to impute
+  g <- data.frame(
+    group = c("complete", "missing"),
+    feature = I(list(colnames(obj)[1:5], colnames(obj)[11:16])),
+    aux = I(list(colnames(obj)[6:10], character(0)))
+  )
+  expect_false(anyNA(obj[, 1:5]))
+  # pca_imp() itself refuses group 1's columns, so calling it aborts the run
+  expect_error(
+    suppressMessages(pca_imp(obj[, 1:10], ncp = 2)),
+    class = "slideimp_infeasible"
+  )
+
+  # Regression: pca_imp() has no `subset`, so the whole submatrix of every
+  # group was handed to it. Group 1 needed nothing and still aborted the run
+  # under the default `on_infeasible = "error"`.
+  real_pca_imp <- pca_imp
+  seen_ncol <- integer()
+  local_mocked_bindings(
+    pca_imp = function(obj, ...) {
+      seen_ncol <<- c(seen_ncol, ncol(obj))
+      real_pca_imp(obj, ...)
+    }
+  )
+  res <- suppressMessages(group_imp(obj, group = g, ncp = 2, .progress = FALSE))
+  expect_identical(seen_ncol, 6L) # group 2 only
+  expect_length(attr(res, "fallback"), 0L)
+  expect_identical(res[, 1:10], obj[, 1:10])
+  expect_false(anyNA(res[, 11:16]))
+})
+
+# parameters ----
+test_that("group_imp: a global seed works with K-NN and seeds the padding", {
+  set.seed(1234)
+  sim <- sim_mat(30, 20, perc_total_na = 0.1, perc_col_na = 1)
+  obj <- sim$input
+  grp <- sim$col_group
+  # one group is below 12 columns, so the padding has columns to draw
+  expect_true(any(table(grp$group) < 12))
+
+  # Regression: `seed` was copied into every group's parameters and K-NN
+  # rejected it as an unknown parameter in `group$parameters`, so the one
+  # argument that makes the padding reproducible could not be used with `k`.
+  run <- function(seed) {
+    suppressMessages(group_imp(
+      obj,
+      group = grp,
+      k = 3,
+      seed = seed,
+      min_group_size = 12,
+      .progress = FALSE
+    ))
+  }
+  first <- run(1)
+  expect_identical(first, run(1))
+
+  # it is the padding prep_groups() draws with that seed
+  pp1 <- prep_groups(colnames(obj), grp, min_group_size = 12, seed = 1)
+  expect_identical(
+    first,
+    suppressMessages(group_imp(obj, group = pp1, k = 3, .progress = FALSE))
+  )
+
+  # and the seed is used, not ignored: another one pads with other columns
+  pp2 <- prep_groups(colnames(obj), grp, min_group_size = 12, seed = 2)
+  expect_false(identical(pp1$aux, pp2$aux))
+  expect_false(identical(first, run(2)))
+})
+
+test_that("group_imp names a global argument of the other backend", {
+  set.seed(1234)
+  sim <- sim_mat(30, 20, perc_total_na = 0.1, perc_col_na = 1)
+  obj <- sim$input
+  grp <- sim$col_group
+
+  # Regression: these were reported as unknown names in `group$parameters`,
+  # which the caller never set.
+  expect_error(
+    group_imp(obj, group = grp, k = 3, scale = TRUE),
+    "scale.* does not apply to KNN"
+  )
+  expect_error(
+    group_imp(obj, group = grp, k = 3, scale = TRUE, maxiter = 10),
+    "scale.*maxiter.* do not apply to KNN"
+  )
+  expect_error(
+    group_imp(obj, group = grp, ncp = 2, dist_pow = 1),
+    "dist_pow.* does not apply to PCA"
+  )
+
+  # a name a group sets for itself is still reported against the table
+  pp <- prep_groups(colnames(obj), grp)
+  pp$parameters <- rep(list(list(k = 3, seed = 1)), nrow(pp))
+  expect_error(
+    group_imp(obj, group = pp),
+    "Unknown parameter in .group\\$parameters. for KNN"
+  )
+})
+
+test_that("group_imp validates a per-group k before it compares it", {
+  set.seed(3)
+  sim <- sim_mat(30, 40, perc_total_na = 0.1, perc_col_na = 1)
+  obj <- sim$input
+  pp <- prep_groups(
+    colnames(obj),
+    data.frame(feature = colnames(obj), group = rep(1:2, each = 20))
+  )
+  with_k <- function(k) {
+    pp$parameters <- rep(list(list(k = k)), nrow(pp))
+    pp
+  }
+
+  # Regression: the cap compared the value first. A character "3" is greater
+  # than an integer 19, so both groups ran with `k = 19` and a "capped from 3
+  # to 19" warning.
+  expect_no_warning(expect_error(
+    group_imp(obj, group = with_k("3")),
+    "group$parameters[[1]]$k",
+    fixed = TRUE
+  ))
+  expect_error(
+    group_imp(obj, group = with_k(NA)),
+    "group$parameters[[1]]$k",
+    fixed = TRUE
+  )
+  expect_error(
+    group_imp(obj, group = with_k(c(2, 3))),
+    "group$parameters[[1]]$k",
+    fixed = TRUE
+  )
+  # the global argument is named as itself
+  expect_error(
+    group_imp(obj, group = pp, k = "3"),
+    "Assertion on 'k'",
+    fixed = TRUE
+  )
+})
+
+test_that("group_imp validates its scalar arguments", {
+  set.seed(1234)
+  sim <- sim_mat(30, 20, perc_total_na = 0.1, perc_col_na = 1)
+  obj <- sim$input
+  grp <- sim$col_group
+
+  expect_error(group_imp(obj, group = grp, k = 3, cores = NULL), "'cores'")
+  expect_error(
+    group_imp(obj, group = grp, k = 3, .progress = NA),
+    "'.progress'",
+    fixed = TRUE
+  )
+  expect_error(group_imp(obj, group = grp, k = 3, na_check = NA), "'na_check'")
+  expect_error(
+    group_imp(obj, group = grp, k = 3, allow_unmapped = NA),
+    "'allow_unmapped'"
+  )
+})
+
+test_that("group_imp names a group by its label, not its row", {
+  set.seed(1234)
+  sim <- sim_mat(30, 20, perc_total_na = 0.1, perc_col_na = 1)
+  obj <- sim$input
+  # labels 20 and 10: prep_groups() sorts them, so label 10 is row 1
+  grp <- data.frame(
+    feature = colnames(obj)[1:12],
+    group = c(rep(20, 8), rep(10, 4))
+  )
+  expect_warning(
+    suppressMessages(group_imp(
+      obj,
+      group = grp,
+      k = 5,
+      allow_unmapped = TRUE,
+      .progress = FALSE
+    )),
+    "Group 10: .k. capped from 5 to 3"
+  )
+})
+
+test_that("a group_imp() result can be imputed again", {
+  set.seed(1234)
+  sim <- sim_mat(30, 20, perc_total_na = 0.1, perc_col_na = 1)
+  first <- suppressMessages(group_imp(
+    sim$input,
+    group = sim$col_group,
+    k = 3,
+    .progress = FALSE
+  ))
+  expect_identical(attr(first, "metacaller"), "group_imp")
+
+  # Regression: the second pass attached the class a second time and kept
+  # `metacaller` and `fallback_action` from the first, so print() reported a
+  # group_imp() run with "1 group used a fallback" and "See group: FALSE".
+  again <- suppressMessages(knn_imp(first, k = 3))
+  expect_identical(class(again), c("slideimp_results", "matrix", "array"))
+  expect_null(attr(again, "metacaller"))
+  expect_null(attr(again, "fallback_action"))
+  printed <- capture.output(print(again))
+  expect_match(printed[[1]], "^Method: KNN imputation$")
+  expect_false(any(grepl("fallback", printed)))
+
+  slid <- suppressMessages(slide_imp(
+    first,
+    location = seq_len(ncol(first)),
+    window_size = 10,
+    overlap_size = 5,
+    min_window_n = 5,
+    k = 3,
+    .progress = FALSE
+  ))
+  expect_identical(class(slid), c("slideimp_results", "matrix", "array"))
+  expect_identical(attr(slid, "metacaller"), "slide_imp")
 })
 
 # slideimp.extra ----

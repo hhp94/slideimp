@@ -8,17 +8,9 @@
 !.gitignore
 
 !GSE286313.EPICv1_chr21.qs2
+!CPP.md
 !WRITING.md
-!bench_knn_overhead.R
-!bench_wide_phases.R
-!bench_wide_phases.sh
-!compare_bench_dirs.R
-!gen_pca_recover_block_ref.R
+!check_impute_knn.R
 !knn_imp_structure.md
 !pca_imp_structure.md
-!probe_epic_chr21_shape.R
-!probe_impute_knn.R
-!probe_knn_ties.R
-!probe_recover_block.R
-!probe_recover_block.sh
 !to-do.md

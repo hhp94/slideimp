@@ -226,14 +226,14 @@ sum_metrics <- do.call(
 
 sum_metrics[order(sum_metrics$.estimate.mean_error), ]
 #>    k dist_pow .metric .estimate.n .estimate.mean_error .estimate.sd_error
-#> 2 20        1     mae          10            0.1501427         0.01599598
-#> 4 20        2     mae          10            0.1519464         0.01638402
-#> 1  5        1     mae          10            0.1656087         0.01683512
-#> 3  5        2     mae          10            0.1669792         0.01666404
-#> 6 20        1    rmse          10            0.1897722         0.01915653
-#> 8 20        2    rmse          10            0.1918765         0.01936392
-#> 5  5        1    rmse          10            0.2081833         0.01949624
-#> 7  5        2    rmse          10            0.2101955         0.01884442
+#> 2 20        1     mae          10            0.1473074         0.01932826
+#> 4 20        2     mae          10            0.1487407         0.01906955
+#> 1  5        1     mae          10            0.1636596         0.02235208
+#> 3  5        2     mae          10            0.1654782         0.02003395
+#> 6 20        1    rmse          10            0.1898989         0.01998297
+#> 8 20        2    rmse          10            0.1926341         0.01906486
+#> 5  5        1    rmse          10            0.2098225         0.02296591
+#> 7  5        2    rmse          10            0.2120673         0.02141199
 ```
 
 - For PCA imputation and custom functions, set up parallelization with
@@ -330,8 +330,8 @@ chr1_beta <- sim_mat(n = 10, p = 2000)$input
     components to retain. Use this instead of `k` when performing
     sliding-window PCA imputation.
   - `subset`: impute only a subset of features (e.g., clock CpGs).
-  - `flank`: build flanking windows of `window_size` around features
-    provided in `subset`.
+  - `flank`: build one window for each feature in `subset`. Each window
+    extends `window_size` on each side of the feature.
 
 - First, let's perform a dry run to examine the windows that will be
   imputed by `slide_imp`.
@@ -378,13 +378,13 @@ slide_imp(
 #> Method: slide_imp (KNN imputation)
 #> Dimensions: 10 x 2000
 #> 
-#>          feature1  feature2  feature3   feature4  feature5  feature6
-#> sample1 0.7500638 0.5323295 0.6095626 0.96762386 0.5149855 1.0000000
-#> sample2 0.2809107 0.8695599 0.6324029 0.62469147 0.6040981 0.1583159
-#> sample3 0.9409348 0.5445597 0.6432675 1.00000000 0.5613868 0.3054879
-#> sample4 0.5946795 0.0000000 0.5837423 0.07237333 0.4410413 0.6101870
-#> sample5 0.8664253 0.6206139 0.3444691 0.52025046 0.5220036 0.7464794
-#> sample6 0.8157626 0.3053222 0.7227880 0.57711498 0.4576367 0.0000000
+#>          feature1  feature2  feature3  feature4  feature5  feature6
+#> sample1 0.5135933 0.2963880 0.7627385 0.7159082 1.0000000 0.9491080
+#> sample2 0.3319740 1.0000000 1.0000000 0.5066053 0.7703112 1.0000000
+#> sample3 0.5426325 0.6027545 0.5072706 0.5532664 0.3402620 0.3641687
+#> sample4 0.2706906 0.4814275 0.4520768 0.6410431 0.5857863 0.0000000
+#> sample5 0.1100367 0.0000000 0.6668255 0.5334654 0.3032808 0.4699617
+#> sample6 1.0000000 0.6492121 0.9667560 0.9835927 0.0000000 0.1985494
 #> # Showing 6 of 10 rows and 6 of 2000 columns
 ```
 
