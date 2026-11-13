@@ -61,7 +61,7 @@ Suggests:
     withr
 LinkingTo:
     BH,
-    dqrng,
+    dqrng (>= 0.4.1),
     Rcpp,
     RcppArmadillo,
     RcppEigen,

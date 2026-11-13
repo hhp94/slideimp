@@ -10,6 +10,33 @@ Provides K-nearest-neighbor, PCA, grouped, and sliding-window imputation
 methods for numeric matrices, along with utilities for simulation and
 parameter tuning.
 }
+\section{Column mean fill}{
+
+
+A column with a proportion of missing values greater than \code{colmax} takes no
+part in the imputation. The method does not use the column to impute other
+columns, and the method does not impute the column.
+
+With \code{post_imp = TRUE}, column means replace the missing values that remain
+after the method has run. Two kinds of missing value remain: the missing
+values of the columns that took no part, and the cells for which the method
+found no value. For such a cell, the column mean includes the values that
+the method imputed in the same column. With \code{post_imp = FALSE}, both kinds
+stay missing.
+
+The result records what the column means replaced, in two attributes:
+\itemize{
+\item \code{mean_filled_cols}: an integer vector with the index of each column that
+took no part and was filled.
+\item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
+one row for each cell that the method could not impute and that was
+filled.
+}
+
+Both attributes are empty when no column mean was used. \code{print()} reports
+them when they are not empty.
+}
+
 \section{Missing values and non-finite input}{
 
 

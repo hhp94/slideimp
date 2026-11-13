@@ -64,6 +64,35 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
       sep = ""
     )
   }
+
+  # column-mean notes: what `post_imp` filled. Both attributes are absent on
+  # an object saved by a version that did not record them, and count as empty.
+  n_mean_cols <- length(attr(x, "mean_filled_cols", exact = TRUE))
+  n_mean_cells <- NROW(attr(x, "mean_filled_cells", exact = TRUE))
+  if (n_mean_cols > 0L) {
+    cat(
+      "Note: ",
+      n_mean_cols,
+      if (n_mean_cols == 1L) " column was" else " columns were",
+      " excluded from imputation. Column means replaced ",
+      if (n_mean_cols == 1L) "its" else "their",
+      " missing values.\n",
+      "  See attribute \"mean_filled_cols\".\n",
+      sep = ""
+    )
+  }
+  if (n_mean_cells > 0L) {
+    cat(
+      "Note: ",
+      n_mean_cells,
+      if (n_mean_cells == 1L) " cell" else " cells",
+      " could not be imputed. Column means replaced ",
+      if (n_mean_cells == 1L) "it" else "them",
+      ".\n",
+      "  See attribute \"mean_filled_cells\".\n",
+      sep = ""
+    )
+  }
   cat("\n")
 
   # preview

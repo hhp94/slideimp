@@ -15,7 +15,8 @@
   window_size,
   subset,
   min_window_n,
-  colmax
+  colmax,
+  abb = NULL
 ) {
   .chk_matrix(obj)
   checkmate::assert_numeric(
@@ -44,7 +45,8 @@
   list(
     min_window_n = min_window_n,
     colmax = colmax,
-    tg = .resolve_cols(subset, obj)
+    tg = .resolve_cols(subset, obj),
+    abb = .resolve_cols(abb, obj, what = "abb")
   )
 }
 
@@ -54,12 +56,19 @@
   window_size,
   tg,
   min_window_n,
-  colmax
+  colmax,
+  abb = NULL
 ) {
   p <- ncol(obj)
-  cen <- .admissible_census(obj, colmax)
-  if (any(cen$nonfin)) {
-    k <- which(cen$nonfin)
+  is_abb <- if (is.null(abb)) logical(p) else .abb_kept(p, abb)$is_abb
+  cen <- .admissible_census(obj)
+  bad <- cen$nonfin & !is_abb
+  tg_l <- tg[is_abb[tg]]
+  if (length(tg_l) > 0L) {
+    bad[tg_l] <- colSums(is.infinite(obj[, tg_l, drop = FALSE])) > 0
+  }
+  if (any(bad)) {
+    k <- which(bad)
     stop(
       "`obj` has ",
       length(k),
@@ -73,7 +82,11 @@
       call. = FALSE
     )
   }
-  adm_idx <- unname(which(!(cen$empty | cen$single | cen$const | cen$too_miss)))
+  too_miss <- !(cen$empty | cen$single | cen$nonfin | cen$const) &
+    cen$cmiss / nrow(obj) > colmax
+  adm_idx <- unname(which(
+    !(cen$empty | cen$single | cen$const | too_miss | is_abb)
+  ))
   inv <- integer(p)
   inv[adm_idx] <- seq_along(adm_idx)
   tg_adm <- inv[tg]
@@ -106,14 +119,40 @@
   status <- rep("impute", nt)
   status[!has_win] <- "window_small"
   status[tg_adm == 0L] <- "inadmissible"
+  tg_abb <- is_abb[tg]
+  status[tg_abb] <- "abb"
+  status[tg_abb & cen$empty[tg]] <- "inadmissible"
   status[holes == 0L] <- "clean"
 
-  if (any(status == "window_small") && !any(status == "impute")) {
+  n_small <- sum(status == "window_small")
+  n_inadm <- sum(status == "inadmissible")
+  if (
+    (n_small + n_inadm) > 0L &&
+      !any(status == "impute" | status == "abb")
+  ) {
     stop(
-      "All windows have fewer than `min_window_n` (",
-      min_window_n,
-      ") columns. Consider increasing `window_size` or decreasing ",
-      "`min_window_n`.",
+      "No requested target with a missing cell can be imputed: ",
+      if (n_small > 0L) {
+        paste0(
+          n_small,
+          " ha",
+          if (n_small == 1L) "s" else "ve",
+          " a window with fewer than `min_window_n` (",
+          min_window_n,
+          ") columns (consider increasing `window_size` or decreasing ",
+          "`min_window_n`)"
+        )
+      },
+      if (n_small > 0L && n_inadm > 0L) ", and ",
+      if (n_inadm > 0L) {
+        paste0(
+          n_inadm,
+          " ",
+          if (n_inadm == 1L) "is" else "are",
+          " inadmissible (constant, under the two-cell floor, or over `colmax`)"
+        )
+      },
+      ".",
       call. = FALSE
     )
   }
@@ -131,6 +170,7 @@
     ),
     adm_idx = adm_idx,
     tg_adm = tg_adm,
+    tg_abb = unname(tg_abb),
     a_start = a_start,
     a_end = a_end,
     local = local
@@ -144,16 +184,26 @@ mipca_flank_plan <- function(
   window_size,
   subset,
   min_window_n,
-  colmax = 0.95
+  colmax = 0.95,
+  abb = NULL
 ) {
-  door <- .flank_door(obj, location, window_size, subset, min_window_n, colmax)
+  door <- .flank_door(
+    obj,
+    location,
+    window_size,
+    subset,
+    min_window_n,
+    colmax,
+    abb
+  )
   cen <- .flank_census(
     obj,
     location,
     window_size,
     door$tg,
     door$min_window_n,
-    door$colmax
+    door$colmax,
+    door$abb
   )
   structure(
     list(
@@ -162,8 +212,10 @@ mipca_flank_plan <- function(
       window_size = window_size,
       min_window_n = door$min_window_n,
       colmax = door$colmax,
+      abb = door$abb,
       adm_idx = cen$adm_idx,
       tg_adm = cen$tg_adm,
+      tg_abb = cen$tg_abb,
       a_start = cen$a_start,
       a_end = cen$a_end,
       local = cen$local,
@@ -182,7 +234,7 @@ mipca_flank_plan <- function(
     )
   }
   nt <- nrow(plan$targets)
-  per_target <- c("tg_adm", "a_start", "a_end", "local")
+  per_target <- c("tg_adm", "tg_abb", "a_start", "a_end", "local")
   if (!all(lengths(plan[per_target]) == nt)) {
     stop("internal error: the plan's windows do not line up with its targets.")
   }
@@ -211,7 +263,7 @@ print.si_flank_plan <- function(x, n = 10L, ...) {
     ncol(x$obj)
   ))
   cat(sprintf(
-    "  windows: within %s of each target, at least %d admissible columns (colmax %s)\n",
+    "  windows: within %s of each target's location, at least %d admissible columns (colmax %s)\n",
     format(x$window_size),
     x$min_window_n,
     format(x$colmax)
@@ -224,13 +276,26 @@ print.si_flank_plan <- function(x, n = 10L, ...) {
     sum(st == "window_small"),
     x$min_window_n
   ))
+  if (!is.null(x$abb)) {
+    cat(sprintf(
+      "  abb:     %d column%s listed and left out of every window; %d target%s drawn by ABB\n",
+      length(x$abb),
+      .s(length(x$abb)),
+      sum(st == "abb"),
+      .s(sum(st == "abb"))
+    ))
+  }
   k <- min(nt, n)
   print(tg[seq_len(k), , drop = FALSE], row.names = FALSE)
   if (nt > k) {
-    cat(sprintf("  ... %d more; x$targets is the whole table\n", nt - k))
+    cat(sprintf(
+      "  ... %d more row%s; x$targets has the whole table\n",
+      nt - k,
+      .s(nt - k)
+    ))
   }
   cat(
-    "  next:    mipca_flank_window(x, subset) is one target's window, for mipca_tune()\n"
+    "  next:    mipca_flank_window(x, subset) returns one target's window, to tune with mipca_tune()\n"
   )
   cat("           mipca_flank(x, rank, seed = ) imputes\n")
   invisible(x)
@@ -266,6 +331,16 @@ mipca_flank_window <- function(plan, subset) {
       call. = FALSE
     )
   }
+  if (plan$tg_abb[i]) {
+    stop(
+      "target ",
+      plan$targets$name[i],
+      " is listed for ABB, so it has no ",
+      "window: its holes are drawn from its own observed cells and no model ",
+      "is tuned for it.",
+      call. = FALSE
+    )
+  }
   if (is.na(plan$a_start[i])) {
     stop(
       "target ",
@@ -290,7 +365,7 @@ mipca_flank_window <- function(plan, subset) {
 mipca_flank <- function(
   plan,
   rank,
-  seed = NULL,
+  seed,
   transform,
   prop_diag = .prop_diag_default(),
   iter_sampling = 100,
@@ -314,26 +389,13 @@ mipca_flank <- function(
   n <- nrow(obj)
 
   rank <- .chk_count(rank, "rank")
-  need <- rank + 2L
-  if (need > n) {
-    stop(
-      "rank must be at most ",
-      n - 2L,
-      " with ",
-      n,
-      " rows: the sampler ",
-      "solves rank + 1 eigenpairs, and its eigensolver needs that many below ",
-      "the smaller dimension.",
-      call. = FALSE
-    )
-  }
-  if (min_window_n < need) {
+  if (min_window_n < rank + 2L) {
     stop(
       "the plan's `min_window_n` (",
       min_window_n,
       ") must be at least ",
       "rank + 2 = ",
-      need,
+      rank + 2L,
       " at rank ",
       rank,
       ": a narrower window ",
@@ -342,9 +404,27 @@ mipca_flank <- function(
       call. = FALSE
     )
   }
+  rank <- .chk_rank(rank, n, min_window_n)
+  if (missing(seed)) {
+    stop(
+      "`seed` must be given: each target is seeded from `seed` and its own ",
+      "column, so there is no caller's stream for a bare call to draw from.",
+      call. = FALSE
+    )
+  }
   seed <- .chk_count(seed, "`seed`", lo = 0L)
   chains <- .chk_count(chains, "chains")
   prop_diag <- .chk_frac(prop_diag, "prop_diag")
+  iter_sampling <- .chk_count(iter_sampling, "iter_sampling")
+  iter_warmup <- .chk_count(iter_warmup, "`iter_warmup`", lo = 0L)
+  thin <- as.double(.chk_count(thin, "thin"))
+  nu <- .chk_nu(nu)
+  parallel_chains <- .chk_count(parallel_chains, "parallel_chains")
+  spectra <- .chk_spectra(spectra)
+  init <- .chk_init(init)
+  if (nu < .NU_FLOOR) {
+    warning(.nu_floor_msg(), call. = FALSE)
+  }
   transform <- .resolve_transform(transform, n)
 
   status <- targets$status
@@ -352,14 +432,19 @@ mipca_flank <- function(
   nwin <- sum(status == "impute")
   if (.progress) {
     message(sprintf(
-      "mipca_flank: %d of %d target%s to impute (%d clean, %d inadmissible, %d in windows under %d columns)",
+      "mipca_flank: %d of %d target%s to impute (%d clean, %d inadmissible, %d in windows under %d columns)%s",
       nwin,
       nt,
       .s(nt),
       sum(status == "clean"),
       sum(status == "inadmissible"),
       sum(status == "window_small"),
-      min_window_n
+      min_window_n,
+      if (any(status == "abb")) {
+        sprintf(", %d more drawn by ABB", sum(status == "abb"))
+      } else {
+        ""
+      }
     ))
   }
 
@@ -371,6 +456,20 @@ mipca_flank <- function(
   step <- max(1L, nwin %/% 20L)
   kwin <- 0L
   for (i in seq_len(nt)) {
+    if (status[i] == "abb") {
+      fits[[i]] <- .abb_piece(
+        obj,
+        cols = tg[i],
+        seed = seed,
+        key = tg[i],
+        chains = chains,
+        ndraws = iter_sampling,
+        thin = thin,
+        prop_diag = prop_diag,
+        call = cl
+      )
+      next
+    }
     if (status[i] != "impute") {
       fits[[i]] <- .mipca_empty(
         obj,
@@ -393,36 +492,42 @@ mipca_flank <- function(
     if (.progress && (kwin == 1L || kwin %% step == 0L || kwin == nwin)) {
       message(sprintf(" window %d of %d", kwin, nwin))
     }
-    dqrng::dqset.seed(seed, stream = (i - 1) * chains)
-    fits[[i]] <- tryCatch(
-      .mipca_run(
-        obj[, wcols, drop = FALSE],
-        rank = rank,
-        transform = transform,
-        subset = plan$local[i],
-        keep_state = FALSE,
-        prop_diag = prop_diag,
-        iter_sampling = iter_sampling,
-        iter_warmup = iter_warmup,
-        thin = thin,
-        nu = nu,
-        chains = chains,
-        parallel_chains = parallel_chains,
-        spectra = spectra,
-        colmax = plan$colmax,
-        init = init,
-        call = cl
+    dqrng::dqset.seed(c(seed, tg[i]))
+    fits[[i]] <- withCallingHandlers(
+      tryCatch(
+        .mipca_run(
+          obj[, wcols, drop = FALSE],
+          rank = rank,
+          transform = transform,
+          subset = plan$local[i],
+          keep_state = FALSE,
+          prop_diag = prop_diag,
+          iter_sampling = iter_sampling,
+          iter_warmup = iter_warmup,
+          thin = thin,
+          nu = nu,
+          chains = chains,
+          parallel_chains = parallel_chains,
+          spectra = spectra,
+          init = init,
+          call = cl
+        ),
+        error = function(e) {
+          stop(
+            "target ",
+            targets$name[i],
+            " (window of ",
+            length(wcols),
+            " columns): ",
+            conditionMessage(e),
+            call. = FALSE
+          )
+        }
       ),
-      error = function(e) {
-        stop(
-          "target ",
-          targets$name[i],
-          " (window of ",
-          length(wcols),
-          " columns): ",
-          conditionMessage(e),
-          call. = FALSE
-        )
+      warning = function(w) {
+        if (identical(conditionMessage(w), .nu_floor_msg())) {
+          invokeRestart("muffleWarning")
+        }
       }
     )
   }
@@ -432,6 +537,5 @@ mipca_flank <- function(
   if (!identical(fit$colnames, targets$name)) {
     stop("internal error: the joined fit does not hold its targets in order.")
   }
-  fit$targets <- targets
   fit
 }

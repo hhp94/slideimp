@@ -21,11 +21,9 @@ knn_imp(
 
 \item{k}{Integer. Number of nearest neighbors to use for K-NN imputation.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are excluded from the main imputation
-method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
-which case remaining missing values are replaced by column means when
-possible.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a proportion
+of missing values greater than \code{colmax} take no part in the imputation, as
+described under Column mean fill.}
 
 \item{method}{Character. K-NN imputation distance method: either \code{"euclidean"}
 or \code{"manhattan"}.}
@@ -33,8 +31,9 @@ or \code{"manhattan"}.}
 \item{cores}{Integer. Number of cores to use for K-NN imputation. Defaults
 to \code{1}.}
 
-\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
-the main imputation method with column means when possible.}
+\item{post_imp}{Logical. If \code{TRUE}, column means replace the missing values
+that remain after the imputation method has run, as described under Column
+mean fill.}
 
 \item{subset}{Optional character or integer vector specifying columns to
 target for imputation. If \code{NULL}, all eligible columns are targeted.}
@@ -68,6 +67,12 @@ not take a square root; \code{method = "manhattan"} averages absolute
 differences. A candidate that shares no observed row with the target is
 not a neighbor and is never used, so a column may be imputed from fewer
 than \code{k} neighbors, or left missing when nothing overlaps it at all.
+
+\code{colmax} decides which columns can be neighbors, not only which columns are
+imputed. A column with few observed values can be selected as a neighbor
+because it agrees with the target on one or two shared rows. Such a neighbor
+has no value at most of the rows to impute. A lower \code{colmax} keeps these
+columns out.
 
 When \code{dist_pow > 0}, imputed values are distance-weighted averages of the
 selected neighbors: a neighbor at distance \code{d} is weighted
@@ -104,6 +109,33 @@ is at distance zero, all weights are \code{1}.
 \item Use \code{subset} when only specific columns need imputation.
 \item Use grouped or sliding-window imputation for very large matrices.
 }
+}
+
+\section{Column mean fill}{
+
+
+A column with a proportion of missing values greater than \code{colmax} takes no
+part in the imputation. The method does not use the column to impute other
+columns, and the method does not impute the column.
+
+With \code{post_imp = TRUE}, column means replace the missing values that remain
+after the method has run. Two kinds of missing value remain: the missing
+values of the columns that took no part, and the cells for which the method
+found no value. For such a cell, the column mean includes the values that
+the method imputed in the same column. With \code{post_imp = FALSE}, both kinds
+stay missing.
+
+The result records what the column means replaced, in two attributes:
+\itemize{
+\item \code{mean_filled_cols}: an integer vector with the index of each column that
+took no part and was filled.
+\item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
+one row for each cell that the method could not impute and that was
+filled.
+}
+
+Both attributes are empty when no column mean was used. \code{print()} reports
+them when they are not empty.
 }
 
 \section{Missing values and non-finite input}{

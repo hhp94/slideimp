@@ -276,13 +276,17 @@ pca_imp_results <- function(
     n_exact = 0L,
     n_lobpcg_ok = 0L,
     n_lobpcg_bad = 0L
-  )
+  ),
+  mean_filled_cols = integer(0),
+  mean_filled_cells = mean_filled_cells_matrix()
 ) {
   out <- new_slideimp_results(
     obj,
     "pca",
     fallback = FALSE,
-    post_imp = post_imp
+    post_imp = post_imp,
+    mean_filled_cols = mean_filled_cols,
+    mean_filled_cells = mean_filled_cells
   )
   attr(out, "solver_requested") <- solver
   attr(out, "solver_chosen") <- solver_chosen
@@ -348,6 +352,12 @@ pca_imp_results <- function(
 #' @details
 #' This function reimplements the PCA imputation method from the `missMDA`
 #' package by Francois Husson and Julie Josse, based on Josse and Husson (2016).
+#'
+#' A column whose observed values do not vary takes no part in PCA imputation
+#' either. `post_imp` and the `mean_filled_cols` attribute treat it like a
+#' column over `colmax`.
+#'
+#' @inheritSection slideimp-package Column mean fill
 #'
 #' @inheritSection slideimp-package Missing values and non-finite input
 #'
@@ -711,12 +721,21 @@ pca_imp <- function(
   # none. An unconditional `mean_imp_col(obj)` copied the matrix twice more -
   # once into the C++ result, once when Rcpp wrapped it - and scanned every
   # column for Inf and for its mean, all to change nothing on an all-eligible
-  # input. Same shape as the post step in knn_imp().
+  # input. Same shape as the post step in knn_imp(), and recorded on the
+  # result the same way: ineligible columns in `mean_filled_cols`, cells the
+  # kernel handed back NA in `mean_filled_cells`.
+  mean_cols <- integer(0)
+  mean_cells <- mean_filled_cells_matrix()
   if (post_imp) {
-    na_cols <- sort(unique(c(
-      which(!eligible & cmiss > 0L),
-      as.integer(best_imputed[is.na(best_imputed[, 3]), 2])
-    )))
+    # unname(): `cmiss` carries the column names, and the record is indices
+    mean_cols <- unname(which(!eligible & cmiss > 0L))
+    left <- is.na(best_imputed[, 3])
+    mean_cells <- mean_filled_cells_matrix(
+      row = best_imputed[left, 1],
+      col = best_imputed[left, 2],
+      n_row = nrow(obj)
+    )
+    na_cols <- sort(unique(c(mean_cols, mean_cells[, "col"])))
     if (length(na_cols) > 0L) {
       obj <- mean_imp_col(obj, subset = na_cols)
     }
@@ -728,6 +747,8 @@ pca_imp <- function(
     solver = solver,
     solver_chosen = if (resolved_solver_code == 1L) "lobpcg" else "exact",
     solver_probed = solver_probed,
-    diag = best_diag
+    diag = best_diag,
+    mean_filled_cols = mean_cols,
+    mean_filled_cells = mean_cells
   ))
 }

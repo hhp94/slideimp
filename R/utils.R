@@ -6,7 +6,9 @@ new_slideimp_results <- function(
   obj,
   imp_method,
   fallback,
-  post_imp
+  post_imp,
+  mean_filled_cols = integer(0),
+  mean_filled_cells = mean_filled_cells_matrix()
 ) {
   # start from a bare matrix. The input can itself be a `slideimp_results`,
   # from an earlier imputation pass: left as it is, the class would be attached
@@ -23,7 +25,79 @@ new_slideimp_results <- function(
   attr(obj, "imp_method") <- imp_method
   attr(obj, "fallback") <- fallback
   attr(obj, "post_imp") <- post_imp
+  # what `post_imp` set to a column mean, in the two kinds it fills. Both are
+  # always present, empty when nothing was filled, so that a caller reads them
+  # without asking first whether they exist.
+  attr(obj, "mean_filled_cols") <- mean_filled_cols
+  attr(obj, "mean_filled_cells") <- mean_filled_cells
   obj
+}
+
+# The `mean_filled_cells` attribute: one row per cell, columns `row` and `col`,
+# ordered by column and then by row. Duplicated cells are kept once: slide_imp()
+# can meet the same cell in two overlapping windows. `n_row` is the number of
+# rows of the matrix the cells index, needed only to tell duplicates apart.
+mean_filled_cells_matrix <- function(
+  row = integer(0),
+  col = integer(0),
+  n_row = 0L
+) {
+  if (length(row) > 1L) {
+    # a double key: `col * n_row` overflows an integer on a large matrix
+    key <- (as.numeric(col) - 1) * n_row + row
+    o <- order(key)
+    o <- o[!duplicated(key[o])]
+    row <- row[o]
+    col <- col[o]
+  }
+  cbind(row = as.integer(row), col = as.integer(col))
+}
+
+# What one backend result recorded as mean-filled, and the `post_imp` it ran
+# with, for a driver that takes only some of its columns. `res` is what knn_imp() or pca_imp() returned for a
+# submatrix, or a plain matrix when the backend did not run. `keep` holds the
+# submatrix columns the driver takes, and `global` maps every submatrix column
+# to its index in the driver's own matrix.
+#
+# The records of local_mean_filled(), one per window or group and NULL where
+# there is none, as the two attributes of the driver's result.
+combine_mean_filled <- function(records, n_row) {
+  pull <- function(what) {
+    unlist(lapply(records, `[[`, what), use.names = FALSE)
+  }
+  list(
+    # as.integer(): unlist() over records that are all NULL is NULL
+    cols = as.integer(sort(unique(pull("cols")))),
+    cells = mean_filled_cells_matrix(
+      row = pull("row"),
+      col = pull("col"),
+      n_row = n_row
+    )
+  )
+}
+
+# Base R only, and it calls nothing else from the package: group_imp() sends
+# it to mirai daemons inside a crate, so it must not depend on what a daemon
+# has loaded.
+local_mean_filled <- function(res, keep, global) {
+  cols <- attr(res, "mean_filled_cols", exact = TRUE)
+  cells <- attr(res, "mean_filled_cells", exact = TRUE)
+  cols <- cols[cols %in% keep]
+  if (is.null(cells)) {
+    cell_row <- integer(0)
+    cell_col <- integer(0)
+  } else {
+    taken <- cells[, "col"] %in% keep
+    cell_row <- unname(cells[taken, "row"])
+    cell_col <- global[cells[taken, "col"]]
+  }
+  list(
+    cols = as.integer(global[cols]),
+    row = cell_row,
+    col = cell_col,
+    # the `post_imp` the backend ran with, NULL when it did not run
+    post_imp = attr(res, "post_imp", exact = TRUE)
+  )
 }
 
 # Formatting -------------------------------------------------------------------

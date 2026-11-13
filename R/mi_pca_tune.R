@@ -1,39 +1,23 @@
-.chk_parameters <- function(parameters) {
-  if (!is.data.frame(parameters) || nrow(parameters) < 1L) {
-    stop(
-      "`parameters` must be a data.frame with at least one row.",
-      call. = FALSE
-    )
-  }
-  if (!identical(names(parameters), "rank")) {
-    stop(
-      "`parameters` must have exactly one column, `rank`; nu is not an axis ",
-      "here (every arm is Gaussian and `implied_nu` comes back derived).",
-      call. = FALSE
-    )
-  }
-  r <- parameters$rank
+.chk_ranks <- function(rank) {
   if (
-    !is.numeric(r) ||
-      anyNA(r) ||
-      any(!is.finite(r)) ||
-      any(r < 1) ||
-      any(r != trunc(r))
+    !is.numeric(rank) ||
+      length(rank) < 1L ||
+      anyNA(rank) ||
+      any(!is.finite(rank)) ||
+      any(rank < 1) ||
+      any(rank != trunc(rank)) ||
+      any(rank > .Machine$integer.max)
   ) {
-    stop("`parameters$rank` must be whole numbers >= 1, no NA.", call. = FALSE)
+    stop("`rank` must be a vector of whole numbers >= 1, no NA.", call. = FALSE)
   }
-  if (anyDuplicated(r)) {
+  if (anyDuplicated(rank)) {
     stop(
-      "`parameters$rank` has duplicates; identical arms reproduce bitwise, ",
-      "so a repeated row buys nothing.",
+      "`rank` has duplicates; identical arms reproduce bitwise, so a ",
+      "repeated rank buys nothing.",
       call. = FALSE
     )
   }
-  as.integer(r)
-}
-
-.dq_state <- function() {
-  dqrng::dqrng_get_state()
+  as.integer(rank)
 }
 
 .base_state <- function() {
@@ -52,6 +36,70 @@
   }
   assign(".Random.seed", s, envir = globalenv())
   invisible(NULL)
+}
+
+.blank_cells <- function(X, idx) {
+  X[idx] <- NA_real_
+  X
+}
+
+.resolve_holdout <- function(obj, holdout) {
+  if (
+    !is.matrix(holdout) ||
+      !is.numeric(holdout) ||
+      ncol(holdout) != 2L ||
+      nrow(holdout) < 1L
+  ) {
+    stop(
+      "the holdout must be a numeric two-column (row, col) matrix ",
+      "with at least one row.",
+      call. = FALSE
+    )
+  }
+  if (anyNA(holdout)) {
+    stop("the holdout contains NA positions.", call. = FALSE)
+  }
+  if (any(holdout != trunc(holdout))) {
+    stop("holdout positions must be whole numbers.", call. = FALSE)
+  }
+  hr <- as.integer(holdout[, 1L])
+  hc <- as.integer(holdout[, 2L])
+  n <- nrow(obj)
+  if (any(hr < 1L | hr > n) || any(hc < 1L | hc > ncol(obj))) {
+    stop("holdout positions fall outside `obj`.", call. = FALSE)
+  }
+  idx <- hr + (hc - 1L) * n
+  if (anyDuplicated(idx)) {
+    stop("the holdout contains duplicate positions.", call. = FALSE)
+  }
+  if (!all(is.finite(obj[idx]))) {
+    stop(
+      "holdout positions must be finite observed cells of `obj`; ",
+      "a non-finite cell is a hole, not truth.",
+      call. = FALSE
+    )
+  }
+  hit <- tabulate(hc, nbins = ncol(obj))
+  hitc <- which(hit > 0L)
+  nobs <- n - colSums(is.na(obj[, hitc, drop = FALSE]))
+  if (any(nobs - hit[hitc] < 1L)) {
+    stop(
+      "the holdout would blank every observed cell of at least one column.",
+      call. = FALSE
+    )
+  }
+  sort(idx)
+}
+
+.score_holdout <- function(d, truth, u) {
+  pit <- pit_all(d, truth, u = u)
+  mu <- rowMeans(d)
+  list(
+    pit = pit,
+    crps = crps_all(d, truth),
+    mean = mu,
+    var = rowSums((d - mu)^2) / (ncol(d) - 1L)
+  )
 }
 
 .tune_hole_pos <- function(na0, ho_lin) {
@@ -177,13 +225,15 @@
   f(x, ..., na.rm = TRUE)
 }
 
-.tune_grid_row <- function(
-  param_set,
+.tune_row <- function(
   rank,
   took,
   error = NA_character_,
-  ndraws = NA_integer_,
-  n_diag = NA_integer_,
+  crps = NA_real_,
+  implied_nu = NA_real_,
+  implied_lo = NA_real_,
+  implied_hi = NA_real_,
+  robust_z = NA_real_,
   ess_min = NA_real_,
   ess_p10 = NA_real_,
   ess_med = NA_real_,
@@ -192,17 +242,19 @@
   rhat_p90 = NA_real_,
   rhat_max = NA_real_,
   rhat_ok = NA_real_,
-  robust_z = NA_real_,
-  implied_nu = NA_real_,
-  implied_lo = NA_real_,
-  implied_hi = NA_real_,
-  sigma = list(NULL)
+  ndraws = NA_integer_,
+  n_diag = NA_integer_,
+  sigma = list(NULL),
+  result = list(NULL),
+  diag = list(NULL)
 ) {
   data.frame(
-    param_set = param_set,
     rank = rank,
-    ndraws = ndraws,
-    n_diag = n_diag,
+    crps = crps,
+    implied_nu = implied_nu,
+    implied_lo = implied_lo,
+    implied_hi = implied_hi,
+    robust_z = robust_z,
     ess_min = ess_min,
     ess_p10 = ess_p10,
     ess_med = ess_med,
@@ -211,116 +263,201 @@
     rhat_p90 = rhat_p90,
     rhat_max = rhat_max,
     rhat_ok = rhat_ok,
-    robust_z = robust_z,
-    implied_nu = implied_nu,
-    implied_lo = implied_lo,
-    implied_hi = implied_hi,
+    ndraws = ndraws,
+    n_diag = n_diag,
     sigma = I(sigma),
     time = took,
     error = error,
+    result = I(result),
+    diag = I(diag),
     stringsAsFactors = FALSE
   )
 }
 
-.tune_arm_read <- function(fit, prov, i, rank, took) {
-  rd <- prov$hold
-  n <- prov$dim[[1L]]
-  mh <- fit$map[rd$rows_ho, , drop = FALSE]
-  md <- fit$map[rd$rows_diag, , drop = FALSE]
+.tune_arm_read <- function(fit, rec, rank, took) {
+  mh <- fit$map[rec$rows_ho, , drop = FALSE]
+  md <- fit$map[rec$rows_diag, , drop = FALSE]
+  if (!identical(.map_lin(mh, rec$n), rec$lin)) {
+    stop(
+      "internal error: the arm's holdout rows do not address the recorded cells."
+    )
+  }
+
+  same <- function(a, b) {
+    if (is.numeric(a) && is.numeric(b)) {
+      identical(as.double(a), as.double(b))
+    } else {
+      identical(a, b)
+    }
+  }
+  got <- list(
+    chains = fit$prov$chains,
+    iter_warmup = fit$prov$warmup,
+    iter_sampling = fit$prov$ndraws,
+    thin = fit$prov$thin,
+    spectra = fit$seam$spectra
+  )
+  bad <- names(got)[!mapply(same, got, rec$run[names(got)])]
+  if (length(bad) > 0L) {
+    stop(
+      "internal error: an arm did not run the way the tuner asked (",
+      fmt_trunc(bad, 8),
+      ")."
+    )
+  }
+
+  D <- .pool_rows(fit$draws, rec$rows_ho)
+  d <- .backward_at(fit$transform, D, fit$map, rec$rows_ho)
+  sc <- .score_holdout(d, rec$truth, u = rec$u)
+  sdv <- sqrt(sc$var)
+
+  tl <- .forward_at(fit$transform, rec$blk, rec$ucol)[rec$pos]
+  rt <- .backward_at(fit$transform, tl, fit$map, rec$rows_ho)
   if (
-    !identical(fit$holdout$rows, rd$rows_ho) ||
-      !identical(.map_lin(mh, n), rd$lin)
+    anyNA(tl) ||
+      max(abs(rt - rec$truth)) > 1e-8 * max(1, max(abs(rec$truth)))
   ) {
     stop(
-      "internal error: the fit's holdout rows disagree with the store construction."
+      "internal error: the arm's forward map does not return the recorded truth at the holdout cells."
     )
   }
-  if (!identical(fit$holdout$truth, rd$truth)) {
-    stop(
-      "internal error: the fit scored different truth than the tuner recorded."
-    )
-  }
-
-  sc <- fit$holdout
-  sdv <- sqrt(sc$var)
-  z <- (rd$truth - sc$mean) / sdv
+  mu_l <- rowMeans(D)
+  sd_l <- sqrt(rowSums((D - mu_l)^2) / (ncol(D) - 1L))
+  z <- (tl - mu_l) / sd_l
   nuz <- .tune_nu_of(z)
-  band <- .tune_nu_band(z, rd$hcol)
+  band <- .tune_nu_band(z, rec$hcol)
 
-  dg <- .cell_diag_read(fit$draws, rd$rows_diag, prov$run$parallel_chains)
+  dg <- .cell_diag_read(fit$draws, rec$rows_diag, rec$run$parallel_chains)
   rhat <- dg[, 1L]
   ess <- dg[, 2L]
-  list(
-    cells = data.frame(
-      param_set = i,
-      rank = rank,
+  .tune_row(
+    rank = rank,
+    took = took,
+    crps = mean(sc$crps),
+    implied_nu = nuz$nu,
+    implied_lo = band[[1L]],
+    implied_hi = band[[2L]],
+    robust_z = nuz$robust_z,
+    ess_min = .na_red(ess, min),
+    ess_p10 = .na_red(ess, stats::quantile, 0.10, names = FALSE),
+    ess_med = stats::median(ess, na.rm = TRUE),
+    ess_ok = mean(ess >= rec$ess_bar, na.rm = TRUE),
+    rhat_med = stats::median(rhat, na.rm = TRUE),
+    rhat_p90 = stats::quantile(rhat, 0.90, na.rm = TRUE, names = FALSE),
+    rhat_max = .na_red(rhat, max),
+    rhat_ok = mean(rhat <= rec$rhat_bar, na.rm = TRUE),
+    ndraws = length(fit$draws) * ncol(fit$draws[[1L]]),
+    n_diag = length(rec$rows_diag),
+    sigma = list(vapply(fit$seam$chain, `[[`, 0, "sigma")),
+    result = list(data.frame(
       col = mh[, "col"],
       row = mh[, "row"],
-      truth = rd$truth,
+      truth = rec$truth,
       mean = sc$mean,
       sd = sdv,
       crps = sc$crps,
       pit = sc$pit,
+      truth_lat = tl,
+      mean_lat = mu_l,
+      sd_lat = sd_l,
       stringsAsFactors = FALSE
-    ),
-    diag = data.frame(
-      param_set = i,
-      rank = rank,
+    )),
+    diag = list(data.frame(
       col = md[, "col"],
       row = md[, "row"],
       rhat = rhat,
       ess = ess,
       stringsAsFactors = FALSE
-    ),
-    grid = .tune_grid_row(
-      param_set = i,
-      rank = rank,
-      took = took,
-      ndraws = length(fit$draws) * ncol(fit$draws[[1L]]),
-      n_diag = length(rd$rows_diag),
-      ess_min = .na_red(ess, min),
-      ess_p10 = .na_red(ess, stats::quantile, 0.10, names = FALSE),
-      ess_med = stats::median(ess, na.rm = TRUE),
-      ess_ok = mean(ess >= prov$ess_bar, na.rm = TRUE),
-      rhat_med = stats::median(rhat, na.rm = TRUE),
-      rhat_p90 = stats::quantile(rhat, 0.90, na.rm = TRUE, names = FALSE),
-      rhat_max = .na_red(rhat, max),
-      rhat_ok = mean(rhat <= prov$rhat_bar, na.rm = TRUE),
-      robust_z = nuz$robust_z,
-      implied_nu = nuz$nu,
-      implied_lo = band[[1L]],
-      implied_hi = band[[2L]],
-      sigma = list(vapply(fit$seam$chain, `[[`, 0, "sigma"))
-    )
+    ))
   )
+}
+
+.tune_fp <- function(X) {
+  row_na <- mat_miss(X, col = FALSE, prop = FALSE)
+  if (!is.integer(row_na) || length(row_na) != nrow(X) || anyNA(row_na)) {
+    stop(
+      "internal error: mat_miss() did not return one integer count per row."
+    )
+  }
+  list(
+    dim = dim(X),
+    dimnames = dimnames(X),
+    row_na = unname(row_na),
+    col_na = .mat_miss_int(X),
+    row_sum = unname(rowSums(X, na.rm = TRUE)),
+    col_sum = unname(colSums(X, na.rm = TRUE)),
+    scale = max(abs(range(X, na.rm = TRUE)))
+  )
+}
+
+.tune_fp_check <- function(fp, X) {
+  what <- NULL
+  if (!identical(dim(X), fp$dim) || !identical(dimnames(X), fp$dimnames)) {
+    what <- "its dimensions or dimnames"
+  } else {
+    cur <- .tune_fp(X)
+    if (
+      !identical(cur$row_na, fp$row_na) || !identical(cur$col_na, fp$col_na)
+    ) {
+      what <- "its missing cells"
+    } else {
+      den <- max(fp$scale, .Machine$double.xmin)
+      rel <- c(
+        abs(cur$row_sum - fp$row_sum) /
+          (pmax(fp$dim[2L] - fp$row_na, 1L) * den),
+        abs(cur$col_sum - fp$col_sum) / (pmax(fp$dim[1L] - fp$col_na, 1L) * den)
+      )
+      if (!all(is.finite(rel)) || max(rel) >= .SEAM_FP_TOL) {
+        what <- "its values"
+      }
+    }
+  }
+  if (!is.null(what)) {
+    stop(
+      "`obj` is not the matrix this table was tuned on: ",
+      what,
+      " differ ",
+      "from the fingerprint recorded at tune time. The scores describe that ",
+      "matrix; pass it, or re-run mipca_tune() on this one.",
+      call. = FALSE
+    )
+  }
+  invisible(NULL)
 }
 
 #' @export
 mipca_tune <- function(
   obj,
-  parameters,
+  rank,
   na_loc = NULL,
   n_cols = NULL,
   n_rows = 4L,
   transform,
-  level = c(0.5, 0.9, 0.99),
   n_diag = 10000L,
   iter_warmup = 100L,
   iter_sampling = 100L,
   chains = 4L,
   thin = 1,
   init = 1,
-  colmax = 0.95,
   refresh = 0L,
   spectra = spectra_opts(),
   parallel_chains = 1L,
-  seed = NULL
+  seed = NULL,
+  abb = NULL
 ) {
-  ranks <- .chk_parameters(parameters)
+  ranks <- .chk_ranks(rank)
   .chk_matrix(obj)
+  abb <- .resolve_cols(abb, obj, what = "abb")
+  full <- obj
+  kept <- NULL
+  if (!is.null(abb)) {
+    kept <- .abb_kept(ncol(obj), abb)$kept
+    obj <- obj[, kept, drop = FALSE]
+  }
+  drawn <- is.null(na_loc)
   n <- nrow(obj)
   p <- ncol(obj)
-  if (as.double(n) * p > .Machine$integer.max) {
+  if (as.double(n) * ncol(full) > .Machine$integer.max) {
     stop(
       "`obj` has more cells than the tuner's integer indexing can address.",
       call. = FALSE
@@ -333,25 +470,12 @@ mipca_tune <- function(
   iter_warmup <- .chk_count(iter_warmup, "`iter_warmup`", lo = 0L)
   thin <- as.double(.chk_count(thin, "thin"))
   init <- .chk_init(init)
-  colmax <- .chk_colmax(colmax)
   refresh <- .chk_refresh(refresh)
   spectra <- .chk_spectra(spectra)
-  lvl <- as.double(level)
-  if (length(lvl) < 1L || anyNA(lvl) || any(lvl <= 0 | lvl >= 1)) {
-    stop("`level` must be fractions strictly inside (0, 1).", call. = FALSE)
-  }
+  parallel_chains <- .chk_count(parallel_chains, "parallel_chains")
+  cen <- .check_admissible(obj)
   if (!is.null(seed)) {
     seed <- .chk_count(seed, "`seed`", lo = 0L)
-    base_old <- .base_state()
-    dq_old <- .seed_dq(seed)
-    on.exit(
-      {
-        dqrng::dqrng_set_state(dq_old)
-        .base_restore(base_old)
-      },
-      add = TRUE
-    )
-    set.seed(seed)
   }
 
   na0 <- which(is.na(obj))
@@ -363,8 +487,23 @@ mipca_tune <- function(
       n_cols <- max(50L, min(500L, as.integer(floor(0.10 * p))))
     }
     n_rows <- .chk_count(n_rows, "n_rows")
-    nobs <- n - tabulate(.lin_col(na0, n), nbins = p)
-    eligible <- sum(nobs >= n_rows + 2L & (n - nobs + n_rows) <= 0.9 * n)
+    if (any(cen$const)) {
+      k <- which(cen$const)
+      stop(
+        "`obj` has ",
+        length(k),
+        " constant column",
+        .s(length(k)),
+        " [",
+        fmt_trunc(.col_label(obj, k), 8),
+        "]. The sampler fits them, but the default holdout ",
+        "draw needs two distinct observed values in every column of the ",
+        "matrix; drop them before tuning, or supply `na_loc`.",
+        call. = FALSE
+      )
+    }
+    nobs <- n - cen$cmiss
+    eligible <- sum(nobs >= n_rows + 2L)
     if (eligible < n_cols) {
       stop(
         "cannot place a holdout over ",
@@ -375,21 +514,21 @@ mipca_tune <- function(
         n_cols,
         " columns able to give up ",
         n_rows,
-        " observed cells (keeping two, staying under 90% missing) ",
-        "and the matrix has ",
+        " observed cells (keeping two) and the matrix has ",
         eligible,
-        "; lower `n_cols` or `n_rows`, ",
-        "or supply `na_loc`.",
+        "; lower `n_cols` or `n_rows`, or supply `na_loc`.",
         call. = FALSE
       )
     }
-    na_loc <- sample_na_loc(
-      obj,
-      n_cols = n_cols,
-      n_rows = n_rows,
-      n_reps = 1L
-    )
+    n_ho_cells <- n_cols * n_rows
   } else {
+    if (!missing(n_rows)) {
+      stop(
+        "`n_rows` has no effect with a supplied `na_loc`: the design's own ",
+        "rows say how many cells each column gives up. Drop one.",
+        call. = FALSE
+      )
+    }
     if (!is.list(na_loc) || length(na_loc) < 1L) {
       stop(
         "`na_loc` must be a list of one two-column (row, col) matrix -- the ",
@@ -403,25 +542,14 @@ mipca_tune <- function(
         length(na_loc),
         " designs and the tuner scores one. ",
         "The rep axis is retired: loop over the designs yourself, one ",
-        "mipca_tune() call each, and compare the objects -- their grids ",
-        "are not poolable (see c.si_tune()).",
+        "mipca_tune() call each, and compare the tables -- two designs score ",
+        "different cells, so their rows are not one grid.",
         call. = FALSE
       )
     }
-    if (
-      !is.null(n_cols) &&
-        !all(
-          vapply(na_loc, function(a) length(unique(a[, 2L])), 0L) == n_cols
-        )
-    ) {
-      stop(
-        "`n_cols` disagrees with the supplied `na_loc`; drop one.",
-        call. = FALSE
-      )
-    }
+    n_ho_cells <- NROW(na_loc[[1L]])
   }
 
-  n_ho_cells <- NROW(na_loc[[1L]])
   if (n_ho_cells <= 2L) {
     stop(
       "the holdout has ",
@@ -433,41 +561,95 @@ mipca_tune <- function(
     )
   }
 
-  dq_state <- .dq_state()
-
-  narm <- length(ranks)
-  fits <- vector("list", narm)
-  grid_rows <- vector("list", narm)
-  cells_rows <- vector("list", narm)
-  diag_rows <- vector("list", narm)
-
-  ho_mat <- na_loc[[1L]]
-  ho_lin <- tryCatch(
-    .resolve_holdout(obj, ho_mat),
-    error = function(e) {
-      stop("na_loc: ", conditionMessage(e), call. = FALSE)
+  resolve <- function(design, against) {
+    tryCatch(
+      .resolve_holdout(against, design),
+      error = function(e) {
+        stop("na_loc: ", conditionMessage(e), call. = FALSE)
+      }
+    )
+  }
+  Xb <- NULL
+  if (!is.null(na_loc)) {
+    ho_lin <- resolve(na_loc[[1L]], full)
+    if (!is.null(kept)) {
+      ho_lin <- .abb_tune_rebase(ho_lin, full, kept)
     }
-  )
-  truth <- obj[ho_lin]
-  hcol <- .lin_col(ho_lin, n)
+    if (
+      !is.null(n_cols) &&
+        length(unique(na_loc[[1L]][, 2L])) != n_cols
+    ) {
+      stop(
+        "`n_cols` disagrees with the supplied `na_loc`; drop one.",
+        call. = FALSE
+      )
+    }
+    Xb <- .blank_cells(obj, ho_lin)
+    tryCatch(
+      .check_admissible(Xb),
+      error = function(e) {
+        stop(
+          "na_loc: after blanking the holdout, ",
+          conditionMessage(e),
+          call. = FALSE
+        )
+      }
+    )
+  }
+
+  if (!is.null(seed)) {
+    base_old <- .base_state()
+    dq_old <- .seed_dq(seed)
+    on.exit(
+      {
+        dqrng::dqrng_set_state(dq_old)
+        .base_restore(base_old)
+      },
+      add = TRUE
+    )
+    set.seed(seed)
+  } else {
+    dq_old <- .seed_dq(NULL)
+    on.exit(dqrng::dqrng_set_state(dq_old), add = TRUE)
+  }
+  if (is.null(na_loc)) {
+    na_loc <- sample_na_loc(
+      obj,
+      n_cols = n_cols,
+      n_rows = n_rows,
+      n_reps = 1L,
+      rowmax = 1,
+      colmax = 1
+    )
+    if (NROW(na_loc[[1L]]) != n_ho_cells) {
+      stop(
+        "internal error: the holdout draw placed ",
+        NROW(na_loc[[1L]]),
+        " cells where ",
+        n_ho_cells,
+        " were asked for."
+      )
+    }
+    ho_lin <- resolve(na_loc[[1L]], obj)
+  }
   hp <- .tune_hole_pos(na0, ho_lin)
   dd <- .tune_diag_draw(hp$holes, n, p, n_diag)
   st <- .tune_store(hp$ho_pos, dd$pos)
-  u_ho <- stats::runif(length(ho_lin))
-  ho_rec <- list(
+  hcol <- .lin_col(ho_lin, n)
+  ucol <- unique(hcol)
+  inv <- integer(p)
+  inv[ucol] <- seq_along(ucol)
+  rec <- list(
+    n = n,
     lin = ho_lin,
-    truth = truth,
+    truth = obj[ho_lin],
     hcol = hcol,
-    diag_pos = dd$pos,
-    diag_taken = dd$taken,
+    ucol = ucol,
+    blk = obj[, ucol, drop = FALSE],
+    pos = cbind(ho_lin - (hcol - 1L) * n, inv[hcol]),
     rows_ho = st$rows_ho,
     rows_diag = st$rows_diag,
-    store_n = length(st$store),
-    u = u_ho
-  )
-
-  prov <- list(
-    n_diag_req = n_diag,
+    u = stats::runif(length(ho_lin)),
     ess_bar = 100L * chains,
     rhat_bar = 1.05,
     run = list(
@@ -477,34 +659,28 @@ mipca_tune <- function(
       thin = thin,
       spectra = spectra,
       parallel_chains = parallel_chains,
-      init = init,
-      colmax = colmax,
-      refresh = refresh
-    ),
-    dim = dim(obj),
-    dimnames = dimnames(obj),
-    dq_state = dq_state,
-    hold = ho_rec
+      init = init
+    )
   )
+  if (is.null(Xb)) {
+    Xb <- .blank_cells(obj, ho_lin)
+  }
 
+  rows <- vector("list", length(ranks))
   for (i in seq_along(ranks)) {
     t0 <- proc.time()[["elapsed"]]
     fit <- tryCatch(
       .mipca_run(
-        obj,
+        Xb,
         rank = ranks[i],
         transform = transform,
         store = st$store,
-        holdout = ho_mat,
-        level = lvl,
-        u = u_ho,
         keep_state = TRUE,
         iter_warmup = iter_warmup,
         iter_sampling = iter_sampling,
         chains = chains,
         thin = thin,
         init = init,
-        colmax = colmax,
         refresh = refresh,
         spectra = spectra,
         parallel_chains = parallel_chains
@@ -512,415 +688,89 @@ mipca_tune <- function(
       error = identity
     )
     took <- proc.time()[["elapsed"]] - t0
-
     if (inherits(fit, "error")) {
-      grid_rows[[i]] <- .tune_grid_row(
-        i,
-        ranks[i],
-        took,
-        error = conditionMessage(fit)
-      )
+      rows[[i]] <- .tune_row(ranks[i], took, error = conditionMessage(fit))
       next
     }
-
-    ar <- .tune_arm_read(fit, prov, i, ranks[i], took)
-    fits[[i]] <- fit
-    cells_rows[[i]] <- ar$cells
-    diag_rows[[i]] <- ar$diag
-    grid_rows[[i]] <- ar$grid
+    rows[[i]] <- .tune_arm_read(fit, rec, ranks[i], took)
+    rm(fit)
   }
 
-  e <- new.env(parent = emptyenv())
-  .tune_tables_set(
-    e,
-    do.call(rbind, grid_rows),
-    do.call(rbind, cells_rows),
-    do.call(rbind, diag_rows)
-  )
-  e$na_loc <- na_loc
-  e$data <- obj
-  e$fits <- fits
-  e$transform <- transform
-  e$level <- lvl
-  prov$rng_end <- .base_state()
-  e$prov <- prov
-  e$call <- list(.scrub_call(match.call(), "mipca_tune"))
-  class(e) <- "si_tune"
-  e
-}
-
-#' @export
-c.si_tune <- function(...) {
-  stop(
-    "tuners cannot be combined. Two runs share a scoring basis only if they ",
-    "share the blanked cells and the PIT jitter, and two calls share ",
-    "neither -- so an argmin over the joined grid would compare columns that ",
-    "mean different things. Add the ranks to ONE tuner instead: ",
-    "update(tuner, parameters = data.frame(rank = <the new ones>)), or score ",
-    "them all in a single mipca_tune() call.",
-    call. = FALSE
-  )
-}
-
-.rn_auto <- function(x) {
-  row.names(x) <- NULL
-  x
-}
-
-.tune_tables_set <- function(x, grid, cells, diag) {
-  x$grid <- .rn_auto(grid)
-  x$cells <- .rn_auto(cells)
-  x$diag <- .rn_auto(diag)
-  x
-}
-
-.tune_blocks <- function(tab, g, lens, what) {
-  out <- vector("list", nrow(g))
-  off <- 0L
-  for (k in seq_len(nrow(g))) {
-    if (!is.na(g$error[k]) || lens[k] < 1L) {
-      next
+  out <- do.call(rbind, rows)
+  if (!is.null(kept)) {
+    back <- function(k) {
+      if (
+        length(k) > 0L &&
+          (anyNA(k) || min(k) < 1L || max(k) > length(kept))
+      ) {
+        stop("internal error: a reported column is not a kept position.")
+      }
+      kept[k]
     }
-    blk <- tab[off + seq_len(lens[k]), , drop = FALSE]
-    if (!all(blk$param_set == g$param_set[k])) {
-      stop(
-        "internal error: a ",
-        what,
-        " block does not belong to its grid row."
-      )
+    for (i in seq_len(nrow(out))) {
+      if (!is.null(out$result[[i]])) {
+        out$result[[i]]$col <- back(out$result[[i]]$col)
+        out$diag[[i]]$col <- back(out$diag[[i]]$col)
+      }
     }
-    out[[k]] <- blk
-    off <- off + lens[k]
+    if (drawn) {
+      na_loc[[1L]][, 2L] <- back(na_loc[[1L]][, 2L])
+    }
   }
-  if (off != nrow(tab)) {
-    stop("internal error: ", what, " has rows outside every arm's block.")
-  }
+  attr(out, "tune") <- list(
+    transform = transform,
+    run = rec$run,
+    fp = .tune_fp(full),
+    na_loc = na_loc,
+    rank = ranks,
+    n_diag = n_diag,
+    ess_bar = rec$ess_bar,
+    rhat_bar = rec$rhat_bar,
+    abb = abb
+  )
+  class(out) <- c("si_tune", "slideimp_tbl", "data.frame")
   out
 }
 
-.tune_rng_scope <- function(object, expr) {
-  if (is.null(object$prov$dq_state) || is.null(object$prov$rng_end)) {
+.tune_record <- function(object) {
+  tn <- attr(object, "tune")
+  if (
+    !is.list(tn) ||
+      is.null(tn$fp) ||
+      is.null(tn$run) ||
+      is.null(tn$transform) ||
+      is.null(tn$rank)
+  ) {
     stop(
-      "this tuner did not record the RNG states a mutation has to restore, ",
-      "so it could not reproduce what a fresh call would have drawn; ",
-      "re-run mipca_tune().",
+      "this table has lost the record mipca_fit() hands off from. A row ",
+      "subset keeps it; a column subset or subset() drops it. Hand off from ",
+      "the table mipca_tune() returned, or a row subset of it.",
       call. = FALSE
     )
   }
-  caller_dq <- .dq_state()
-  caller_base <- .base_state()
-  on.exit(
-    {
-      dqrng::dqrng_set_state(caller_dq)
-      .base_restore(caller_base)
-    },
-    add = TRUE
-  )
-  dqrng::dqrng_set_state(object$prov$dq_state)
-  .base_restore(object$prov$rng_end)
-  res <- force(expr)
-  object$prov$rng_end <- .base_state()
-  res
-}
-
-.tune_grow <- function(object, parameters, cl) {
-  ranks_new <- .chk_parameters(parameters)
-  g <- object$grid
-  if (is.unsorted(g$param_set, strictly = TRUE)) {
-    stop("internal error: this tuner's param_set is not strictly ascending.")
-  }
-  dup <- intersect(ranks_new, unique(g$rank))
-  if (length(dup) > 0L) {
+  r <- object$rank
+  if (!is.numeric(r) || anyDuplicated(r) || !all(r %in% tn$rank)) {
     stop(
-      "rank ",
-      paste(dup, collapse = ", "),
-      " is already in this grid. ",
-      "Re-running a rank on the same cells with the same streams reproduces ",
-      "it bitwise, so the second row would be a duplicate rather than ",
-      "information.",
+      "this table's rows are not all from the run its record describes: ",
+      "rbind() keeps the first table's record only, so rows from another run ",
+      "would be fitted under it. Hand off from one run's table.",
       call. = FALSE
     )
   }
-  X <- .tune_data(object, "grow")
-  cfg <- .tune_run_config(object)
-
-  na0 <- which(is.na(X))
-  cell_lens <- rep(length(object$prov$hold$lin), nrow(g))
-  invisible(.tune_blocks(object$cells, g, cell_lens, "cells"))
-  invisible(.tune_blocks(object$diag, g, g$n_diag, "diag"))
-  grid_new <- list()
-  cells_new <- list()
-  diag_new <- list()
-  fits_new <- list()
-  ps0 <- max(g$param_set)
-
-  .tune_rng_scope(object, {
-    rd <- object$prov$hold
-    hp <- .tune_hole_pos(na0, rd$lin)
-    st <- .tune_store(hp$ho_pos, rd$diag_pos)
-    if (
-      length(st$store) != rd$store_n ||
-        !identical(st$rows_ho, rd$rows_ho) ||
-        !identical(st$rows_diag, rd$rows_diag)
-    ) {
-      stop(
-        "internal error: the rebuilt store set disagrees with the one this ",
-        "tuner's arms were run on."
-      )
-    }
-    for (i in seq_along(ranks_new)) {
-      ps <- ps0 + i
-      t0 <- proc.time()[["elapsed"]]
-      fit <- tryCatch(
-        do.call(
-          .mipca_run,
-          c(
-            list(
-              X,
-              rank = ranks_new[i],
-              transform = object$transform,
-              store = st$store,
-              holdout = object$na_loc[[1L]],
-              level = object$level,
-              u = rd$u,
-              keep_state = TRUE
-            ),
-            cfg
-          )
-        ),
-        error = identity
-      )
-      took <- proc.time()[["elapsed"]] - t0
-      if (inherits(fit, "error")) {
-        grid_new <- c(
-          grid_new,
-          list(
-            .tune_grid_row(
-              ps,
-              ranks_new[i],
-              took,
-              error = conditionMessage(fit)
-            )
-          )
-        )
-        cells_new <- c(cells_new, list(NULL))
-        diag_new <- c(diag_new, list(NULL))
-        fits_new <- c(fits_new, list(NULL))
-        next
-      }
-      ar <- .tune_arm_read(fit, object$prov, ps, ranks_new[i], took)
-      grid_new <- c(grid_new, list(ar$grid))
-      cells_new <- c(cells_new, list(ar$cells))
-      diag_new <- c(diag_new, list(ar$diag))
-      fits_new <- c(fits_new, list(fit))
-    }
-  })
-
-  .tune_tables_set(
-    object,
-    rbind(g, do.call(rbind, grid_new)),
-    rbind(object$cells, do.call(rbind, cells_new)),
-    rbind(object$diag, do.call(rbind, diag_new))
-  )
-  object$fits <- c(object$fits, fits_new)
-  object$call <- c(object$call, list(cl))
-  invisible(object)
-}
-
-#' @export
-update.si_tune <- function(object, iter_sampling, parameters, ...) {
-  cl <- .scrub_call(match.call(), "update")
-  if (...length() > 0L) {
-    nm <- ...names()
-    nm <- nm[nzchar(nm)]
-    stop(
-      "update() on a tuner takes no argument beyond `iter_sampling` or ",
-      "`parameters`",
-      if (length(nm) > 0L) paste0(" (got ", fmt_trunc(nm, 8), ")") else "",
-      ".\nEvery arm extends the way its chains sampled, and every grown arm ",
-      "runs the way the arms beside it did.",
-      call. = FALSE
-    )
-  }
-  have_iter <- !missing(iter_sampling)
-  have_par <- !missing(parameters)
-  if (have_iter && have_par) {
-    stop(
-      "update() extends OR grows, not both in one call. Extending re-reads ",
-      "every arm at a new length while growing adds arms at the current one, ",
-      "so together they would leave the grid half-described by each. Call it ",
-      "twice.",
-      call. = FALSE
-    )
-  }
-  if (!have_iter && !have_par) {
-    stop(
-      "update() on a tuner needs either `iter_sampling`, to extend every arm, ",
-      "or `parameters`, to add ranks scored on the cells this tuner already ",
-      "fixed.",
-      call. = FALSE
-    )
-  }
-  if (have_par) {
-    return(.tune_grow(object, parameters, cl))
-  }
-  iter_sampling <- .chk_count(iter_sampling, "iter_sampling")
-
-  g <- object$grid
-  narm <- nrow(g)
-  grid_rows <- lapply(seq_len(narm), function(k) g[k, , drop = FALSE])
-  cells_rows <- vector("list", narm)
-  diag_rows <- vector("list", narm)
-
-  .tune_rng_scope(object, {
-    for (k in seq_len(narm)) {
-      fit <- object$fits[[k]]
-      if (is.null(fit)) {
-        next
-      }
-      t0 <- proc.time()[["elapsed"]]
-      err <- tryCatch(
-        {
-          update(fit, iter_sampling)
-          NULL
-        },
-        error = identity
-      )
-      took <- g$time[k] + (proc.time()[["elapsed"]] - t0)
-      if (!is.null(err)) {
-        grid_rows[[k]] <- .tune_grid_row(
-          g$param_set[k],
-          g$rank[k],
-          took,
-          error = conditionMessage(err)
-        )
-        object$fits[k] <- list(NULL)
-        next
-      }
-      ar <- .tune_arm_read(fit, object$prov, g$param_set[k], g$rank[k], took)
-      cells_rows[[k]] <- ar$cells
-      diag_rows[[k]] <- ar$diag
-      grid_rows[[k]] <- ar$grid
-    }
-  })
-
-  .tune_tables_set(
-    object,
-    do.call(rbind, grid_rows),
-    do.call(rbind, cells_rows),
-    do.call(rbind, diag_rows)
-  )
-  object$call <- c(object$call, list(cl))
-  invisible(object)
+  tn
 }
 
 .tune_argmin_rank <- function(object) {
-  cl <- object$cells
-  if (is.null(cl) || nrow(cl) < 1L) {
+  live <- is.na(object$error) & is.finite(object$crps)
+  if (!any(live)) {
     stop(
       "no arm recorded any holdout scores, so there is no grid to choose ",
-      "from; read `x$grid$error` for why, or pass `rank` explicitly.",
+      "from; read `x$error` for why, or pass `rank` explicitly.",
       call. = FALSE
     )
   }
-  m <- tapply(cl$crps, cl$rank, mean)
-  as.integer(names(m)[which.min(m)])
-}
-
-.tune_run_config <- function(object) {
-  g <- object$grid
-  live <- !vapply(object$fits, is.null, NA)
-  if (length(live) != nrow(g)) {
-    stop(
-      "internal error: the tuner holds ",
-      length(live),
-      " arms and ",
-      nrow(g),
-      " grid rows."
-    )
-  }
-  if (!identical(live, is.na(g$error))) {
-    stop(
-      "internal error: the tuner's live arms and its error-free grid rows ",
-      "are not the same arms."
-    )
-  }
-  fits <- object$fits[live]
-  if (length(fits) < 1L) {
-    stop(
-      "no arm of this tuner is live, so there is no configuration to carry; ",
-      "read `x$grid$error` for why.",
-      call. = FALSE
-    )
-  }
-  out <- object$prov$run
-  same <- function(a, b) {
-    if (is.numeric(a) && is.numeric(b)) {
-      identical(as.double(a), as.double(b))
-    } else {
-      identical(a, b)
-    }
-  }
-  for (f in fits) {
-    got <- list(
-      chains = f$prov$chains,
-      iter_warmup = f$prov$warmup,
-      thin = f$prov$thin,
-      spectra = f$seam$spectra
-    )
-    bad <- names(got)[!mapply(same, got, out[names(got)])]
-    if (length(bad) > 0L) {
-      stop(
-        "internal error: an arm did not run the way the tuner asked (",
-        fmt_trunc(bad, 8),
-        ")."
-      )
-    }
-  }
-  nd <- vapply(fits, function(f) f$prov$ndraws, integer(1L))
-  if (length(unique(nd)) != 1L) {
-    stop(
-      "internal error: the tuner's arms are not a single length, so there ",
-      "is no single configuration to carry forward."
-    )
-  }
-  out$iter_sampling <- nd[[1L]]
-  out
-}
-
-.tune_data <- function(object, verb) {
-  X <- object$data
-  if (is.null(X)) {
-    stop(
-      "this tuner no longer carries the matrix it was tuned on, so there is ",
-      "nothing to ",
-      verb,
-      "; re-run mipca_tune().",
-      call. = FALSE
-    )
-  }
-  if (
-    !identical(dim(X), object$prov$dim) ||
-      !identical(dimnames(X), object$prov$dimnames)
-  ) {
-    stop(
-      "this tuner's matrix is not the one it was tuned on: dimensions or ",
-      "dimnames disagree with what was recorded at tune time. Its scores ",
-      "describe a matrix that is gone; re-run mipca_tune().",
-      call. = FALSE
-    )
-  }
-  rd <- object$prov$hold
-  if (!identical(X[rd$lin], rd$truth)) {
-    stop(
-      "this tuner's matrix has been edited since it was tuned: values at ",
-      "the recorded holdout cells differ from the truth stored at tune ",
-      "time. Its scores describe a matrix that is gone; re-run ",
-      "mipca_tune().",
-      call. = FALSE
-    )
-  }
-  X
+  r <- object$rank[live]
+  r[order(object$crps[live], r)[1L]]
 }
 
 #' @export
@@ -931,6 +781,7 @@ mipca_fit <- function(object, ...) {
 #' @export
 mipca_fit.si_tune <- function(
   object,
+  obj,
   rank = NULL,
   ...,
   chains,
@@ -940,44 +791,45 @@ mipca_fit.si_tune <- function(
   spectra,
   parallel_chains,
   init,
-  colmax,
-  refresh,
+  refresh = 100L,
   keep_state = FALSE,
   prop_diag = .prop_diag_default(),
   seed = NULL,
-  nu,
+  nu = NULL,
   transform,
   holdout,
-  data
+  abb
 ) {
   .chk_no_dots(..., .what = "mipca_fit()")
   owned <- c(
-    nu = !missing(nu),
     transform = !missing(transform),
-    holdout = !missing(holdout)
+    holdout = !missing(holdout),
+    abb = !missing(abb)
   )
   if (any(owned)) {
     hit <- names(owned)[owned]
     stop(
-      "mipca_fit() carries ",
+      "mipca_fit() does not take ",
       paste(sprintf("`%s`", hit), collapse = ", "),
-      " across from the tuner. `nu` and `transform` are yours to choose in a ",
-      "direct mipca() call; `holdout` is not, because scoring belongs to ",
-      "the tuner and a production fit must not be conditioned on ",
-      "deliberately degraded data.",
+      ". The transform is carried across from the tuner and is yours to ",
+      "choose in a direct mipca() call; a holdout is not, because scoring ",
+      "belongs to the tuner and a production fit must not be conditioned on ",
+      "deliberately degraded data. The `abb` list is carried across with the ",
+      "transform: rank and nu were tuned with those columns left out.",
       call. = FALSE
     )
   }
-  if (!missing(data)) {
+  if (missing(obj)) {
     stop(
-      "`data` is no longer an argument to mipca_fit(). A tuner carries the matrix ",
-      "it was tuned on and nothing in this package detaches it, so there is ",
-      "no re-attach to make; if that matrix is missing or altered, the ",
-      "tuner's scores describe something that is gone and the answer is to ",
-      "re-run mipca_tune().",
+      "mipca_fit() needs the matrix the table was tuned on, passed again: ",
+      "mipca_fit(tuned, obj). The table does not carry it.",
       call. = FALSE
     )
   }
+  .chk_matrix(obj)
+  tn <- .tune_record(object)
+  .tune_fp_check(tn$fp, obj)
+
   if (is.null(rank)) {
     rank_src <- "argmin CRPS"
     rank <- .tune_argmin_rank(object)
@@ -985,57 +837,77 @@ mipca_fit.si_tune <- function(
     rank_src <- "given"
     rank <- .chk_count(rank, "rank")
   }
-  g <- object$grid
-  if (!any(g$rank == rank)) {
+  k <- which(object$rank == rank)
+  if (length(k) != 1L) {
     stop(
       "rank ",
       rank,
-      " is not a tuned arm (the grid has ",
-      paste(sort(unique(g$rank)), collapse = ", "),
+      " is not a tuned arm (the table has ",
+      paste(sort(object$rank), collapse = ", "),
       "); nu is read off the ",
       "chosen rank's Gaussian arm, so an untuned rank goes through ",
       "mipca() directly, or through a second tuner call sharing `na_loc`.",
       call. = FALSE
     )
   }
-
-  X <- .tune_data(object, "fit")
-
-  cl <- object$cells
-  sel <- if (is.null(cl)) logical(0L) else cl$rank == rank
-  if (!any(sel)) {
-    errs <- g$error[g$rank == rank]
-    errs <- errs[!is.na(errs)]
+  res <- object$result[[k]]
+  if (is.null(res) || nrow(res) < 1L) {
+    err <- object$error[k]
     stop(
       "the rank-",
       rank,
       " arm recorded no scores",
-      if (length(errs) > 0L) {
-        paste0(" (", paste(unique(errs), collapse = "; "), ")")
-      } else {
-        ""
-      },
+      if (!is.na(err)) paste0(" (", err, ")") else "",
       "; nothing to read nu from.",
       call. = FALSE
     )
   }
-  z <- (cl$truth[sel] - cl$mean[sel]) / cl$sd[sel]
-  nuz <- .tune_nu_of(z)
-  rz <- nuz$robust_z
-  nu <- nuz$nu
-  if (is.na(nu)) {
+  if (!identical(obj[cbind(res$row, res$col)], res$truth)) {
     stop(
-      "the implied nu off the rank-",
+      "`obj` disagrees with the rank-",
       rank,
-      " arm is unreadable (fewer ",
-      "than 4 finite z); fit through mipca() with a nu of your own.",
+      " arm's recorded truth at its ",
+      "holdout cells; the scores describe another matrix. Pass the matrix ",
+      "this table was tuned on, or re-run mipca_tune().",
       call. = FALSE
     )
   }
-  nu_implied <- nu
-  nu <- max(nu, .NU_FLOOR)
 
-  cfg <- .tune_run_config(object)
+  if (is.null(res$truth_lat)) {
+    stop(
+      "this table carries no latent-scale cells (it predates the latent nu ",
+      "read of 2026-10-29); re-run mipca_tune().",
+      call. = FALSE
+    )
+  }
+  nuz <- .tune_nu_of((res$truth_lat - res$mean_lat) / res$sd_lat)
+  rz <- nuz$robust_z
+  nu_implied <- nuz$nu
+  if (is.null(nu)) {
+    nu_src <- "tuner"
+    if (is.na(nu_implied)) {
+      stop(
+        "the implied nu off the rank-",
+        rank,
+        " arm is unreadable (fewer ",
+        "than 4 finite z); pass `nu` to override the reading.",
+        call. = FALSE
+      )
+    }
+    nu <- max(nu_implied, .NU_FLOOR)
+    if (nu > nu_implied) {
+      message(sprintf(
+        "mipca_fit(): nu %.3g read off the rank-%d arm, %g used (the floor; pass `nu` to override).",
+        nu_implied,
+        rank,
+        nu
+      ))
+    }
+  } else {
+    nu_src <- "given"
+  }
+
+  cfg <- tn$run
   given <- c(
     chains = !missing(chains),
     iter_warmup = !missing(iter_warmup),
@@ -1043,9 +915,7 @@ mipca_fit.si_tune <- function(
     thin = !missing(thin),
     spectra = !missing(spectra),
     parallel_chains = !missing(parallel_chains),
-    init = !missing(init),
-    colmax = !missing(colmax),
-    refresh = !missing(refresh)
+    init = !missing(init)
   )
   if (!identical(names(given), names(cfg))) {
     stop(
@@ -1057,20 +927,19 @@ mipca_fit.si_tune <- function(
   dots <- mget(names(given)[given], envir = environment())
 
   cl_fit <- .scrub_call(match.call(), "mipca_fit")
-  dq_old <- .seed_dq(seed)
-  if (!is.null(dq_old)) {
-    on.exit(dqrng::dqrng_set_state(dq_old), add = TRUE)
-  }
-  res <- do.call(
+  res_fit <- do.call(
     .mipca_run,
     c(
-      list(X, rank = rank, transform = object$transform, nu = nu),
+      list(obj, rank = rank, transform = tn$transform, nu = nu, abb = tn$abb),
       carried,
       dots,
       list(
+        refresh = refresh,
         keep_state = keep_state,
         prop_diag = prop_diag,
         prop_diag_given = !missing(prop_diag),
+        seed = seed,
+        seed_given = TRUE,
         call = cl_fit
       )
     ),
@@ -1078,7 +947,6 @@ mipca_fit.si_tune <- function(
   )
 
   keep <- c(
-    "param_set",
     "rank",
     "ndraws",
     "ess_p10",
@@ -1089,54 +957,57 @@ mipca_fit.si_tune <- function(
     "implied_lo",
     "implied_hi"
   )
+  arm <- as.data.frame(object[k, keep, drop = FALSE])
+  class(arm) <- "data.frame"
   rec <- list(
     rank = rank,
     rank_src = rank_src,
     nu = nu,
+    nu_src = nu_src,
     nu_implied = nu_implied,
     robust_z = rz,
-    n_cells = sum(sel),
-    n_ho_cells = length(object$prov$hold$lin),
-    n_ho_cols = length(unique(object$prov$hold$hcol)),
+    n_ho_cells = nrow(res),
+    n_ho_cols = length(unique(res$col)),
     carried = names(carried),
     overridden = names(given)[given],
-    arms = g[g$rank == rank & is.na(g$error), keep, drop = FALSE],
-    tune_call = object$call
+    arms = arm
   )
   rec$line <- .tuned_line(rec)
-  if (inherits(res, "si_mi_pca")) {
-    res$prov$tuned <- rec
+  if (inherits(res_fit, "si_mi_pca")) {
+    res_fit$prov$tuned <- rec
   } else {
-    res$chunks[[1L]]$prov$tuned <- rec
+    res_fit$chunks[[1L]]$prov$tuned <- rec
   }
-  res
+  res_fit
 }
 
 .tuned_line <- function(tp) {
   lo <- tp$arms$implied_lo
   hi <- tp$arms$implied_hi
-  nu_txt <- if (tp$nu > tp$nu_implied) {
-    sprintf("%.4g (raised from the tuner's %.3g)", tp$nu, tp$nu_implied)
+  nu_txt <- if (identical(tp$nu_src, "given")) {
+    sprintf("nu %.4g given", tp$nu)
+  } else if (tp$nu > tp$nu_implied) {
+    sprintf("nu %.3g read, %.4g used", tp$nu_implied, tp$nu)
   } else {
-    sprintf("%.4g", tp$nu)
+    sprintf("nu %.4g", tp$nu)
   }
   paste0(
     sprintf(
-      "  tuned:   rank %d (%s) and nu %s from a tuner run (%d cells over %d columns, band %.3g-%.3g)\n",
+      "  tuned:   rank %d (%s), %s; holdout %d cells over %d columns, implied-nu band %.3g-%.3g\n",
       tp$rank,
       tp$rank_src,
       nu_txt,
-      tp$n_cells,
+      tp$n_ho_cells,
       tp$n_ho_cols,
       .na_red(lo, min),
       .na_red(hi, max)
     ),
     sprintf(
-      "           carried from the arms: %s%s\n",
+      "           carried from the tuner run: %s%s\n",
       if (length(tp$carried) > 0L) {
         paste(tp$carried, collapse = ", ")
       } else {
-        "nothing"
+        "none"
       },
       if (length(tp$overridden) > 0L) {
         paste0("; overridden here: ", paste(tp$overridden, collapse = ", "))
@@ -1150,35 +1021,54 @@ mipca_fit.si_tune <- function(
 #' @export
 print.si_tune <- function(x, ...) {
   .chk_no_dots(..., .what = "print()")
-  g <- x$grid
-  where <- if (is.null(x$data)) {
-    "on NO MATRIX -- detached"
-  } else {
-    sprintf("on a %d x %d matrix", nrow(x$data), ncol(x$data))
+  tn <- attr(x, "tune")
+  cols <- c(
+    "rank",
+    "crps",
+    "ess_p10",
+    "ess_ok",
+    "rhat_max",
+    "implied_nu",
+    "implied_lo",
+    "implied_hi",
+    "time",
+    "error"
+  )
+  if (!is.list(tn) || !all(cols %in% names(x))) {
+    cat(
+      "si_tune: the tuning record or a summary column is missing, so this prints as a plain table\n"
+    )
+    return(NextMethod())
   }
   cat(sprintf(
-    "si_tune: %d arm%s %s (%s)\n",
-    nrow(g),
-    .s(nrow(g)),
-    where,
-    x$transform$name
+    "si_tune: %d arm%s on a %d x %d matrix, %s transform\n",
+    nrow(x),
+    .s(nrow(x)),
+    tn$fp$dim[1L],
+    tn$fp$dim[2L],
+    tn$transform$name
   ))
-  n_ho_cols <- length(unique(x$prov$hold$hcol))
+  ho <- tn$na_loc[[1L]]
+  n_ho_cols <- length(unique(ho[, 2L]))
   cat(sprintf(
-    "  holdout %d cells over %d column%s, diag %d cells/arm; bars: ESS >= %d, Rhat <= %.2f\n",
-    length(x$prov$hold$lin),
+    "  holdout: %d cells over %d column%s; Rhat and ESS read on up to %d cells per arm\n",
+    nrow(ho),
     n_ho_cols,
     .s(n_ho_cols),
-    x$prov$n_diag_req,
-    x$prov$ess_bar,
-    x$prov$rhat_bar
+    tn$n_diag
   ))
-  for (i in seq_along(x$call)) {
-    s <- paste(deparse(x$call[[i]], nlines = 3L), collapse = " ")
-    if (nchar(s) > 66L) {
-      s <- paste0(substr(s, 1L, 63L), "...")
-    }
-    cat(sprintf("  %-8s %s\n", if (i == 1L) "call:" else "then:", s))
+  cat(sprintf(
+    "  essOK:   share of those cells with ESS >= %d; x$rhat_ok is the share with Rhat <= %.2f\n",
+    tn$ess_bar,
+    tn$rhat_bar
+  ))
+  if (!is.null(tn$abb)) {
+    cat(sprintf(
+      "  abb:     %d column%s listed and left out of every arm; mipca_fit() draws %s by ABB\n",
+      length(tn$abb),
+      .s(length(tn$abb)),
+      if (length(tn$abb) == 1L) "it" else "them"
+    ))
   }
   cat(sprintf(
     "  %-5s %9s %7s %7s %7s %8s %8s %7s\n",
@@ -1191,35 +1081,28 @@ print.si_tune <- function(x, ...) {
     "band",
     "time.s"
   ))
-  blocks <- .tune_blocks(
-    x$cells,
-    g,
-    rep(length(x$prov$hold$lin), nrow(g)),
-    "cells"
-  )
-  for (k in seq_len(nrow(g))) {
-    if (!is.na(g$error[k])) {
-      cat(sprintf("  %-5d ERROR: %s\n", g$rank[k], g$error[k]))
+  for (k in seq_len(nrow(x))) {
+    if (!is.na(x$error[k])) {
+      cat(sprintf("  %-5d ERROR: %s\n", x$rank[k], x$error[k]))
       next
     }
-    cr <- blocks[[k]]$crps
     cat(sprintf(
       "  %-5d %9.5f %7.0f %7.2f %7.3f %8.2f %3.1f-%-4.1f %7.1f\n",
-      g$rank[k],
-      mean(cr),
-      g$ess_p10[k],
-      g$ess_ok[k],
-      g$rhat_max[k],
-      g$implied_nu[k],
-      g$implied_lo[k],
-      g$implied_hi[k],
-      g$time[k]
+      x$rank[k],
+      x$crps[k],
+      x$ess_p10[k],
+      x$ess_ok[k],
+      x$rhat_max[k],
+      x$implied_nu[k],
+      x$implied_lo[k],
+      x$implied_hi[k],
+      x$time[k]
     ))
   }
-  cat("  reference semantics: `b <- x` aliases\n")
   cat(
-    "  next:    update(x, iter_sampling) extends every arm; update(x, parameters =) adds ranks\n"
+    "  per-cell detail for arm k: x$result[[k]] (scored holdout cells), x$diag[[k]] (Rhat and ESS)\n"
   )
-  cat("           mipca_fit(x, rank) hands off\n")
+  cat("  next:    mipca_fit(x, obj) fits the rank with the lowest crps\n")
+  cat("           mipca_fit(x, obj, rank) fits another rank\n")
   invisible(x)
 }

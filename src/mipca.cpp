@@ -4,7 +4,6 @@
 #include <R_ext/BLAS.h>
 #include <dqrng.h>
 #include <dqrng_distribution.h>
-
 #include <boost/random/student_t_distribution.hpp>
 #include <RcppThread.h>
 #include <vector>
@@ -23,7 +22,6 @@ static int spectra_ncv_choose(int n, int k, int ncv_req)
 {
   if (ncv_req > 0)
   {
-
     if (ncv_req <= k || ncv_req > n)
       Rcpp::stop("ncv must satisfy k < ncv <= %d (the Gram side), where k = "
                  "%d is the number of eigenpairs solved for (rank + 1 in the "
@@ -188,7 +186,6 @@ void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
     const int j = j1 - 1 + jj;
     if (resume && dirty_pos[j] == 0)
     {
-
       if (cnt[j] != 0)
         Rcpp::stop("internal error: column %d has holes and no slot in Xd.",
                    j + 1);
@@ -242,7 +239,6 @@ void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
     if (dp == 0 && !has_g)
       Rcpp::stop("internal error: column %d has no slot in Xd and there is no "
                  "g_fixed to fold it into.", j + 1);
-
     double *dst = (dp > 0) ? xd + static_cast<R_xlen_t>(dp - 1) * n
                            : sc + static_cast<R_xlen_t>(kc) * n;
     int *rows = rows_all + (col_ptr[j] - 1);
@@ -299,15 +295,12 @@ struct da_ctx
   double sigma;
   const double *etd_in;
   const double *xtild_in;
-
   const double *disp;
   double *etd_out;
   double *xtild_out;
   int S, K;
-
   int p;
   double dfP;
-
   double nu;
   int warmup, ndraws, thin;
   double gram_max_cond, spectra_tol;
@@ -353,21 +346,18 @@ static da_ctx da_ctx_build(int n, int nd,
     Rcpp::stop("g_fixed must be n x n or empty.");
   if (dfP <= 0.0)
     Rcpp::stop("dfP must be positive.");
-
   if (!(nu > 2.0))
     Rcpp::stop("nu must be > 2 (Inf for Gaussian noise).");
   if (K < 1)
     Rcpp::stop("K must be positive.");
   if (p < nd)
     Rcpp::stop("p must be at least the dirty width nd.");
-
   if (warmup < 0)
     Rcpp::stop("warmup must be >= 0.");
   if (ndraws < 1)
     Rcpp::stop("ndraws must be >= 1.");
   if (thin < 1)
     Rcpp::stop("thin must be >= 1.");
-
   if (ndraws > (std::numeric_limits<int>::max() - warmup) / thin)
     Rcpp::stop("warmup + ndraws * thin exceeds the largest int; "
                "the loop length is an int.");
@@ -467,7 +457,6 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
       sigma_in.size() != nc)
     Rcpp::stop("etd_list, xtild_list and sigma_in must have one entry per "
                "chain.");
-
   if (resuming)
   {
     if (rng_state_in.size() != nc)
@@ -543,7 +532,6 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
     if (ec.size() != nd)
       Rcpp::stop("chain %d: etd must have one entry per column of Xd.",
                  c + 1);
-
     if (xc.size() != (resuming ? shared.nmiss : 0))
       Rcpp::stop(resuming
                      ? "chain %d: xtild_miss must have one entry per hole."
@@ -591,13 +579,11 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
   std::vector<double> sigma_out(nc);
   if (nc == 1)
   {
-
     sigma_out[0] = da_chain_run(ctxs[0], *gens[0]);
   }
   else
   {
 #ifdef LOC_TIMER
-
     Rcpp::stop("the multi-chain path refuses an instrumented (LOC_TIMER) "
                "build; profiling is single-chain only.");
 #endif
@@ -606,7 +592,6 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
     for (int c = 0; c < nc; ++c)
       pool.push([&ctxs, &gens, &sigma_out, c]
                 { sigma_out[c] = da_chain_run(ctxs[c], *gens[c]); });
-
     pool.wait();
   }
 
@@ -630,7 +615,6 @@ static double da_chain_run(const da_ctx &cx,
                               dqrng::random_64bit_generator &rng_eng)
 {
   const int n = cx.n, nd = cx.nd, ng = cx.ng, S = cx.S, K = cx.K, p = cx.p;
-
   const int Sk = S + 1;
   const int warmup = cx.warmup, ndraws = cx.ndraws, thin = cx.thin;
   const int ncv = cx.ncv, spectra_maxitr = cx.spectra_maxitr;
@@ -648,7 +632,6 @@ static double da_chain_run(const da_ctx &cx,
   const R_xlen_t nn = static_cast<R_xlen_t>(ng) * ng;
   std::vector<double> gram(nn);
   std::vector<double> evals(Sk), wmat(static_cast<R_xlen_t>(ng) * Sk);
-
   std::vector<double> proj(static_cast<R_xlen_t>(tall ? n : nd) * S);
   std::vector<double> phi(S);
   std::vector<double> ut(static_cast<R_xlen_t>(n) * S);
@@ -682,7 +665,6 @@ static double da_chain_run(const da_ctx &cx,
   const int refresh = cx.refresh, chain_id = cx.chain_id;
   const std::chrono::steady_clock::time_point t_start =
       std::chrono::steady_clock::now();
-
   int niter_w = 1;
   for (int t = niter; t >= 10; t /= 10)
     ++niter_w;
@@ -733,7 +715,6 @@ static double da_chain_run(const da_ctx &cx,
         std::copy(gfp + off + c, gfp + off + ng, gram.data() + off + c);
       }
     }
-
     F77_CALL(dsyrk)
     (&uplo, tall ? &trans_t : &trans_n, &ng, tall ? &n : &nd, &one, xp, &n,
      has_fixed ? &one : &zero, gram.data(), &ng FCONE FCONE);

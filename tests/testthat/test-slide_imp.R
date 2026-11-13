@@ -1198,3 +1198,65 @@ test_that("slide_imp: on_infeasible = 'error' names the window that failed", {
   )
   expect_match(conditionMessage(err_flank), "target column 25", fixed = TRUE)
 })
+
+test_that("slide_imp records mean-filled columns and cells by their index in obj", {
+  set.seed(1234)
+  mat <- matrix(rnorm(20 * 60), 20, 60)
+  windows <- slide_imp(
+    mat,
+    location = 1:60,
+    window_size = 20,
+    overlap_size = 5,
+    min_window_n = 5,
+    dry_run = TRUE,
+    .progress = FALSE
+  )
+  # the premises: a window that does not start at column 1, so a local index
+  # differs from the index in `mat`, and a later window that holds column 52
+  expect_identical(c(windows$start[3], windows$end[3]), c(31L, 50L))
+  w52 <- which(windows$start <= 52L & windows$end >= 52L)
+  expect_length(w52, 1L)
+  expect_gt(windows$start[w52], 1L)
+
+  mat[1:19, 52] <- NA # miss_rate 0.95, above the default colmax
+  mat[2:3, 10] <- NA # ordinary missingness, the method fills it
+  # row 5 is missing across the whole of window 3, so inside that window no
+  # neighbor has a value there
+  mat[5, 31:50] <- NA
+  no_cells <- cbind(row = integer(0), col = integer(0))
+
+  run <- function(...) {
+    suppressMessages(slide_imp(
+      mat,
+      location = 1:60,
+      window_size = 20,
+      overlap_size = 5,
+      min_window_n = 5,
+      .progress = FALSE,
+      ...
+    ))
+  }
+
+  knn <- run(k = 3)
+  expect_false(anyNA(knn[,]))
+  expect_identical(attr(knn, "mean_filled_cols"), 52L)
+  expect_identical(
+    attr(knn, "mean_filled_cells"),
+    cbind(row = rep(5L, 20L), col = 31:50)
+  )
+  expect_equal(unname(knn[1:19, 52]), rep(mat[20, 52], 19L))
+
+  # nothing is filled without post_imp, so nothing is recorded
+  knn_off <- run(k = 3, post_imp = FALSE)
+  expect_true(anyNA(knn_off[, 52]))
+  expect_identical(attr(knn_off, "mean_filled_cols"), integer(0))
+  expect_identical(attr(knn_off, "mean_filled_cells"), no_cells)
+
+  # pca_imp() has no `subset` and records every ineligible column of a window.
+  # Only the requested ones belong in the result.
+  pca <- run(ncp = 2)
+  expect_identical(attr(pca, "mean_filled_cols"), 52L)
+  pca_sub <- run(ncp = 2, subset = setdiff(1:60, 52L))
+  expect_identical(attr(pca_sub, "mean_filled_cols"), integer(0))
+  expect_true(anyNA(pca_sub[, 52]))
+})

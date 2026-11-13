@@ -120,7 +120,11 @@ a two-column index matrix, the indices from C++ already being 1-based original-m
 indices. `post_imp = TRUE` collects the columns that can still hold NA -- ineligible
 columns that had any, plus the columns of NA rows in the triplet -- and runs
 `mean_imp_col(obj, subset = na_cols)` only when that set is non-empty, so
-an all-eligible input pays no extra copy here. `pca_imp_results()`
+an all-eligible input pays no extra copy here. The two parts of that set are
+recorded on the result, as in `knn_imp()`: the ineligible columns as the
+`mean_filled_cols` attribute and the NA rows of the triplet as
+`mean_filled_cells` (`R/pca_imp.R`: `mean_cols <- unname(which(!eligible & cmiss > 0L))`).
+`pca_imp_results()`
 (`R/pca_imp.R`: `pca_imp_results <- function(`) builds the result on both paths. It calls
 `new_slideimp_results()` (`R/utils.R`: `new_slideimp_results <- function(`), which strips
 its input to a bare matrix, then sets class and standard attributes, and adds

@@ -908,6 +908,48 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
   expect_identical(as.vector(res_y), as.vector(old_way))
 })
 
+test_that("pca_imp records what post_imp set to a column mean", {
+  set.seed(1234)
+  x <- sim_mat(40, 30, perc_total_na = 0.1, perc_col_na = 1)$input
+  # column 1 above colmax, column 2 zero variance with NA, column 3 zero
+  # variance without NA: ineligible, but with nothing to fill
+  x[sample(40, 38), 1] <- NA
+  x[, 2] <- 7
+  x[1:3, 2] <- NA
+  x[, 3] <- 7
+  no_cells <- cbind(row = integer(0), col = integer(0))
+
+  run <- function(m, post_imp) {
+    suppressWarnings(pca_imp(
+      m,
+      ncp = 2,
+      solver = "exact",
+      miniter = 2,
+      maxiter = 5,
+      seed = 1,
+      post_imp = post_imp
+    ))
+  }
+
+  res <- run(x, post_imp = TRUE)
+  expect_false(anyNA(res[,]))
+  expect_identical(attr(res, "mean_filled_cols"), c(1L, 2L))
+  expect_identical(attr(res, "mean_filled_cells"), no_cells)
+
+  # the record is exactly what PCA did not fill: without post_imp, those are
+  # the only columns still holding a missing value
+  res_off <- run(x, post_imp = FALSE)
+  expect_identical(unname(which(colSums(is.na(res_off[,])) > 0L)), c(1L, 2L))
+  expect_identical(attr(res_off, "mean_filled_cols"), integer(0))
+  expect_identical(attr(res_off, "mean_filled_cells"), no_cells)
+
+  # the no-missing-values exit fills nothing and still carries both attributes
+  full <- matrix(rnorm(40), 8)
+  r_early <- suppressMessages(pca_imp(full, ncp = 1))
+  expect_identical(attr(r_early, "mean_filled_cols"), integer(0))
+  expect_identical(attr(r_early, "mean_filled_cells"), no_cells)
+})
+
 # lobpcg ----
 test_that("LOBPCG mode during warmup matches forced exact path", {
   set.seed(1234)

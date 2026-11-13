@@ -523,7 +523,10 @@ prep_groups <- function(
 #'
 #' A group with too few columns for any valid `k` or `ncp` is infeasible, and
 #' `on_infeasible` decides what happens to it. A group whose features have no
-#' missing values is not imputed.
+#' missing values is not imputed. An infeasible group adds nothing to the
+#' `mean_filled_cols` and `mean_filled_cells` attributes of the result.
+#'
+#' @inheritSection slideimp-package Column mean fill
 #'
 #' @section Parallelization:
 #' * K-NN: use the `cores` argument. If `mirai` daemons are active, `cores`
@@ -918,6 +921,10 @@ group_imp <- function(
   # groups too small to impute are settled here, in either running mode.
   # `on_infeasible` is "skip" or "mean" at this point: "error" aborted above.
   fallback_flags <- small_now
+  # what `post_imp` set to a column mean inside each group that ran, in `obj`'s
+  # own column indices, and the `post_imp` the group ran with. NULL for a
+  # group that never reached the backend.
+  mean_filled <- vector("list", nrow(group))
   if (on_infeasible == "mean") {
     for (i in which(small_now)) {
       f <- feat_splits[[i]]
@@ -1002,14 +1009,18 @@ group_imp <- function(
         }
 
         dst[, task$out_range] <- imputed[, feat_local, drop = FALSE]
-        return(isTRUE(attr(imputed, "fallback")))
+        return(list(
+          fallback = isTRUE(attr(imputed, "fallback")),
+          mean_filled = local_mean_filled(imputed, feat_local, task$col_idx)
+        ))
       },
       big_obj_desc = big_obj_desc,
       big_out_desc = big_out_desc,
       imp_fn = imp_fn,
       pin_blas = pin_blas,
       on_infeasible = on_infeasible,
-      mean_imp_col = mean_imp_col
+      mean_imp_col = mean_imp_col,
+      local_mean_filled = local_mean_filled
     )
     res <- collect_mirai_map(mirai::mirai_map(tasks, crated_fn), .progress)
 
@@ -1045,7 +1056,8 @@ group_imp <- function(
       )
     }
 
-    fallback_flags[run] <- unlist(res)
+    fallback_flags[run] <- vapply(res, `[[`, logical(1), "fallback")
+    mean_filled[run] <- lapply(res, `[[`, "mean_filled")
     obj[, run_feats_pos] <- big_out[,]
   } else {
     if (.progress && length(run) > 0L) {
@@ -1082,6 +1094,11 @@ group_imp <- function(
         drop = FALSE
       ]
       fallback_flags[i] <- isTRUE(attr(imputed, "fallback"))
+      mean_filled[[i]] <- local_mean_filled(
+        imputed,
+        indices[[i]]$features_idx_local,
+        indices[[i]]$col_idx
+      )
       if (.progress) cli::cli_progress_update(id = pb)
     }
     if (.progress && length(run) > 0L) cli::cli_progress_done(id = pb)
@@ -1096,6 +1113,26 @@ group_imp <- function(
   attr(obj, "metacaller") <- "group_imp"
   attr(obj, "fallback") <- fallback_groups
   attr(obj, "fallback_action") <- on_infeasible
-  attr(obj, "post_imp") <- post_imp
+
+  # `post_imp` as the backend applied it, read off each group's result, not as
+  # it was passed: the default here is NULL, which hands each group the
+  # backend's own default, and `group$parameters` can set it group by group.
+  # One value when the groups agree. NA when they do not, or when no group
+  # reached the backend and none was passed, so that nothing was applied.
+  post_imp_run <- unique(unlist(
+    lapply(mean_filled, `[[`, "post_imp"),
+    use.names = FALSE
+  ))
+  attr(obj, "post_imp") <- if (length(post_imp_run) == 1L) {
+    post_imp_run
+  } else if (length(post_imp_run) > 1L || is.null(post_imp)) {
+    NA
+  } else {
+    post_imp
+  }
+
+  mean_filled <- combine_mean_filled(mean_filled, nrow(obj))
+  attr(obj, "mean_filled_cols") <- mean_filled$cols
+  attr(obj, "mean_filled_cells") <- mean_filled$cells
   obj
 }

@@ -91,7 +91,6 @@ double ess_one(const double* x, int ni, int nc, Ws& w) {
     double* c = w.cen.data() + static_cast<size_t>(j) * ni;
     for (int t = 0; t < ni; ++t) c[t] = col[t] - m;
   }
-
   double* am = w.am.data();
   int have = 0;
   auto ensure = [&](int k) {
@@ -150,7 +149,6 @@ double ess_one(const double* x, int ni, int nc, Ws& w) {
     }
   }
   const double ess = nc * (double)ni;
-
   double s = 0.0;
   if (max_t == 0) {
     s = rho[0];
@@ -202,7 +200,6 @@ void diag_tile(int i0, int nt, const int* rows0,
     }
     double rhat;
     if (bad) {
-
       rhat = NA_REAL;
     } else {
       const double med = median_all(cell, n_full, w.med);
@@ -239,7 +236,6 @@ Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws,
       Rcpp::stop("chains disagree on dimensions.");
     }
   }
-
   const int ncell = rows.size();
   std::vector<int> rows0(ncell);
   for (int i = 0; i < ncell; ++i) {
@@ -266,7 +262,6 @@ Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws,
   double* outp = out.begin();
 
   if (nthreads == 1 || ntile <= 1) {
-
     Ws w;
     ws_alloc(w, S, C, ni, nc);
     std::vector<double> tb(static_cast<size_t>(tile) * n_full);
@@ -278,7 +273,6 @@ Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws,
                 C, ni, nc, ncell, outp, w, tb.data(), trow.data());
     }
   } else {
-
     const int nt_use = std::min(nthreads, ntile);
     std::atomic<int> next(0);
     RcppThread::ThreadPool pool(nt_use);

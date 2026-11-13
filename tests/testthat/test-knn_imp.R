@@ -494,6 +494,58 @@ test_that("post_imp fills columns K-NN could not finish", {
   expect_equal(is.na(r2[, -1]), is.na(obj2[, -1]))
 })
 
+test_that("knn_imp records what post_imp set to a column mean", {
+  set.seed(606)
+  n <- 12
+  obj <- matrix(rnorm(n * 6), n, 6)
+  obj[2:n, 2] <- NA # miss_rate 11/12 = 0.917, above the default colmax
+  obj[1:6, 3] <- NA # ordinary missingness, K-NN handles rows 2:6
+  # row 1 is missing in every column K-NN may use, so no neighbor has a value
+  # there and K-NN leaves the cell in each of them
+  obj[1, c(1, 3, 4, 5, 6)] <- NA
+  no_cells <- cbind(row = integer(0), col = integer(0))
+  left_cells <- cbind(row = rep(1L, 5L), col = c(1L, 3L, 4L, 5L, 6L))
+
+  r <- knn_imp(obj, k = 2, post_imp = TRUE)
+  expect_false(anyNA(r[,]))
+  expect_identical(attr(r, "mean_filled_cols"), 2L)
+  expect_identical(attr(r, "mean_filled_cells"), left_cells)
+
+  # the record is exactly what K-NN did not fill: without post_imp, those
+  # cells and that column are the only missing values left
+  r_off <- knn_imp(obj, k = 2, post_imp = FALSE)
+  still_na <- which(is.na(r_off[,]), arr.ind = TRUE)
+  expected_na <- rbind(left_cells, cbind(row = 2:n, col = 2L))
+  expect_identical(
+    unname(still_na[order(still_na[, "col"], still_na[, "row"]), ]),
+    unname(expected_na[order(expected_na[, "col"], expected_na[, "row"]), ])
+  )
+  expect_identical(attr(r_off, "mean_filled_cols"), integer(0))
+  expect_identical(attr(r_off, "mean_filled_cells"), no_cells)
+  # rows 2:6 of column 3 are K-NN values, and are not in the record
+  expect_false(anyNA(r_off[2:6, 3]))
+
+  # the values are column means. For a cell K-NN left, the mean is taken over
+  # the column as K-NN left it, imputed values included.
+  expect_equal(unname(r[2:n, 2]), rep(obj[1, 2], n - 1L))
+  expect_equal(r[1, 1], mean(obj[2:n, 1]))
+  expect_equal(r[1, 3], mean(r_off[2:n, 3]))
+  expect_gt(abs(r[1, 3] - mean(obj[7:n, 3])), 1e-6)
+
+  # only `subset` columns are filled, so only they are recorded
+  r_sub <- knn_imp(obj, k = 2, subset = c(1, 3), post_imp = TRUE)
+  expect_identical(attr(r_sub, "mean_filled_cols"), integer(0))
+  expect_identical(
+    attr(r_sub, "mean_filled_cells"),
+    left_cells[1:2, , drop = FALSE]
+  )
+
+  # an early return fills nothing and still carries both attributes
+  r_early <- suppressMessages(knn_imp(obj, k = 2, subset = integer(0)))
+  expect_identical(attr(r_early, "mean_filled_cols"), integer(0))
+  expect_identical(attr(r_early, "mean_filled_cells"), no_cells)
+})
+
 test_that("early returns carry the slideimp_results class", {
   set.seed(99)
   obj <- matrix(rnorm(40), nrow = 10)

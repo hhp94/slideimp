@@ -1193,3 +1193,132 @@ test_that("a group_imp() result can be imputed again", {
   expect_identical(class(slid), c("slideimp_results", "matrix", "array"))
   expect_identical(attr(slid, "metacaller"), "slide_imp")
 })
+
+# One matrix for the post_imp tests below. Group "b" is columns 7:12, so its
+# column over colmax, f9, is local column 3 and column 9 of `obj`.
+post_imp_case <- function() {
+  set.seed(1234)
+  obj <- matrix(
+    rnorm(20 * 12),
+    20,
+    12,
+    dimnames = list(NULL, paste0("f", 1:12))
+  )
+  obj[1:3, 2] <- NA # group "a": ordinary missingness
+  obj[2:20, 9] <- NA # group "b": miss_rate 0.95, above the default colmax
+  obj[4:5, 11] <- NA # group "b": ordinary missingness
+  list(
+    obj = obj,
+    group = data.frame(
+      feature = colnames(obj),
+      group = rep(c("a", "b"), c(6, 6))
+    )
+  )
+}
+
+test_that("group_imp records post_imp as the groups applied it", {
+  case <- post_imp_case()
+  run <- function(group = case$group, ...) {
+    suppressMessages(group_imp(
+      case$obj,
+      group = group,
+      k = 3,
+      .progress = FALSE,
+      ...
+    ))
+  }
+
+  # Regression: the default `post_imp = NULL` hands each group the backend
+  # default, TRUE, and the attribute recorded the NULL that was passed.
+  res <- run()
+  expect_false(anyNA(res[, 9]))
+  expect_identical(attr(res, "post_imp"), TRUE)
+  expect_identical(attr(run(post_imp = TRUE), "post_imp"), TRUE)
+
+  res_off <- run(post_imp = FALSE)
+  expect_true(anyNA(res_off[, 9]))
+  expect_identical(attr(res_off, "post_imp"), FALSE)
+
+  # set group by group, and not the same in both: no one value describes it
+  mixed <- data.frame(
+    feature = I(split(case$group$feature, case$group$group)),
+    parameters = I(list(list(post_imp = FALSE), list()))
+  )
+  res_mixed <- run(group = mixed)
+  expect_identical(attr(res_mixed, "post_imp"), NA)
+  # group "b" kept the default, so its column over colmax is filled
+  expect_false(anyNA(res_mixed[, 9]))
+
+  # no group has anything to impute, so no value was applied: the attribute
+  # is the value passed, and NA when none was
+  full <- case$obj
+  full[is.na(full)] <- 0
+  run_full <- function(...) {
+    suppressMessages(group_imp(
+      full,
+      group = case$group,
+      k = 3,
+      .progress = FALSE,
+      ...
+    ))
+  }
+  expect_identical(attr(run_full(), "post_imp"), NA)
+  expect_identical(attr(run_full(post_imp = FALSE), "post_imp"), FALSE)
+})
+
+test_that("group_imp records mean-filled columns by their index in obj", {
+  case <- post_imp_case()
+  no_cells <- cbind(row = integer(0), col = integer(0))
+  run <- function(...) {
+    suppressMessages(group_imp(
+      case$obj,
+      group = case$group,
+      .progress = FALSE,
+      ...
+    ))
+  }
+
+  knn <- run(k = 3)
+  expect_false(anyNA(knn[,]))
+  expect_identical(attr(knn, "mean_filled_cols"), 9L)
+  expect_identical(attr(knn, "mean_filled_cells"), no_cells)
+  expect_equal(unname(knn[2:20, 9]), rep(case$obj[[1, 9]], 19L))
+
+  knn_off <- run(k = 3, post_imp = FALSE)
+  expect_true(anyNA(knn_off[, 9]))
+  expect_identical(attr(knn_off, "mean_filled_cols"), integer(0))
+  expect_identical(attr(knn_off, "mean_filled_cells"), no_cells)
+
+  pca <- run(ncp = 2)
+  expect_identical(attr(pca, "mean_filled_cols"), 9L)
+  expect_identical(attr(pca, "mean_filled_cells"), no_cells)
+
+  printed <- capture.output(print(knn))
+  expect_true(any(grepl("1 column was excluded from imputation", printed)))
+})
+
+test_that("group_imp under mirai records the same mean-filled columns", {
+  skip_if_not_manual()
+  skip_if_not_installed("withr")
+  case <- post_imp_case()
+  run <- function() {
+    suppressMessages(group_imp(
+      case$obj,
+      group = case$group,
+      k = 3,
+      .progress = FALSE
+    ))
+  }
+  seq_res <- run()
+  expect_identical(attr(seq_res, "mean_filled_cols"), 9L)
+
+  mirai::daemons(2, seed = 1234)
+  withr::defer(mirai::daemons(0))
+  par_res <- run()
+  expect_identical(attr(par_res, "mean_filled_cols"), 9L)
+  expect_identical(
+    attr(par_res, "mean_filled_cells"),
+    attr(seq_res, "mean_filled_cells")
+  )
+  expect_identical(attr(par_res, "post_imp"), attr(seq_res, "post_imp"))
+})

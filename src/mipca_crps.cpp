@@ -10,7 +10,6 @@ Rcpp::NumericVector crps_block(Rcpp::NumericMatrix d,
                                   Rcpp::NumericVector truth) {
   const int N = d.nrow();
   const int M = d.ncol();
-
   if (M < 2) {
     Rcpp::stop("`d` must have at least two draws (the fair CRPS spread term is "
                "undefined at one).");
@@ -34,14 +33,12 @@ Rcpp::NumericVector crps_block(Rcpp::NumericMatrix d,
     const double yi = yp[i];
     for (int j = 0; j < M; ++j) {
       const double v = dp[static_cast<R_xlen_t>(j) * N + i];
-
       if (!R_finite(v)) Rcpp::stop("`d` contains non-finite values.");
       buf[j] = v;
       acc += std::fabs(v - yi);
     }
     mad[i] = static_cast<double>(acc / static_cast<long double>(M));
     std::sort(buf.begin(), buf.end());
-
     for (int j = 0; j < M; ++j) ds[static_cast<R_xlen_t>(j) * N + i] = buf[j];
   }
 

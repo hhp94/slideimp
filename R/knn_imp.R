@@ -4,17 +4,16 @@
 #'
 #' @param obj A numeric matrix with samples in rows and features in columns.
 #' @param k Integer. Number of nearest neighbors to use for K-NN imputation.
-#' @param colmax Numeric scalar between `0` and `1`. Columns with a missing-data
-#'  proportion greater than `colmax` are excluded from the main imputation
-#'  method. Excluded columns are left unchanged unless `post_imp = TRUE`, in
-#'  which case remaining missing values are replaced by column means when
-#'  possible.
+#' @param colmax Numeric scalar between `0` and `1`. Columns with a proportion
+#'  of missing values greater than `colmax` take no part in the imputation, as
+#'  described under Column mean fill.
 #' @param method Character. K-NN imputation distance method: either `"euclidean"`
 #'  or `"manhattan"`.
 #' @param cores Integer. Number of cores to use for K-NN imputation. Defaults
 #'   to `1`.
-#' @param post_imp Logical. If `TRUE`, replace missing values remaining after
-#'  the main imputation method with column means when possible.
+#' @param post_imp Logical. If `TRUE`, column means replace the missing values
+#'  that remain after the imputation method has run, as described under Column
+#'  mean fill.
 #' @param subset Optional character or integer vector specifying columns to
 #'  target for imputation. If `NULL`, all eligible columns are targeted.
 #' @param dist_pow Numeric. Power used to penalize more distant neighbors in
@@ -41,6 +40,12 @@
 #' differences. A candidate that shares no observed row with the target is
 #' not a neighbor and is never used, so a column may be imputed from fewer
 #' than `k` neighbors, or left missing when nothing overlaps it at all.
+#'
+#' `colmax` decides which columns can be neighbors, not only which columns are
+#' imputed. A column with few observed values can be selected as a neighbor
+#' because it agrees with the target on one or two shared rows. Such a neighbor
+#' has no value at most of the rows to impute. A lower `colmax` keeps these
+#' columns out.
 #'
 #' When `dist_pow > 0`, imputed values are distance-weighted averages of the
 #' selected neighbors: a neighbor at distance `d` is weighted
@@ -70,6 +75,8 @@
 #' small positive floor, so exact matches dominate the average without the
 #' other neighbors dropping out of it entirely. When every selected neighbor
 #' is at distance zero, all weights are `1`.
+#'
+#' @inheritSection slideimp-package Column mean fill
 #'
 #' @inheritSection slideimp-package Missing values and non-finite input
 #'
@@ -223,11 +230,25 @@ knn_imp <- function(
   # result column). Both are known here without another pass over obj, and
   # naming them keeps mean_imp_col() from copying the whole matrix to fill
   # nothing, which is the usual case.
+  #
+  # The two kinds are recorded on the result, since nothing in the values
+  # tells a column mean from a K-NN average afterwards: the columns held out
+  # by colmax in `mean_filled_cols`, the cells K-NN left in
+  # `mean_filled_cells`. Every one of them is filled: check_finite() has
+  # refused a column with no observed value, so each has a mean.
+  mean_cols <- integer(0)
+  mean_cells <- mean_filled_cells_matrix()
   if (post_imp) {
-    na_cols <- sort(unique(c(
-      setdiff(intersect(subset, has_miss_idx), grp_impute),
-      imputed_values[is.na(imputed_values[, 3]), 2]
-    )))
+    mean_cols <- unname(sort(
+      setdiff(intersect(subset, has_miss_idx), grp_impute)
+    ))
+    left <- is.na(imputed_values[, 3])
+    mean_cells <- mean_filled_cells_matrix(
+      row = imputed_values[left, 1],
+      col = imputed_values[left, 2],
+      n_row = nrow(obj)
+    )
+    na_cols <- sort(unique(c(mean_cols, mean_cells[, "col"])))
     if (length(na_cols) > 0L) {
       obj <- mean_imp_col(obj, subset = na_cols, cores = cores)
     }
@@ -238,7 +259,9 @@ knn_imp <- function(
       obj,
       "knn",
       fallback = FALSE,
-      post_imp = post_imp
+      post_imp = post_imp,
+      mean_filled_cols = mean_cols,
+      mean_filled_cells = mean_cells
     )
   )
 }

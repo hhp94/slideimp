@@ -132,14 +132,13 @@ is used.}
 
 \item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are excluded from the main imputation
-method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
-which case remaining missing values are replaced by column means when
-possible.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a proportion
+of missing values greater than \code{colmax} take no part in the imputation, as
+described under Column mean fill.}
 
-\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
-the main imputation method with column means when possible.}
+\item{post_imp}{Logical. If \code{TRUE}, column means replace the missing values
+that remain after the imputation method has run, as described under Column
+mean fill.}
 
 \item{on_infeasible}{Character. One of \code{"skip"}, \code{"error"}, or \code{"mean"}.
 Controls behavior when a window is infeasible for imputation, for example
@@ -184,7 +183,39 @@ arguments to use \code{\link[=pca_imp]{pca_imp()}}.
 fills it with column means, and \code{"error"} stops at the first such window.
 With \code{"skip"} and \code{"mean"}, \code{slide_imp()} raises one warning of class
 \code{slideimp_fallback} that lists the affected windows.
+
+An infeasible window adds nothing to the \code{mean_filled_cols} and
+\code{mean_filled_cells} attributes of the result. Where windows overlap,
+\code{mean_filled_cells} lists a cell that any window filled with the column
+mean.
 }
+\section{Column mean fill}{
+
+
+A column with a proportion of missing values greater than \code{colmax} takes no
+part in the imputation. The method does not use the column to impute other
+columns, and the method does not impute the column.
+
+With \code{post_imp = TRUE}, column means replace the missing values that remain
+after the method has run. Two kinds of missing value remain: the missing
+values of the columns that took no part, and the cells for which the method
+found no value. For such a cell, the column mean includes the values that
+the method imputed in the same column. With \code{post_imp = FALSE}, both kinds
+stay missing.
+
+The result records what the column means replaced, in two attributes:
+\itemize{
+\item \code{mean_filled_cols}: an integer vector with the index of each column that
+took no part and was filled.
+\item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
+one row for each cell that the method could not impute and that was
+filled.
+}
+
+Both attributes are empty when no column mean was used. \code{print()} reports
+them when they are not empty.
+}
+
 \section{Missing values and non-finite input}{
 
 

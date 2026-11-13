@@ -42,13 +42,17 @@ slide_imp_results <- function(
   post_imp,
   solver = NULL,
   solver_chosen = NA_character_,
-  solver_lock_window = NA_integer_
+  solver_lock_window = NA_integer_,
+  mean_filled_cols = integer(0),
+  mean_filled_cells = mean_filled_cells_matrix()
 ) {
   out <- new_slideimp_results(
     result,
     imp_method,
     fallback = fallback,
-    post_imp = post_imp
+    post_imp = post_imp,
+    mean_filled_cols = mean_filled_cols,
+    mean_filled_cells = mean_filled_cells
   )
   attr(out, "metacaller") <- "slide_imp"
   attr(out, "fallback_action") <- on_infeasible
@@ -125,6 +129,13 @@ slide_imp_results <- function(
 #' fills it with column means, and `"error"` stops at the first such window.
 #' With `"skip"` and `"mean"`, `slide_imp()` raises one warning of class
 #' `slideimp_fallback` that lists the affected windows.
+#'
+#' An infeasible window adds nothing to the `mean_filled_cols` and
+#' `mean_filled_cells` attributes of the result. Where windows overlap,
+#' `mean_filled_cells` lists a cell that any window filled with the column
+#' mean.
+#'
+#' @inheritSection slideimp-package Column mean fill
 #'
 #' @inheritSection slideimp-package Missing values and non-finite input
 #'
@@ -505,6 +516,9 @@ slide_imp <- function(
   # meta data
   fallback_flags <- logical(length(start))
   skipped_flags <- logical(length(start))
+  # what `post_imp` set to a column mean inside each window, in `obj`'s own
+  # column indices. NULL for a window that recorded nothing, which is most.
+  mean_filled <- vector("list", length(start))
 
   # for PCA with solver = "auto", let the first successful PCA window choose
   # the concrete solver, then reuse that solver for the remaining windows.
@@ -637,6 +651,13 @@ slide_imp <- function(
       result[, global_idx] <- result[, global_idx, drop = FALSE] +
         imputed_window[, local_idx, drop = FALSE]
     }
+
+    # a window the backend did not run - complete targets, or a mean fallback,
+    # which `fallback` already reports - carries no record and yields nothing
+    filled <- local_mean_filled(imputed_window, local_idx, window_cols)
+    if (length(filled$cols) > 0L || length(filled$row) > 0L) {
+      mean_filled[[i]] <- filled
+    }
   }
 
   if (.progress) {
@@ -713,6 +734,8 @@ slide_imp <- function(
     )
   }
 
+  mean_filled <- combine_mean_filled(mean_filled, nrow(obj))
+
   slide_imp_results(
     result,
     imp_method,
@@ -730,6 +753,12 @@ slide_imp <- function(
     } else {
       pca_solver_current
     },
-    solver_lock_window = pca_solver_lock_window
+    solver_lock_window = pca_solver_lock_window,
+    # a column's missing rate does not depend on the window, so a column held
+    # out by `colmax` is held out in every window that ran. A cell the method
+    # left can differ between windows: it is recorded when any window filled
+    # it with the column mean, even where another window's value is averaged in.
+    mean_filled_cols = mean_filled$cols,
+    mean_filled_cells = mean_filled$cells
   )
 }

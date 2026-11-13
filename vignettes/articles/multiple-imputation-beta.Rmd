@@ -84,7 +84,7 @@ already roughly Gaussian.
 ```{r}
 tuned <- mipca_tune(
   obj,
-  parameters = data.frame(rank = 1:4),
+  rank = 1:4,
   transform = "logit_biwhiten",
   seed = 1
 )
@@ -97,29 +97,32 @@ How to read the grid:
   bottoms out.
 - `ess10` and `essOK`: effective sample size (the 10th percentile across
   cells, and the share of cells above the ESS bar). Low values mean the chains
-  are short, not that the rank is wrong. `update(tuned, iter_sampling = ...)`
-  extends every arm.
+  are short, not that the rank is wrong. Run `mipca_tune()` again with a
+  larger `iter_sampling` for longer chains.
 - `rhatMx`: the worst R-hat across the diagnostic cells. Values well above
   1.05 mean the chains disagree.
 - `impl.nu` and `band`: the noise degrees of freedom implied by the draws at
   that rank, with an uncertainty band.
 
-The per-cell scores are in `tuned$cells` if you want to look closer:
+The per-cell scores of each rank are in the `result` column if you want to
+look closer:
 
 ```{r}
-tapply(tuned$cells$crps, tuned$cells$rank, mean)
+head(tuned$result[[1]])
+vapply(tuned$result, function(cells) mean(cells$crps), numeric(1))
 ```
 
 ## Fit the model with `mipca_fit()`
 
-`mipca_fit(tuned)` runs the production fit at the rank with the lowest CRPS,
-with `nu` taken from that rank's estimate and the chain settings carried over
-from the tuner. A `nu` below 5 is raised to 5, because noise that heavy can
-occasionally produce an extreme draw that destabilizes the sampler. The
-transform is refitted on the full matrix.
+`mipca_fit(tuned, obj)` runs the production fit at the rank with the lowest
+CRPS, with `nu` taken from that rank's estimate and the chain settings carried
+over from the tuner. Pass the matrix again: the tuning table does not hold it.
+A `nu` below 5 is raised to 5, because noise that heavy can occasionally
+produce an extreme draw that destabilizes the sampler. The transform is
+refitted on the full matrix.
 
 ```{r}
-fit <- mipca_fit(tuned, seed = 2)
+fit <- mipca_fit(tuned, obj, seed = 2, refresh = 0)
 fit
 ```
 
@@ -146,7 +149,7 @@ and maximum across cells. Most cells here have R-hat near 1 and an ESS in the
 hundreds, so the chains agree and the 400 draws are worth a few hundred
 independent ones. The worst cells are listed below the summary. If many of
 them sit above an R-hat of 1.05, or the ESS is low, run longer chains:
-`mipca_fit(tuned, iter_sampling = 400)`, for example.
+`mipca_fit(tuned, obj, iter_sampling = 400)`, for example.
 
 ## Extract completed matrices
 

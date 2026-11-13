@@ -141,6 +141,19 @@ allocation plus a per-column copy of everything K-NN already filled. Both
 branches are pinned by a test (`tests/testthat/test-knn_imp.R`:
 `post_imp fills columns K-NN could not finish`).
 
+**What post-imputation records.** Nothing in the values tells a column mean
+from a K-NN average afterwards, so the two sets go onto the result as
+attributes: the held-out columns as `mean_filled_cols`, the cells the kernel
+left as `mean_filled_cells`, a two-column `row`/`col` matrix built by
+`mean_filled_cells_matrix()` (`R/utils.R`:
+`mean_filled_cells_matrix <- function(`). Both are always present and empty
+when `post_imp` filled nothing, early returns included. `slide_imp()` and
+`group_imp()` read them off each backend result, keep the columns they take
+and map them to their own indices (`R/utils.R`:
+`local_mean_filled <- function(`), and `print()` reports them. Pinned by a
+test (`tests/testthat/test-knn_imp.R`:
+`knn_imp records what post_imp set to a column mean`).
+
 ## Layer 2 -- the .Call boundary
 
 `R/RcppExports.R` defines the R-side shim `impute_knn_brute(obj, k,
