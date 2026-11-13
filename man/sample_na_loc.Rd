@@ -59,6 +59,9 @@ ensures that:
 \code{colmax}.
 \item At least two distinct observed values are preserved in every affected
 column.
+\item A column with a variance below \code{.Machine$double.eps} counts as constant
+and is never selected. \code{\link[=pca_imp]{pca_imp()}} uses the same threshold to leave a
+column out of its fit.
 }
 
 A column that cannot take \code{n_rows} missing values under these limits is

@@ -148,6 +148,17 @@ things stay out regardless: large regenerable data, and `local/` (see
 If a file genuinely cannot be tracked, say so and ask; never decide it
 silently.
 
+**Vendored files are developed upstream, not here.** The files listed in
+[dev/vendored.md](dev/vendored.md) are copied in from another repository. The
+only edits made to them here are to their roxygen blocks: titles, `@param`,
+`@returns`, `@examples` and the rest. Leave them out of every pass and sweep -
+writing or message audits, refactors, renames, magic-number sweeps, cli
+conversions, dead-code removal, test rewrites - and report a finding about
+them instead of fixing it. A change they need is made upstream and arrives
+with the next copy; an edit made here to their code or comments is
+overwritten by that copy, or blocks it. Running `air format .` over them is
+fine: it changes layout only.
+
 ## Internals
 
 The R-to-C++ boundary of `pca_imp()` and `knn_imp()` is not obvious from

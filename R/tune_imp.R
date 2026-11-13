@@ -11,6 +11,9 @@
 #'   `colmax`.
 #' - At least two distinct observed values are preserved in every affected
 #'   column.
+#' - A column with a variance below `.Machine$double.eps` counts as constant
+#'   and is never selected. [pca_imp()] uses the same threshold to leave a
+#'   column out of its fit.
 #'
 #' A column that cannot take `n_rows` missing values under these limits is
 #' never selected. Such a column does not stop the sampling.
@@ -215,14 +218,20 @@ sample_na_loc <- function(
 
   # The most NAs each pool column can take: its room under `colmax`, less the
   # 2 observed values it has to keep. A column over `colmax`, with fewer than
-  # 2 observed values, or with no variance can take none. Such a column is
-  # left out of the sampling. It does not stop the call: only the columns
-  # that receive NAs have to qualify, and knn_imp() and pca_imp() apply their
-  # own `colmax` to the rest.
+  # 2 observed values, or constant can take none. Such a column is left out
+  # of the sampling. It does not stop the call: only the columns that receive
+  # NAs have to qualify, and knn_imp() and pca_imp() apply their own `colmax`
+  # to the rest.
+  # "Constant" is pca_imp()'s eligibility test, variance below double.eps,
+  # not variance zero. pca_imp() refuses a call in which every column with NAs
+  # is ineligible, so with .f = "pca_imp" a tune_imp() repetition that blanked
+  # only near-constant columns would fail.
   pool_miss <- col_miss[pool_idx]
   pool_var <- unname(col_vars(obj))[pool_idx]
   pool_cap <- pmin(max_col_miss - pool_miss, n - pool_miss - 2L)
-  pool_cap[is.na(pool_var) | pool_var <= 0 | pool_cap < 0L] <- 0L
+  pool_cap[
+    is.na(pool_var) | pool_var < .Machine$double.eps | pool_cap < 0L
+  ] <- 0L
 
   if (auto_num_na) {
     num_na <- default_num_na(length(obj), n_rows, sum(pool_cap >= n_rows))

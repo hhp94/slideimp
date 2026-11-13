@@ -171,6 +171,48 @@ test_that("a column that cannot take NAs is left out, in the pool or not", {
   expect_match(conditionMessage(err), "only 4 columns can", fixed = TRUE)
 })
 
+test_that("a near-constant column is never drawn, as pca_imp() ignores it", {
+  set.seed(3)
+  m <- sim_mat(20, 6, perc_total_na = 0)$input
+  m[, 3] <- 0.5 + 1e-9 * (seq_len(nrow(m)) %% 2 == 0)
+  # the column sits in the gap the threshold closes: variance above zero,
+  # below the double.eps that pca_imp() uses for eligibility
+  v3 <- col_vars(m)[[3]]
+  expect_gt(v3, 0)
+  expect_lt(v3, .Machine$double.eps)
+
+  out <- sample_na_loc(
+    m,
+    n_cols = 1,
+    n_rows = 2,
+    na_col_subset = 2:3,
+    n_reps = 50
+  )
+  used <- vapply(out, function(r) unique(unname(r[, "col"])), integer(1))
+  expect_true(all(used == 2L))
+
+  expect_error(
+    sample_na_loc(m, n_cols = 1, n_rows = 2, na_col_subset = 3),
+    class = "slideimp_infeasible"
+  )
+
+  # Regression: the helper skipped only var <= 0, so a repetition could blank
+  # column 3 alone. pca_imp() then refused it ("All columns with missing
+  # values are ineligible") and the repetition came back as an error row.
+  res <- suppressMessages(tune_imp(
+    m,
+    parameters = data.frame(ncp = 1),
+    .f = "pca_imp",
+    n_cols = 1,
+    n_rows = 2,
+    na_col_subset = 2:3,
+    n_reps = 20,
+    .progress = FALSE
+  ))
+  expect_identical(nrow(res), 20L)
+  expect_true(all(is.na(res$error)))
+})
+
 test_that("an infeasible request stops before sampling, naming the counts", {
   m <- sim_mat(20, 8, perc_total_na = 0)$input
 
