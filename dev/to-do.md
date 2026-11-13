@@ -11,7 +11,7 @@ and say so in chat.
 ## Draft `NEWS.md` for the release after 1.2.0
 
 `NEWS.md` is written once per release, from the whole diff since the last
-release, not one entry per change (see `.claude/CLAUDE.md`). Draft the section from
+release, not one entry per change (see `CLAUDE.md`). Draft the section from
 `git diff v1.2.0..HEAD` and `git log v1.2.0..HEAD`, with the maintainer, who
 owns its style.
 
@@ -48,50 +48,64 @@ Easy to miss in the diff, noted so the draft does not:
 The multiple-imputation sampler (`R/mi_pca_imp.R`, `R/mi_pca_s3.R`,
 `R/mi_pca_tune.R`, `R/mi_pca_flank.R`, `R/mi_pca_abb.R`, `src/mipca.cpp`,
 `src/mipca_crps.cpp`, `src/mipca_diag.cpp`) is developed in a scratch package
-in another repository, `hhp94/test`, and was copied here as one unit from
-`hhp94/test@b4cfbf1`. That repository's port brief lists what the real package
-must do that the scratch package does not. The brief is not in this
-repository, so each item is restated here. Delete an item when it lands.
+in another repository, `hhp94/test`, and copied here as one unit. The copied
+files are listed in `dev/vendored.md`, and the house rule on vendored files
+in `CLAUDE.md` applies to them: apart from their roxygen blocks, an edit to
+their code or comments is made in `hhp94/test` and arrives with the next
+copy. The items below marked "Upstream" are made there. The scratch package
+keeps its copies after every port and its gate scripts keep testing them;
+the two copies stay in step through `dev/vendored.md` and the export.
 
-Applied on the way in: comments not copied (roxygen lines and Rcpp attributes
-kept), `transform` has no default at `mipca()`, `mipca_tune()` and
-`mipca_flank()`, `tf_asin()` and `.chk_no_ndiag()` removed, the debug-build
-line of `print.si_tune()` removed, `dqrng (>= 0.4.1)` in `LinkingTo`.
+Ruled, so not owed (maintainer, 2026-11-13). Do not add these back as items:
 
-The copied files are listed in `dev/vendored.md`, and the house rule on
-vendored files in `.claude/CLAUDE.md` applies to them: apart from their roxygen
-blocks, an edit to their code or comments is made upstream in `hhp94/test`
-and arrives with the next copy. The items below marked "Upstream" are made
-there.
+- The sampler's refusals stay plain `stop(..., call. = FALSE)`, and its
+  messages and warnings stay base `message()` and `warning()`. No cli
+  conversion, in the copied files or in the `test-mipca-*` files that pin
+  their wording.
+- No bytes warning before allocating, and no refusal at `2^31` cells. The
+  draws refuse in plain words when R cannot allocate them, naming the size
+  in GB and what makes it up. Base R handles the long vector a `2^31`
+  refusal was meant to guard.
+- `subset` keeps its `NULL` default at `mipca()`, meaning the feature is
+  off: draws for every column with a hole. In flank mode it is required,
+  and `mipca_flank_plan()` and `mipca_flank_window()` already refuse a
+  missing or `NULL` `subset`.
+- Every comment in the copied files comes across with the code, written to
+  be true inside slideimp.
 
-- **The commit.** The port commit's body names `hhp94/test@b4cfbf1`. The
-  scratch package then records the same sha, deletes its copies and points
-  its gates at slideimp. That is a job for a session in that repository.
+Owed:
+
+- **The next copy.** Take the export of `hhp94/test` at its latest pushed
+  commit, with no change made by hand, and name that commit's sha in the
+  commit body. When it runs is the maintainer's call. The first copy
+  (`e7f2f0c`, from `hhp94/test@b4cfbf1`) made four changes by hand, and
+  `hhp94/test` has since taken all four, so none is needed again: no
+  `transform` default at `mipca()`, `mipca_tune()` and `mipca_flank()`;
+  `tf_asin()` and `.chk_no_ndiag()` removed; the debug-build line of
+  `print.si_tune()` removed. `dqrng (>= 0.4.1)` stays in `LinkingTo`. The
+  next copy also brings:
+  - the comments;
+  - the printing pass: each print shows a header, a line only where
+    something waits or was left `NA`, and the next calls;
+  - the size refusal;
+  - `mipca_tune()` no longer refuses a matrix with a constant column. Its
+    holdout draw leaves such a column out, as `sample_na_loc()` does since
+    `7a863d0`, so the copy needs `sample_na_loc()` at `7a863d0` or later.
 - **The vignette.** `vignettes/articles/multiple-imputation-beta.Rmd` was
   written for the October surface. Its calls were repaired so that it knits
   on the current one, and nothing else was changed. Whether it stays is not
   decided. If it stays, it does not yet cover `abb`, `mipca_complete()` or
   `mipca_flank()`.
 - **Roxygen.** Every export of the sampler is a bare `#' @export` and has no
-  help page. Write the help pages here, by the rules of `dev/WRITING.md`. The pages must say: `subset` is a memory
-  parameter, not a compute one, because every missing cell is imputed at every
-  iteration. A `mipca_flank()` result can hold `NA` and the plan says why. A
-  flank window is seeded by its target's column index in the plan's matrix, so
-  the same target in a plan over fewer columns draws differently.
+  help page. Write the help pages here, by the rules of `dev/WRITING.md`. The
+  pages must say: `subset` is a memory parameter, not a compute one, because
+  every missing cell is imputed at every iteration; at `mipca()` `NULL`
+  means every column with a hole, and the flank functions require it. A
+  `mipca_flank()` result can hold `NA` and the plan says why. A flank window
+  is seeded by its target's column index in the plan's matrix, so the same
+  target in a plan over fewer columns draws differently.
   `tf_biwhiten(rows = FALSE)`, passed as an object, is the way out when the
   row scale refuses a window. Do not tell users to pin BLAS threads.
-- **cli.** The sampler's refusals are plain `stop()`. Convert each one to
-  `cli::cli_abort()` with one bullet per class of problem, and pin the tests
-  again on the new wording. Upstream: the refusals and the `test-mipca-*`
-  files that pin them are both in the copy.
-- **`subset` has no default.** `NULL` stores draws for every missing cell,
-  which is the unbounded case (9.3 GB on chromosome 1 at 4 chains x 500
-  draws). Remove the default at `mipca()` and add an explicit way to ask for
-  everything. The shape is not decided: `subset = "all"` or a marker function.
-  Upstream: `mipca()` is in `R/mi_pca_imp.R`. Its help page is written here.
-- **Size and warn before allocating.** Warn with the number of bytes
-  (`8 * chains * stored cells * draws`, plus the transform fit's peak). Refuse
-  when `stored cells * draws` per chain reaches `2^31`. Upstream.
 - **Columns the core refuses.** The core refuses a column that holds `Inf`,
   is all `NA`, or has one observed value. Real matrices contain these, so a
   wrapper outside the core must carry them round the fit, as `pca_imp()` does
@@ -101,22 +115,10 @@ there.
 - **`mipca_core()` takes integer `subset` only.** Name resolution moves to
   the callers above it, now that `resolve_subset()` is a sibling internal.
   Upstream.
-- **The tuner's constant-column refusal.** `sample_na_loc()` skips a column
-  with variance below `.Machine$double.eps` instead of refusing the matrix,
-  the same threshold the tuner's census uses, and its draw keeps two distinct
-  observed values in each column it blanks. The tuner's own refusal of a
-  constant column therefore guards nothing: remove it, since `mipca()` and
-  the rest of the tuner handle such a column. Upstream: the refusal is in
-  `R/mi_pca_tune.R`, and its column count before the draw must then leave
-  constant columns out, or the helper's infeasibility error replaces the
-  tuner's message.
 - **The `Inf` refusal has two shapes.** slideimp reports `Inf` by row and
   column from `check_finite()`. The sampler reports it per column from
   `col_vars()`. Decide whether one message shape wins. A change to the
   sampler's shape is made upstream.
-- **Invariant comments.** The port copied no comment. Whether to bring back,
-  reworded, the comments that state an invariant is not decided. Upstream:
-  comments in the copied files are written there.
 - **Tests not yet written.** The scratch package checks the tuner, the flank
   driver and the ABB path with gate scripts, not testthat files, and the gates
   stay there. No test here runs `mipca_tune()`, `mipca_fit()`,
