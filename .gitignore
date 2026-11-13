@@ -15,5 +15,5 @@ inst/doc
 docs
 cran-comments.md
 .positai
-# machine-local, never tracked: see local/ in CLAUDE.md
+# machine-local, never tracked: see local/ in .claude/CLAUDE.md
 /local/

@@ -18,5 +18,4 @@
 ^\.claude$
 ^vignettes/articles$
 ^[.]?air[.]toml$
-^CLAUDE\.md$
 ^local$

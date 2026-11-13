@@ -27,7 +27,7 @@ source commit as `hhp94/test@<sha>`. Find it with
 
 A change to these files' code or comments is made in `hhp94/test` first and
 reaches slideimp with the next copy. Only their roxygen blocks are written
-here. The house rule in `CLAUDE.md` says what that means for a pass over the
+here. The house rule in `.claude/CLAUDE.md` says what that means for a pass over the
 package.
 
 A file added to or removed from the copy is added to or removed from this

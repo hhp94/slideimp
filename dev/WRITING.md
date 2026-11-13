@@ -2,9 +2,9 @@
 
 **This is the single source for how user-facing text is written in this package.** It is
 self-contained on purpose: an agent picking up one batch of topics should need this file and
-`CLAUDE.md`, nothing else.
+`.claude/CLAUDE.md`, nothing else.
 
-**`CLAUDE.md` owns the invariants this file builds on, and this file does not restate them:** ASCII
+**`.claude/CLAUDE.md` owns the invariants this file builds on, and this file does not restate them:** ASCII
 everywhere, errors through cli, input validation through checkmate with an explicit `.var.name`,
 and the fact that the exported API, the error surface and the documentation are public and pinned
 by callers. Everything about how the text itself is written -- R1 to R9, the cli mechanics, the
@@ -16,7 +16,7 @@ roxygen template -- lives here.
 
 **These rules bind text that is being written or edited. They are not a licence to sweep.** A cli
 message is part of the error surface, and a help page is part of the documentation, and callers pin
-on both (`CLAUDE.md`). Rewording a message that already ships so that it satisfies R3 is still a
+on both (`.claude/CLAUDE.md`). Rewording a message that already ships so that it satisfies R3 is still a
 change to public API, and it is made deliberately, with the maintainer, not in passing while
 touching the file for something else.
 
@@ -330,7 +330,7 @@ The rule binds what an author types, not what a run prints.
       md_extensions: -smart
   ```
 
-  The `CLAUDE.md` ASCII check covers `README.md`, so a smart quote that arrives this way shows up
+  The `.claude/CLAUDE.md` ASCII check covers `README.md`, so a smart quote that arrives this way shows up
   there, and the fix is the YAML, not hand-editing the generated file.
 
 ---

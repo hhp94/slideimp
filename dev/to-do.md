@@ -11,7 +11,7 @@ and say so in chat.
 ## Draft `NEWS.md` for the release after 1.2.0
 
 `NEWS.md` is written once per release, from the whole diff since the last
-release, not one entry per change (see `CLAUDE.md`). Draft the section from
+release, not one entry per change (see `.claude/CLAUDE.md`). Draft the section from
 `git diff v1.2.0..HEAD` and `git log v1.2.0..HEAD`, with the maintainer, who
 owns its style.
 
@@ -59,7 +59,7 @@ kept), `transform` has no default at `mipca()`, `mipca_tune()` and
 line of `print.si_tune()` removed, `dqrng (>= 0.4.1)` in `LinkingTo`.
 
 The copied files are listed in `dev/vendored.md`, and the house rule on
-vendored files in `CLAUDE.md` applies to them: apart from their roxygen
+vendored files in `.claude/CLAUDE.md` applies to them: apart from their roxygen
 blocks, an edit to their code or comments is made upstream in `hhp94/test`
 and arrives with the next copy. The items below marked "Upstream" are made
 there.

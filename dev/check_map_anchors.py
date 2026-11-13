@@ -12,7 +12,7 @@ without failing. A stale fragment matches nothing, which this script reports.
 
 Usage, from the repository root:
 
-    uv run dev/check_map_anchors.py             every tracked dev/*.md, and CLAUDE.md
+    uv run dev/check_map_anchors.py             every tracked dev/*.md, and .claude/CLAUDE.md
     uv run dev/check_map_anchors.py FILE...     just these files
     uv run dev/check_map_anchors.py --list      also print where each fragment lands
 
@@ -245,7 +245,7 @@ def main():
     docs = args.files
     if not docs:
         out = subprocess.run(
-            ["git", "ls-files", "--", "dev/*.md", "CLAUDE.md"],
+            ["git", "ls-files", "--", "dev/*.md", ".claude/CLAUDE.md"],
             capture_output=True,
             text=True,
             check=True,

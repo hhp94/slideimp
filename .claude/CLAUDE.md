@@ -39,7 +39,7 @@ git grep -IlP '[^\x00-\x7F]' -- . ':!dev' ':!man' ':!docs' ':!LICENSE.md'
 
 It prints offending files; no output means clean. `README.md` may hit
 legitimately where an evaluated chunk captures the glyphs cli prints, which
-section 7 of [dev/WRITING.md](dev/WRITING.md) keeps; any other character
+section 7 of [dev/WRITING.md](../dev/WRITING.md) keeps; any other character
 there is a leak to fix in `README.Rmd`.
 
 **Never assume - measure when it can be measured.** Do not guess where time
@@ -64,7 +64,7 @@ CRLF line endings, and fails as a truncated file or an "unexpected EOF", not
 a clean error. Write file bodies with the Write and Edit tools; otherwise use
 whatever tool fits, `sed -i` included.
 
-**C++ under `src/`: read [dev/CPP.md](dev/CPP.md) first.** It states two bans
+**C++ under `src/`: read [dev/CPP.md](../dev/CPP.md) first.** It states two bans
 in full. No hand-rolled loop unrolling, strip-mining for vectorization, or
 OpenMP pragmas: write the simple loop and let the compiler decide, and spend
 parallelism at the chain level through RcppThread and mirai. No thread
@@ -86,7 +86,7 @@ pluralization. The error surface is public API: callers pin on wording and
 condition class, so a message changes deliberately, not in passing. Input
 validation goes through `checkmate` with an explicit `.var.name`, so the
 message names the user's argument rather than an internal one. How a message,
-a help page or a vignette is written lives in [dev/WRITING.md](dev/WRITING.md);
+a help page or a vignette is written lives in [dev/WRITING.md](../dev/WRITING.md);
 read it before writing any of them.
 
 **Full roxygen, markdown on.** Every exported function carries a title, a
@@ -112,7 +112,7 @@ is drafted in one pass from the diff since the last release tag, with the
 maintainer, whose style it is; outside that pass, never touch `NEWS.md`. When
 a change has a user-visible effect that would be easy to miss in that diff -
 a removed argument, a changed default, a new error - add one line for it to
-the NEWS entry in [dev/to-do.md](dev/to-do.md), creating the entry if there
+the NEWS entry in [dev/to-do.md](../dev/to-do.md), creating the entry if there
 is none. That line is a reminder for the draft, not NEWS text.
 
 **Numerical tests report absolute and relative error, and assert on the worst
@@ -149,7 +149,7 @@ If a file genuinely cannot be tracked, say so and ask; never decide it
 silently.
 
 **Vendored files are developed upstream, not here.** The files listed in
-[dev/vendored.md](dev/vendored.md) are copied in from another repository. The
+[dev/vendored.md](../dev/vendored.md) are copied in from another repository. The
 only edits made to them here are to their roxygen blocks: titles, `@param`,
 `@returns`, `@examples` and the rest. Leave them out of every pass and sweep -
 writing or message audits, refactors, renames, magic-number sweeps, cli
@@ -165,10 +165,10 @@ The R-to-C++ boundary of `pca_imp()` and `knn_imp()` is not obvious from
 either side alone. Structural maps of both chains, citing the code
 throughout:
 
-- [dev/pca_imp_structure.md](dev/pca_imp_structure.md) - R entry point, Rcpp
+- [dev/pca_imp_structure.md](../dev/pca_imp_structure.md) - R entry point, Rcpp
   boundary, EM outer loop, eigensolver layer (LOBPCG warm start included),
   down to BLAS.
-- [dev/knn_imp_structure.md](dev/knn_imp_structure.md) - R entry point, Rcpp
+- [dev/knn_imp_structure.md](../dev/knn_imp_structure.md) - R entry point, Rcpp
   boundary, distance over incomplete rows, neighbor selection, weighting, and
   the `slideimp_infeasible` abort sites.
 
@@ -219,7 +219,7 @@ reports in the same change.
   supply `location` for `slide_imp()`. Dev scripts only: `qs2` is not a
   declared dependency, so nothing under `R/`, `tests/` or `vignettes/` may
   read it.
-- [dev/to-do.md](dev/to-do.md) - work that is agreed on but not yet done.
+- [dev/to-do.md](../dev/to-do.md) - work that is agreed on but not yet done.
   Read it before starting anything in `R/` or `src/`: an entry there may
   already cover the change, or constrain how it is made. Add an entry when a
   change is decided on but deferred, and DELETE it when the change lands

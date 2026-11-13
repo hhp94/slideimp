@@ -1,8 +1,8 @@
 # C++ rules
 
-Rules for code under `src/`. CLAUDE.md names each ban in one line and points
+Rules for code under `src/`. .claude/CLAUDE.md names each ban in one line and points
 here; this file holds the full statement and the reasons, so a session that
-edits `src/` reads it first. Like CLAUDE.md, it holds invariants only.
+edits `src/` reads it first. Like .claude/CLAUDE.md, it holds invariants only.
 
 ## No hand-rolled loop unrolling, no OpenMP, no pragma hints
 
