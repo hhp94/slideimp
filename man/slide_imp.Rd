@@ -32,7 +32,6 @@ slide_imp(
   .progress = TRUE,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE,
   on_infeasible = c("skip", "error", "mean")
 )
 }
@@ -141,9 +140,6 @@ possible.}
 
 \item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
 the main imputation method with column means when possible.}
-
-\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
-contains missing values.}
 
 \item{on_infeasible}{Character. One of \code{"skip"}, \code{"error"}, or \code{"mean"}.
 Controls behavior when a window is infeasible for imputation, for example

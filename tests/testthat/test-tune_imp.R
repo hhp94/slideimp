@@ -1762,7 +1762,7 @@ test_that("a misplaced k or ncp gets the message that names the other method", {
 
 test_that("every tunable slide_imp() argument is accepted in parameters", {
   # what tune_imp() supplies itself, or what breaks the matrix return
-  own <- c("obj", "location", "subset", "cores", "na_check", "dry_run")
+  own <- c("obj", "location", "subset", "cores", "dry_run")
   tunable <- setdiff(names(formals(slide_imp)), own)
   expect_gt(length(tunable), 5L)
   expect_setequal(slide_tune_params(), tunable)

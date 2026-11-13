@@ -6,27 +6,23 @@ new_slideimp_results <- function(
   obj,
   imp_method,
   fallback,
-  post_imp,
-  na_check,
-  has_remaining_na = if (na_check) anyNA(obj) else NULL
+  post_imp
 ) {
   # start from a bare matrix. The input can itself be a `slideimp_results`,
   # from an earlier imputation pass: left as it is, the class would be attached
   # a second time and the attributes this constructor does not set
   # (`metacaller`, `fallback_action`) would stay and describe that earlier call.
+  #
+  # Attaching anything to a matrix the caller still holds copies it, because
+  # the caller's matrix must not gain the class. `attr<-`, `class<-` and
+  # `attributes<-` each copy a shared 76 MB matrix once, as measured, so
+  # no rewrite of this body avoids it. On an early return, where `obj` is the
+  # caller's own input, that one copy is what returning the class costs.
   attributes(obj) <- list(dim = dim(obj), dimnames = dimnames(obj))
-  # the default is lazy, so left alone it would be evaluated at the attr()
-  # call below, after the class is attached. anyNA() on an object carrying a
-  # class falls back to any(is.na(x)), which allocates an n x p logical and
-  # scans the whole matrix even when the first cell is NA; on the bare matrix
-  # it allocates nothing and stops at the first NA. Force it first, and after
-  # the line above, which is what makes the matrix bare.
-  force(has_remaining_na)
   class(obj) <- c("slideimp_results", class(obj))
   attr(obj, "imp_method") <- imp_method
   attr(obj, "fallback") <- fallback
   attr(obj, "post_imp") <- post_imp
-  attr(obj, "has_remaining_na") <- has_remaining_na
   obj
 }
 

@@ -596,6 +596,42 @@ test_that("Inf is refused ahead of the paths that used to hide it", {
   expect_error(pca_imp(complete, ncp = 2, nb.init = 3), "Infinite")
 })
 
+test_that("the no-missing-values return has the shape of the main path", {
+  set.seed(1234)
+  complete <- sim_mat(20, 10, perc_total_na = 0)$input
+  expect_false(anyNA(complete))
+
+  msgs <- testthat::capture_messages(
+    r_early <- pca_imp(complete, ncp = 2)
+  )
+  expect_length(msgs, 1L)
+  expect_match(msgs, "No missing values in input")
+  expect_identical(r_early[,, drop = FALSE], complete)
+
+  incomplete <- complete
+  incomplete[2, 3] <- NA
+  r_main <- pca_imp(incomplete, ncp = 2)
+
+  # the same class, and the same attributes with the same types, so a caller
+  # cannot tell from the result which path ran
+  expect_identical(class(r_early), class(r_main))
+  expect_identical(
+    vapply(attributes(r_early), typeof, character(1)),
+    vapply(attributes(r_main), typeof, character(1))
+  )
+  expect_identical(attr(r_early, "imp_method"), "pca")
+  expect_identical(attr(r_early, "fallback"), FALSE)
+  expect_identical(attr(r_early, "solver_requested"), "auto")
+
+  # and the solver attributes say that no solve ran
+  expect_identical(attr(r_early, "solver_chosen"), NA_character_)
+  expect_false(attr(r_early, "solver_probed"))
+  expect_identical(attr(r_early, "n_iter"), 0)
+  expect_identical(attr(r_early, "criterion_final"), NA_real_)
+  expect_identical(attr(r_early, "converged"), NA)
+  expect_identical(attr(r_early, "n_exact"), 0L)
+})
+
 test_that("pca_imp reports whether the auto verdict came from a probe", {
   set.seed(1234)
   # n_gram = min(nrow, n_elig) = 60, below the 250 threshold, so the R-side
@@ -603,13 +639,13 @@ test_that("pca_imp reports whether the auto verdict came from a probe", {
   # probe runs. `solver_chosen` still says "exact", because that is what ran.
   small <- sim_mat(60, 60, perc_total_na = 0.2, perc_col_na = 1)$input
 
-  res <- pca_imp(small, ncp = 2, solver = "auto", seed = 1, na_check = FALSE)
+  res <- pca_imp(small, ncp = 2, solver = "auto", seed = 1)
   expect_identical(attr(res, "solver_chosen"), "exact")
   expect_false(attr(res, "solver_probed"))
 
   # a forced solver is not a verdict either: auto never ran
   for (s in c("exact", "lobpcg")) {
-    r <- pca_imp(small, ncp = 2, solver = s, seed = 1, na_check = FALSE)
+    r <- pca_imp(small, ncp = 2, solver = s, seed = 1)
     expect_identical(attr(r, "solver_chosen"), s)
     expect_false(attr(r, "solver_probed"))
   }
@@ -627,8 +663,7 @@ test_that("pca_imp reports whether the auto verdict came from a probe", {
     threshold = 0,
     maxiter = 60,
     miniter = 60,
-    seed = 1,
-    na_check = FALSE
+    seed = 1
   ))
   expect_true(attr(probed, "solver_probed"))
   expect_true(attr(probed, "solver_chosen") %in% c("exact", "lobpcg"))
@@ -650,8 +685,7 @@ test_that("pca_imp warns from R when the EM loop hits maxiter", {
       miniter = 3,
       nb.init = nb.init,
       seed = 1,
-      post_imp = FALSE,
-      na_check = FALSE
+      post_imp = FALSE
     )
   }
 
@@ -691,8 +725,7 @@ test_that("pca_imp warns from R when the EM loop hits maxiter", {
       threshold = 1e-6,
       maxiter = 1000,
       seed = 1,
-      post_imp = FALSE,
-      na_check = FALSE
+      post_imp = FALSE
     )
   )
 })
@@ -710,8 +743,7 @@ test_that("a tampered lobpcg_control object is re-validated, not taken as-is", {
       lobpcg_control = ctrl,
       miniter = 2,
       maxiter = 5,
-      seed = 1,
-      na_check = FALSE
+      seed = 1
     )
   }
 
@@ -771,7 +803,6 @@ test_that("pca_imp validates seed and the miniter/maxiter ordering from R", {
       x,
       ncp = 2,
       solver = "exact",
-      na_check = FALSE,
       ...
     ))
   }
@@ -1003,7 +1034,6 @@ test_that("LOBPCG tolerance stays relative when the Gram norm is below 1", {
       miniter = 5,
       threshold = 1e-8,
       post_imp = FALSE,
-      na_check = FALSE,
       lobpcg_control = ctrl
     )
   }

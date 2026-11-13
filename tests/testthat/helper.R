@@ -34,8 +34,7 @@ run_pca_fixed_iters <- function(x, ctrl, ncp = 3L, pca_iters = 14L) {
     seed = 1,
     lobpcg_control = ctrl,
     colmax = 1,
-    post_imp = FALSE,
-    na_check = TRUE
+    post_imp = FALSE
   )
 }
 

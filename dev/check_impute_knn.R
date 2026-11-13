@@ -21,10 +21,10 @@
 # Usage, from the repository root: Rscript dev/check_impute_knn.R
 # Exits non-zero if any comparison exceeds the tolerance.
 
-if (!file.exists("DESCRIPTION") || !file.exists("R/dev-utils.R")) {
+if (!file.exists("DESCRIPTION") || !file.exists("dev/dev-utils.R")) {
   stop("run this from the repository root: Rscript dev/check_impute_knn.R")
 }
-source("R/dev-utils.R")
+source("dev/dev-utils.R")
 suppressMessages(load_all1(timer = FALSE))
 
 if (!requireNamespace("impute", quietly = TRUE)) {
@@ -69,8 +69,7 @@ for (k in c(3L, 10L)) {
     k = k,
     method = "euclidean",
     dist_pow = 0,
-    post_imp = FALSE,
-    na_check = FALSE
+    post_imp = FALSE
   )
   r2 <- t(impute::impute.knn(t(obj), k = k, maxp = ncol(obj))$data)
 

@@ -681,7 +681,6 @@ tune_imp <- function(
     # Args excluded from tuning across all .f:
     #   obj       - supplied by tune_imp
     #   subset    - injected by tune_imp from na_loc (for slide_imp/knn_imp)
-    #   na_check  - tune_imp controls this
     #   cores     - passed via tune_imp's `cores` arg, not tuneable
     #   .progress - tune_imp owns progress reporting
     # slide_imp-specific exclusions:
@@ -901,9 +900,8 @@ tune_imp <- function(
   fixed_args <- list()
   if (!is_custom) {
     # only the masked cells are read back, so the methods' own progress bar
-    # and their scan of the result for remaining NA are both turned off
+    # is turned off
     fixed_args$.progress <- FALSE
-    fixed_args$na_check <- FALSE
   }
   if (is_slide) {
     fixed_args$location <- location

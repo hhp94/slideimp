@@ -20,7 +20,6 @@ pca_imp(
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE,
   clamp = NULL,
   .progress = FALSE
 )
@@ -82,9 +81,6 @@ possible.}
 
 \item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
 the main imputation method with column means when possible.}
-
-\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
-contains missing values.}
 
 \item{clamp}{Optional numeric vector \code{c(lower, upper)} bounding PCA-imputed
 values (use \code{-Inf}/\code{Inf} for one-sided, \code{NULL} for none). E.g., \code{c(0, 1)}

@@ -98,8 +98,7 @@ exact <- system.time(invisible(
     obj = obj_probe,
     ncp = ncp_probe,
     solver = "exact",
-    threshold = 1e-5,
-    na_check = FALSE
+    threshold = 1e-5
   )
 ))
 
@@ -108,8 +107,7 @@ iterative <- system.time(invisible(
     obj = obj_probe,
     ncp = ncp_probe,
     solver = "lobpcg",
-    threshold = 1e-5,
-    na_check = FALSE
+    threshold = 1e-5
   )
 ))
 

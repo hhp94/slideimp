@@ -50,7 +50,7 @@ The code does not fully follow this section yet. Base `stop()` and `message()` o
 are known divergences, not precedent. Find them with:
 
 ```bash
-git grep -nE '(^|[^_.a-z])(stop|warning|message)\(' -- R ':!R/dev-utils.R' ':!R/RcppExports.R'
+git grep -nE '(^|[^_.a-z])(stop|warning|message)\(' -- R ':!R/RcppExports.R'
 ```
 
 Converting one is a change to the error surface (section 0), so it is proposed, not done in passing.
@@ -75,7 +75,7 @@ apply.
   smuggled past a period: prefer a period and a short new sentence. Find the current breaches with:
 
   ```bash
-  git grep -nE "^#'.*( -- |;)" -- R ':!R/dev-utils.R'
+  git grep -nE "^#'.*( -- |;)" -- R
   ```
 
 - **R4. Describe the problem and give an actionable next step.** Never state that imputation

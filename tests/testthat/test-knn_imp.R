@@ -155,8 +155,7 @@ test_that("neighbors sharing no observed row with the target are dropped", {
       k = 2,
       dist_pow = dp,
       subset = 1,
-      post_imp = FALSE,
-      na_check = FALSE
+      post_imp = FALSE
     )
     got <- unname(r[5:8, 1])
     want <- dup[5:8]
@@ -173,8 +172,7 @@ test_that("neighbors sharing no observed row with the target are dropped", {
     obj2,
     k = 2,
     subset = 1,
-    post_imp = FALSE,
-    na_check = FALSE
+    post_imp = FALSE
   )
   expect_true(all(is.na(r2[5:8, 1])))
   expect_equal(unname(r2[1:4, 1]), target[1:4])
@@ -284,8 +282,7 @@ test_that("the documented weighting rule reproduces the kernel", {
           method = m,
           dist_pow = dp,
           subset = 1,
-          post_imp = FALSE,
-          na_check = FALSE
+          post_imp = FALSE
         )
         want <- knn_ref(
           obj,
@@ -309,8 +306,7 @@ test_that("the documented weighting rule reproduces the kernel", {
           method = "euclidean",
           dist_pow = dp,
           subset = 1,
-          post_imp = FALSE,
-          na_check = FALSE
+          post_imp = FALSE
         )[miss_rows, 1]
       )
       expect_close(got, knn_ref(obj, 1L, miss_rows, k, d_rooted, 2 * dp))
@@ -394,8 +390,7 @@ test_that("tied neighbors are settled by scan order, not by the library sort", {
           method = method,
           dist_pow = 0,
           subset = 1,
-          post_imp = FALSE,
-          na_check = FALSE
+          post_imp = FALSE
         )
         got <- unname(r[1L, 1L])
         expect_close(got, want)
@@ -418,8 +413,8 @@ test_that("the parallel path gives the same answer as the serial one", {
   expect_gt(sum(is.na(obj)), 0L)
 
   for (dp in c(0, 1)) {
-    r1 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 1, na_check = FALSE)
-    r2 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 4, na_check = FALSE)
+    r1 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 1)
+    r2 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 4)
     expect_identical(r1, r2)
   }
 
@@ -524,15 +519,12 @@ test_that("early returns carry the slideimp_results class", {
   expect_s3_class(r2, "slideimp_results")
   expect_equal(r2[,, drop = FALSE], obj)
 
-  # na_check decides whether the NA accounting is done, on every return path.
-  expect_false(is.null(attr(r2, "has_remaining_na")))
-  r3 <- suppressMessages(knn_imp(obj, k = 2, subset = 1:3, na_check = FALSE))
-  expect_null(attr(r3, "has_remaining_na"))
-
-  # The class does not depend on which path the data takes.
+  # The class and attributes do not depend on which path the data takes.
   r_main <- knn_imp(obj, k = 2, subset = 4)
   expect_identical(class(r1), class(r_main))
   expect_identical(class(r2), class(r_main))
+  expect_identical(attributes(r1), attributes(r_main))
+  expect_identical(attributes(r2), attributes(r_main))
 })
 
 test_that("dist_pow is validated by name before it reaches C++", {

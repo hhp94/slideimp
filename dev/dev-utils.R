@@ -1,4 +1,6 @@
-# Dev-only helpers. Unexported and build-ignored, so none of this ships.
+# Dev-only helpers. They live in dev/, which is build-ignored, so none of
+# this ships, and they are not part of the package namespace: load them with
+# source("dev/dev-utils.R") from the package root.
 #
 # load_all1() is the way to load the package in development, not bare
 # load_all(), because it decides which compile-time macros the DLL is built

@@ -11,6 +11,9 @@
 !CPP.md
 !WRITING.md
 !check_impute_knn.R
+!check_map_anchors.py
+!check_slideimp_extra.R
+!dev-utils.R
 !knn_imp_structure.md
 !pca_imp_structure.md
 !to-do.md

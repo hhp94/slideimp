@@ -13,7 +13,6 @@ knn_imp(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  na_check = TRUE,
   .progress = FALSE
 )
 }
@@ -46,9 +45,6 @@ is a mean squared difference for \code{"euclidean"} and a mean absolute
 difference for \code{"manhattan"}. \code{dist_pow = 0} gives an unweighted average
 of the nearest neighbors. The full weighting rule is given under Details
 in \code{\link[=knn_imp]{knn_imp()}}.}
-
-\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
-contains missing values.}
 
 \item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 }

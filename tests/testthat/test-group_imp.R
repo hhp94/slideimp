@@ -748,7 +748,6 @@ test_that("group_imp: on_infeasible = 'skip' retains original NAs and flags grou
   # group should be recorded in fallback attribute
   expect_true("bad_group" %in% attr(res, "fallback"))
   expect_equal(attr(res, "fallback_action"), "skip")
-  expect_true(isTRUE(attr(res, "has_remaining_na")))
 })
 
 test_that("group_imp: on_infeasible = 'mean' fills with column means and flags group", {
@@ -955,7 +954,6 @@ test_that("group_imp routes a one-column group through on_infeasible", {
   expect_identical(attr(res, "fallback"), "lonely")
   expect_identical(res[, 11], obj[, 11])
   expect_false(anyNA(res[, 1:10]))
-  expect_true(attr(res, "has_remaining_na"))
 
   expect_no_warning(res <- run(ncp = 2, on_infeasible = "skip"))
   expect_identical(attr(res, "fallback"), "lonely")
@@ -1134,7 +1132,6 @@ test_that("group_imp validates its scalar arguments", {
     "'.progress'",
     fixed = TRUE
   )
-  expect_error(group_imp(obj, group = grp, k = 3, na_check = NA), "'na_check'")
   expect_error(
     group_imp(obj, group = grp, k = 3, allow_unmapped = NA),
     "'allow_unmapped'"
@@ -1195,17 +1192,4 @@ test_that("a group_imp() result can be imputed again", {
   ))
   expect_identical(class(slid), c("slideimp_results", "matrix", "array"))
   expect_identical(attr(slid, "metacaller"), "slide_imp")
-})
-
-# slideimp.extra ----
-test_that("slideimp_extra_manifests works with prep_groups", {
-  # skip("manual testing with {slideimp.extra} on local machines only")
-  # skip_if_not_installed("slideimp.extra")
-  # slideimp.extra::set_slideimp_path("dev")
-  # msa <- slideimp.extra::ilmn_manifest("MSA", deduped = TRUE, rawdir = "dev")
-  # n_feat <- length(msa$feature)
-  # sim_mat <- matrix(rnorm(1 * n_feat), nrow = 1, dimnames = list(NULL, msa$feature))
-  # expect_no_error(prep_groups(colnames(sim_mat), group = msa))
-  # expect_no_error(prep_groups(colnames(sim_mat), group = "MSA_deduped"))
-  # slideimp.extra::set_slideimp_path(NULL)
 })

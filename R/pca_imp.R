@@ -256,6 +256,46 @@ new_lobpcg_control <- function(
   out
 }
 
+# The return value of pca_imp(): the shared constructor plus the attributes
+# only pca_imp() carries. Shared by the no-missing-values exit and the main
+# path so that a caller cannot tell from the result which one ran: the same
+# class, and the same attributes with the same types. The defaults describe a
+# call that ran no solve. No solver was chosen or probed, no iteration ran,
+# and `converged` is NA because there was nothing to converge. `n_iter`
+# defaults to a double because the kernel returns its count as one.
+pca_imp_results <- function(
+  obj,
+  post_imp,
+  solver,
+  solver_chosen = NA_character_,
+  solver_probed = FALSE,
+  diag = list(
+    n_iter = 0,
+    criterion_final = NA_real_,
+    converged = NA,
+    n_exact = 0L,
+    n_lobpcg_ok = 0L,
+    n_lobpcg_bad = 0L
+  )
+) {
+  out <- new_slideimp_results(
+    obj,
+    "pca",
+    fallback = FALSE,
+    post_imp = post_imp
+  )
+  attr(out, "solver_requested") <- solver
+  attr(out, "solver_chosen") <- solver_chosen
+  attr(out, "solver_probed") <- solver_probed
+  attr(out, "n_iter") <- diag$n_iter
+  attr(out, "criterion_final") <- diag$criterion_final
+  attr(out, "converged") <- diag$converged
+  attr(out, "n_exact") <- diag$n_exact
+  attr(out, "n_lobpcg_ok") <- diag$n_lobpcg_ok
+  attr(out, "n_lobpcg_bad") <- diag$n_lobpcg_bad
+  out
+}
+
 #' PCA Imputation for Numeric Matrices
 #'
 #' Impute missing values in a numeric matrix using regularized or
@@ -375,7 +415,6 @@ pca_imp <- function(
   lobpcg_control = NULL,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE,
   clamp = NULL,
   .progress = FALSE
 ) {
@@ -448,7 +487,6 @@ pca_imp <- function(
 
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
-  checkmate::assert_flag(na_check, .var.name = "na_check")
   clamp <- resolve_clamp(clamp, arg = "clamp")
   checkmate::assert_flag(.progress, .var.name = ".progress")
   trace_iter <- if (isTRUE(.progress)) 10L else 0L
@@ -456,10 +494,11 @@ pca_imp <- function(
   # per-column missingnesss
   cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
 
-  # early exit if no missingness at all
+  # early exit if no missingness at all. The input comes back unchanged, but
+  # in the same shape as the main path's result, as @returns promises.
   if (!any(cmiss > 0L)) {
     cli::cli_inform("No missing values in input. Returning input unchanged.")
-    return(obj)
+    return(pca_imp_results(obj, post_imp = post_imp, solver = solver))
   }
 
   miss_rate <- cmiss / nrow(obj)
@@ -683,24 +722,12 @@ pca_imp <- function(
     }
   }
 
-  solver_chosen <- if (resolved_solver_code == 1L) "lobpcg" else "exact"
-
-  out <- new_slideimp_results(
+  return(pca_imp_results(
     obj,
-    "pca",
-    fallback = FALSE,
     post_imp = post_imp,
-    na_check = na_check
-  )
-
-  attr(out, "solver_requested") <- solver
-  attr(out, "solver_chosen") <- solver_chosen
-  attr(out, "solver_probed") <- solver_probed
-  attr(out, "n_iter") <- best_diag$n_iter
-  attr(out, "criterion_final") <- best_diag$criterion_final
-  attr(out, "converged") <- best_diag$converged
-  attr(out, "n_exact") <- best_diag$n_exact
-  attr(out, "n_lobpcg_ok") <- best_diag$n_lobpcg_ok
-  attr(out, "n_lobpcg_bad") <- best_diag$n_lobpcg_bad
-  return(out)
+    solver = solver,
+    solver_chosen = if (resolved_solver_code == 1L) "lobpcg" else "exact",
+    solver_probed = solver_probed,
+    diag = best_diag
+  ))
 }

@@ -30,7 +30,6 @@ group_imp(
   lobpcg_control = NULL,
   clamp = NULL,
   pin_blas = FALSE,
-  na_check = TRUE,
   on_infeasible = c("error", "skip", "mean")
 )
 }
@@ -135,9 +134,6 @@ for DNAm beta values. Observed values are not clamped.}
 \item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 to reduce
 contention when using parallel PCA on systems linked with multithreaded
 BLAS.}
-
-\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
-contains missing values.}
 
 \item{on_infeasible}{Character. One of \code{"error"}, \code{"skip"}, or \code{"mean"}.
 Controls behavior when a group is infeasible for imputation, for example

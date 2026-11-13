@@ -15,8 +15,5 @@ inst/doc
 docs
 cran-comments.md
 .positai
-
-# Illumina manifest fixtures for the (currently commented-out) slideimp.extra
-# test in test-group_imp.R. Regenerable: the CSV is a public vendor download
-# and the .fst is derived from it.
-tests/testthat/dev/
+# machine-local, never tracked: see local/ in CLAUDE.md
+/local/

@@ -64,11 +64,6 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
       sep = ""
     )
   }
-
-  # remaining NA note
-  if (isTRUE(attr(x, "has_remaining_na"))) {
-    cat("Note: requested columns still contain NA values\n")
-  }
   cat("\n")
 
   # preview

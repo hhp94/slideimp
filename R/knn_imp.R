@@ -23,8 +23,6 @@
 #'  difference for `"manhattan"`. `dist_pow = 0` gives an unweighted average
 #'  of the nearest neighbors. The full weighting rule is given under Details
 #'  in [knn_imp()].
-#' @param na_check Logical. If `TRUE`, check whether the returned matrix still
-#'  contains missing values.
 #' @param .progress Logical. If `TRUE`, show imputation progress.
 #'
 #' @returns A numeric matrix of the same dimensions as `obj`, with missing
@@ -104,7 +102,6 @@ knn_imp <- function(
   post_imp = TRUE,
   subset = NULL,
   dist_pow = 0,
-  na_check = TRUE,
   .progress = FALSE
 ) {
   # Pre-conditioning
@@ -129,7 +126,6 @@ knn_imp <- function(
     .var.name = "dist_pow"
   )
   checkmate::assert_flag(.progress, .var.name = ".progress")
-  checkmate::assert_flag(na_check, .var.name = "na_check")
 
   subset <- resolve_subset(subset, obj)
   if (is.null(subset)) {
@@ -140,8 +136,7 @@ knn_imp <- function(
         obj,
         "knn",
         fallback = FALSE,
-        post_imp = post_imp,
-        na_check = na_check
+        post_imp = post_imp
       )
     )
   }
@@ -150,7 +145,7 @@ knn_imp <- function(
   cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
 
   # early exit if no missingness in subset columns
-  if (!any(cmiss[subset] > 0)) {
+  if (!any(cmiss[subset] > 0L)) {
     cli::cli_inform(
       "No missing values in subset columns. Returning input unchanged."
     )
@@ -159,8 +154,7 @@ knn_imp <- function(
         obj,
         "knn",
         fallback = FALSE,
-        post_imp = post_imp,
-        na_check = na_check
+        post_imp = post_imp
       )
     )
   }
@@ -244,8 +238,7 @@ knn_imp <- function(
       obj,
       "knn",
       fallback = FALSE,
-      post_imp = post_imp,
-      na_check = na_check
+      post_imp = post_imp
     )
   )
 }

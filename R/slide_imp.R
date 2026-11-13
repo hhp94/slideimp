@@ -40,8 +40,6 @@ slide_imp_results <- function(
   on_infeasible,
   flank,
   post_imp,
-  na_check,
-  has_remaining_na,
   solver = NULL,
   solver_chosen = NA_character_,
   solver_lock_window = NA_integer_
@@ -50,9 +48,7 @@ slide_imp_results <- function(
     result,
     imp_method,
     fallback = fallback,
-    post_imp = post_imp,
-    na_check = na_check,
-    has_remaining_na = has_remaining_na
+    post_imp = post_imp
   )
   attr(out, "metacaller") <- "slide_imp"
   attr(out, "fallback_action") <- on_infeasible
@@ -230,7 +226,6 @@ slide_imp <- function(
   .progress = TRUE,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE,
   on_infeasible = c("skip", "error", "mean")
 ) {
   # conditions raised from inside a handler report this frame, not the handler
@@ -355,7 +350,6 @@ slide_imp <- function(
   }
 
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
-  checkmate::assert_flag(na_check, .var.name = "na_check")
 
   # resolve subset to sorted integer indices (needed before windowing when flank = TRUE)
   subset <- resolve_subset(subset, obj, sort = TRUE)
@@ -378,9 +372,6 @@ slide_imp <- function(
       on_infeasible = on_infeasible,
       flank = flank,
       post_imp = post_imp,
-      na_check = na_check,
-      # no column was requested, so no requested column has an NA left
-      has_remaining_na = if (na_check) FALSE else NULL,
       solver = if (imp_method == "pca") solver else NULL
     ))
   }
@@ -555,7 +546,6 @@ slide_imp <- function(
               method = method,
               post_imp = post_imp,
               dist_pow = dist_pow,
-              na_check = FALSE,
               .progress = FALSE,
               subset = local_idx
             )
@@ -574,7 +564,6 @@ slide_imp <- function(
               row.w = row.w,
               lobpcg_control = lobpcg_control,
               solver = pca_solver_current,
-              na_check = FALSE,
               colmax = colmax,
               post_imp = post_imp,
               clamp = clamp,
@@ -705,20 +694,6 @@ slide_imp <- function(
     ))
   }
 
-  if (na_check) {
-    # all requested columns, not just the ones a window imputed
-    has_remaining_na <- FALSE
-    for (s in seq(1L, length(subset), by = copy_col_chunk)) {
-      e <- min(s + copy_col_chunk - 1L, length(subset))
-      if (anyNA(result[, subset[s:e], drop = FALSE])) {
-        has_remaining_na <- TRUE
-        break
-      }
-    }
-  } else {
-    has_remaining_na <- NULL
-  }
-
   fallback_windows <- which(fallback_flags)
   n_fallback <- length(fallback_windows)
   if (n_fallback > 0L) {
@@ -745,8 +720,6 @@ slide_imp <- function(
     on_infeasible = on_infeasible, # "skip" or "mean"
     flank = flank,
     post_imp = post_imp,
-    na_check = na_check,
-    has_remaining_na = has_remaining_na,
     solver = if (imp_method == "pca") solver else NULL,
     solver_chosen = if (imp_method != "pca") {
       NA_character_

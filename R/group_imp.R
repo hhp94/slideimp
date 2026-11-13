@@ -618,7 +618,6 @@ group_imp <- function(
   lobpcg_control = NULL,
   clamp = NULL,
   pin_blas = FALSE,
-  na_check = TRUE,
   on_infeasible = c("error", "skip", "mean")
 ) {
   checkmate::assert_matrix(
@@ -635,7 +634,6 @@ group_imp <- function(
   checkmate::assert_int(cores, lower = 1, .var.name = "cores")
   checkmate::assert_flag(.progress, .var.name = ".progress")
   checkmate::assert_flag(pin_blas, null.ok = FALSE, .var.name = "pin_blas")
-  checkmate::assert_flag(na_check, .var.name = "na_check")
   on_infeasible <- match.arg(on_infeasible)
   if (!is.null(solver)) {
     solver <- match.arg(solver, c("auto", "exact", "lobpcg"))
@@ -896,7 +894,6 @@ group_imp <- function(
   # build per-group call parameters
   params <- lapply(iter, function(i) {
     p <- group$parameters[[i]]
-    p$na_check <- FALSE
     p$.progress <- FALSE
 
     if (is_knn_mode) {
@@ -1091,7 +1088,6 @@ group_imp <- function(
   }
 
   fallback_groups <- group$group[fallback_flags]
-  has_remaining_na <- if (na_check) anyNA(obj[, all_feats_pos]) else NULL
 
   colnames(obj) <- cn
   rownames(obj) <- rn
@@ -1100,7 +1096,6 @@ group_imp <- function(
   attr(obj, "metacaller") <- "group_imp"
   attr(obj, "fallback") <- fallback_groups
   attr(obj, "fallback_action") <- on_infeasible
-  attr(obj, "has_remaining_na") <- has_remaining_na
   attr(obj, "post_imp") <- post_imp
   obj
 }

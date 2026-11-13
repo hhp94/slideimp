@@ -8,37 +8,24 @@ An entry says what to change and why, enough that a session with no memory of
 the conversation can pick it up. If an entry turns out to be wrong, delete it
 and say so in chat.
 
-## Hoist the early returns in `knn_imp()` and `pca_imp()`
+## Draft `NEWS.md` for the release after 1.2.0
 
-Run `/simplify` over `R/knn_imp.R` and `R/pca_imp.R`, targeting the
-early-return paths.
+`NEWS.md` is written once per release, from the whole diff since the last
+release, not one entry per change (see `CLAUDE.md`). Draft the section from
+`git diff v1.2.0..HEAD` and `git log v1.2.0..HEAD`, with the maintainer, who
+owns its style.
 
-Both functions bail out early on inputs that need no work - an empty `subset`,
-no missing values in the subset, no missing values at all - and the two
-functions do it differently. `knn_imp()` returns through
-`new_slideimp_results()` on both of its early paths; `pca_imp()` returns a bare
-matrix at `R/pca_imp.R:460-463`, so the class and attributes of its result
-depend on which path the data took. That asymmetry is the thing to remove.
+The development-version section already in `NEWS.md` was written one change at
+a time, before this rule. Treat it as material for the draft, not as finished
+text.
 
-What the hoisted form has to preserve:
+Easy to miss in the diff, noted so the draft does not:
 
-- **Return the input unchanged, with no copy.** These paths do no imputation,
-  so nothing should touch the matrix. Attaching a class and attributes is a
-  modification under copy-on-modify semantics, and on a 450k-column matrix the
-  duplication is not free. Check whether the constructor can be made to attach
-  in place, or whether the copy is unavoidable and merely needs to be
-  acknowledged; measure with `tracemem()` rather than reasoning about it.
-- **One message per path, through cli.** `resolve_subset()` already reports an
-  empty subset, so the caller must not report it a second time. Every message
-  on these paths goes through `cli::cli_inform()` with inline markup, the same
-  as the rest of the package.
-- **The same class and attributes as the main path.** `slideimp_results` with
-  `imp_method`, `fallback`, `post_imp` and `has_remaining_na`, so a caller
-  cannot tell from the result's shape which path produced it.
-  `tests/testthat/test-knn_imp.R` pins this for `knn_imp()`; `pca_imp()` needs
-  the same test.
-
-Open question to settle while doing it: `has_remaining_na` is computed over the
-whole matrix, but `print.slideimp_results` describes it as covering the
-requested columns. Whichever way that is resolved, both functions and both
-paths have to agree, and the help page has to say which one it is.
+- **Breaking:** the `na_check` argument of `knn_imp()`, `pca_imp()`,
+  `slide_imp()` and `group_imp()` is removed, along with the
+  `has_remaining_na` attribute it controlled and the note `print()` showed
+  from it. `anyNA()` on the result answers the same question.
+- `pca_imp()` on a matrix with no missing values now returns a
+  `slideimp_results` with the same attributes as any other call, where it
+  returned the bare input. `print()` shows it with the result header, and the
+  call now copies the input once to attach the class.

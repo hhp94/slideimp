@@ -315,15 +315,14 @@ test_that("slide_imp does not pin the solver on a window that was never probed",
     x[, first_cols, drop = FALSE],
     ncp = 2,
     solver = "auto",
-    seed = 1,
-    na_check = FALSE
+    seed = 1
   )
   expect_identical(attr(first, "solver_chosen"), "exact")
   expect_false(attr(first, "solver_probed"))
 
   res <- suppressMessages(do.call(
     slide_imp,
-    c(args, list(ncp = 2, solver = "auto", seed = 1, na_check = FALSE))
+    c(args, list(ncp = 2, solver = "auto", seed = 1))
   ))
 
   # Regression: slide_imp pinned every later window to window 1's reported
@@ -698,9 +697,7 @@ test_that("slide_imp: mixed feasible + infeasible windows - skip isolates correc
   expect_true(all(is.na(res[1:19, 11:20])))
   expect_false(anyNA(res[, 1:10]))
   expect_false(anyNA(res[, 21:30]))
-  # skipped window left NAs in requested columns -> must be flagged
-  expect_true(isTRUE(attr(res, "has_remaining_na")))
-  # and the skipped window should be recorded
+  # the skipped window should be recorded
   expect_gt(length(attr(res, "fallback")), 0)
   expect_equal(attr(res, "fallback_action"), "skip")
 })
@@ -1052,8 +1049,6 @@ test_that("slide_imp matches a hand-built reference on gappy locations", {
   expect_identical(sum(!ok), 290L)
   expect_lte(max(abs(out[ok] - ref[ok])), 1e-12)
   expect_lte(max(abs(out[ok] - ref[ok]) / abs(ref[ok])), 1e-12)
-  # block 3 holds NA, so the result has to say so
-  expect_true(attr(res, "has_remaining_na"))
 })
 
 test_that("slide_imp PCA does not call pca_imp on a window with complete targets", {
@@ -1124,7 +1119,6 @@ test_that("slide_imp keeps its return shape when subset resolves to nothing", {
   expect_identical(attr(res, "metacaller"), "slide_imp")
   expect_identical(attr(res, "imp_method"), "knn")
   expect_length(attr(res, "fallback"), 0L)
-  expect_false(attr(res, "has_remaining_na"))
   expect_identical(res[,], x)
   expect_no_error(utils::capture.output(print(res), print(dry)))
 
