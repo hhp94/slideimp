@@ -32,7 +32,7 @@ test_that("rank min(n, p) - 2 fits and min(n, p) - 1 refuses", {
 
   expect_error(
     mipca(X, rank = top + 1L, transform = "identity", seed = 1L),
-    "rank must be at most the smaller dimension minus two (8 here)",
+    "`rank` must be at most the smaller dimension minus two (8 here)",
     fixed = TRUE
   )
 })

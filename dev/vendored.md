@@ -32,3 +32,12 @@ package.
 
 A file added to or removed from the copy is added to or removed from this
 list in the port commit that brings it.
+
+## Spectra
+
+`src/Spectra/` is the Spectra eigensolver library
+(https://github.com/yixuan/spectra), MPL-2.0, which `src/mipca.cpp`
+includes by a quoted path. It arrives with the sampler's copy, and its
+`MANIFEST` lists the files and the upstream commit they were taken from.
+Nobody edits it by hand, in either repository: a re-vendor is made in
+`hhp94/test` and reaches slideimp with the next copy.

@@ -1,26 +1,42 @@
+// mipca_diag.cpp -- the per-cell kernel: classic split-Rhat with the Gelman
+// fold, and one Geyer ESS.
+//
+// MUST STAY a transcription of posterior 1.7.0's rhat_basic / ess_basic,
+// diffable line for line; equal to rounding, not bitwise (posterior's
+// autocovariance is an FFT, this one a direct sum).
+// Output must stay BITWISE identical across tile sizes: no cross-tile
+// reduction, no state carried between cells.
+
 #include <Rcpp.h>
-#include <RcppThread.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <vector>
 
 namespace {
 
+// ---- named constants --------------------------------------------------------
+// The bare literals in ess_one() and diag_na() are posterior's own (.ess(),
+// is_constant()), left as written for the line-for-line diff.
+
+// Lags of autocovariance per refill; sets how far ahead lags are computed,
+// never the order a lag is summed in.
 constexpr int ACOV_LAG_BLOCK = 32;
 
+// Workspace, allocated once per call and reused across cells; it must carry
+// no state from one cell to the next.
 struct Ws {
-  std::vector<double> fold;
-  std::vector<double> xs;
-  std::vector<double> xf;
-  std::vector<double> med;
-  std::vector<double> cm;
-  std::vector<double> cen;
-  std::vector<double> am;
-  std::vector<double> rho;
+  std::vector<double> fold;  // S x C, |cell - median(cell)|
+  std::vector<double> xs;    // ni x nc, split chains of cell
+  std::vector<double> xf;    // ni x nc, split chains of fold
+  std::vector<double> med;   // S x C, median scratch (nth_element mutates)
+  std::vector<double> cm;    // nc, per-column means
+  std::vector<double> cen;   // ni x nc, centered columns
+  std::vector<double> am;    // ni, autocovariance averaged over columns
+  std::vector<double> rho;   // ni, Geyer rho ladder
 };
 
+// The NA policy: any non-finite value, or no variation at all.
 bool diag_na(const double* x, int n) {
   for (int i = 0; i < n; ++i) {
     if (!R_finite(x[i])) return true;
@@ -33,13 +49,15 @@ bool diag_na(const double* x, int n) {
   return (hi - lo) < DBL_EPSILON;
 }
 
+// Halve every chain; an odd S drops the middle draw. Column order must match
+// R's cbind(first halves, second halves).
 void split_chains(const double* x, int S, int C, double* out) {
   if (S == 1) {
     std::copy(x, x + C, out);
     return;
   }
   const int ni = S / 2;
-  const int start2 = (S + 1) / 2;
+  const int start2 = (S + 1) / 2;  // == ceiling(S/2); odd S skips the middle
   for (int c = 0; c < C; ++c) {
     const double* col = x + static_cast<size_t>(c) * S;
     std::copy(col, col + ni, out + static_cast<size_t>(c) * ni);
@@ -47,6 +65,7 @@ void split_chains(const double* x, int S, int C, double* out) {
   }
 }
 
+// As stats::median(). Finite input only: nth_element over a NaN is undefined.
 double median_all(const double* x, int n, std::vector<double>& scratch) {
   std::copy(x, x + n, scratch.begin());
   const int h = n / 2;
@@ -57,6 +76,7 @@ double median_all(const double* x, int n, std::vector<double>& scratch) {
   return (m1 + m2) / 2.0;
 }
 
+// Split-Rhat for one already-split ni x nc matrix.
 double rhat_one(const double* x, int ni, int nc, Ws& w) {
   if (nc < 2 || diag_na(x, ni * nc)) return NA_REAL;
   double wsum = 0.0;
@@ -68,7 +88,7 @@ double rhat_one(const double* x, int ni, int nc, Ws& w) {
     w.cm[j] = m;
     double acc = 0.0;
     for (int t = 0; t < ni; ++t) acc += (col[t] - m) * (col[t] - m);
-    wsum += acc / (ni - 1.0);
+    wsum += acc / (ni - 1.0);  // ni == 1 gives 0/0 = NaN
   }
   const double W = wsum / nc;
   double mm = 0.0;
@@ -80,6 +100,8 @@ double rhat_one(const double* x, int ni, int nc, Ws& w) {
   return std::sqrt((ni * B / W + ni - 1.0) / ni);
 }
 
+// Geyer initial-positive plus initial-monotone ESS for one already-split
+// ni x nc matrix. Reads stay below ni through the `t < ni - 5` bound.
 double ess_one(const double* x, int ni, int nc, Ws& w) {
   if (ni < 3 || diag_na(x, ni * nc)) return NA_REAL;
   for (int j = 0; j < nc; ++j) {
@@ -91,6 +113,7 @@ double ess_one(const double* x, int ni, int nc, Ws& w) {
     double* c = w.cen.data() + static_cast<size_t>(j) * ni;
     for (int t = 0; t < ni; ++t) c[t] = col[t] - m;
   }
+  // am[k] = mean over columns of the biased autocovariance at lag k.
   double* am = w.am.data();
   int have = 0;
   auto ensure = [&](int k) {
@@ -149,6 +172,8 @@ double ess_one(const double* x, int ni, int nc, Ws& w) {
     }
   }
   const double ess = nc * (double)ni;
+  // posterior's `rho[1:max_t]` quirk at max_t == 0, kept on purpose; R
+  // reports ESS as NA where the loop above cannot run (.cell_diag_read()).
   double s = 0.0;
   if (max_t == 0) {
     s = rho[0];
@@ -159,6 +184,7 @@ double ess_one(const double* x, int ni, int nc, Ws& w) {
   return ess / std::max(tau, 1.0 / std::log10(ess));
 }
 
+// Sized once per call; every tile reuses it.
 void ws_alloc(Ws& w, int S, int C, int ni, int nc) {
   w.fold.resize(static_cast<size_t>(S) * C);
   w.xs.resize(static_cast<size_t>(ni) * nc);
@@ -170,6 +196,8 @@ void ws_alloc(Ws& w, int S, int C, int ni, int nc) {
   w.rho.resize(ni);
 }
 
+// One tile: gather, then per-cell compute, writing only its own slice of outp
+// (rhat at [i], ess at [ncell + i]).
 void diag_tile(int i0, int nt, const int* rows0,
                const std::vector<const double*>& base, int nmiss, int S,
                int C, int ni, int nc, int ncell, double* outp, Ws& w,
@@ -177,6 +205,7 @@ void diag_tile(int i0, int nt, const int* rows0,
   const int n_full = S * C;
   for (int k = 0; k < nt; ++k) trow[k] = rows0[i0 + k];
 
+  // The gather: per (chain, draw) slab, the tile's rows in one ascending burst.
   for (int c = 0; c < C; ++c) {
     const size_t coff = static_cast<size_t>(c) * S;
     for (int t = 0; t < S; ++t) {
@@ -200,6 +229,8 @@ void diag_tile(int i0, int nt, const int* rows0,
     }
     double rhat;
     if (bad) {
+      // As in R: a non-finite cell poisons the fold arm, so rhat is NA. ESS
+      // judges the SPLIT matrix alone, so an odd S's middle draw can differ.
       rhat = NA_REAL;
     } else {
       const double med = median_all(cell, n_full, w.med);
@@ -214,16 +245,17 @@ void diag_tile(int i0, int nt, const int* rows0,
   }
 }
 
-}
+}  // namespace
 
+// Draws and row indices only, never the map or a holdout: R picks the cells
+// (.diag_sample(), .tune_diag_draw()), so this cannot know a held-out cell.
 // [[Rcpp::export]]
 Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws,
                                        Rcpp::IntegerVector rows,
-                                       int tile_cells, int nthreads) {
+                                       int tile_cells) {
   const int C = draws.size();
   if (C < 1) Rcpp::stop("draws must hold at least one chain.");
   if (tile_cells < 1) Rcpp::stop("tile_cells must be a positive count.");
-  if (nthreads < 1) Rcpp::stop("nthreads must be at least 1.");
   std::vector<Rcpp::NumericMatrix> ms;
   ms.reserve(C);
   for (int c = 0; c < C; ++c) {
@@ -236,6 +268,7 @@ Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws,
       Rcpp::stop("chains disagree on dimensions.");
     }
   }
+  // rows0 is the 0-based copy the tiles read.
   const int ncell = rows.size();
   std::vector<int> rows0(ncell);
   for (int i = 0; i < ncell; ++i) {
@@ -256,42 +289,21 @@ Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws,
   for (int c = 0; c < C; ++c) base[c] = ms[c].begin();
 
   const int tile = std::min(tile_cells, std::max(ncell, 1));
-  const int ntile = (ncell + tile - 1) / tile;
+  const int ntile = (ncell + tile - 1) / tile;  // 0 when ncell == 0
 
   Rcpp::NumericMatrix out(ncell, 2);
   double* outp = out.begin();
 
-  if (nthreads == 1 || ntile <= 1) {
-    Ws w;
-    ws_alloc(w, S, C, ni, nc);
-    std::vector<double> tb(static_cast<size_t>(tile) * n_full);
-    std::vector<int> trow(tile);
-    for (int ti = 0; ti < ntile; ++ti) {
-      Rcpp::checkUserInterrupt();
-      const int i0 = ti * tile;
-      diag_tile(i0, std::min(tile, ncell - i0), rows0.data(), base, nmiss, S,
-                C, ni, nc, ncell, outp, w, tb.data(), trow.data());
-    }
-  } else {
-    const int nt_use = std::min(nthreads, ntile);
-    std::atomic<int> next(0);
-    RcppThread::ThreadPool pool(nt_use);
-    for (int th = 0; th < nt_use; ++th) {
-      pool.push([&] {
-        Ws w;
-        ws_alloc(w, S, C, ni, nc);
-        std::vector<double> tb(static_cast<size_t>(tile) * n_full);
-        std::vector<int> trow(tile);
-        int ti;
-        while ((ti = next.fetch_add(1)) < ntile) {
-          RcppThread::checkUserInterrupt();
-          const int i0 = ti * tile;
-          diag_tile(i0, std::min(tile, ncell - i0), rows0.data(), base, nmiss,
-                    S, C, ni, nc, ncell, outp, w, tb.data(), trow.data());
-        }
-      });
-    }
-    pool.wait();
+  // The tiles run in turn on one workspace, an interrupt check before each.
+  Ws w;
+  ws_alloc(w, S, C, ni, nc);
+  std::vector<double> tb(static_cast<size_t>(tile) * n_full);
+  std::vector<int> trow(tile);
+  for (int ti = 0; ti < ntile; ++ti) {
+    Rcpp::checkUserInterrupt();
+    const int i0 = ti * tile;
+    diag_tile(i0, std::min(tile, ncell - i0), rows0.data(), base, nmiss, S, C,
+              ni, nc, ncell, outp, w, tb.data(), trow.data());
   }
 
   out.attr("dimnames") = Rcpp::List::create(

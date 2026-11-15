@@ -29,7 +29,7 @@ test_that("iter_sampling = 0 is refused rather than segfaulting summary()", {
       iter_sampling = 0L,
       keep_state = TRUE
     ),
-    "iter_sampling must be a single integer >= 1",
+    "`iter_sampling` must be a single integer >= 1",
     fixed = TRUE
   )
 })

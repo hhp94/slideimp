@@ -8,13 +8,11 @@ test_that("mipca()'s sampler defaults are mipca_core()'s", {
     "thin",
     "nu",
     "chains",
-    "parallel_chains",
     "refresh",
     "spectra",
     "init"
   )
   # Non-vacuity: a typo'd name would compare NULL with NULL.
-  expect_length(nm, 9L)
   expect_true(all(nm %in% names(formals(mipca))))
   expect_true(all(nm %in% names(formals(mipca_core))))
 

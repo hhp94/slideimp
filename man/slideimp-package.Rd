@@ -72,6 +72,9 @@ Other contributors:
   \item Posit Software, PBC (Copyright holder of code adapted from the 'carrier' package, MIT licensed) [copyright holder]
   \item Francois Husson (\href{https://orcid.org/0000-0002-7271-8877}{ORCID}) [copyright holder]
   \item Julie Josse [copyright holder]
+  \item Yixuan Qiu (Spectra library, vendored in src/Spectra) [contributor, copyright holder]
+  \item Gael Guennebaud (src/Spectra/LinAlg/TridiagEigen.h, adapted from Eigen) [contributor, copyright holder]
+  \item Jitse Niesen (src/Spectra/LinAlg/TridiagEigen.h, adapted from Eigen) [contributor, copyright holder]
 }
 
 }

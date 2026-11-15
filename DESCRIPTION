@@ -9,7 +9,13 @@ Authors@R: c(
            comment = "Copyright holder of code adapted from the 'carrier' package, MIT licensed"),
     person("Francois", "Husson", role = "cph",
            comment = c(ORCID = "0000-0002-7271-8877")),
-    person("Julie", "Josse", role = "cph")
+    person("Julie", "Josse", role = "cph"),
+    person("Yixuan", "Qiu", role = c("ctb", "cph"),
+           comment = "Spectra library, vendored in src/Spectra"),
+    person("Gael", "Guennebaud", role = c("ctb", "cph"),
+           comment = "src/Spectra/LinAlg/TridiagEigen.h, adapted from Eigen"),
+    person("Jitse", "Niesen", role = c("ctb", "cph"),
+           comment = "src/Spectra/LinAlg/TridiagEigen.h, adapted from Eigen")
   )
 Description: Fast k-nearest neighbors (K-NN) and principal component
     analysis (PCA) imputation algorithms for missing values in epigenetic
@@ -66,7 +72,6 @@ LinkingTo:
     RcppArmadillo,
     RcppEigen,
     RcppThread,
-    RSpectra,
     sitmo
 VignetteBuilder: 
     knitr

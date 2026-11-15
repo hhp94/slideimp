@@ -172,21 +172,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// spectra_topk
-Rcpp::List spectra_topk(Rcpp::NumericMatrix g, int k, double tol, int ncv_req, int maxitr);
-RcppExport SEXP _slideimp_spectra_topk(SEXP gSEXP, SEXP kSEXP, SEXP tolSEXP, SEXP ncv_reqSEXP, SEXP maxitrSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type g(gSEXP);
-    Rcpp::traits::input_parameter< int >::type k(kSEXP);
-    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
-    Rcpp::traits::input_parameter< int >::type ncv_req(ncv_reqSEXP);
-    Rcpp::traits::input_parameter< int >::type maxitr(maxitrSEXP);
-    rcpp_result_gen = Rcpp::wrap(spectra_topk(g, k, tol, ncv_req, maxitr));
-    return rcpp_result_gen;
-END_RCPP
-}
 // build_block
 void build_block(SEXP src, int src_off, int j1, int nb, int transformed, Rcpp::NumericVector scratch, Rcpp::NumericMatrix Xd, Rcpp::NumericVector g_fixed, Rcpp::NumericVector et, Rcpp::NumericVector col_ss, Rcpp::IntegerVector mi_row, Rcpp::IntegerVector cnt, Rcpp::IntegerVector col_ptr, Rcpp::IntegerVector dirty_pos, int resume);
 RcppExport SEXP _slideimp_build_block(SEXP srcSEXP, SEXP src_offSEXP, SEXP j1SEXP, SEXP nbSEXP, SEXP transformedSEXP, SEXP scratchSEXP, SEXP XdSEXP, SEXP g_fixedSEXP, SEXP etSEXP, SEXP col_ssSEXP, SEXP mi_rowSEXP, SEXP cntSEXP, SEXP col_ptrSEXP, SEXP dirty_posSEXP, SEXP resumeSEXP) {
@@ -222,8 +207,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // mipca_da_loop_multi
-Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list, Rcpp::NumericVector g_fixed, Rcpp::List etd_list, Rcpp::List xtild_list, Rcpp::NumericVector sigma_in, Rcpp::NumericVector disp, bool resuming, Rcpp::CharacterVector rng_state_in, Rcpp::IntegerVector miss_idx_l, Rcpp::IntegerVector mi_row, Rcpp::IntegerVector mi_col_l, Rcpp::IntegerVector store_idx, Rcpp::IntegerVector mi_col_store, Rcpp::List draws_list, Rcpp::IntegerVector streams, int nthreads, int S, int K, int p, double dfP, double nu, int warmup, int ndraws, int thin, double gram_max_cond, double spectra_tol, int spectra_ncv, int spectra_maxitr, int refresh);
-RcppExport SEXP _slideimp_mipca_da_loop_multi(SEXP xd_listSEXP, SEXP g_fixedSEXP, SEXP etd_listSEXP, SEXP xtild_listSEXP, SEXP sigma_inSEXP, SEXP dispSEXP, SEXP resumingSEXP, SEXP rng_state_inSEXP, SEXP miss_idx_lSEXP, SEXP mi_rowSEXP, SEXP mi_col_lSEXP, SEXP store_idxSEXP, SEXP mi_col_storeSEXP, SEXP draws_listSEXP, SEXP streamsSEXP, SEXP nthreadsSEXP, SEXP SSEXP, SEXP KSEXP, SEXP pSEXP, SEXP dfPSEXP, SEXP nuSEXP, SEXP warmupSEXP, SEXP ndrawsSEXP, SEXP thinSEXP, SEXP gram_max_condSEXP, SEXP spectra_tolSEXP, SEXP spectra_ncvSEXP, SEXP spectra_maxitrSEXP, SEXP refreshSEXP) {
+Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list, Rcpp::NumericVector g_fixed, Rcpp::List etd_list, Rcpp::List xtild_list, Rcpp::List eig_start_list, Rcpp::NumericVector sigma_in, Rcpp::NumericVector disp, bool resuming, Rcpp::CharacterVector rng_state_in, Rcpp::IntegerVector miss_idx_l, Rcpp::IntegerVector mi_row, Rcpp::IntegerVector mi_col_l, Rcpp::IntegerVector store_idx, Rcpp::IntegerVector mi_col_store, Rcpp::List draws_list, Rcpp::IntegerVector streams, int S, int K, int p, double dfP, double nu, int warmup, int ndraws, int thin, double gram_max_cond, double spectra_tol, int spectra_ncv, int spectra_maxitr, int refresh);
+RcppExport SEXP _slideimp_mipca_da_loop_multi(SEXP xd_listSEXP, SEXP g_fixedSEXP, SEXP etd_listSEXP, SEXP xtild_listSEXP, SEXP eig_start_listSEXP, SEXP sigma_inSEXP, SEXP dispSEXP, SEXP resumingSEXP, SEXP rng_state_inSEXP, SEXP miss_idx_lSEXP, SEXP mi_rowSEXP, SEXP mi_col_lSEXP, SEXP store_idxSEXP, SEXP mi_col_storeSEXP, SEXP draws_listSEXP, SEXP streamsSEXP, SEXP SSEXP, SEXP KSEXP, SEXP pSEXP, SEXP dfPSEXP, SEXP nuSEXP, SEXP warmupSEXP, SEXP ndrawsSEXP, SEXP thinSEXP, SEXP gram_max_condSEXP, SEXP spectra_tolSEXP, SEXP spectra_ncvSEXP, SEXP spectra_maxitrSEXP, SEXP refreshSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -231,6 +216,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type g_fixed(g_fixedSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type etd_list(etd_listSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type xtild_list(xtild_listSEXP);
+    Rcpp::traits::input_parameter< Rcpp::List >::type eig_start_list(eig_start_listSEXP);
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type sigma_in(sigma_inSEXP);
     Rcpp::traits::input_parameter< Rcpp::NumericVector >::type disp(dispSEXP);
     Rcpp::traits::input_parameter< bool >::type resuming(resumingSEXP);
@@ -242,7 +228,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type mi_col_store(mi_col_storeSEXP);
     Rcpp::traits::input_parameter< Rcpp::List >::type draws_list(draws_listSEXP);
     Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type streams(streamsSEXP);
-    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
     Rcpp::traits::input_parameter< int >::type S(SSEXP);
     Rcpp::traits::input_parameter< int >::type K(KSEXP);
     Rcpp::traits::input_parameter< int >::type p(pSEXP);
@@ -256,7 +241,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type spectra_ncv(spectra_ncvSEXP);
     Rcpp::traits::input_parameter< int >::type spectra_maxitr(spectra_maxitrSEXP);
     Rcpp::traits::input_parameter< int >::type refresh(refreshSEXP);
-    rcpp_result_gen = Rcpp::wrap(mipca_da_loop_multi(xd_list, g_fixed, etd_list, xtild_list, sigma_in, disp, resuming, rng_state_in, miss_idx_l, mi_row, mi_col_l, store_idx, mi_col_store, draws_list, streams, nthreads, S, K, p, dfP, nu, warmup, ndraws, thin, gram_max_cond, spectra_tol, spectra_ncv, spectra_maxitr, refresh));
+    rcpp_result_gen = Rcpp::wrap(mipca_da_loop_multi(xd_list, g_fixed, etd_list, xtild_list, eig_start_list, sigma_in, disp, resuming, rng_state_in, miss_idx_l, mi_row, mi_col_l, store_idx, mi_col_store, draws_list, streams, S, K, p, dfP, nu, warmup, ndraws, thin, gram_max_cond, spectra_tol, spectra_ncv, spectra_maxitr, refresh));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -273,16 +258,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // mipca_cell_diag
-Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws, Rcpp::IntegerVector rows, int tile_cells, int nthreads);
-RcppExport SEXP _slideimp_mipca_cell_diag(SEXP drawsSEXP, SEXP rowsSEXP, SEXP tile_cellsSEXP, SEXP nthreadsSEXP) {
+Rcpp::NumericMatrix mipca_cell_diag(Rcpp::List draws, Rcpp::IntegerVector rows, int tile_cells);
+RcppExport SEXP _slideimp_mipca_cell_diag(SEXP drawsSEXP, SEXP rowsSEXP, SEXP tile_cellsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< Rcpp::List >::type draws(drawsSEXP);
     Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type rows(rowsSEXP);
     Rcpp::traits::input_parameter< int >::type tile_cells(tile_cellsSEXP);
-    Rcpp::traits::input_parameter< int >::type nthreads(nthreadsSEXP);
-    rcpp_result_gen = Rcpp::wrap(mipca_cell_diag(draws, rows, tile_cells, nthreads));
+    rcpp_result_gen = Rcpp::wrap(mipca_cell_diag(draws, rows, tile_cells));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -316,12 +300,11 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},
     {"_slideimp_col_miss_internal", (DL_FUNC) &_slideimp_col_miss_internal, 1},
     {"_slideimp_row_miss_internal", (DL_FUNC) &_slideimp_row_miss_internal, 1},
-    {"_slideimp_spectra_topk", (DL_FUNC) &_slideimp_spectra_topk, 5},
     {"_slideimp_build_block", (DL_FUNC) &_slideimp_build_block, 15},
     {"_slideimp_sym_from_lower", (DL_FUNC) &_slideimp_sym_from_lower, 1},
     {"_slideimp_mipca_da_loop_multi", (DL_FUNC) &_slideimp_mipca_da_loop_multi, 29},
     {"_slideimp_crps_block", (DL_FUNC) &_slideimp_crps_block, 2},
-    {"_slideimp_mipca_cell_diag", (DL_FUNC) &_slideimp_mipca_cell_diag, 4},
+    {"_slideimp_mipca_cell_diag", (DL_FUNC) &_slideimp_mipca_cell_diag, 3},
     {"_slideimp_sample_each_rep_cpp", (DL_FUNC) &_slideimp_sample_each_rep_cpp, 6},
     {NULL, NULL, 0}
 };

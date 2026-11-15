@@ -1,32 +1,59 @@
-// [[Rcpp::depends(RcppEigen, RSpectra, dqrng, BH, sitmo, RcppThread)]]
+// mipca.cpp -- the DA core: Spectra top-k, the streaming build, the chain loop
+// and the multi-chain runner, in ONE translation unit.
+//
+// Never include RcppArmadillo.h in this translation unit: it clashes with
+// R_ext/BLAS.h, which the Gram goes through. Spectra is the copy vendored in
+// src/Spectra/ (upstream commit and file hashes in src/Spectra/MANIFEST), the
+// 1.x API (selection rule an argument to compute(), op by reference,
+// compute(selection, maxit, tol, sort)).
+//
+// [[Rcpp::depends(RcppEigen, dqrng, BH, sitmo)]]
 #include <RcppEigen.h>
-#include <SymEigs.h>
+#include "Spectra/SymEigsSolver.h"
 #include <R_ext/BLAS.h>
 #include <dqrng.h>
 #include <dqrng_distribution.h>
+// The I-step's t draw: any boost::random distribution draws through dqrng's
+// generator& seam (dqrng_distribution.h). BH is in LinkingTo for dqrng.
 #include <boost/random/student_t_distribution.hpp>
-#include <RcppThread.h>
 #include <vector>
 #include <stdexcept>
 #include <cstdio>
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <iomanip>
+#include <locale>
 #include <memory>
 #include <chrono>
 #include "loc_timer.h"
 
+// ---- named constants --------------------------------------------------------
+// Only numbers someone chose; the sampler's knobs cross the wire from R, which
+// owns their defaults.
+
+// The floor in ncv = min(n, max(2k + 1, 20)).
 constexpr int SPECTRA_NCV_FLOOR = 20;
 
+// ---- phase timing -----------------------------------------------------------
+// LOC_TIC/LOC_TOC compile to nothing without -DLOC_TIMER (src/loc_timer.h).
+// Phases do not partition an iteration: "iter" wraps the body, so its excess
+// over the phase sum is time between phases.
+
+// ---- top-k symmetric eigensolve ---------------------------------------------
+
+// Picks ncv. The rule lives here and the default in R (ncv_req <= 0 means
+// "apply the rule"); do not move either half.
 static int spectra_ncv_choose(int n, int k, int ncv_req)
 {
   if (ncv_req > 0)
   {
     if (ncv_req <= k || ncv_req > n)
-      Rcpp::stop("ncv must satisfy k < ncv <= %d (the Gram side), where k = "
-                 "%d is the number of eigenpairs solved for (rank + 1 in the "
-                 "sampler); got %d.",
-                 n, k, ncv_req);
+      // k is the number of eigenpairs solved for, rank + 1 in the sampler,
+      // and n the Gram side, the smaller dimension.
+      Rcpp::stop("`ncv` in spectra_opts() must be more than %d and at most "
+                 "%d, the smaller dimension of the matrix. It is %d.",
+                 k, n, ncv_req);
     return ncv_req;
   }
   int ncv = 2 * k + 1;
@@ -37,6 +64,8 @@ static int spectra_ncv_choose(int n, int k, int ncv_req)
   return ncv;
 }
 
+// Per-call preconditions, checked once at the loop's entry; not called from
+// spectra_solve(), which runs every iteration.
 static void spectra_check(double tol, int maxitr)
 {
   if (!(tol > 0.0))
@@ -45,61 +74,85 @@ static void spectra_check(double tol, int maxitr)
     Rcpp::stop("spectra maxitr must be at least 1; got %d.", maxitr);
 }
 
+// Top-k eigenpairs, largest algebraic; returns the converged count. G is read
+// only, so the loop hands over its live Gram uncopied. Either init fully
+// resets the solver (src/Spectra/HermEigsBase.h), so a hoisted solver is
+// bitwise a fresh one and consumes no R or dqrng stream. `warm` false starts
+// from Spectra's SimpleRandom(0) vector; true starts from `start` (n
+// doubles), which init copies before compute() runs. On convergence `start`
+// is overwritten with the row sums of the k eigenvectors: the next solve's
+// start, and the bytes the resume seam carries.
 template <typename EigsT>
 static int spectra_solve(EigsT &eigs, int n, int k, double tol, int maxitr,
-                            double *values, double *vectors)
+                            double *values, double *vectors, double *start,
+                            bool warm LOC_TIMER_PARAM(tm))
 {
-  eigs.init();
-  const int nconv = eigs.compute(maxitr, tol, Spectra::LARGEST_ALGE);
+  LOC_TIC(tm, "s_init");
+  if (warm)
+    eigs.init(start);
+  else
+    eigs.init();
+  LOC_TOC(tm, "s_init");
+  LOC_TIC(tm, "s_compute");
+  const int nconv = eigs.compute(Spectra::SortRule::LargestAlge, maxitr, tol,
+                                 Spectra::SortRule::LargestAlge);
+  LOC_TOC(tm, "s_compute");
   if (nconv < k)
     return nconv;
 
+  LOC_TIC(tm, "s_vectors");
   const Eigen::VectorXd ev = eigs.eigenvalues();
   const Eigen::MatrixXd evec = eigs.eigenvectors();
+  LOC_TOC(tm, "s_vectors");
+  LOC_TIC(tm, "s_copy");
   std::copy(ev.data(), ev.data() + k, values);
   std::copy(evec.data(), evec.data() + static_cast<std::ptrdiff_t>(n) * k,
             vectors);
+  std::fill(start, start + n, 0.0);
+  for (int s = 0; s < k; ++s)
+  {
+    const double *col = vectors + static_cast<std::ptrdiff_t>(s) * n;
+    for (int i = 0; i < n; ++i)
+      start[i] += col[i];
+  }
+  LOC_TOC(tm, "s_copy");
   return nconv;
 }
 
-static int spectra_topk_v2_raw(const double *g, int n, int k, int ncv,
-                               double tol, int maxitr, double *values,
-                               double *vectors)
+#ifdef LOC_TIMER
+// Timer builds only: forwards every matvec to the real operator and times it
+// as "s_matvec". Two of them per solve run inside init() (Arnoldi::init),
+// under "s_init"; the rest are compute()'s, so "s_compute" less "s_matvec"
+// understates compute()'s non-matvec cost (Lanczos orthogonalization,
+// restarts, the tridiagonal solves) by those two. Same arithmetic.
+class TimedSymMatProd
 {
-  Eigen::Map<const Eigen::MatrixXd> gmap(g, n, n);
-  Spectra::DenseSymMatProd<double> op(gmap);
-  Spectra::SymEigsSolver<double, Spectra::LARGEST_ALGE,
-                         Spectra::DenseSymMatProd<double> >
-      eigs(&op, k, ncv);
-  return spectra_solve(eigs, n, k, tol, maxitr, values, vectors);
-}
+public:
+  using Scalar = double;
+  TimedSymMatProd(const Spectra::DenseSymMatProd<double> &op, Rcpp::Timer &t)
+      : op_(op), t_(t) {}
+  Eigen::Index rows() const { return op_.rows(); }
+  Eigen::Index cols() const { return op_.cols(); }
+  void perform_op(const double *x_in, double *y_out) const
+  {
+    t_.tic("s_matvec");
+    op_.perform_op(x_in, y_out);
+    t_.toc("s_matvec");
+  }
 
-// [[Rcpp::export(.spectra_topk)]]
-Rcpp::List spectra_topk(Rcpp::NumericMatrix g, int k, double tol, int ncv_req,
-                           int maxitr)
-{
-  const int n = g.nrow();
-  if (g.ncol() != n)
-    Rcpp::stop("G must be square.");
-  if (k < 1 || k >= n)
-    Rcpp::stop("k must lie in [1, n - 1]; got %d with n = %d.", k, n);
-  spectra_check(tol, maxitr);
+private:
+  const Spectra::DenseSymMatProd<double> &op_;
+  Rcpp::Timer &t_;
+};
+#endif
 
-  const int ncv = spectra_ncv_choose(n, k, ncv_req);
-  Rcpp::NumericVector values(k);
-  Rcpp::NumericMatrix vectors(n, k);
-  const int nconv =
-      spectra_topk_v2_raw(g.begin(), n, k, ncv, tol, maxitr, values.begin(),
-                          vectors.begin());
-  if (nconv < k)
-    Rcpp::stop("spectra_topk: only %d of %d eigenpairs converged.", nconv,
-               k);
+// ---- the sweep and moy kernels ----------------------------------------------
+// Simple loops, vectorized or not at the compiler's call. Deliberate: the
+// sweep multiplies by 1/n; the reductions feeding sigma^2 (trace, sum(evals),
+// sum(phi)) stay long double, matching R's sum(), because sigma^2 is a
+// difference of near-equal sums.
 
-  return Rcpp::List::create(Rcpp::Named("values") = values,
-                            Rcpp::Named("vectors") = vectors,
-                            Rcpp::Named("ncv") = ncv);
-}
-
+// MUTATES x in place (the dirty block); each column mean is added into etd.
 static void sweep_cols(double *x, int n, int nd, double *etd)
 {
   const double inv_n = 1.0 / static_cast<double>(n);
@@ -116,6 +169,8 @@ static void sweep_cols(double *x, int n, int nd, double *etd)
   }
 }
 
+// out[k] = sum_s u[row_k, s] * v[col_k, s] * w[s] over S-major copies, weights
+// folded into v; one fused, serial pass over the holes.
 static void moy_dot(const double *u, const double *v, const double *w,
                        const int *row, const int *col, int n, int nd, int S,
                        R_xlen_t m, double *ut, double *vwt, double *out)
@@ -141,6 +196,16 @@ static void moy_dot(const double *u, const double *v, const double *w,
   }
 }
 
+// ---- the streaming build -----------------------------------------------------
+// One column block per call, straight into the loop's inputs. A resume skips
+// clean columns: nothing a resume reads comes from them. Holes are ISNAN, the
+// same set as is.na(), mat_miss() and col_vars(); keep them in sync.
+
+// MUTATES IN PLACE Xd, g_fixed (lower triangle), et, col_ss, mi_row, scratch.
+// `src` is READ ONLY -- the caller's own matrix on the identity path -- and is
+// a SEXP so an integer matrix is never coerced per block. BITWISE: et must
+// equal .colMeans(na.rm = TRUE) and col_ss sum v * v, both long double in row
+// order; build a reference before touching either.
 // [[Rcpp::export(.build_block)]]
 void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
                     Rcpp::NumericVector scratch,
@@ -180,10 +245,10 @@ void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
   double *sc = has_g ? REAL(scratch) : nullptr;
   double *xd = REAL(Xd);
   int *rows_all = INTEGER(mi_row);
-  int kc = 0;
+  int kc = 0; // clean columns compacted to scratch's front, for one dsyrk
   for (int jj = 0; jj < nb; ++jj)
   {
-    const int j = j1 - 1 + jj;
+    const int j = j1 - 1 + jj; // 0-based global column
     if (resume && dirty_pos[j] == 0)
     {
       if (cnt[j] != 0)
@@ -193,6 +258,7 @@ void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
     }
     const double *col = b + static_cast<R_xlen_t>(jj) * n;
 
+    // Observed-cell mean, exactly as .colMeans(na.rm = TRUE) forms it.
     long double s = 0.0L;
     R_xlen_t nobs = 0;
     int holes = 0;
@@ -206,7 +272,7 @@ void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
         if (!R_FINITE(x))
         {
           if (transformed)
-            Rcpp::stop("the transform maps column %d, row %d to a non-finite "
+            Rcpp::stop("The transform maps column %d, row %d to a non-finite "
                        "value.", j + 1, i + 1);
           Rcpp::stop("Z contains non-finite values.");
         }
@@ -217,17 +283,18 @@ void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
     if (holes != cnt[j])
     {
       if (transformed && holes > cnt[j])
-        Rcpp::stop("the transform maps %d observed value(s) in column %d to "
-                   "NaN; a transform must be finite on every observed cell.",
+        Rcpp::stop("The transform maps %d observed value(s) in column %d to "
+                   "NaN. A transform must give a finite value for every "
+                   "observed cell.",
                    holes - cnt[j], j + 1);
       if (transformed)
-        Rcpp::stop("the transform maps %d missing cell(s) in column %d to a "
-                   "value; a transform must map NA to NA.",
+        Rcpp::stop("The transform maps %d missing cell(s) in column %d to a "
+                   "value. A transform must map NA to NA.",
                    cnt[j] - holes, j + 1);
       Rcpp::stop("internal error: column %d: the census counted %d holes, "
                  "the block holds %d.", j + 1, cnt[j], holes);
     }
-    s /= nobs;
+    s /= nobs; // NaN when nobs == 0, as .colMeans; unreachable past admissibility
     const double mu = static_cast<double>(s);
     et[j] = mu;
 
@@ -271,6 +338,8 @@ void build_block(SEXP src, int src_off, int j1, int nb, int transformed,
   }
 }
 
+// MUTATES g in place: mirrors a dsyrk('L') Gram's lower triangle onto the
+// upper, as tcrossprod() would return it.
 // [[Rcpp::export(.sym_from_lower)]]
 void sym_from_lower(Rcpp::NumericMatrix g)
 {
@@ -283,35 +352,57 @@ void sym_from_lower(Rcpp::NumericMatrix g)
       x[static_cast<R_xlen_t>(r) * n + c] = x[static_cast<R_xlen_t>(c) * n + r];
 }
 
+// ---- the DA loop ------------------------------------------------------------
+// da_chain_run() runs one chain on the calling thread; its only R API is the
+// progress print and the interrupt check. Every normal draw is a scale times
+// one unit normal, written x + s * z. A compiler may contract that into an
+// FMA, so the draws are bitwise within one build and equal to rounding across
+// builds.
+
+// One chain's inputs as raw pointers. xp and dp are R-owned and MUTATED IN
+// PLACE, so the caller must own them; the index vectors are read-only and
+// shared across chains.
 struct da_ctx
 {
   int n, nd, ng;
   bool tall, has_fixed;
   R_xlen_t nmiss, nstore;
-  double *xp;
-  double *dp;
-  const double *gfp;
+  double *xp;             // Xd, n x nd, mutated in place
+  double *dp;             // draws, nstore x ndraws, written
+  const double *gfp;      // g_fixed, NULL when !has_fixed
   const int *midx, *mrow, *mcol, *sidx, *scol;
-  double sigma;
-  const double *etd_in;
-  const double *xtild_in;
+  double sigma;           // initial sigma
+  const double *etd_in;   // nd
+  // The one bit the chain branches on for its start state; the three
+  // pointers below follow it and are never tested in its place.
+  bool resuming;
+  const double *xtild_in; // nmiss; NULL on a fresh run
+  // ng, the eigensolve's start vector; NULL on a fresh run, whose first
+  // solve starts cold.
+  const double *eig_start_in;
+  // nd per-column scales already times `c`; NULL on a resume.
   const double *disp;
-  double *etd_out;
-  double *xtild_out;
+  double *etd_out;        // nd, written once at the end
+  double *xtild_out;      // nmiss, written once at the end
+  double *eig_start_out;  // ng, written once at the end
   int S, K;
+  // FULL column count (clean + dirty), read only by the shrinkage floor; nd
+  // is the dirty width. K = min(n - 1, p).
   int p;
   double dfP;
-  double nu;
+  double nu; // +Inf is Gaussian; finite > 2 is the variance-matched t
   int warmup, ndraws, thin;
   double gram_max_cond, spectra_tol;
   int ncv, spectra_maxitr;
-  int chain_id;
-  int refresh;
+  int chain_id; // 1-based, for progress lines only
+  int refresh;  // iterations between progress lines; 0 = silent
 };
 
 static double da_chain_run(const da_ctx &cx,
                               dqrng::random_64bit_generator &rng_eng);
 
+// Validation plus every chain-shared field. Per-chain pointers come back NULL,
+// so a forgotten one faults loudly instead of aliasing chain 0.
 static da_ctx da_ctx_build(int n, int nd,
                                  Rcpp::NumericVector g_fixed,
                                  Rcpp::IntegerVector miss_idx_l,
@@ -329,9 +420,13 @@ static da_ctx da_ctx_build(int n, int nd,
   const R_xlen_t nstore = store_idx.size();
   const bool has_fixed = g_fixed.size() > 0;
 
+  // The Gram goes on the smaller side; the cached clean block exists only on
+  // the wide split, so has_fixed forces wide.
   const bool tall = !has_fixed && n > nd;
   const int ng = tall ? nd : n;
 
+  // Mirrors .chk_rank() in R. The Gram-route bound is Spectra's own:
+  // rank + 2 <= min(n, p). k_solve is da_chain_run()'s Sk.
   const int k_solve = S + 1;
   if (S < 1 || k_solve >= ng)
     Rcpp::stop("the core solves rank + 1 eigenpairs on the Gram, which needs "
@@ -352,19 +447,24 @@ static da_ctx da_ctx_build(int n, int nd,
     Rcpp::stop("K must be positive.");
   if (p < nd)
     Rcpp::stop("p must be at least the dirty width nd.");
+  // Mirrors mipca_core()'s floors, since this entry is directly callable.
   if (warmup < 0)
     Rcpp::stop("warmup must be >= 0.");
   if (ndraws < 1)
     Rcpp::stop("ndraws must be >= 1.");
   if (thin < 1)
     Rcpp::stop("thin must be >= 1.");
+  // A division, so the check itself cannot overflow; needs thin >= 1 above.
   if (ndraws > (std::numeric_limits<int>::max() - warmup) / thin)
-    Rcpp::stop("warmup + ndraws * thin exceeds the largest int; "
-               "the loop length is an int.");
+    // The loop length is an int.
+    Rcpp::stop("`iter_warmup` + `iter_sampling` x `thin` must be at most "
+               "%d. Lower one of them.",
+               std::numeric_limits<int>::max());
   if (refresh < 0)
     Rcpp::stop("refresh must be >= 0 (0 = no progress lines).");
   spectra_check(spectra_tol, spectra_maxitr);
 
+  // Every index checked here, so the hot loops can run on raw pointers.
   {
     const R_xlen_t ncell = static_cast<R_xlen_t>(n) * nd;
     for (R_xlen_t k = 0; k < nmiss; ++k)
@@ -401,12 +501,15 @@ static da_ctx da_ctx_build(int n, int nd,
   cx.mcol = INTEGER(mi_col_l);
   cx.sidx = INTEGER(store_idx);
   cx.scol = INTEGER(mi_col_store);
-  cx.sigma = 0.0;
+  cx.sigma = 0.0; // per-chain start state, set by the caller
   cx.etd_in = NULL;
+  cx.resuming = false; // set by the entry below, with disp
   cx.xtild_in = NULL;
-  cx.disp = NULL;
+  cx.eig_start_in = NULL;
+  cx.disp = NULL; // chain-shared, but set by the entry below once validated
   cx.etd_out = NULL;
   cx.xtild_out = NULL;
+  cx.eig_start_out = NULL;
   cx.S = S;
   cx.K = K;
   cx.p = p;
@@ -424,11 +527,23 @@ static da_ctx da_ctx_build(int n, int nd,
   return cx;
 }
 
+// A per-chain list element the ctx will point into must already be double.
+static void need_double(SEXP x, const char *what, int chain)
+{
+  if (TYPEOF(x) != REALSXP)
+    Rcpp::stop("chain %d: %s must be of type double.", chain, what);
+}
+
+// ---- the DA runner ----------------------------------------------------------
+// The chains run in turn, each through da_chain_run() on its own stream.
+// `resuming` is passed by the caller, never inferred from which inputs are
+// empty. rng_state is raw operator<< text; R versions the seam.
 // [[Rcpp::export(.mipca_da_loop_multi)]]
 Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
                                   Rcpp::NumericVector g_fixed,
                                   Rcpp::List etd_list,
                                   Rcpp::List xtild_list,
+                                  Rcpp::List eig_start_list,
                                   Rcpp::NumericVector sigma_in,
                                   Rcpp::NumericVector disp,
                                   bool resuming,
@@ -440,7 +555,6 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
                                   Rcpp::IntegerVector mi_col_store,
                                   Rcpp::List draws_list,
                                   Rcpp::IntegerVector streams,
-                                  int nthreads,
                                   int S, int K, int p, double dfP, double nu,
                                   int warmup, int ndraws, int thin,
                                   double gram_max_cond, double spectra_tol,
@@ -454,9 +568,9 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
     Rcpp::stop("xd_list, draws_list and streams must have one entry per "
                "chain.");
   if (etd_list.size() != nc || xtild_list.size() != nc ||
-      sigma_in.size() != nc)
-    Rcpp::stop("etd_list, xtild_list and sigma_in must have one entry per "
-               "chain.");
+      eig_start_list.size() != nc || sigma_in.size() != nc)
+    Rcpp::stop("etd_list, xtild_list, eig_start_list and sigma_in must have "
+               "one entry per chain.");
   if (resuming)
   {
     if (rng_state_in.size() != nc)
@@ -470,8 +584,6 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
       Rcpp::stop("a fresh run must ship no serialized rng state; got %d.",
                  static_cast<int>(rng_state_in.size()));
   }
-  if (nthreads < 1)
-    Rcpp::stop("nthreads must be at least 1.");
 
   Rcpp::NumericMatrix xd0 = xd_list[0];
   const int n = xd0.nrow();
@@ -501,6 +613,7 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
                    j + 1);
     shared.disp = REAL(disp);
   }
+  shared.resuming = resuming;
 
   if (!resuming)
   {
@@ -517,13 +630,22 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
   }
 
   std::vector<da_ctx> ctxs(nc, shared);
-  Rcpp::List etd_out_l(nc), xtild_out_l(nc);
+  Rcpp::List etd_out_l(nc), xtild_out_l(nc), eig_start_out_l(nc);
   for (int c = 0; c < nc; ++c)
   {
+    // Doubles only, refused BEFORE the conversions below: an Rcpp vector
+    // built from any other type owns a coerced copy that dies with this loop
+    // body, and the ctx would keep a pointer into it.
+    need_double(xd_list[c], "Xd", c + 1);
+    need_double(draws_list[c], "draws", c + 1);
+    need_double(etd_list[c], "etd", c + 1);
+    need_double(xtild_list[c], "xtild_miss", c + 1);
+    need_double(eig_start_list[c], "eig_start", c + 1);
     Rcpp::NumericMatrix xdc = xd_list[c];
     Rcpp::NumericMatrix drc = draws_list[c];
     Rcpp::NumericVector ec = etd_list[c];
     Rcpp::NumericVector xc = xtild_list[c];
+    Rcpp::NumericVector sc = eig_start_list[c];
     if (xdc.nrow() != n || xdc.ncol() != nd)
       Rcpp::stop("chain %d: Xd must be %d x %d like chain 1's.", c + 1, n,
                  nd);
@@ -538,20 +660,38 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
                      : "chain %d: xtild_miss must be empty on a fresh run; "
                        "the chain draws its own start from disp.",
                  c + 1);
+    if (sc.size() != (resuming ? shared.ng : 0))
+      Rcpp::stop(resuming
+                     ? "chain %d: eig_start must have one entry per row of "
+                       "the Gram."
+                     : "chain %d: eig_start must be empty on a fresh run; "
+                       "the chain's first eigensolve starts cold.",
+                 c + 1);
+    // Zero is left to Spectra, which refuses a start vector of norm zero.
+    for (R_xlen_t i = 0; i < sc.size(); ++i)
+      if (!R_finite(sc[i]))
+        Rcpp::stop("chain %d: eig_start must be finite.", c + 1);
     ctxs[c].chain_id = c + 1;
     ctxs[c].xp = REAL(xdc);
     ctxs[c].dp = REAL(drc);
     ctxs[c].etd_in = REAL(ec);
-    ctxs[c].xtild_in = REAL(xc);
+    ctxs[c].xtild_in = resuming ? REAL(xc) : NULL;
+    ctxs[c].eig_start_in = resuming ? REAL(sc) : NULL;
     ctxs[c].sigma = sigma_in[c];
     Rcpp::NumericVector eo(nd);
-    Rcpp::NumericVector xo(static_cast<R_xlen_t>(shared.nmiss));
+    Rcpp::NumericVector xo(shared.nmiss);
+    Rcpp::NumericVector so(shared.ng);
     etd_out_l[c] = eo;
     xtild_out_l[c] = xo;
+    eig_start_out_l[c] = so;
     ctxs[c].etd_out = REAL(eo);
     ctxs[c].xtild_out = REAL(xo);
+    ctxs[c].eig_start_out = REAL(so);
   }
 
+  // Every chain's generator is cloned here, before any chain runs: the
+  // accessor reads the global XPtr. On a resume clone(0) only supplies the
+  // type; operator>> overwrites its state.
   typedef dqrng::random_64bit_generator::result_type rng_result_t;
   std::vector<std::unique_ptr<dqrng::random_64bit_generator> > gens;
   gens.reserve(nc);
@@ -576,24 +716,16 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
     }
   }
 
-  std::vector<double> sigma_out(nc);
-  if (nc == 1)
-  {
-    sigma_out[0] = da_chain_run(ctxs[0], *gens[0]);
-  }
-  else
-  {
+  // An instrumented build stays single-chain: every chain would make its
+  // own timer.
 #ifdef LOC_TIMER
-    Rcpp::stop("the multi-chain path refuses an instrumented (LOC_TIMER) "
-               "build; profiling is single-chain only.");
+  if (nc > 1)
+    Rcpp::stop("an instrumented (LOC_TIMER) build refuses more than one "
+               "chain; profiling is single-chain only.");
 #endif
-    const int nt = nthreads < nc ? nthreads : nc;
-    RcppThread::ThreadPool pool(nt);
-    for (int c = 0; c < nc; ++c)
-      pool.push([&ctxs, &gens, &sigma_out, c]
-                { sigma_out[c] = da_chain_run(ctxs[c], *gens[c]); });
-    pool.wait();
-  }
+  std::vector<double> sigma_out(nc);
+  for (int c = 0; c < nc; ++c)
+    sigma_out[c] = da_chain_run(ctxs[c], *gens[c]);
 
   Rcpp::CharacterVector rng_state(nc);
   for (int c = 0; c < nc; ++c)
@@ -608,13 +740,18 @@ Rcpp::List mipca_da_loop_multi(Rcpp::List xd_list,
                                                  sigma_out.end()),
       Rcpp::Named("etd") = etd_out_l,
       Rcpp::Named("xtild_miss") = xtild_out_l,
+      Rcpp::Named("eig_start") = eig_start_out_l,
       Rcpp::Named("rng_state") = rng_state);
 }
 
+// One chain; returns the final sigma.
 static double da_chain_run(const da_ctx &cx,
                               dqrng::random_64bit_generator &rng_eng)
 {
   const int n = cx.n, nd = cx.nd, ng = cx.ng, S = cx.S, K = cx.K, p = cx.p;
+  // S + 1 pairs. The extra pair's value is the floor's clamp; its vector,
+  // wmat's last column, enters only the next solve's start (the row sums in
+  // spectra_solve()). The back-out and moy read the first S columns.
   const int Sk = S + 1;
   const int warmup = cx.warmup, ndraws = cx.ndraws, thin = cx.thin;
   const int ncv = cx.ncv, spectra_maxitr = cx.spectra_maxitr;
@@ -628,22 +765,30 @@ static double da_chain_run(const da_ctx &cx,
   const int *midx = cx.midx, *mrow = cx.mrow, *mcol = cx.mcol,
             *sidx = cx.sidx, *scol = cx.scol;
   double sigma = cx.sigma;
+  // The side of Xd the Gram is not on: ng is n when wide and nd when tall.
+  const int nopp = tall ? n : nd;
 
   const R_xlen_t nn = static_cast<R_xlen_t>(ng) * ng;
   std::vector<double> gram(nn);
   std::vector<double> evals(Sk), wmat(static_cast<R_xlen_t>(ng) * Sk);
-  std::vector<double> proj(static_cast<R_xlen_t>(tall ? n : nd) * S);
+  // The factor the eigensolve did not produce: Xd' W when wide, Xd W when tall.
+  std::vector<double> proj(static_cast<R_xlen_t>(nopp) * S);
   std::vector<double> phi(S);
   std::vector<double> ut(static_cast<R_xlen_t>(n) * S);
   std::vector<double> vwt(static_cast<R_xlen_t>(nd) * S);
   std::vector<double> xtild(nmiss);
-  std::vector<double> etd(nd);
+  std::vector<double> etd(cx.etd_in, cx.etd_in + nd);
 
-  std::copy(cx.etd_in, cx.etd_in + nd, etd.begin());
-
-  if (cx.disp != NULL)
+  // ---- start state: this chain's own dispersed draw, or the seam's ----------
+  // Drawn here, on the chain's own clone: every chain starts itself, at a
+  // dispersion multiple of each column's scale. A fresh chain consumes nmiss
+  // normals and a resume none, so an extension's RNG stream continues
+  // exactly where the run stopped. (The draws match an unbroken run to
+  // rounding, not bitwise: the rebuilt panel drifts by rounding.)
+  // The chain's one normal: every normal draw below is a scale times z.
+  dqrng::normal_distribution z(0.0, 1.0);
+  if (!cx.resuming)
   {
-    dqrng::normal_distribution z(0.0, 1.0);
     for (R_xlen_t k = 0; k < nmiss; ++k)
       xtild[k] = cx.disp[mcol[k] - 1] * z(rng_eng);
   }
@@ -652,16 +797,55 @@ static double da_chain_run(const da_ctx &cx,
     std::copy(cx.xtild_in, cx.xtild_in + nmiss, xtild.begin());
   }
 
+  // The eigensolve's start vector. A fresh chain's first solve is cold; every
+  // later solve starts from the row sums of the eigenvectors before it, and a
+  // resume from the seam's copy of them, so its first solve starts on the
+  // bytes the unbroken run's would.
+  std::vector<double> eig_start(ng);
+  bool warm = cx.resuming;
+  if (warm)
+    std::copy(cx.eig_start_in, cx.eig_start_in + ng, eig_start.begin());
+
   const char uplo = 'L', trans_n = 'N', trans_t = 'T';
   const double one = 1.0, zero = 0.0;
   const int niter = warmup + ndraws * thin;
 
+  // Loop-invariant factors, each the same expression the loop used to form.
+  // t_scale is the variance match, sd = sigma * sqrt((nu - 2) / nu), read
+  // only when the noise is t. floor_scale is the n p / K before sigma^2 in
+  // the shrinkage floor.
+  const bool t_noise = std::isfinite(cx.nu);
+  const double t_scale = t_noise ? std::sqrt((cx.nu - 2.0) / cx.nu) : 0.0;
+  const double floor_scale = static_cast<double>(n) * static_cast<double>(p) /
+                             static_cast<double>(K);
+  // Built once: the distribution holds its parameter and nothing else, so
+  // one object draws what a fresh one per iteration would. Never drawn from
+  // when the noise is Gaussian; the 1.0 only keeps the parameter legal.
+  boost::random::student_t_distribution<double> tdist(t_noise ? cx.nu : 1.0);
+
+  // The Gram and the back-out, by orientation. Wide: G = Xd Xd' ('N') and
+  // proj = Xd' W ('T'). Tall: G = Xd' Xd ('T') and proj = Xd W ('N'). Either
+  // way the rank-k update and the product run over nopp.
+  const char *gram_trans = tall ? &trans_t : &trans_n;
+  const char *proj_trans = tall ? &trans_n : &trans_t;
+  const double *gram_beta = has_fixed ? &one : &zero;
+  // moy's two factors: the n-side one first, the nd-side one second.
+  const double *moy_u = tall ? proj.data() : wmat.data();
+  const double *moy_v = tall ? wmat.data() : proj.data();
+
+  // HOISTED solver: op holds a reference onto gram's buffer, so gram must
+  // never be resized while it lives.
   Eigen::Map<const Eigen::MatrixXd> gmap(gram.data(), ng, ng);
   Spectra::DenseSymMatProd<double> op(gmap);
-  Spectra::SymEigsSolver<double, Spectra::LARGEST_ALGE,
-                         Spectra::DenseSymMatProd<double> >
-      eigs(&op, Sk, ncv);
+#ifdef LOC_TIMER
+  LOC_TIMER_OBJ(v2_da_phases);
+  TimedSymMatProd top(op, v2_da_phases);
+  Spectra::SymEigsSolver<TimedSymMatProd> eigs(top, Sk, ncv);
+#else
+  Spectra::SymEigsSolver<Spectra::DenseSymMatProd<double> > eigs(op, Sk, ncv);
+#endif
 
+  // Progress lines: each is built whole, written in one << and flushed.
   const int refresh = cx.refresh, chain_id = cx.chain_id;
   const std::chrono::steady_clock::time_point t_start =
       std::chrono::steady_clock::now();
@@ -669,28 +853,31 @@ static double da_chain_run(const da_ctx &cx,
   for (int t = niter; t >= 10; t /= 10)
     ++niter_w;
 
-  LOC_TIMER_OBJ(v2_da_phases);
-
   for (int l = 1; l <= niter; ++l)
   {
     LOC_TIC(v2_da_phases, "iter");
 
+    // ---- I-step: impute every hole ------------------------------------------
+    // Noise and scatter fused; the store below reads these doubles back from
+    // xp. Finite nu: a variance-matched t at fixed nu, with the P-step
+    // unchanged and no augmentation, so the chain targets no single model's
+    // posterior; that is why a nu below 5 warns in R.
     LOC_TIC(v2_da_phases, "istep");
-    if (std::isfinite(cx.nu))
+    if (t_noise)
     {
-      const double s = sigma * std::sqrt((cx.nu - 2.0) / cx.nu);
-      boost::random::student_t_distribution<double> tdist(cx.nu);
+      const double s = sigma * t_scale;
       for (R_xlen_t k = 0; k < nmiss; ++k)
         xp[midx[k] - 1] = xtild[k] + s * tdist(rng_eng);
     }
     else
     {
-      dqrng::normal_distribution dist(0.0, sigma);
       for (R_xlen_t k = 0; k < nmiss; ++k)
-        xp[midx[k] - 1] = xtild[k] + dist(rng_eng);
+        xp[midx[k] - 1] = xtild[k] + sigma * z(rng_eng);
     }
     LOC_TOC(v2_da_phases, "istep");
 
+    // ---- storage: the stored holes, de-centered with the CURRENT etd -------
+    // Must run before the sweep below updates etd.
     LOC_TIC(v2_da_phases, "store");
     if (l > warmup && (l - warmup) % thin == 0)
     {
@@ -701,12 +888,15 @@ static double da_chain_run(const da_ctx &cx,
     }
     LOC_TOC(v2_da_phases, "store");
 
+    // ---- P-step -------------------------------------------------------------
     LOC_TIC(v2_da_phases, "sweep");
     sweep_cols(xp, n, nd, etd.data());
     LOC_TOC(v2_da_phases, "sweep");
 
     LOC_TIC(v2_da_phases, "gram");
 
+    // G = g_fixed + Xd Xd', LOWER triangle only: must match Spectra's
+    // DenseSymMatProd, which reads selfadjointView<Eigen::Lower>.
     if (has_fixed)
     {
       for (int c = 0; c < ng; ++c)
@@ -715,9 +905,10 @@ static double da_chain_run(const da_ctx &cx,
         std::copy(gfp + off + c, gfp + off + ng, gram.data() + off + c);
       }
     }
+    // lda is Xd's n in both orientations.
     F77_CALL(dsyrk)
-    (&uplo, tall ? &trans_t : &trans_n, &ng, tall ? &n : &nd, &one, xp, &n,
-     has_fixed ? &one : &zero, gram.data(), &ng FCONE FCONE);
+    (&uplo, gram_trans, &ng, &nopp, &one, xp, &n, gram_beta, gram.data(),
+     &ng FCONE FCONE);
 
     long double tr = 0.0L;
     for (int i = 0; i < ng; ++i)
@@ -728,93 +919,97 @@ static double da_chain_run(const da_ctx &cx,
     LOC_TIC(v2_da_phases, "solve");
     const int nconv = spectra_solve(eigs, ng, Sk, spectra_tol,
                                        spectra_maxitr, evals.data(),
-                                       wmat.data());
+                                       wmat.data(), eig_start.data(), warm
+                                       LOC_TIMER_ARG(v2_da_phases));
     LOC_TOC(v2_da_phases, "solve");
     if (nconv < Sk)
     {
       char msg[160];
+      // Spectra converged on nconv of the Sk eigenpairs of the Gram matrix.
       std::snprintf(msg, sizeof msg,
-                    "Spectra failed to converge on the Gram matrix at "
-                    "iteration %d (%d of %d pairs).",
-                    l, nconv, Sk);
+                    "The PCA step did not converge at iteration %d. Raise "
+                    "`maxitr` or `ncv` in spectra_opts().",
+                    l);
       throw std::runtime_error(msg);
     }
+    warm = true; // converged, so eig_start now holds this solve's row sums
     if (evals[S - 1] <= 0.0 || evals[0] / evals[S - 1] > gram_max_cond)
     {
       char msg[160];
+      // The Gram matrix is too ill-conditioned: the rank-th eigenvalue is
+      // not positive, or too small beside the first.
       std::snprintf(msg, sizeof msg,
-                    "Gram matrix is too ill-conditioned at iteration %d "
-                    "(eigenvalue ratio %g).",
-                    l, evals[0] / evals[S - 1]);
+                    "At iteration %d, component %d has almost no variance "
+                    "(eigenvalue ratio %g). Lower `rank`.",
+                    l, S, evals[0] / evals[S - 1]);
       throw std::runtime_error(msg);
     }
 
     LOC_TIC(v2_da_phases, "backout");
 
+    // sum(evals) is sum(d^2); d itself is never formed.
     long double sd2 = 0.0L;
     for (int s = 0; s < S; ++s)
       sd2 += static_cast<long double>(evals[s]);
     const double sigma2 = std::max(ss - static_cast<double>(sd2), 0.0) / dfP;
     sigma = std::sqrt(sigma2);
 
-    const double floor_raw =
-        (static_cast<double>(n) * static_cast<double>(p) /
-         static_cast<double>(K)) * sigma2;
+    // Shrinkage floor, Husson's form: missMDA::imputePCA, and Audigier, Husson
+    // and Josse (2016, arXiv 1401.5747) eq. 4. The clamp makes phi >= 0, so
+    // the guard cannot fire.
+    const double floor_raw = floor_scale * sigma2;
     const double floor = std::min(floor_raw, evals[S]);
     long double sphi = 0.0L;
     for (int s = 0; s < S; ++s)
     {
       double ph = 1.0 - floor / evals[s];
       if (ph < 0.0)
-        ph = 0.0;
+        ph = 0.0; // clamped: no component sign flips
       phi[s] = ph;
       sphi += ph;
     }
 
-    if (tall)
-    {
-      F77_CALL(dgemm)
-      (&trans_n, &trans_n, &n, &S, &nd, &one, xp, &n, wmat.data(), &nd, &zero,
-       proj.data(), &n FCONE FCONE);
-    }
-    else
-    {
-      F77_CALL(dgemm)
-      (&trans_t, &trans_n, &nd, &S, &n, &one, xp, &n, wmat.data(), &n, &zero,
-       proj.data(), &nd FCONE FCONE);
-    }
+    // UNSCALED on purpose: the textbook 1/d on this side cancels the d in its
+    // d * phi weight, so phi alone weights moy = W diag(phi) (Xd' W)' (wide;
+    // transposed when tall).
+    F77_CALL(dgemm)
+    (proj_trans, &trans_n, &nopp, &S, &ng, &one, xp, &n, wmat.data(), &ng,
+     &zero, proj.data(), &nopp FCONE FCONE);
     LOC_TOC(v2_da_phases, "backout");
 
+    // Overwrites xtild: legal only because the I-step above already read it.
     LOC_TIC(v2_da_phases, "moy");
-    moy_dot(tall ? proj.data() : wmat.data(),
-               tall ? wmat.data() : proj.data(), phi.data(), mrow, mcol, n,
-               nd, S, nmiss, ut.data(), vwt.data(), xtild.data());
+    moy_dot(moy_u, moy_v, phi.data(), mrow, mcol, n, nd, S, nmiss, ut.data(),
+            vwt.data(), xtild.data());
     LOC_TOC(v2_da_phases, "moy");
 
     LOC_TIC(v2_da_phases, "pstep_noise");
     const double sd_t =
         std::sqrt(sigma2 * static_cast<double>(sphi) / static_cast<double>(K));
-    {
-      dqrng::normal_distribution dist(0.0, sd_t);
-      for (R_xlen_t k = 0; k < nmiss; ++k)
-        xtild[k] += dist(rng_eng);
-    }
+    for (R_xlen_t k = 0; k < nmiss; ++k)
+      xtild[k] += sd_t * z(rng_eng);
     LOC_TOC(v2_da_phases, "pstep_noise");
 
     LOC_TOC(v2_da_phases, "iter");
 
     if (refresh > 0 && (l == 1 || l % refresh == 0 || l == niter))
     {
-      char line[96];
-      std::snprintf(line, sizeof line,
-                    "Chain %d Iteration: %*d / %d [%3d%%] (%s)\n", chain_id,
-                    niter_w, l, niter,
-                    static_cast<int>((100LL * l) / niter),
-                    l <= warmup ? "Warmup" : "Sampling");
-      RcppThread::Rcout << line;
+      // A stream, not snprintf into a fixed buffer: with a run-time field
+      // width g++ 15 cannot bound the output and warns
+      // (-Wformat-truncation), which R CMD check reports. Same bytes as
+      // "Chain %d Iteration: %*d / %d [%3d%%] (%s)\n", which holds only in
+      // the classic locale: a stream otherwise takes the global C++ one,
+      // whose digit grouping snprintf never saw.
+      std::ostringstream line;
+      line.imbue(std::locale::classic());
+      line << "Chain " << chain_id << " Iteration: " << std::setw(niter_w)
+           << l << " / " << niter << " [" << std::setw(3)
+           << static_cast<int>((100LL * l) / niter) << "%] ("
+           << (l <= warmup ? "Warmup" : "Sampling") << ")\n";
+      Rcpp::Rcout << line.str() << std::flush;
     }
 
-    RcppThread::checkUserInterrupt();
+    Rcpp::checkUserInterrupt();
   }
 
   if (refresh > 0)
@@ -826,10 +1021,11 @@ static double da_chain_run(const da_ctx &cx,
     char line[96];
     std::snprintf(line, sizeof line, "Chain %d finished in %.1f seconds.\n",
                   chain_id, secs);
-    RcppThread::Rcout << line;
+    Rcpp::Rcout << line << std::flush;
   }
 
   std::copy(etd.begin(), etd.end(), cx.etd_out);
   std::copy(xtild.begin(), xtild.end(), cx.xtild_out);
+  std::copy(eig_start.begin(), eig_start.end(), cx.eig_start_out);
   return sigma;
 }

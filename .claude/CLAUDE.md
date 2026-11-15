@@ -190,7 +190,8 @@ reports in the same change.
 
 - `R/`, `src/` - package source. `src/` is Rcpp with RcppArmadillo, and
   RcppThread for parallelism; the multiple-imputation sampler in
-  `src/mipca.cpp` adds RcppEigen and RSpectra. `R/RcppExports.R` and
+  `src/mipca.cpp` adds RcppEigen and the Spectra headers vendored in
+  `src/Spectra/`. `R/RcppExports.R` and
   `src/RcppExports.cpp` are generated.
 - `tests/testthat/` - testthat edition 3, run against `load_all()` so
   internals are visible. Nothing under `tests/` may call a package that
