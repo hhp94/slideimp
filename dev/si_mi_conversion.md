@@ -162,6 +162,27 @@ Tested on its own: a part over no columns, one column, every column; parts
 out of column order; a hole written twice and a write over an observed cell,
 both refused.
 
+Done 2026-11-15, as `R/parts.R` (`new_part()`, `validate_part()`,
+`fill_parts()`) and `tests/testthat/test-parts.R`. Two readings of the text
+above:
+
+- "Every hole of the input is written" is checked per part: a part that is
+  not `left_na` fills exactly the holes of its own columns. Columns no part
+  covers pass through with their holes. Phase 2 needs this, since
+  `mean_imp_col(subset = )` is one mean part over the subset and leaves
+  every other column as it is. A caller that must fill every column, as
+  `pca_imp()` must, passes parts that cover every column; the `si_mi` door
+  will check full cover itself, since placement needs it.
+- A failed check is a package defect, so it is a plain `stop()` with the
+  fixed prefix "slideimp internal, part:" (`dev/WRITING.md`, section 1),
+  not cli.
+
+Measured with `tracemem()`: two writing parts copy the input once; a
+`left_na` part, or no parts, copy nothing. NOT MEASURED: that
+`col_miss_internal()`, which counts the holes, reads the input without a
+copy; RcppArmadillo maps a `const arma::mat &` argument onto R's memory, and
+the memory probe after Phase 2 would show a copy.
+
 ## Phase 2: `mean_imp_col()` on parts
 
 - A mean part: the mean of the observed values of each requested column, read
@@ -280,7 +301,8 @@ work").
 ## Not settled yet
 
 - How `mean_imp_col()`'s means are computed (Phase 2).
-- Where `output` sits in the signature, and the name of the parts file.
+- Where `output` sits in the signature. The parts file is `R/parts.R` unless
+  the maintainer renames it.
 - The print method, for both outputs: a later plan.
 - The kernel's own peak, about 2.4 x the input above it. A separate question,
   not this branch.
