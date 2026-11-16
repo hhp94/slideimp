@@ -122,6 +122,29 @@ Before any source edit, two scripts in `dev/`, tracked:
 `dev/probe_pca_imp_peak.R` becomes tracked here and is rerun after Phases 2,
 3 and 4.
 
+Done 2026-11-15, as `dev/ref_capture.R` and `dev/ref_compare.R`; each
+header says how to run it. The capture covers the union of this phase's list
+and `dev/eigen_conversion.md`'s, so the `eigen` branch takes the same pair.
+What it found on the reference build:
+
+- 58 cases, about 1.5 s. Every case reaches the branch its name claims:
+  `mean_filled_cols` non-empty where columns are over `colmax`, the
+  `on_infeasible = "mean"` fallback taken in `slide_imp()` and `group_imp()`,
+  the `colmax` boundary column, the LOBPCG solver chosen when asked.
+- The imputers refuse an all-`NA` column, while `mean_imp_col()` leaves it
+  `NA`. So the capture uses chr21 with its 1797 all-`NA` probes dropped
+  (71 x 8503, 16 probes over `colmax`) for the imputers, and keeps them for
+  `mean_imp_col()`; the refusal itself is two cases.
+- Noise floor: two captures in two processes are bitwise identical, every
+  case. The default tolerances (abs `1e-12`, rel `1e-10`) are set above that
+  floor, and `dev/ref_compare_selftest.R` shows the compare still fails on
+  each kind of planted change, a few-ulp change included at tolerance 0.
+
+The reference capture is `dev/ref/e5b3cf7`, made with `load_all1(timer =
+FALSE)`. It is regenerable, so it is not tracked: rerun the capture script
+on any commit whose package source is `e5b3cf7`'s (its `_meta.rds` says
+which source it ran on).
+
 ## Phase 1: the part and the matrix door
 
 A new file of slideimp's own, holding:
