@@ -45,7 +45,7 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   +- R/pca_imp.R           clamp
   +- R/pca_imp.R           write imputed triplets back into obj
   +- R/pca_imp.R           post_imp: mean_imp_col() on the columns that can
-  |                        still hold NA, skipped when none  -> src/mat_stats.cpp
+  |                        still hold NA, skipped when none  -> R/parts.R
   +- R/pca_imp.R           pca_imp_results()
        +- R/utils.R        new_slideimp_results()
 ```
@@ -410,9 +410,11 @@ QRs plus a `3k x 3k` dsyevd.
   factor-recovery
   `dgemm_` calls, which is what lets the post-loop fill reuse the last iteration's copy.
 - Return crosses as an `Rcpp::List`, copying the triplet matrix
-  into R. Only missing cells are transported, never the full imputed matrix. The
-  `mat_stats.cpp` entry points instead return by value: `mean_imp_col()` an `n x p` matrix
-  and `col_vars()` a length-`p` row vector, each copied into a SEXP.
+  into R. Only missing cells are transported, never the full imputed matrix.
+  `col_vars()` instead returns by value from `mat_stats.cpp`, a length-`p` row vector
+  copied into a SEXP. `mean_imp_col()` reaches no kernel of its own: it builds a mean
+  part in R and fills it through the matrix door (`R/parts.R`:
+  `fill_parts <- function(obj, parts) {`), one copy of the matrix.
 - `PCA_TOL = 1e-15` (`src/pca_linalg_utils.h`: `inline constexpr double PCA_TOL`) is the
   shared floor in `armaSVD.cpp` and
   `svd_triplet.h`: scale floors, inverse row-weight floor,
@@ -472,12 +474,11 @@ logs are gated.
   neither does any header it pulls in. All intra-call parallelism comes from whatever BLAS
   the R installation links.
 - **RcppThread** is reached through `par_for()` (`src/par_for.h`: `inline void par_for(`),
-  which both
-  `mat_stats.cpp` kernels call (`col_vars_internal`, `mean_imp_col_internal`),
-  as does the K-NN kernel (`src/impute_knn_brute.cpp`, not in this chain). With
+  which `col_vars_internal` in `mat_stats.cpp` calls, as does the K-NN kernel
+  (`src/impute_knn_brute.cpp`, not in this chain). With
   `n_threads <= 1` it runs the body inline and never starts an RcppThread pool,
-  and `pca_imp()` reaches both kernels with the default `cores = 1`
-  (`R/col_vars.R`: `col_vars <- function(`; `R/mean_imp_col.R`: `mean_imp_col <- function(`).
+  and `pca_imp()` reaches that kernel with the default `cores = 1`
+  (`R/col_vars.R`: `col_vars <- function(`).
   `src/Makevars` links `RcppThread::LdFlags()`; `src/Makevars.win`
   does not.
 - **mirai** is used from R only, one level above `pca_imp()`: `R/group_imp.R`

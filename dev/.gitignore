@@ -17,10 +17,14 @@
 !eigen_conversion.md
 !knn_imp_structure.md
 !pca_imp_structure.md
+!probe_fallback_part.R
+!probe_mean_fill_peak.R
+!probe_mean_source.R
 !probe_pca_imp_peak.R
 !ref_capture.R
 !ref_compare.R
 !ref_compare_selftest.R
 !si_mi_conversion.md
+!test_mirai_with_dev_install.R
 !to-do.md
 !vendored.md

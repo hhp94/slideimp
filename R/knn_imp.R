@@ -228,8 +228,8 @@ knn_imp <- function(
   # allowed to touch (missing but over colmax), and a column K-NN could not
   # finish (no candidate shared an observed row, leaving NA in the third
   # result column). Both are known here without another pass over obj, and
-  # naming them keeps mean_imp_col() from copying the whole matrix to fill
-  # nothing, which is the usual case.
+  # naming them, with the call skipped when there are none (the usual case),
+  # spares mean_imp_col() its passes over every column.
   #
   # The two kinds are recorded on the result, since nothing in the values
   # tells a column mean from a K-NN average afterwards: the columns held out
@@ -250,7 +250,7 @@ knn_imp <- function(
     )
     na_cols <- sort(unique(c(mean_cols, mean_cells[, "col"])))
     if (length(na_cols) > 0L) {
-      obj <- mean_imp_col(obj, subset = na_cols, cores = cores)
+      obj <- mean_imp_col(obj, subset = na_cols)
     }
   }
 

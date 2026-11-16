@@ -209,7 +209,7 @@ test_that("validate_part() refuses malformed parts", {
 
   p <- a
   p$kind <- "knn"
-  refuse(p, "`kind` is not one of pca, mean")
+  refuse(p, "`kind` is not one of pca, mean, median")
 
   p <- a
   p$info <- "note"

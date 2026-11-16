@@ -42,6 +42,10 @@ Easy to miss in the diff, noted so the draft does not:
   variance is above zero but below `.Machine$double.eps`, the threshold
   `pca_imp()` uses for eligibility. Such a column was drawn before, and a
   `pca_imp()` repetition that blanked only such columns failed.
+- **Breaking:** `mean_imp_col()` is no longer exported. The column means it
+  sets, for `post_imp` and for `on_infeasible = "mean"` in every imputer, are
+  now summed and divided in long double, so they can differ from 1.2.0's in
+  the last bits.
 
 ## Sampler port: what is still owed
 

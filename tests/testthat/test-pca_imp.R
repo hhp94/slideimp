@@ -864,11 +864,11 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
   real_mean_imp_col <- mean_imp_col
   calls <- list()
   local_mocked_bindings(
-    mean_imp_col = function(obj, subset = NULL, cores = 1) {
+    mean_imp_col = function(obj, subset = NULL) {
       # wrapped in list() so that a NULL subset - the whole-matrix call this
       # test exists to catch - is recorded rather than dropped by `[[<-`
       calls <<- c(calls, list(subset))
-      real_mean_imp_col(obj, subset = subset, cores = cores)
+      real_mean_imp_col(obj, subset = subset)
     }
   )
 

@@ -49,8 +49,9 @@ R/knn_imp.R                         knn_imp()  -- user entry, validation, partit
   +- R/knn_imp.R                    NaN -> NA, scatter triplets back into obj
   +- R/mean_imp_col.R               mean_imp_col()  (post_imp, and only if
   |                                 anything is still missing)
-  |    +- src/mat_stats.cpp         check_inf()
-  |    +- src/mat_stats.cpp         mean_imp_col_internal()
+  |    +- src/mat_stats.cpp         check_inf(), col_miss_internal()
+  |    +- R/mean_imp_col.R          fallback_part()
+  |    +- R/parts.R                 fill_parts()
   +- R/utils.R                      new_slideimp_results()
 ```
 
@@ -136,8 +137,9 @@ with it. Both sets are already in hand (`R/knn_imp.R`:
 `na_cols <- sort(unique(c(`) -- the first from `has_miss_idx` minus
 `grp_impute`, the second from the `NA`s in the third result column -- so
 `mean_imp_col()` is called with just those columns, and not at all when there
-are none. That is the usual case, and skipping it avoids a second full-matrix
-allocation plus a per-column copy of everything K-NN already filled. Both
+are none. That is the usual case, and skipping it saves the copy of the matrix
+that `mean_imp_col()` makes to fill, and its passes over every column (the
+`Inf` check and two hole counts). Both
 branches are pinned by a test (`tests/testthat/test-knn_imp.R`:
 `post_imp fills columns K-NN could not finish`).
 
@@ -165,16 +167,15 @@ through `Rcpp::traits::input_parameter<...>` and calls the C++ symbol.
 Registration is its entry in the `CallEntries` table, installed by
 `R_init_slideimp`. The exact C++ entry symbol is `impute_knn_brute`, defined in
 `src/impute_knn_brute.cpp` under the `// [[Rcpp::export]]` marker. It is the
-only C++ entry point the K-NN stage needs; `check_finite`, `col_miss_internal`,
-and `mean_imp_col_internal` are separate `.Call`s made from R around it.
+only C++ entry point the K-NN stage needs; `check_finite`, `col_miss_internal`
+and `check_inf` are separate `.Call`s made from R around it.
 
 ## Layer 3 -- C++ translation units and headers on the path
 
 Four compiled `.cpp` files are reached: `src/RcppExports.cpp` (generated SEXP
 wrappers), `src/impute_knn_brute.cpp` (K-NN kernel and entry point),
 `src/imputed_value.cpp` (result layout and accumulation loop), and
-`src/mat_stats.cpp` (`check_finite`, `check_inf`, `col_miss_internal`,
-`mean_imp_col_internal`).
+`src/mat_stats.cpp` (`check_finite`, `check_inf`, `col_miss_internal`).
 
 Project headers reached, following the `#include` graph:
 
@@ -469,9 +470,9 @@ fall back to `mean_imp_col()`.
   matrix happens in R (`R/knn_imp.R`: `obj[imp_indices] <- imputed_values[, 3]`).
 - So the real full-matrix copies on this path are both on the R side: R's
   copy-on-modify at the scatter, and, when `mean_imp_col()` actually has work to
-  do, the second `n x m` allocation in `mean_imp_col_internal()`
-  (`src/mat_stats.cpp`: `arma::mat out(n_rows, mat.n_cols, arma::fill::none)`).
-  The second one is skipped whenever nothing is still missing.
+  do, the one copy its door makes at its first write (`R/parts.R`:
+  `out[lins[[i]]] <- parts[[i]]$values`). The second one is skipped whenever
+  nothing is still missing.
 - Groups 1 and 2 are materialized a second time into `obj_masked` /
   `nmiss_masked` (`src/impute_knn_brute.cpp`: `arma::mat obj_masked(`) with NaNs
   zeroed and a parallel byte mask; `nmiss_masked` is `arma::Mat<uint8_t>`
@@ -487,10 +488,11 @@ fall back to `mean_imp_col()`.
   `std::stable_sort` takes for it, `nn_columns` and `weights`
   (`src/impute_knn_brute.cpp`: `arma::uvec nn_columns(n_neighbors);`), and the
   two accumulators in `impute_column_values` (`src/imputed_value.cpp`:
-  `arma::vec weighted_sums(`). `mean_imp_col_internal()` (`src/mat_stats.cpp`:
-  `arma::mat mean_imp_col_internal(`) is likewise out-of-place: a fresh matrix
-  with untouched columns `memcpy`d, and `mean_imp_col()` reattaches dimnames
-  (`R/mean_imp_col.R`: `dimnames(res) <- dimnames(obj)`).
+  `arma::vec weighted_sums(`). Past its door's copy, `mean_imp_col()`
+  allocates in proportion to the columns it fills: `fallback_part()` copies
+  them out, with their `is.na()` (`R/mean_imp_col.R`: `sub <- obj[, cols, drop = FALSE]`), and keeps
+  the holes and their values. After K-NN those are the few columns it left
+  open.
 
 ## Parallelism
 
@@ -511,9 +513,9 @@ main thread to unwind the pool. The optional progress bar is an
 incremented from the workers (`src/impute_knn_brute.cpp`: `++(*bar);`).
 
 `src/Makevars` adds the OpenMP flags and links `RcppThread::LdFlags()`;
-`src/Makevars.win` omits the RcppThread link line. `col_vars_internal()` and
-`mean_imp_col_internal()` in `src/mat_stats.cpp` go through the same
-`par_for()`.
+`src/Makevars.win` omits the RcppThread link line. `col_vars_internal()` in
+`src/mat_stats.cpp` goes through the same `par_for()`, and so does
+`mean_imp_col_internal()`, which no R code calls.
 
 ## How the wrappers reach knn_imp()
 

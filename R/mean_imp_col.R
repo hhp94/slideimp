@@ -1,57 +1,79 @@
 #' Column Mean Imputation
 #'
-#' Impute missing values in a matrix by replacing them with the mean of their
-#' respective columns.
+#' Set the holes of the selected columns of a matrix to the mean of each
+#' column's observed values. The fallback the imputers share: it builds one
+#' mean part with `fallback_part()` and fills it through the matrix door,
+#' `fill_parts()`.
 #'
 #' @param obj A numeric matrix.
-#' @param subset Optional character or integer vector specifying columns to
-#'   impute. If `NULL`, all columns are imputed.
-#' @param cores Integer. Number of cores to use for parallel computation.
-#'   Defaults to `1`.
+#' @param subset Optional character or integer vector of the columns to fill.
+#'   If `NULL`, every column is filled.
 #'
-#' @returns A numeric matrix of the same dimensions as `obj`, with missing
-#' values in the selected columns replaced by column means.
+#' @returns A double matrix with the dimensions and dimnames of `obj` and no
+#'   other attribute, with the holes of the selected columns set to their
+#'   column means. A column with no observed value is returned as it is. When
+#'   `subset` resolves to no column, `obj` itself is returned.
 #'
-#' @details
-#' Columns with no observed values cannot be imputed by their column mean and
-#' are left unchanged.
-#'
-#' @examples
-#' obj <- matrix(c(1, 2, NA, 4, NA, 6, NA, 8, 9, NA, NA, NA), nrow = 3)
-#' colnames(obj) <- c("A", "B", "C", "D")
-#' obj
-#'
-#' # impute missing values with column means
-#' mean_imp_col(obj)
-#'
-#' # impute only specific columns by name
-#' mean_imp_col(obj, subset = c("A", "C"))
-#'
-#' # impute only specific columns by index
-#' mean_imp_col(obj, subset = c(1, 3))
-#'
-#' @export
-mean_imp_col <- function(obj, subset = NULL, cores = 1) {
+#' @noRd
+#' @keywords internal
+mean_imp_col <- function(obj, subset = NULL) {
   # pre-cond
   checkmate::assert_matrix(obj, mode = "numeric", .var.name = "obj")
   # before the subset early return, which would skip this check
   check_inf(obj)
-  checkmate::assert_count(cores, positive = TRUE)
 
   # subset resolution
   subset <- resolve_subset(subset, obj)
   if (is.null(subset)) {
     return(obj)
   }
+  if (!is.double(obj)) {
+    storage.mode(obj) <- "double"
+  }
 
-  # imputation
-  res <- mean_imp_col_internal(
-    mat = obj,
-    col_idx = as.integer(subset) - 1L,
-    cores = cores
+  # imputation. A column with no observed value has no mean, so it is left
+  # out of the part and comes back from the door as it is.
+  n_miss <- col_miss_internal(obj)
+  cols <- sort(subset)
+  cols <- cols[n_miss[cols] < nrow(obj)]
+  out <- fill_parts(obj, list(fallback_part(obj, cols, "mean")))
+
+  # The result carries dim and dimnames only. When the door wrote, `out` is
+  # its own copy and this edits it in place.
+  keep <- intersect(c("dim", "dimnames"), names(attributes(out)))
+  if (length(attributes(out)) > length(keep)) {
+    attributes(out) <- attributes(out)[keep]
+  }
+  out
+}
+
+# A fallback part over `cols` of `obj`: each hole in those columns set to the
+# mean or the median of its column's observed values, and `kind` set to
+# `method`. `cols` is integer and strictly increasing, and none of its columns
+# is without an observed value: such a column has neither statistic, and a
+# part over one fails validation, its values holding NA.
+#
+# Vectorized over the columns: their submatrix is copied out once, with its
+# is.na(). The fallback covers few columns beside those the imputer filled,
+# so a copy of them is small. The mean is .colMeans(), a long double sum
+# divided in long double, within one ulp of the exact mean on the chr21 data
+# and on a 2000 x 20000 normal matrix (dev/probe_mean_source.R). The median
+# is collapse::fmedian(), the mean of the two middle values for an even
+# count, as stats::median() takes it.
+fallback_part <- function(obj, cols, method = c("mean", "median")) {
+  method <- match.arg(method)
+  if (length(cols) == 0L) {
+    return(new_part(cols = cols, kind = method))
+  }
+  sub <- obj[, cols, drop = FALSE]
+  map <- which(is.na(sub), arr.ind = TRUE, useNames = FALSE)
+  colnames(map) <- c("row", "col")
+  stat <- switch(
+    method,
+    mean = .colMeans(sub, nrow(sub), ncol(sub), na.rm = TRUE),
+    median = collapse::fmedian(sub, na.rm = TRUE, use.g.names = FALSE)
   )
-
-  dimnames(res) <- dimnames(obj)
-
-  return(res)
+  values <- as.vector(stat)[map[, "col"]]
+  map[, "col"] <- cols[map[, "col"]]
+  new_part(cols = cols, map = map, values = values, kind = method)
 }

@@ -390,6 +390,6 @@ slide_imp(
 
 ## Other functions
 
-- `col_vars()` / `mean_imp_col()`: Fast column-wise variance and mean
-  imputation via `{RcppArmadillo}` and `{RcppThread}`.
+- `col_vars()`: Fast column-wise variance via `{RcppArmadillo}` and
+  `{RcppThread}`.
 - `mat_miss()`: Efficient column or row missing statistics.

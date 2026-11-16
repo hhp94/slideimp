@@ -15,7 +15,8 @@
 #   part fills, in column-major order (by column, then by row), so each hole
 #   appears once. Every `col` is one of `cols`.
 # - `values`: double, the value of each hole, in `map` order. None is NA.
-# - `kind`: which imputer filled the part, "pca" or "mean".
+# - `kind`: which imputer or fallback filled the part, "pca", "mean" or
+#   "median".
 # - `info`: list, what that imputer reports about the fill.
 # - `left_na`: TRUE when the part covers its columns but fills none of their
 #   holes, as `post_imp = FALSE` leaves them. Its `map` is empty.
@@ -25,8 +26,14 @@
 # part reaches a result unchecked. A failed check is a package defect, never a
 # user error, so it is a plain stop() with a fixed prefix (dev/WRITING.md,
 # section 1).
+#
+# A part holds one map row and one value per hole, so its checks and its write
+# cost memory in proportion to the holes. validate_part() forms the holes'
+# linear index once, for its order check, and returns it, and fill_parts()
+# writes with it: writing with the two-column map would convert it to a
+# linear index again.
 
-part_kinds <- c("pca", "mean")
+part_kinds <- c("pca", "mean", "median")
 
 new_part <- function(
   cols,
@@ -78,21 +85,32 @@ validate_part <- function(part, n_row, n_col) {
   ) {
     part_defect("`map` is not an integer matrix with columns row and col")
   }
-  row <- map[, "row"]
-  col <- map[, "col"]
-  if (anyNA(map) || any(row < 1L | row > n_row)) {
-    part_defect("`map` has a row outside the input")
-  }
-  if (anyNA(match(col, cols))) {
-    part_defect("`map` has a column outside `cols`")
-  }
-  # Strictly increasing linear index, compared column then row so that no
-  # index is formed: (col - 1) * n_row + row overflows an integer on a large
-  # input. A hole listed twice fails here too.
-  if (length(row) > 1L) {
-    d_col <- diff(col)
-    if (any(d_col < 0L | (d_col == 0L & diff(row) <= 0L))) {
-      i <- which(d_col < 0L | (d_col == 0L & diff(row) <= 0L))[[1]] + 1L
+  # min(), max(), tabulate() and is.unsorted() each make one pass over the
+  # map and build nothing of its length; the linear index is the one vector
+  # of its length these checks keep.
+  n_map <- nrow(map)
+  lin <- numeric(0)
+  if (n_map > 0L) {
+    row <- map[, "row"]
+    col <- map[, "col"]
+    if (anyNA(map) || min(row) < 1L || max(row) > n_row) {
+      part_defect("`map` has a row outside the input")
+    }
+    # `cols` is unique, so its columns' counts sum to the map's length only
+    # when every map column is one of them
+    if (
+      min(col) < 1L ||
+        max(col) > n_col ||
+        sum(tabulate(col, n_col)[cols]) != n_map
+    ) {
+      part_defect("`map` has a column outside `cols`")
+    }
+    # Strictly increasing linear index. It is formed in double, exact below
+    # 2^53 cells: in integer, (col - 1) * n_row + row overflows past 2^31 - 1.
+    # A hole listed twice fails here too.
+    lin <- (col - 1) * as.double(n_row) + row
+    if (is.unsorted(lin, strictly = TRUE)) {
+      i <- which(diff(lin) <= 0)[[1]] + 1L
       part_defect(
         "`map` is not strictly increasing in column-major order, at map row ",
         i,
@@ -106,7 +124,7 @@ validate_part <- function(part, n_row, n_col) {
   }
 
   values <- part$values
-  if (!is.double(values) || length(values) != nrow(map)) {
+  if (!is.double(values) || length(values) != n_map) {
     part_defect("`values` is not double with one value per map row")
   }
   if (anyNA(values)) {
@@ -124,10 +142,10 @@ validate_part <- function(part, n_row, n_col) {
   if (!isTRUE(left_na) && !isFALSE(left_na)) {
     part_defect("`left_na` is not TRUE or FALSE")
   }
-  if (left_na && nrow(map) > 0L) {
+  if (left_na && n_map > 0L) {
     part_defect("a `left_na` part has a non-empty `map`")
   }
-  invisible(part)
+  invisible(lin)
 }
 
 # The matrix door. `obj` is the input the parts were built from, a double
@@ -150,9 +168,7 @@ fill_parts <- function(obj, parts) {
   }
   n_row <- nrow(obj)
   n_col <- ncol(obj)
-  for (part in parts) {
-    validate_part(part, n_row, n_col)
-  }
+  lins <- lapply(parts, validate_part, n_row = n_row, n_col = n_col)
 
   all_cols <- unlist(lapply(parts, `[[`, "cols"), use.names = FALSE)
   if (anyDuplicated(all_cols)) {
@@ -162,25 +178,12 @@ fill_parts <- function(obj, parts) {
     )
   }
 
-  # Holes per column, counted by C++ reading the input in place.
+  # Holes per column, counted by C++ reading the input in place. A part that
+  # is not `left_na` lists as many cells as its columns have holes.
   n_miss <- col_miss_internal(obj)
-  for (part in parts) {
-    if (part$left_na) {
-      next
-    }
-    if (length(part$values)) {
-      observed <- !is.na(obj[part$map])
-      if (any(observed)) {
-        cell <- part$map[which(observed)[[1]], ]
-        part_defect(
-          "writes over an observed cell (row ",
-          cell[["row"]],
-          ", col ",
-          cell[["col"]],
-          ")"
-        )
-      }
-    }
+  filling <- !vapply(parts, `[[`, logical(1), "left_na")
+  for (i in which(filling)) {
+    part <- parts[[i]]
     if (sum(n_miss[part$cols]) != nrow(part$map)) {
       part_defect(
         "fills ",
@@ -193,10 +196,35 @@ fill_parts <- function(obj, parts) {
   }
 
   out <- obj
-  for (part in parts) {
-    if (length(part$values)) {
-      out[part$map] <- part$values
+  wrote <- FALSE
+  for (i in seq_along(parts)) {
+    if (length(lins[[i]])) {
+      out[lins[[i]]] <- parts[[i]]$values
+      wrote <- TRUE
     }
+  }
+
+  # Each filling part lists as many distinct cells of its columns as they have
+  # holes, and writes no NA. So a hole still open in those columns means one
+  # of its cells was not a hole: a value went over an observed cell. Counting
+  # after the write costs a pass over the result and nothing the size of the
+  # map, which reading the input at every cell before the write would.
+  fill_cols <- unlist(lapply(parts[filling], `[[`, "cols"), use.names = FALSE)
+  if (wrote && any(col_miss_internal(out)[fill_cols] > 0)) {
+    for (i in which(filling)) {
+      observed <- which(!is.na(obj[lins[[i]]]))
+      if (length(observed)) {
+        cell <- parts[[i]]$map[observed[[1]], ]
+        part_defect(
+          "writes over an observed cell (row ",
+          cell[["row"]],
+          ", col ",
+          cell[["col"]],
+          ")"
+        )
+      }
+    }
+    part_defect("leaves a hole open in a column it fills")
   }
   out
 }

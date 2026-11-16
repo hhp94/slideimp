@@ -212,6 +212,126 @@ branch rewrites. Measure the R version's difference and its speed on the
 chr21 data before choosing. The same measurement settles whether `cores` is
 still worth having.
 
+Measured 2026-11-15 (`dev/probe_mean_source.R`), on chr21 with its all-`NA`
+probes kept (71 x 10300, 461 columns with a hole and an observed value) and
+on a 2000 x 20000 normal matrix with column offsets of sd 100 (11000 such
+columns). Each mean against an exact one (pieces on fixed power-of-two
+grids, summed exactly; within about one ulp of the true mean):
+
+| Mean | chr21: max ulps, columns > 1 ulp | 2000 x 20000: max ulps, columns > 1 ulp |
+|---|---|---|
+| today's kernel, double sum | 5, 131 | 335, 8363 (median 4) |
+| `.colMeans()`, long double sum and divide | 1, 0 | 1, 0 |
+| `sum(na.rm = TRUE) / n` | 1, 0 | 2, 1 |
+| `mean()` of the observed values | 1, 0 | 1, 0 |
+
+So the R means are not bitwise the kernel's, and they are the more accurate
+ones; against the kernel the worst is rel `6.7e-16` on chr21 and `4.0e-14` on
+the large matrix, well inside the compare's `1e-10`. `cores` bought at most
+1.8 x (on the large matrix over every column: 307, 198 and 171 ms at 1, 4
+and 8 cores), and only on the full-matrix copy the kernel wrote, which the
+parts path does not make.
+
+Done 2026-11-15, with the means from `.colMeans()` per column, as
+`mean_part()` in `R/mean_imp_col.R`, and `cores` dropped from
+`mean_imp_col()` and from its two callers that passed it.
+
+Speed, `bench::mark` medians, `mean_imp_col()` at 1.2.0 (`cores = 1`)
+against on parts: chr21, 4.5 ms against 6.1; the large matrix over every
+column, 307 ms against 479; over its last 10% of columns (95% holes, 3.8
+million of them), 151 ms against 317. Slower by up to 2 x, in a step that is
+a fraction of a second beside the imputer that calls it.
+
+Memory, `dev/probe_mean_fill_peak.R`, on the input of
+`dev/probe_pca_imp_peak.R` with its last 10% of columns filled (3.8 million
+holes), extra peak working set over the input, fresh process per stage:
+
+| Stage | Extra peak | R allocations over the call |
+|---|---|---|
+| the 1.2.0 kernel | 2.00 x | 1.00 x (plus its Armadillo output, outside R) |
+| `mean_imp_col()` on parts | 1.65 to 1.81 x | 1.96 x |
+| `mean_part()` alone | 0.52 to 0.62 x | 0.63 x |
+| `fill_parts()` alone, part prebuilt | 1.33 x | 1.33 x |
+
+So the fill falls from 2 x to about 1.7 x, not to the 1 x hoped for above.
+Past the door's one copy: the part itself (an integer map and a double value
+per hole, 16 bytes a hole, 0.2 x here); the validator's vectors the length
+of the map (its two columns and the linear index); and what reading one
+column at a time leaves behind (each column, its `is.na()`, the hole rows),
+which R collects late, so it shows in the peak. The peak moves by up to
+0.2 x between runs of the same code, with the timing of R's collections.
+What would take it near 1 x is C++ that counts the holes, takes the means
+and fills the map in one pass over the input, and writes the copy: `src/`,
+so for the `eigen` branch or after it.
+
+Two changes to the door came out of this:
+
+- `validate_part()` checks the map with `min()`, `max()`, `tabulate()` and
+  `is.unsorted()` on a double linear index, not with logical vectors of the
+  map's length, and returns that index; `fill_parts()` writes with it.
+- `fill_parts()` finds a write over an observed cell by counting the holes
+  left in the filled columns after the write, a pass over the result,
+  instead of reading the input at every cell of the map before it. With the
+  counts checked before the write and the map free of repeats, a hole left
+  open means some cell of the map was observed; only then does it look for
+  which one, for the message.
+
+Readings and choices:
+
+- The choice of R over a C++ entry is open to the maintainer until this
+  branch merges: R is more accurate and leaves `src/` alone; C++ keeps every
+  stored result bitwise. Switching is the one line in `fallback_part()` that
+  takes the mean, plus the entry in `src/`.
+- A column with no observed value is left out of the part by
+  `mean_imp_col()`, so the door passes it through as it is. `fallback_part()`
+  itself does not take one: its mean would be NaN, and the validator refuses
+  it.
+- The result keeps today's shape: a double matrix with dim and dimnames and
+  no other attribute, integer input coerced. The attribute strip comes after
+  the fill, so it edits the door's copy in place.
+- Revised 2026-11-16, at the maintainer's call: the per-column `mean_part()`
+  became `fallback_part(obj, cols, method = c("mean", "median"))`,
+  vectorized over its columns. It copies their submatrix out once with its
+  `is.na()`, takes the map from `which(arr.ind = TRUE)`, and sets `kind` to
+  the method; `part_kinds` gained `"median"`. A copy of the fallback's
+  columns is small beside the input, since most columns are filled by PCA
+  or K-NN. No caller takes the median yet; exposing it is a separate,
+  public choice. Measured (`dev/probe_fallback_part.R`), on chr21 and on the
+  2000 x 20000 matrix over every column and over its last 10%: the mean
+  part's map and values are `identical()` to the per-column part's; the
+  median, `collapse::fmedian()`, is bitwise `stats::median()` on every
+  column (chr21 has 272 columns with an even observed count and 8231 odd,
+  the large matrix even only); speed is the same (2.2 ms against 2.2 on
+  chr21, 81 ms against 94 over the last 10%), and the median part takes 6.2
+  and 101 ms against 121 and 75 for `apply(stats::median)`. R allocations
+  over the last 10% rise from 0.63 x to 0.96 x the input, and over every
+  column of the large matrix to 2.93 x, the case the fallback does not meet.
+  The peak (`dev/probe_mean_fill_peak.R`, same input as the table above):
+  `mean_imp_col()` 1.58 x, `fallback_part()` alone 0.67 x, the door alone
+  unchanged at 1.33 x.
+- `col_miss_internal()` reads the input without a copy, which Phase 1 left
+  unmeasured: `fill_parts()` alone peaks at 1.33 x, the same as R's own
+  allocations over the call, so its two calls allocated nothing of matrix
+  size outside R.
+- `mean_imp_col_internal()` stays in `src/mat_stats.cpp`, with no R caller
+  but the Phase 0 capture. The `eigen` branch can drop it rather than port it.
+- `slideimp_paper` still calls `mean_imp_col()`; not changed from here.
+
+Checked: the suite with `load_all1(timer = FALSE)` and the manual tests,
+20 files, 247 tests, none failed or skipped; the `group_imp` and `tune_imp`
+tests again with daemons on an install of this checkout
+(`dev/test_mirai_with_dev_install.R`), 118 tests, none failed: with the
+installed 1.2.0 copy their daemons would have run the old mean fill. The
+Phase 0 compare passes 57 of 58 cases: `mean_xa_cores2` now errors on the
+removed `cores`, as intended; six mean-fill cases are not bitwise, worst rel
+`6.7e-16`; types, dims, classes and attributes match on every case.
+
+The memory probe (`dev/probe_pca_imp_peak.R`) after Phase 2, against the
+table under "Why": `pca_imp()` with `post_imp = TRUE` 2.65 x (3.06 x
+before), the mean-fill step alone 2.64 x (2.99 x before), `post_imp = FALSE`
+unchanged at 2.42 x. The mean-fill step still holds the write-back's copy;
+Phase 3 removes it.
+
 ## Phase 3: `pca_imp()` on parts, matrix output
 
 - The kernel's `imputed_values` already is a map and its values: row, column
@@ -300,7 +420,8 @@ work").
 
 ## Not settled yet
 
-- How `mean_imp_col()`'s means are computed (Phase 2).
+- Whether `mean_imp_col()`'s means stay in R, as Phase 2 left them, or move
+  to a C++ entry that keeps them bitwise the 1.2.0 kernel's (Phase 2).
 - Where `output` sits in the signature. The parts file is `R/parts.R` unless
   the maintainer renames it.
 - The print method, for both outputs: a later plan.

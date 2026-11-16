@@ -419,10 +419,6 @@ test_that("the parallel path gives the same answer as the serial one", {
   }
 
   expect_identical(col_vars(obj, cores = 1), col_vars(obj, cores = 4))
-  expect_identical(
-    mean_imp_col(obj, cores = 1),
-    mean_imp_col(obj, cores = 4)
-  )
 })
 
 test_that("the kernel checks the invariants it relies on", {

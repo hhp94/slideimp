@@ -603,7 +603,7 @@ slide_imp <- function(
             ),
             skip = structure(sub_mat, fallback = TRUE, skipped = TRUE),
             mean = structure(
-              mean_imp_col(sub_mat, subset = local_idx, cores = cores),
+              mean_imp_col(sub_mat, subset = local_idx),
               fallback = TRUE
             )
           )
