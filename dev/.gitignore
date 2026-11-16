@@ -16,5 +16,7 @@
 !dev-utils.R
 !knn_imp_structure.md
 !pca_imp_structure.md
+!probe_pca_imp_peak.R
+!si_mi_conversion.md
 !to-do.md
 !vendored.md
