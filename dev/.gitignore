@@ -14,6 +14,7 @@
 !check_map_anchors.py
 !check_slideimp_extra.R
 !dev-utils.R
+!eigen_conversion.md
 !knn_imp_structure.md
 !pca_imp_structure.md
 !probe_pca_imp_peak.R
