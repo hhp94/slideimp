@@ -79,7 +79,7 @@ Ruled, so not owed (maintainer, 2026-11-13). Do not add these back as items:
 
 Owed:
 
-- **The next copy.** The copied files match `hhp94/test@40eae1d`
+- **The next copy.** The copied files match `hhp94/test@654aadc`
   (upstream's `vendor_diff.R`, every file MATCH, Spectra included), the sha
   to record upstream as the last port. Take the next copy from its latest
   pushed commit, with no change made by hand, and name that sha in the

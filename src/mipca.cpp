@@ -23,7 +23,6 @@
 #include <limits>
 #include <sstream>
 #include <iomanip>
-#include <locale>
 #include <memory>
 #include <chrono>
 #include "loc_timer.h"
@@ -994,19 +993,17 @@ static double da_chain_run(const da_ctx &cx,
 
     if (refresh > 0 && (l == 1 || l % refresh == 0 || l == niter))
     {
-      // A stream, not snprintf into a fixed buffer: with a run-time field
-      // width g++ 15 cannot bound the output and warns
+      // Straight into Rcpp::Rcout, not snprintf into a fixed buffer: with a
+      // run-time field width g++ 15 cannot bound the output and warns
       // (-Wformat-truncation), which R CMD check reports. Same bytes as
-      // "Chain %d Iteration: %*d / %d [%3d%%] (%s)\n", which holds only in
-      // the classic locale: a stream otherwise takes the global C++ one,
-      // whose digit grouping snprintf never saw.
-      std::ostringstream line;
-      line.imbue(std::locale::classic());
-      line << "Chain " << chain_id << " Iteration: " << std::setw(niter_w)
-           << l << " / " << niter << " [" << std::setw(3)
-           << static_cast<int>((100LL * l) / niter) << "%] ("
-           << (l <= warmup ? "Warmup" : "Sampling") << ")\n";
-      Rcpp::Rcout << line.str() << std::flush;
+      // "Chain %d Iteration: %*d / %d [%3d%%] (%s)\n" while Rcout keeps
+      // the classic locale, which nothing in this package changes.
+      Rcpp::Rcout << "Chain " << chain_id << " Iteration: "
+                  << std::setw(niter_w) << l << " / " << niter << " ["
+                  << std::setw(3) << static_cast<int>((100LL * l) / niter)
+                  << "%] (" << (l <= warmup ? "Warmup" : "Sampling")
+                  << ")\n"
+                  << std::flush;
     }
 
     Rcpp::checkUserInterrupt();
