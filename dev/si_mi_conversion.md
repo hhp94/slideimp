@@ -10,7 +10,7 @@ this file when the branch merges; git history keeps it.
   part, placed back by column, not a write into the matrix. The end goal is
   `group_imp()` building its result from its groups' parts; this branch does
   `mean_imp_col()` and `pca_imp()` only.
-- `pca_imp()` gains `output = "si_mi"`: its point estimate as a one-draw
+- `pca_imp()` gains `output = "mipca"`: its point estimate as a one-draw
   `si_mi`, the object `mipca()` returns, so that both read through
   `as.matrix()` and `summary()`.
 - Memory. Readings on one machine (Windows, process peak working set), one
@@ -44,9 +44,19 @@ this file when the branch merges; git history keeps it.
 - **Two doors.** The matrix door copies the input once and writes every
   part's values at its holes. The `si_mi` door slices the input once per part
   and builds the object with the vendored constructors.
-- **`pca_imp()` takes `output = c("matrix", "si_mi")`**, default `"matrix"`.
+- **`pca_imp()` takes `output = c("matrix", "mipca")`**, default `"matrix"`.
   `slide_imp()`, `group_imp()` and `tune_imp()` pass `output = "matrix"`
-  explicitly.
+  explicitly. The value names the functions the result works with
+  (`mipca_complete()`, `cbind()` with `mipca()` fits), not the class:
+  `si_mi` is an internal name and users never type it (maintainer,
+  2026-11-17). A character argument, not a logical flag, so a later form,
+  or the same door on another imputer, takes the same argument.
+- **`output = "mipca"` refuses an input without unique row and column
+  names**, by the rule `mipca()` applies (`R/mi_pca_imp.R`:
+  `.chk_matrix <- function(obj) {`): the join matches columns and rows by
+  name, so names `pca_imp()` made up would join two unnamed fits by
+  position, unchecked. The matrix output keeps taking unnamed input; parts
+  address cells by position and need no names (maintainer, 2026-11-17).
 - **The `slideimp_results` class and its print method stay** for the matrix
   output. The print is a later plan.
 - **The mean fill follows the ABB pattern.** The columns `pca_imp()` leaves
@@ -406,10 +416,14 @@ with `post_imp = TRUE` 2.43 x (2.65 x after Phase 2, 3.06 x at `e5b3cf7`),
 the same as `post_imp = FALSE`, 2.43 x. So the mean fill no longer sets the
 peak; the kernel does, as "Why" expected of filling one copy from parts.
 
-## Phase 4: the `si_mi` door, `output = "si_mi"`
+## Phase 4: the `si_mi` door, `output = "mipca"`
 
-- `output = c("matrix", "si_mi")`, checked with `match.arg()`. Where it
-  goes in the signature is open (before `.progress`, or last).
+- `output = c("matrix", "mipca")`, checked with `match.arg()`. It goes
+  after `clamp` and before `.progress`, the last argument (maintainer,
+  2026-11-17).
+- Under `output = "mipca"`, an input without unique row and column names is
+  a user error, through cli, raised before the fit runs, so no fit is
+  wasted on it.
 - The door, in the file of Phase 1 or beside it, builds each part's chunk
   with `.si_mi_chunk()`, never a bare `list()`: per part, slice the input to
   the part's columns (no slice when one part covers every column: the
@@ -440,11 +454,12 @@ peak; the kernel does, as "Why" expected of filling one copy from parts.
     parts partition the columns, as Phase 3's two parts do.
   - `call` is required; `NULL` passes.
   - The input must have column names, or the door stops with an internal
-    error. `pca_imp()` takes a matrix without them, so the door has to name
-    the columns or refuse such input, and the `identical()` test above has
-    to allow for whichever it does. Open; see "Not settled yet".
-- Tests: `as.matrix()` of the `si_mi` output is `identical()` to the matrix
-  output in the same process; columns in input order; `post_imp = FALSE`
+    error. Settled: `output = "mipca"` refuses such input first (see "What
+    was decided"), so the internal error stays unreachable from the door.
+- Tests: `as.matrix()` of the `mipca` output is `identical()` to the matrix
+  output in the same process, on a named input; an input missing row names,
+  column names, or holding a repeated one, is refused under
+  `output = "mipca"` and imputed under `output = "matrix"`; columns in input order; `post_imp = FALSE`
   leaves the same cells `NA`; `mipca_complete(m = 1)` works and `m = 2`
   refuses; `summary()` has no cells; `cbind()` with a `mipca()` fit of 100
   draws refuses.
@@ -481,10 +496,7 @@ repository with the port of `hhp94/test@40eae1d` (see "Order of work").
 
 - Whether `mean_imp_col()`'s means stay in R, as Phase 2 left them, or move
   to a C++ entry that keeps them bitwise the 1.2.0 kernel's (Phase 2).
-- Where `output` sits in the signature. The parts file is `R/parts.R` unless
-  the maintainer renames it.
-- What `output = "si_mi"` does with an input that has no column names,
-  which `.si_mi_chunk()` refuses (Phase 4).
+- The parts file is `R/parts.R` unless the maintainer renames it.
 - The print method, for both outputs: a later plan.
 - The kernel's own peak, about 2.4 x the input above it. A separate question,
   not this branch.
