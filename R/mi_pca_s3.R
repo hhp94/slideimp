@@ -74,6 +74,87 @@
   as.call(args)
 }
 
+# THE CHUNK, one constructor for every birth: mipca_finalize() (the
+# sampler's, and .mipca_empty()'s through it), .abb_piece(), and any caller
+# that builds a finalized part of its own. A chunk is born here and never
+# rebuilt field by field after: the joins concatenate chunks as they are,
+# and a later edit (the tuner's `prov$tuned`) is made in place. So a field
+# set here survives every join.
+#
+# The fields, and who reads them:
+#   obj        the chunk's columns, holes NA, column names required
+#              (.si_mi_new() joins on them); row names dropped, hoisted
+#   map        integer (row, col) of every stored hole, col in the chunk's own
+#              numbering (as.matrix(), summary(), .draw_parts())
+#   draws      one row per map row, one column per kept draw
+#   transform  `backward(z, col, row)` (.backward_at(), clamp_frac())
+#   diag       the frame from .diag_frame(), with its prop_diag, nchains and
+#              ndraws attributes; summary() agrees them across chunks, and a
+#              missing one would drop out of that agreement unseen
+#   prov       passed through WHOLE, so flags this function does not know
+#              survive. Required: `seam_state` and `thin_effective`, which
+#              update.si_mi() reads across every chunk. Optional flags read
+#              elsewhere: `left_na` (print), `abb`, `tuned`, `seed`, `key`
+#   call       the call that made it
+#   info       optional, the caller's own record; stored only when given
+.si_mi_chunk <- function(
+  obj,
+  map,
+  draws,
+  transform,
+  diag,
+  prov,
+  call,
+  info = NULL
+) {
+  if (!is.matrix(obj) || is.null(colnames(obj))) {
+    stop("internal error: a chunk's `obj` is not a matrix with column names.")
+  }
+  if (
+    !is.matrix(map) ||
+      !is.integer(map) ||
+      !identical(colnames(map), c("row", "col"))
+  ) {
+    stop("internal error: a chunk's map is not an integer (row, col) matrix.")
+  }
+  if (!is.matrix(draws) || nrow(draws) != nrow(map)) {
+    stop("internal error: a chunk's draws do not have one row per stored hole.")
+  }
+  if (!is.function(transform$backward)) {
+    stop("internal error: a chunk's transform has no backward map.")
+  }
+  if (
+    !inherits(diag, "si_mi_summary") ||
+      is.null(attr(diag, "prop_diag")) ||
+      is.null(attr(diag, "nchains")) ||
+      is.null(attr(diag, "ndraws"))
+  ) {
+    stop("internal error: a chunk's frame is not one .diag_frame() built.")
+  }
+  if (
+    !is.character(prov$seam_state) ||
+      length(prov$seam_state) != 1L ||
+      length(prov$thin_effective) != 1L
+  ) {
+    stop(
+      "internal error: a chunk's prov lacks `seam_state` or `thin_effective`."
+    )
+  }
+  ch <- list(
+    obj = obj,
+    map = map,
+    draws = draws,
+    transform = transform,
+    diag = diag,
+    prov = prov,
+    call = call
+  )
+  if (!is.null(info)) {
+    ch$info <- info
+  }
+  ch
+}
+
 # The finalized stage's one constructor, cbind() included. `rownames` and
 # `nkeep` are hoisted out of the chunks; `colnames` and `coff` are derived
 # here, chunk i holding joined columns coff[i] + 1 .. coff[i + 1].
@@ -102,6 +183,26 @@
       length(nms) != coff[length(coff)]
   ) {
     stop("internal error: a chunk's columns and their names do not line up.")
+  }
+  ## A count, stored INTEGER whatever type it arrives as, so every reader
+  ## sees one type: a builder outside the sampler may pass a double 1.
+  if (
+    !is.numeric(nkeep) ||
+      length(nkeep) != 1L ||
+      is.na(nkeep) ||
+      nkeep < 1 ||
+      nkeep > .Machine$integer.max ||
+      nkeep != round(nkeep)
+  ) {
+    stop("internal error: `nkeep` is not one positive whole number.")
+  }
+  nkeep <- as.integer(nkeep)
+  ## Every chunk holds exactly `nkeep` draw columns. as.matrix() reads column
+  ## `draw` of each, so a short chunk fails there as "subscript out of
+  ## bounds" and a wide one hands out its first columns in silence. One
+  ## integer per chunk, the same pass as `width` above.
+  if (!all(vapply(chunks, function(ch) ncol(ch$draws), 0L) == nkeep)) {
+    stop("internal error: a chunk's draws do not hold `nkeep` columns.")
   }
   if (!is.null(placement)) {
     p <- coff[length(coff)]
@@ -332,10 +433,12 @@ update.si_mi <- function(object, ...) {
   ## Read across ALL chunks, not off chunk 1: after cbind() the two recoveries
   ## can coexist.
   states <- vapply(object$chunks, function(ch) ch$prov$seam_state, "")
+  ## "never" is not only `keep_state = FALSE`: an ABB piece, an empty fit and
+  ## a part built outside the sampler never had a state either.
   if (all(states == "never")) {
     stop(
-      "update() cannot extend this fit: it was made with ",
-      "`keep_state = FALSE`. Fit again with mipca() and `keep_state = TRUE`.",
+      "update() cannot extend this fit: it holds no sampler state to resume ",
+      "from. Fit again with mipca() and `keep_state = TRUE`.",
       call. = FALSE
     )
   }
@@ -463,7 +566,7 @@ mipca_finalize.si_mi_pca <- function(
     "dropped"
   }
 
-  chunk <- list(
+  chunk <- .si_mi_chunk(
     obj = rb$obj,
     ## No column moved: `x$map` as it stands.
     map = if (is.null(rb$loc)) {
@@ -567,8 +670,9 @@ cbind.si_mi <- function(..., deparse.level = 0) {
       )
     }
     ## Not trimmed to the smaller count: the frozen Rhat and ESS describe
-    ## every kept draw.
-    if (!identical(a$nkeep, b$nkeep)) {
+    ## every kept draw. By value, not identical(): a fit built before
+    ## .si_mi_new() stored `nkeep` as an integer may hold a double 1.
+    if (!isTRUE(a$nkeep == b$nkeep)) {
       stop(
         "The fits hold different numbers of kept draws (",
         a$nkeep,
@@ -860,17 +964,20 @@ print.si_mi <- function(x, ...) {
   ## What the caller needs to use the draws, and no more: chains, thinning,
   ## the ABB columns and the tuner's record stay in the chunks' fields.
   cat(sprintf(
-    "si_mi fit: %d x %d, %d imputed cell%s, %d draws\n",
+    "si_mi fit: %d x %d, %d imputed cell%s, %d draw%s\n",
     length(x$rownames),
     length(x$colnames),
     h,
     .s(h),
-    x$nkeep
+    x$nkeep,
+    .s(x$nkeep)
   ))
   ## Said only when true: a column carried along and NOT imputed comes back
   ## from as.matrix() with its holes still NA. Counted off the chunks' own
-  ## flag (.mipca_empty(leave_na = TRUE)), which only the flank driver sets;
-  ## the flank plan's table says why.
+  ## flag, which more than one builder sets (the flank driver through
+  ## .mipca_empty(leave_na = TRUE), and parts built outside the sampler), so
+  ## the line names no source. Hint for the docs: the flank plan's
+  ## targets$status says why a flank target was left.
   nleft <- sum(vapply(
     x$chunks,
     function(ch) if (isTRUE(ch$prov$left_na)) ncol(ch$obj) else 0L,
@@ -878,13 +985,33 @@ print.si_mi <- function(x, ...) {
   ))
   if (nleft > 0L) {
     cat(sprintf(
-      "  left NA: %d column%s not imputed. The flank plan's targets$status says why.\n",
+      "  left NA: %d column%s not imputed; as.matrix() returns %s holes as NA.\n",
       nleft,
-      .s(nleft)
+      .s(nleft),
+      if (nleft == 1L) "its" else "their"
     ))
   }
+  ## The next call, off what the fit holds: mipca_complete()'s default `m`
+  ## is 20, so a fit with fewer kept draws is pointed at a legal call, and
+  ## summary() is offered only when some chunk diagnosed a cell (an ABB
+  ## piece, an empty fit and a part built outside the sampler diagnose none).
+  ncell <- sum(vapply(x$chunks, function(ch) nrow(ch$diag$cells), 0L))
+  nxt <- if (x$nkeep == 1L) {
+    "as.matrix() for the completed matrix"
+  } else if (x$nkeep < 20L) {
+    sprintf(
+      "mipca_complete() with `m` at most %d for completed matrices",
+      x$nkeep
+    )
+  } else {
+    "mipca_complete() for completed matrices"
+  }
   cat(
-    "  next: mipca_complete() for completed matrices, summary() for Rhat and ESS\n"
+    "  next: ",
+    nxt,
+    if (ncell > 0L) ", summary() for Rhat and ESS",
+    "\n",
+    sep = ""
   )
   invisible(x)
 }
@@ -1057,11 +1184,14 @@ print.si_mi_summary <- function(x, n = 6L, ...) {
     ncol_aff,
     .s(ncol_aff)
   ))
+  ## .s() reads NA ("mixed") as plural.
   cat(sprintf(
-    "  prop_diag %s, %s chains x %s draws\n",
+    "  prop_diag %s, %s chain%s x %s draw%s\n",
     num("prop_diag"),
     num("nchains"),
-    num("ndraws")
+    .s(attr(x, "nchains")),
+    num("ndraws"),
+    .s(attr(x, "ndraws"))
   ))
   ## A cell with too few draws for ESS is NA and left out of its row.
   q <- function(v) {

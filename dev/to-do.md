@@ -79,22 +79,26 @@ Ruled, so not owed (maintainer, 2026-11-13). Do not add these back as items:
 
 Owed:
 
-- **The next copy.** Take the export of `hhp94/test` at its latest pushed
-  commit, with no change made by hand, and name that commit's sha in the
-  commit body. When it runs is the maintainer's call. The first copy
-  (`e7f2f0c`, from `hhp94/test@b4cfbf1`) made four changes by hand, and
-  `hhp94/test` has since taken all four, so none is needed again: no
-  `transform` default at `mipca()`, `mipca_tune()` and `mipca_flank()`;
-  `tf_asin()` and `.chk_no_ndiag()` removed; the debug-build line of
-  `print.si_tune()` removed. `dqrng (>= 0.4.1)` stays in `LinkingTo`. The
-  next copy also brings:
-  - the comments;
-  - the printing pass: each print shows a header, a line only where
-    something waits or was left `NA`, and the next calls;
-  - the size refusal;
-  - `mipca_tune()` no longer refuses a matrix with a constant column. Its
-    holdout draw leaves such a column out, as `sample_na_loc()` does since
-    `7a863d0`, so the copy needs `sample_na_loc()` at `7a863d0` or later.
+- **The next copy.** The copied files match `hhp94/test@40eae1d`
+  (upstream's `vendor_diff.R`, every file MATCH, Spectra included), the sha
+  to record upstream as the last port. Take the next copy from its latest
+  pushed commit, with no change made by hand, and name that sha in the
+  commit body; when it runs is the maintainer's call. Until help pages are
+  written into the copied files a whole copy loses nothing. After that,
+  use the patch route in upstream's brief (its vendor-to-do, "The next
+  port, step by step"), which carries changes since the recorded sha
+  without overwriting the roxygen.
+- **Makevars: drop OpenMP.** Ruled upstream 2026-11-14: `src/Makevars` and
+  `src/Makevars.win` drop `$(SHLIB_OPENMP_CXXFLAGS)` from `PKG_CXXFLAGS` and
+  `PKG_LIBS`, since the sampler no longer uses it. This also turns off
+  Armadillo's OpenMP in slideimp's own PCA and K-NN code, a cost not yet
+  measured here. Measure it on those paths before making the change, as its
+  own commit.
+- **The Spectra licence notice.** `src/Spectra/` is vendored, and its
+  copyright holders are in `Authors@R`, but no notice file ships its
+  licence: `inst/LICENSE.note` covers only the code adapted from carrier.
+  Upstream's `inst/COPYRIGHTS` is the text; which file carries it here,
+  that note or a new one, is slideimp's choice.
 - **The vignette.** `vignettes/articles/multiple-imputation-beta.Rmd` was
   written for the October surface. Its calls were repaired so that it knits
   on the current one, and nothing else was changed. Whether it stays is not
@@ -107,9 +111,8 @@ Owed:
   means every column with a hole, and the flank functions require it. A
   `mipca_flank()` result can hold `NA` and the plan says why. A flank window
   is seeded by its target's column index in the plan's matrix, so the same
-  target in a plan over fewer columns draws differently.
-  `tf_biwhiten(rows = FALSE)`, passed as an object, is the way out when the
-  row scale refuses a window. Do not tell users to pin BLAS threads.
+  target in a plan over fewer columns draws differently. Do not tell users
+  to pin BLAS threads.
 - **Columns the core refuses.** The core refuses a column that holds `Inf`,
   is all `NA`, or has one observed value. Real matrices contain these, so a
   wrapper outside the core must carry them round the fit, as `pca_imp()` does
@@ -128,7 +131,3 @@ Owed:
   stay there. No test here runs `mipca_tune()`, `mipca_fit()`,
   `mipca_flank()`, `mipca_complete()` or `abb_cols()`. A test that lands as
   a `test-mipca-*` file is part of the copy, so it is written upstream.
-- **Not for the first version.** Eigen's own products in place of the
-  sampler's direct BLAS calls, so that parallel chains pay on every BLAS.
-  Draws stop being bitwise the BLAS run, so every stored baseline is retaken.
-  Upstream.

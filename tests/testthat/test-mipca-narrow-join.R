@@ -1,5 +1,5 @@
 # Narrowed-then-joined fits, the flank driver's shape. The join is narrow,
-# then concatenate; a name is joined once. Four regressions and one smoke
+# then concatenate; a name is joined once. Five regressions and one smoke
 # test, each named at its test_that().
 
 .nj <- local({
@@ -99,4 +99,48 @@ test_that("a request with nothing to impute returns a fit, and it joins", {
   expect_false(anyNA(r))
   expect_identical(r[, 1L], as.matrix(a, 3L)[, 1L])
   expect_identical(r[, 3L], as.matrix(b, 3L)[, 1L])
+})
+
+test_that("a one-draw part built with a double nkeep joins a sampler fit", {
+  # Regression: .si_mi_new() stored `nkeep` as given and the join compares
+  # it with identical(), so a builder outside the sampler passing 1 (double)
+  # was refused against every sampler fit as "kept draws (1 and 1)".
+  X <- .nj$X
+  obj <- X[, "c05", drop = FALSE]
+  map <- which(is.na(obj), arr.ind = TRUE)
+  dimnames(map) <- list(NULL, c("row", "col"))
+  expect_gt(nrow(map), 0L)
+  ch <- .si_mi_chunk(
+    obj = obj,
+    map = map,
+    draws = matrix(seq_len(nrow(map)) / 10, ncol = 1),
+    transform = list(name = "identity", backward = function(z, ...) z),
+    diag = .diag_frame(
+      map = map[integer(0), , drop = FALSE],
+      draws = list(matrix(NA_real_, 0L, 1L)),
+      p = 1L,
+      nms = "c05",
+      prop_diag = .prop_diag_default()
+    ),
+    prov = list(seam_state = "never", thin_effective = 1),
+    call = NULL
+  )
+  point <- .si_mi_new(list(ch), rownames(X), nkeep = 1, call = NULL)
+  expect_identical(point$nkeep, 1L)
+
+  samp <- mipca(
+    X,
+    rank = 2L,
+    transform = "identity",
+    subset = "c06",
+    chains = 1L,
+    iter_sampling = 1L,
+    iter_warmup = 4L,
+    seed = 1L
+  )
+  j <- cbind(point, samp)
+  expect_identical(
+    as.matrix(j),
+    cbind(as.matrix(point), as.matrix(samp))
+  )
 })

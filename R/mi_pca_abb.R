@@ -490,7 +490,7 @@ abb_cols <- function(obj, bound = 0.02, q = 0.95) {
     seed = seed,
     key = key
   )
-  chunk <- list(
+  chunk <- .si_mi_chunk(
     obj = sub,
     map = map,
     draws = draws,

@@ -70,10 +70,11 @@ this file when the branch merges; git history keeps it.
 2. This branch then runs Phase 0, Phase 1 and Phase 2 up to the point where
    Phase 2 would touch `src/mat_stats.cpp`.
 3. From there the `eigen` branch runs alongside, since it rewrites that file.
-4. Phase 4's door builds its parts with `.si_mi_chunk()`, which the vendored
-   copy does not have: it predates `hhp94/test@7b59766`. Phase 4 waits for
-   the next port, which brings it and the new `print.si_mi()`. When that
-   port runs is the maintainer's call. Phases 0 to 3 do not depend on it.
+4. Phase 4's door builds its parts with `.si_mi_chunk()`, which the port of
+   `hhp94/test@40eae1d` brought, with the new `print.si_mi()`. Done
+   2026-11-16, after Phase 3: only `R/mi_pca_s3.R`, `R/mi_pca_abb.R` and
+   `tests/testthat/test-mipca-narrow-join.R` changed since the port of
+   `hhp94/test@14a2b05` in `e5b3cf7`.
 
 ## Rules that apply to every step
 
@@ -86,9 +87,9 @@ this file when the branch merges; git history keeps it.
 - One slideimp-owned file is the only caller of the vendored internals the
   `si_mi` door uses (`R/mi_pca_s3.R`: `.si_mi_new <- function(`,
   `.si_mi_join <- function(parts, call, placement = NULL) {`;
-  `R/mi_pca_s3.R`: `.diag_frame <- function(map, draws, p, nms, prop_diag) {`),
-  and `.si_mi_chunk()` once the next port brings it to `R/mi_pca_s3.R`, so a
-  port that changes them breaks in one place.
+  `R/mi_pca_s3.R`: `.diag_frame <- function(map, draws, p, nms, prop_diag) {`;
+  `R/mi_pca_s3.R`: `.si_mi_chunk <- function(`), so a port that changes them
+  breaks in one place.
 - `output = "matrix"` returns what it returns at `e5b3cf7`: values, type,
   dims, class and attributes, checked against the Phase 0 capture, not
   remembered. Phase 3 found the one intended difference it planned, the
@@ -425,8 +426,23 @@ peak; the kernel does, as "Why" expected of filling one copy from parts.
   two or more fits, so a field on the object would be dropped. Then
   `.si_mi_new()` per part and `.si_mi_join()` with the parts' columns,
   concatenated, as placement.
-- A `left_na` part sets `prov$left_na`.
+- A `left_na` part sets `prov$left_na`, with an empty map and 0 x 1 draws.
 - An input with no holes: one part, empty map.
+- What `.si_mi_chunk()` at `hhp94/test@40eae1d` requires, from the reply
+  upstream (checked there, not here):
+  - `prov` needs only `seam_state` and `thin_effective`; every other field
+    is passed through, `thin_final` included, and no reader of a finalized
+    fit uses `chains`, `ndraws`, `thin`, the rank or the iteration count.
+    Upstream names the last two `rank` and `iter`.
+  - `nkeep` to `.si_mi_new()` equals the draw columns of every chunk, 1
+    here; `1` and `1L` both pass and both join a sampler or ABB fit.
+  - `placement` is INTEGER and uses every input column exactly once, so the
+    parts partition the columns, as Phase 3's two parts do.
+  - `call` is required; `NULL` passes.
+  - The input must have column names, or the door stops with an internal
+    error. `pca_imp()` takes a matrix without them, so the door has to name
+    the columns or refuse such input, and the `identical()` test above has
+    to allow for whichever it does. Open; see "Not settled yet".
 - Tests: `as.matrix()` of the `si_mi` output is `identical()` to the matrix
   output in the same process; columns in input order; `post_imp = FALSE`
   leaves the same cells `NA`; `mipca_complete(m = 1)` works and `m = 2`
@@ -444,9 +460,8 @@ peak; the kernel does, as "Why" expected of filling one copy from parts.
 Investigated and ruled in `hhp94/test` on 2026-11-15. The rulings are in
 that repository's vendor to-do (dev/vendor-to-do.md there) and, with the
 reasoning, its decision record (dev/DECISIONS.md there, "One chunk
-constructor; the join stays unguarded"). What
-was done there reaches this repository with the next port (see "Order of
-work").
+constructor; the join stays unguarded"). What was done there reached this
+repository with the port of `hhp94/test@40eae1d` (see "Order of work").
 
 1. **The join guard: not done, by ruling.** A one-draw point fit may join a
    one-draw sampler or ABB fit over other columns. No point marker goes in
@@ -468,6 +483,8 @@ work").
   to a C++ entry that keeps them bitwise the 1.2.0 kernel's (Phase 2).
 - Where `output` sits in the signature. The parts file is `R/parts.R` unless
   the maintainer renames it.
+- What `output = "si_mi"` does with an input that has no column names,
+  which `.si_mi_chunk()` refuses (Phase 4).
 - The print method, for both outputs: a later plan.
 - The kernel's own peak, about 2.4 x the input above it. A separate question,
   not this branch.
