@@ -42,10 +42,11 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |              +- postprocessing, imputed_values triplets
   |              +- Rcpp::List back to R
   |
+  +- R/pca_imp.R           mse guard, per restart
   +- R/pca_imp.R           clamp
-  +- R/pca_imp.R           write imputed triplets back into obj
-  +- R/pca_imp.R           post_imp: mean_imp_col() on the columns that can
-  |                        still hold NA, skipped when none  -> R/parts.R
+  +- R/pca_imp.R           PCA part from the triplets; mean part over the
+  |                        ineligible columns (left NA without post_imp)
+  +- R/parts.R             fill_parts(): one copy of obj, both parts written
   +- R/pca_imp.R           pca_imp_results()
        +- R/utils.R        new_slideimp_results()
 ```
@@ -113,17 +114,23 @@ first restart and `init = i` afterwards; `init == 0` means mean imputation (zero
 in centered space), anything else a Gaussian random start. After the first call under
 `solver = "auto"`, the returned `solver_chosen` code is collapsed to a forced `0`/`1` and
 locked in `locked_solver` so later restarts skip the probe; the restart with
-the lowest `mse` wins. `clamp` is applied to the value column of the triplet
-matrix (imputed values only), and the block (`R/pca_imp.R`: `imp_indices <- cbind(`) writes
-the triplets back through
-a two-column index matrix, the indices from C++ already being 1-based original-matrix
-indices. `post_imp = TRUE` collects the columns that can still hold NA -- ineligible
-columns that had any, plus the columns of NA rows in the triplet -- and runs
-`mean_imp_col(obj, subset = na_cols)` only when that set is non-empty, so
-an all-eligible input pays no extra copy here. The two parts of that set are
-recorded on the result, as in `knn_imp()`: the ineligible columns as the
-`mean_filled_cols` attribute and the NA rows of the triplet as
-`mean_filled_cells` (`R/pca_imp.R`: `mean_cols <- unname(which(!eligible & cmiss > 0L))`).
+the lowest `mse` wins. Each restart's `mse` must be finite or the call stops as a
+package defect (`R/pca_imp.R`: `if (!is.finite(cur_obj)) {`): the kernel's SSE sums
+the residual over every cell of each eligible column, holes included, before
+subtracting the holes' share (`src/armaSVD.cpp`: `sse -= s * ej2;`), so a NaN or
+Inf at any imputed cell surfaces there, and the triplet values themselves are
+never NA past this point. `clamp` is applied to the value column of the triplet
+matrix (imputed values only). The result is then built from two parts
+(`R/parts.R`), which together cover every column: the PCA part
+(`R/pca_imp.R`: `pca_part <- new_part(`) is the triplets, the indices from C++
+already being 1-based original-matrix indices, over the eligible columns; the
+mean part covers the ineligible columns, through `fallback_part()` under
+`post_imp = TRUE` and as a `left_na` part otherwise. An integer input is coerced
+to double first. `fill_parts()` (`R/parts.R`: `fill_parts <- function(obj, parts) {`)
+copies `obj` once and writes both parts, checking that the PCA part fills
+exactly the holes of its columns. `mean_filled_cols` is the ineligible columns
+that had a hole, under `post_imp` only (`R/pca_imp.R`:
+`mean_cols[cmiss[mean_cols] > 0L]`), and `mean_filled_cells` is always empty.
 `pca_imp_results()`
 (`R/pca_imp.R`: `pca_imp_results <- function(`) builds the result on both paths. It calls
 `new_slideimp_results()` (`R/utils.R`: `new_slideimp_results <- function(`), which strips
@@ -385,7 +392,7 @@ QRs plus a `3k x 3k` dsyevd.
 ## Data structures and ownership
 
 - `obj` crosses as `const arma::mat&` and is never mutated in C++; the write-back happens in
-  R (`R/pca_imp.R`: `obj[imp_indices] <- best_imputed[, 3]`). `row_w` crosses by value and
+  R, through the matrix door (`R/pca_imp.R`: `obj <- fill_parts(obj, list(pca_part, mean_part))`). `row_w` crosses by value and
   is normalized in place (`src/armaSVD.cpp`: `arma::rowvec row_w,`, `row_w /= row_w_sum;`).
 - `Xhat` is the working copy -- permuted column order, centered, scaled, mutated in
   place every outer iteration. `fittedX` is allocated once (`src/armaSVD.cpp`: `fittedX.zeros(`);
@@ -427,10 +434,10 @@ QRs plus a `3k x 3k` dsyevd.
   applies a `.Machine$double.eps` variance floor.
 - `src/matrix_checks.h` is not in `armaSVD.cpp`'s include chain. It is included by
   `src/mat_stats.cpp` and `src/imputed_value.h`, and its only function `stop_on_inf()`
-  is reached from `src/mat_stats.cpp` via `check_inf()`, which `pca_imp()` hits
-  indirectly through
-  `mean_imp_col()` (`R/mean_imp_col.R`: `check_inf(obj)`), and only when `post_imp` has
-  columns left to fill.
+  is reached from `src/mat_stats.cpp` via `check_inf()`, which `mean_imp_col()` calls
+  (`R/mean_imp_col.R`: `check_inf(obj)`). `pca_imp()` no longer reaches it: its mean
+  fill goes through `fallback_part()` directly, and `check_finite()` has already
+  refused `Inf`.
 
 ## Compile-time switches
 

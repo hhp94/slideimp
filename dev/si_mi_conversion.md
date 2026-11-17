@@ -91,7 +91,8 @@ this file when the branch merges; git history keeps it.
   port that changes them breaks in one place.
 - `output = "matrix"` returns what it returns at `e5b3cf7`: values, type,
   dims, class and attributes, checked against the Phase 0 capture, not
-  remembered. The one intended difference is the kernel-`NA` case in Phase 3.
+  remembered. Phase 3 found the one intended difference it planned, the
+  kernel-`NA` case, unreachable, so there is none.
 - No change under `src/` unless a step says so: the `eigen` branch rewrites
   `src/mat_stats.cpp` and `src/armaSVD.cpp` (`dev/eigen_conversion.md`).
 - Tests follow `.claude/CLAUDE.md`: worst-case absolute and relative error
@@ -345,21 +346,64 @@ Phase 3 removes it.
   - the PCA part: the eligible columns and their holes;
   - the mean part: every other column, plus any eligible column the kernel
     returned an `NA` for. Under `post_imp = FALSE` it is a `left_na` part.
-- The write-back and the `mean_imp_col()` call
-  (`R/pca_imp.R`: `obj[imp_indices] <- best_imputed[, 3]`) are replaced by
-  the matrix door.
+- The write-back through a two-column index and the `mean_imp_col()` call
+  after it are replaced by the matrix door.
 - `mean_filled_cols` is read off the mean part's columns that have holes.
   `mean_filled_cells` stays on the result and is always empty for
   `pca_imp()`.
-- Intended difference, and the NEWS entry in `dev/to-do.md` gets a line for
-  it: today a kernel-`NA` cell is mean-filled alone and reported in
-  `mean_filled_cells`; after this, its whole column is mean-filled and
-  reported in `mean_filled_cols`. A test pins the new behaviour; reaching
-  the branch needs a kernel that returns `NA`, so the test may have to stub
-  the kernel, as the existing post-step regression test stubs
-  `mean_imp_col()`.
+- ~~Intended difference: a kernel-`NA` cell moves its whole column to the
+  mean part.~~ Dropped, see below: the kernel-`NA` branch cannot be reached.
 - The early exit for an input with no holes is unchanged.
 - `dev/pca_imp_structure.md` is updated: the write-back it cites goes.
+
+Done 2026-11-16, in `R/pca_imp.R`, with no change to `R/parts.R` or `src/`.
+
+The kernel-`NA` branch was dead code, so it was dropped rather than
+changed. READ, not measured, since finite input does not make the kernel
+return NaN: the kernel's final SSE sums the squared residual over every cell
+of each eligible column, holes included, and only then subtracts the holes'
+share (`src/armaSVD.cpp`: `sse -= s * ej2;`). So a NaN or Inf at any imputed
+cell makes `mse` NaN, and at 1.2.0 `if (cur_obj < init_obj)` then failed
+with base R's "missing value where TRUE/FALSE needed" before any value was
+written. In its place, each restart's `mse` must be finite or the call stops
+as a package defect, a plain `stop()` with the prefix "slideimp internal,
+pca_imp:" (`dev/WRITING.md`, section 1). The part's validator still refuses
+an `NA` value, as a second net. No NEWS line: no input reaches either.
+
+As built:
+
+- The PCA part covers `eligible_idx`, including eligible columns with no
+  hole. The mean part covers every ineligible column, including the
+  zero-variance ones with no hole, so the two parts cover every column, as
+  the Phase 4 door needs. `fallback_part()` copies those columns out, which
+  is small beside the input.
+- `check_finite()` refuses an all-`NA` column before the kernel, so every
+  ineligible column has a mean, as `fallback_part()` requires.
+- An integer input is coerced to double before the door, as the write into
+  it used to coerce it. That is a second copy, for integer input only.
+- `best_imputed` is dropped once the part is built.
+
+Tests: the post-step regression test now mocks `fallback_part()` and asserts
+it is asked for exactly the ineligible columns, and for none on an
+all-eligible input. A new test stubs the kernel with NaN, NA, Inf and -Inf
+`mse`, on the first and on a later restart, and with a NaN value under a
+finite `mse`, which the validator refuses. With the guard disabled the
+`mse` case fails on base R's "missing value" error, so the test can fail.
+
+Checked: the suite with `load_all1(timer = FALSE)` and the manual tests, 20
+files, 248 tests, none failed; its two `group_imp` errors were daemons
+running an older installed copy ("could not find function new_part"), and
+the `group_imp` and `tune_imp` tests on an install of this checkout
+(`dev/test_mirai_with_dev_install.R`) pass, 118 tests. The Phase 0 compare
+gives what Phase 2 gave: 57 of 58 cases, `mean_xa_cores2` erroring on the
+removed `cores`; every `pca_*` case bitwise, `post_imp` on and off, clamp,
+`nb.init`, the no-holes exit and chr21 with its 16 columns over `colmax`;
+the same six mean-fill cases not bitwise, worst rel `6.7e-16`.
+
+The memory probe (`dev/probe_pca_imp_peak.R`) after Phase 3: `pca_imp()`
+with `post_imp = TRUE` 2.43 x (2.65 x after Phase 2, 3.06 x at `e5b3cf7`),
+the same as `post_imp = FALSE`, 2.43 x. So the mean fill no longer sets the
+peak; the kernel does, as "Why" expected of filling one copy from parts.
 
 ## Phase 4: the `si_mi` door, `output = "si_mi"`
 

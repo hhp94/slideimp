@@ -859,16 +859,16 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
   # Regression: pca_imp() ran mean_imp_col(obj) over every column whenever
   # post_imp = TRUE. On an all-eligible input that copied the matrix twice
   # more (the C++ result, then Rcpp's wrap of it) and scanned every column,
-  # to change nothing. knn_imp() already restricted the call to the columns
-  # that could still hold NA and skipped it when there were none.
+  # to change nothing. The mean part now covers the ineligible columns only,
+  # so fallback_part() is asked for exactly those, and for none on an
+  # all-eligible input.
   real_mean_imp_col <- mean_imp_col
+  real_fallback_part <- fallback_part
   calls <- list()
   local_mocked_bindings(
-    mean_imp_col = function(obj, subset = NULL) {
-      # wrapped in list() so that a NULL subset - the whole-matrix call this
-      # test exists to catch - is recorded rather than dropped by `[[<-`
-      calls <<- c(calls, list(subset))
-      real_mean_imp_col(obj, subset = subset)
+    fallback_part = function(obj, cols, method = c("mean", "median")) {
+      calls <<- c(calls, list(cols))
+      real_fallback_part(obj, cols, method)
     }
   )
 
@@ -876,8 +876,10 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
   # step has nothing to do. Check that premise before asserting on it.
   res_no_post <- run(x, post_imp = FALSE)
   expect_false(anyNA(res_no_post))
-  res_post <- run(x, post_imp = TRUE)
   expect_length(calls, 0L)
+  res_post <- run(x, post_imp = TRUE)
+  expect_length(calls, 1L)
+  expect_identical(calls[[1L]], integer(0))
   expect_identical(as.vector(res_post), as.vector(res_no_post))
   expect_true(attr(res_post, "post_imp"))
 
@@ -895,7 +897,7 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
   calls <- list()
   res_y <- run(y, post_imp = TRUE)
   expect_length(calls, 1L)
-  expect_identical(calls[[1L]], c(1L, 2L))
+  expect_identical(calls[[1L]], c(1L, 2L, 3L))
   expect_false(anyNA(res_y))
   expect_equal(
     unname(res_y[is.na(y[, 1]), 1]),
@@ -948,6 +950,71 @@ test_that("pca_imp records what post_imp set to a column mean", {
   r_early <- suppressMessages(pca_imp(full, ncp = 1))
   expect_identical(attr(r_early, "mean_filled_cols"), integer(0))
   expect_identical(attr(r_early, "mean_filled_cells"), no_cells)
+})
+
+test_that("pca_imp refuses a fit whose mse is not finite, as a defect", {
+  # The kernel's mse sums the residual over the holes too, so a NaN or Inf
+  # imputed value makes it non-finite. Finite input never gets there, so the
+  # kernel is stubbed: the real fit, then a broken mse or value planted in it.
+  set.seed(1234)
+  x <- sim_mat(40, 30, perc_total_na = 0.1, perc_col_na = 1)$input
+  expect_true(anyNA(x))
+  real_kernel <- pca_imp_internal_cpp
+  plant <- NULL
+  local_mocked_bindings(
+    pca_imp_internal_cpp = function(...) {
+      res <- real_kernel(...)
+      plant(res)
+    }
+  )
+  run <- function(nb.init = 1) {
+    suppressWarnings(pca_imp(
+      x,
+      ncp = 2,
+      solver = "exact",
+      miniter = 2,
+      maxiter = 5,
+      seed = 1,
+      nb.init = nb.init
+    ))
+  }
+
+  # the stub itself changes nothing: the premise of every case below
+  plant <- function(res) res
+  expect_false(anyNA(run()))
+
+  for (bad in c(NaN, NA, Inf, -Inf)) {
+    plant <- function(res) {
+      res$mse <- bad
+      res
+    }
+    expect_error(
+      run(),
+      "^slideimp internal, pca_imp: the fit's mse is not finite \\(",
+      class = "simpleError"
+    )
+  }
+
+  # checked on every initialization, not only the first
+  n_call <- 0L
+  plant <- function(res) {
+    n_call <<- n_call + 1L
+    if (n_call == 2L) {
+      res$mse <- NaN
+    }
+    res
+  }
+  expect_error(run(nb.init = 3), "at initialization 2$")
+  expect_identical(n_call, 2L)
+
+  # a NaN value under a finite mse cannot come from the kernel, but if it
+  # did, the part's validator refuses it before it reaches the result
+  plant <- function(res) {
+    expect_gt(nrow(res$imputed_values), 0L)
+    res$imputed_values[1L, 3L] <- NaN
+    res
+  }
+  expect_error(run(), "slideimp internal, part: `values` holds NA")
 })
 
 # lobpcg ----

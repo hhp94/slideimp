@@ -668,7 +668,20 @@ pca_imp <- function(
       solver_probed <- chosen %in% c(3L, 4L)
     }
 
+    # the kernel's mse sums the squared residual over every cell of each
+    # eligible column, holes included, before taking the holes' share back
+    # out. So a NaN or Inf at any imputed cell makes it non-finite: this is
+    # where a broken fit shows, not in the values.
     cur_obj <- res.impute$mse
+    if (!is.finite(cur_obj)) {
+      stop(
+        "slideimp internal, pca_imp: the fit's mse is not finite (",
+        cur_obj,
+        ") at initialization ",
+        i,
+        call. = FALSE
+      )
+    }
     if (cur_obj < init_obj) {
       best_imputed <- res.impute$imputed_values
       init_obj <- cur_obj
@@ -709,37 +722,42 @@ pca_imp <- function(
     )
   }
 
-  imp_indices <- cbind(
-    as.integer(best_imputed[, 1]),
-    as.integer(best_imputed[, 2])
+  # two parts, which together cover every column. The PCA part is the
+  # kernel's triplets: the eligible columns and every hole in them, already in
+  # the input's 1-based numbering, in the column-major order the part's
+  # validator checks. The mean part is every ineligible column: under
+  # `post_imp` each hole set to its column mean, otherwise left NA. No
+  # ineligible column is all NA, since check_finite() refuses one, so each
+  # has a mean. Neither part holds NA, as the mse check above guarantees for
+  # the kernel's values.
+  map <- cbind(
+    row = as.integer(best_imputed[, 1]),
+    col = as.integer(best_imputed[, 2])
   )
-  obj[imp_indices] <- best_imputed[, 3]
+  values <- best_imputed[, 3]
+  rm(best_imputed)
+  # unname(): `eligible` carries the column names, and parts take indices
+  pca_part <- new_part(
+    cols = unname(eligible_idx),
+    map = map,
+    values = values,
+    kind = "pca"
+  )
+  rm(map, values)
 
-  # after the write-back, NA can remain only in the ineligible columns that had
-  # any, plus wherever the kernel handed back NA for a cell it was asked to
-  # fill. Mean-impute exactly those columns, and skip the call when there are
-  # none. An unconditional `mean_imp_col(obj)` copied the matrix twice more -
-  # once into the C++ result, once when Rcpp wrapped it - and scanned every
-  # column for Inf and for its mean, all to change nothing on an all-eligible
-  # input. Same shape as the post step in knn_imp(), and recorded on the
-  # result the same way: ineligible columns in `mean_filled_cols`, cells the
-  # kernel handed back NA in `mean_filled_cells`.
-  mean_cols <- integer(0)
-  mean_cells <- mean_filled_cells_matrix()
-  if (post_imp) {
-    # unname(): `cmiss` carries the column names, and the record is indices
-    mean_cols <- unname(which(!eligible & cmiss > 0L))
-    left <- is.na(best_imputed[, 3])
-    mean_cells <- mean_filled_cells_matrix(
-      row = best_imputed[left, 1],
-      col = best_imputed[left, 2],
-      n_row = nrow(obj)
-    )
-    na_cols <- sort(unique(c(mean_cols, mean_cells[, "col"])))
-    if (length(na_cols) > 0L) {
-      obj <- mean_imp_col(obj, subset = na_cols)
-    }
+  # the door writes into a copy of a double matrix, and the mean part reads
+  # the same matrix; an integer input is coerced first, as the write into it
+  # used to coerce it
+  if (!is.double(obj)) {
+    storage.mode(obj) <- "double"
   }
+  mean_cols <- unname(which(!eligible))
+  mean_part <- if (post_imp) {
+    fallback_part(obj, mean_cols, "mean")
+  } else {
+    new_part(cols = mean_cols, kind = "mean", left_na = TRUE)
+  }
+  obj <- fill_parts(obj, list(pca_part, mean_part))
 
   return(pca_imp_results(
     obj,
@@ -748,7 +766,13 @@ pca_imp <- function(
     solver_chosen = if (resolved_solver_code == 1L) "lobpcg" else "exact",
     solver_probed = solver_probed,
     diag = best_diag,
-    mean_filled_cols = mean_cols,
-    mean_filled_cells = mean_cells
+    # what `post_imp` set to a column mean: the ineligible columns that had a
+    # hole. `mean_filled_cells` keeps its empty default, since the PCA part
+    # fills every hole of its columns.
+    mean_filled_cols = if (post_imp) {
+      mean_cols[cmiss[mean_cols] > 0L]
+    } else {
+      integer(0)
+    }
   ))
 }
