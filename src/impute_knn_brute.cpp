@@ -15,7 +15,7 @@
 
 // Indices that come from R (rows, columns, k) are int, bounded by nrow() and
 // ncol(); a column's offset into a buffer is taken in size_t by col_ptr()
-// (src/imputed_value.h).
+// (src/matrix_checks.h).
 
 // -----------------------------------------------------------------------------
 // metric definitions, add new metrics by defining a struct with an accumulate()
@@ -526,22 +526,23 @@ Rcpp::List impute_knn_brute(
                 static_cast<int>(i), k, n_valid_vec, method, obj_ptr,
                 grp_complete_ptr);
             const std::size_t n_neighbors = top_k.size();
-            if (n_neighbors == 0)
+            // With no neighbor (no candidate shares an observed row with this
+            // column), its result values keep the NA they were initialized
+            // with; the column still counts towards the progress bar.
+            if (n_neighbors > 0)
             {
-                // no candidate shares an observed row with this column: its
-                // result values keep the NA they were initialized with.
-                return;
+                std::vector<int> nn_columns(n_neighbors);
+                for (std::size_t jj = 0; jj < n_neighbors; ++jj)
+                {
+                    nn_columns[jj] = top_k[jj].index;
+                }
+                const std::vector<double> weights =
+                    knn_weights(top_k, dist_pow);
+                impute_column_values(
+                    value_ptr + col_offsets[i], obj_masked_ptr,
+                    nmiss_masked_ptr, n_rows, layout, nn_columns, weights,
+                    rows_to_impute[i], obj_ptr, grp_complete_ptr);
             }
-            std::vector<int> nn_columns(n_neighbors);
-            for (std::size_t jj = 0; jj < n_neighbors; ++jj)
-            {
-                nn_columns[jj] = top_k[jj].index;
-            }
-            const std::vector<double> weights = knn_weights(top_k, dist_pow);
-            impute_column_values(
-                value_ptr + col_offsets[i], obj_masked_ptr, nmiss_masked_ptr,
-                n_rows, layout, nn_columns, weights, rows_to_impute[i],
-                obj_ptr, grp_complete_ptr);
             if (pb)
             {
                 ++(*bar);

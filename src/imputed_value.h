@@ -12,16 +12,6 @@
 // single source of truth for the mask storage type
 using mask_t = uint8_t;
 
-// The first cell of column `col` in column-major storage of `n_rows` rows.
-// The offset is taken in size_t, so a matrix past 2^31 cells indexes
-// correctly; `col` and `n_rows` are bounded by ncol() and nrow(), which R
-// holds as int.
-template <typename T>
-inline T *col_ptr(T *base, const int col, const int n_rows)
-{
-    return base + static_cast<std::size_t>(col) * static_cast<std::size_t>(n_rows);
-}
-
 // GroupLayout: single source of truth for group boundaries.
 // Groups 1+2 (imputed + missing-no-impute) share identical kernel treatment
 // and live together in obj_masked / nmiss_masked at local cols [0, n_masked()).
@@ -84,27 +74,9 @@ static inline void validate_knn_inputs(
         Rcpp::stop("dist_pow must be finite and >= 0.");
     }
 
-    // Indices are 0-based. NA_integer_ is negative, so it is out of range.
-    auto check_group = [&](const Rcpp::IntegerVector &g, const char *name)
-    {
-        for (R_xlen_t i = 0; i < g.size(); ++i)
-        {
-            if (g[i] < 0 || g[i] >= n_cols)
-            {
-                Rcpp::stop(
-                    std::string(name) +
-                    " contains out-of-bounds column index " +
-                    (g[i] == NA_INTEGER ? std::string("NA") : std::to_string(g[i])) +
-                    ". obj has " +
-                    std::to_string(n_cols) +
-                    " columns.");
-            }
-        }
-    };
-
-    check_group(grp_impute, "grp_impute");
-    check_group(grp_miss_no_imp, "grp_miss_no_imp");
-    check_group(grp_complete, "grp_complete");
+    stop_on_bad_col_index(grp_impute, n_cols, "grp_impute");
+    stop_on_bad_col_index(grp_miss_no_imp, n_cols, "grp_miss_no_imp");
+    stop_on_bad_col_index(grp_complete, n_cols, "grp_complete");
 
     // The three groups partition the working set. The kernel relies on that
     // when it tags a group-3 neighbor by its offset into grp_complete, and a

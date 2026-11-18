@@ -890,8 +890,8 @@ Decided in discussion (maintainer, 2026-11-18):
   Those cells change value. The help sentence changes with them, and
   `dev/to-do.md` gains the NEWS line.
 - The kernel fills those cells itself. It leaves a cell in two ways: a whole
-  column, when no candidate shares an observed row with it
-  (`src/impute_knn_brute.cpp`: `if (n_neighbors == 0)`), and a single cell,
+  column, when no candidate shares an observed row with it, so the worker
+  skips it (`src/impute_knn_brute.cpp`: `if (n_neighbors > 0)`), and a single cell,
   when none of the chosen neighbors is observed at that row, so its weight
   total is 0 and no value is written
   (`src/imputed_value.cpp`: `out[r] = ws_ptr[r] / wt_ptr[r];`).

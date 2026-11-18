@@ -483,7 +483,8 @@ QRs plus a `3k x 3k` dsyevd.
   for `row.w = "n_miss"` (`R/pca_imp.R`: `row.w[row.w < 1e-10] <- 1e-10`), and
   applies a `.Machine$double.eps` variance floor.
 - `src/matrix_checks.h` is not in `armaSVD.cpp`'s include chain. It is included by
-  `src/mat_stats.cpp` and `src/imputed_value.h`, and its only function `stop_on_inf()`
+  `src/mat_stats.cpp`, `src/sample_each_rep_cpp.cpp` and `src/imputed_value.h`, and
+  besides `col_ptr()` and the index refusals it holds `stop_on_inf()`, which
   is reached from `src/mat_stats.cpp` via `check_inf()`, which `mean_imp_col()` calls
   (`R/mean_imp_col.R`: `check_inf(obj)`). `pca_imp()` no longer reaches it: its mean
   fill goes through `fallback_part()` directly, and `check_finite()` has already

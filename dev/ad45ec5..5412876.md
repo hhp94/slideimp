@@ -17,8 +17,7 @@ Code is cited by file and a fragment of one line, as `dev/` notes do.
 ### Int narrowing or overflow in index and offset arithmetic
 
 None found. Every column offset is taken in `std::size_t`, either through
-`col_ptr()` (`src/imputed_value.h`: `inline T *col_ptr(T *base, const int col, const int n_rows)`)
-or by hand (finding 6). Quantities kept as `int` are each bounded by
+`col_ptr()`, then in `src/imputed_value.h`, or by hand (finding 6). Quantities kept as `int` are each bounded by
 `nrow()` or `ncol()`:
 
 - `GroupLayout` counts: `validate_knn_inputs()` checks the groups are in
@@ -72,10 +71,14 @@ draw was added, removed or moved across a `continue`. Both exports keep
 Ranked most severe first. None is a regression introduced by the range in
 the K-NN results or the sampled positions.
 
+All eight were fixed in the commit after `5412876`, as recorded under
+"Phase 1" in `dev/eigen_conversion.md`. A line quoted below that the fix
+removed is quoted as it stood at `5412876`, not cited.
+
 ### 1. Progress bar never reaches 100% when a column has no neighbor (correctness, low)
 
-At (`src/impute_knn_brute.cpp`: `// no candidate shares an observed row with this column: its`)
-the worker returns early when `top_k` is empty, before `++(*bar);`. The bar
+In `src/impute_knn_brute.cpp`, at the comment `// no candidate shares an
+observed row with this column: its`, the worker returns early when `top_k` is empty, before `++(*bar);`. The bar
 is built for `layout.n_imp` steps, so every column whose neighbors all share
 no observed row with it leaves the bar short of its total, and it never
 prints its completion. `group_imp()` defaults to `.progress = TRUE`, so a
@@ -85,8 +88,8 @@ before the early return, or once at the top of the body.
 
 ### 2. `sample_each_rep_cpp()` does not refuse a repeated pool column (correctness, low)
 
-The new guards
-(`src/sample_each_rep_cpp.cpp`: `check_range(pool_idx_in, obj.ncol(), "pool_idx_in");`) check range but not uniqueness. A repeated column in
+The new guards in `src/sample_each_rep_cpp.cpp`, such as
+`check_range(pool_idx_in, obj.ncol(), "pool_idx_in");`, check range but not uniqueness. A repeated column in
 `pool_idx_in` can fill two slots: `left_temp` is rebuilt from the unchanged
 `obj` column on each visit, so the same `(row, col)` can be returned twice
 and `num_na` overcounts the cells actually blanked. `sample_na_loc()`
@@ -111,28 +114,26 @@ integer maps even against a stored reference.
 
 ### 4. README claims `col_vars()` uses RcppArmadillo and RcppThread (documentation)
 
-The README still credits RcppArmadillo and RcppThread
-(`README.Rmd`: `Fast column-wise variance via`). After this range `col_vars_internal()` is plain Rcpp on one thread. The
+The README still credits RcppArmadillo and RcppThread, in the `README.Rmd`
+line beginning "Fast column-wise variance via". After this range `col_vars_internal()` is plain Rcpp on one thread. The
 README is public documentation and now states something false. Fix in
 `README.Rmd`, then re-knit.
 
 ### 5. `check_range()` duplicates `validate_knn_inputs()`'s `check_group` (reuse)
 
-The two are
-(`src/sample_each_rep_cpp.cpp`: `static void check_range(const Rcpp::IntegerVector &v,`;
-`src/imputed_value.h`: `auto check_group = [&](const Rcpp::IntegerVector &g, const char *name)`).
-Both loop an `IntegerVector`, refuse a value below 0 or at or above a
+The two are `check_range()` in `src/sample_each_rep_cpp.cpp` and the
+`check_group` lambda in `src/imputed_value.h`. Both loop an `IntegerVector`, refuse a value below 0 or at or above a
 bound, and build the same NA-aware message. Written twice in one phase,
 they will drift. One helper in `src/matrix_checks.h`, which both files
 already reach, with the bound and the name as arguments.
 
 ### 6. Column pointers hand-rolled beside the existing `col_ptr()` (reuse)
 
-The helper and two of the hand-rolled sites are
-(`src/imputed_value.h`: `inline T *col_ptr(T *base, const int col, const int n_rows)`;
-`src/mat_stats.cpp`: `const double *col = x + j * n_rows;`;
-`src/sample_each_rep_cpp.cpp`: `const double *candidate = x + static_cast<std::size_t>(col_idx) * n_rows;`).
-`col_ptr()` exists to take a column offset in `size_t` in one place, yet
+The helper was `inline T *col_ptr(T *base, const int col, const int n_rows)`
+in `src/imputed_value.h`; two of the hand-rolled sites were
+`const double *col = x + j * n_rows;` in `src/mat_stats.cpp` and
+`const double *candidate = x + static_cast<std::size_t>(col_idx) * n_rows;`
+in `src/sample_each_rep_cpp.cpp`. `col_ptr()` exists to take a column offset in `size_t` in one place, yet
 `src/mat_stats.cpp` (five sites), `src/matrix_checks.h` and
 `src/sample_each_rep_cpp.cpp` compute `x + j * n_rows` by hand, and four
 header comments each restate the "size_t, so past 2^31 cells" rule. Today
@@ -144,9 +145,8 @@ a `size_t` overload, use it at every site, and state the rule once.
 
 ### 7. `check_range()`'s upper bound is vacuous for three of its four calls (simplification)
 
-The bound is set at
-(`src/sample_each_rep_cpp.cpp`: `const long long int_max = std::numeric_limits<int>::max() + 1LL;`).
-For `na_per_col`, `row_room` and `pool_cap` the bound is `INT_MAX + 1`, so
+The bound is set in `src/sample_each_rep_cpp.cpp` by
+`const long long int_max = std::numeric_limits<int>::max() + 1LL;`. For `na_per_col`, `row_room` and `pool_cap` the bound is `INT_MAX + 1`, so
 `v[i] >= bound` can never hold for an `int`: those calls are a
 non-negativity check. The variable named `int_max` holds `INT_MAX + 1`,
 and the error text reads "outside 0 .. 2147483647" for a check whose
@@ -156,9 +156,8 @@ only.
 
 ### 8. The plan says nothing is converted at the sampler boundary; `max_attempts` is (documentation, low)
 
-The plan says so at
-(`dev/eigen_conversion.md`: `already builds as integers, so nothing is`).
-The vectors are integers, but `max_attempts` defaults to `100`, a double,
+The plan said "already builds as integers, so nothing is converted" in the
+step 1-2 record of `dev/eigen_conversion.md`. The vectors are integers, but `max_attempts` defaults to `100`, a double,
 and `assert_count()` does not convert it, so Rcpp coerces it at the call.
 The conversion is harmless (measured above: the range check keeps it
 inside `int`), but the note states it as absent. Name `max_attempts` as

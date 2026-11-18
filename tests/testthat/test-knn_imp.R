@@ -448,7 +448,7 @@ test_that("the kernel checks the invariants it relies on", {
   for (bad in list(-1L, 5L, NA_integer_)) {
     out <- base
     out$grp_complete <- c(1:3, bad)
-    expect_error(do.call(impute_knn_brute, out), "out-of-bounds column index")
+    expect_error(do.call(impute_knn_brute, out), "outside the columns of obj")
   }
   for (bad in list(0L, NA_integer_)) {
     out <- base

@@ -9,9 +9,8 @@
 
 // Column and row statistics over a numeric matrix, read in place. Each export
 // takes the matrix as `obj` and returns the R type its value naturally has:
-// counts as an integer vector, statistics as a double vector. Every index and
-// offset is std::size_t, so a matrix past 2^31 cells indexes correctly; a
-// count is bounded by nrow() or ncol(), which R holds as int.
+// counts as an integer vector, statistics as a double vector. Indices and
+// offsets follow src/matrix_checks.h.
 
 // Row 1 the column minima, row 2 the maxima. Comparisons skip NaN.
 // [[Rcpp::export]]
@@ -31,7 +30,7 @@ Rcpp::NumericMatrix col_min_max(const Rcpp::NumericMatrix &obj)
 
   for (std::size_t j = 0; j < n_cols; ++j)
   {
-    const double *col = x + j * n_rows;
+    const double *col = col_ptr(x, j, n_rows);
     double lo = std::numeric_limits<double>::infinity();
     double hi = -std::numeric_limits<double>::infinity();
 
@@ -63,7 +62,7 @@ Rcpp::NumericVector col_vars_internal(const Rcpp::NumericMatrix &obj)
 
   for (std::size_t k = 0; k < n_cols; ++k)
   {
-    const double *col = x + k * n_rows;
+    const double *col = col_ptr(x, k, n_rows);
 
     double mean = 0.0;
     double mean2 = 0.0;
@@ -115,7 +114,7 @@ void check_finite(const Rcpp::NumericMatrix &obj)
 
   for (std::size_t col = 0; col < nc; ++col)
   {
-    const double *cp = x + col * nr;
+    const double *cp = col_ptr(x, col, nr);
 
     bool has_finite = false;
 
@@ -164,7 +163,7 @@ Rcpp::IntegerVector col_miss_internal(const Rcpp::NumericMatrix &obj)
 
   for (std::size_t j = 0; j < n_cols; ++j)
   {
-    const double *p = x + j * n_rows;
+    const double *p = col_ptr(x, j, n_rows);
 
     int count = 0;
 
@@ -192,7 +191,7 @@ Rcpp::IntegerVector row_miss_internal(const Rcpp::NumericMatrix &obj)
 
   for (std::size_t j = 0; j < n_cols; ++j)
   {
-    const double *p = x + j * n_rows;
+    const double *p = col_ptr(x, j, n_rows);
 
     for (std::size_t i = 0; i < n_rows; ++i)
     {

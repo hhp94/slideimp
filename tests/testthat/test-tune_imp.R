@@ -1764,6 +1764,35 @@ test_that("the sampler checks the indices it relies on", {
   bad <- base
   bad$max_attempts <- NA_integer_
   expect_error(do.call(sample_each_rep_cpp, bad), "max_attempts")
+
+  # a repeated column could fill two slots and return one cell twice
+  bad <- base
+  bad$pool_idx_in <- c(1L, 1L)
+  expect_error(
+    do.call(sample_each_rep_cpp, bad),
+    "pool_idx_in holds column index 1 more than once"
+  )
+})
+
+test_that("the sampler's draws under a seed are pinned", {
+  # Positions drawn by the RcppArmadillo build this code replaced (76d4c60),
+  # under set.seed(1). A change to the order or number of R::runif() calls
+  # moves them. The pool is visited out of order (columns 2, 6, 3), so the
+  # shuffle, the protected pair and the commit draws all feed the result.
+  obj <- matrix(as.numeric(c(1:30, 30:1)), 10, 6)
+  set.seed(1)
+  pos <- sample_each_rep_cpp(
+    obj,
+    pool_idx_in = 0:5,
+    na_per_col = c(2L, 2L, 3L),
+    row_room = rep(2L, 10),
+    pool_cap = rep(4L, 6),
+    max_attempts = 10L
+  )
+  expect_identical(
+    pos,
+    matrix(c(8L, 3L, 9L, 2L, 4L, 9L, 5L, 2L, 2L, 6L, 6L, 3L, 3L, 3L), 7, 2)
+  )
 })
 
 # tune_imp() driver ----

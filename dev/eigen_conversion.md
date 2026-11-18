@@ -447,9 +447,11 @@ on the working tree over `1ac016a`.
   test that compared `cores = 1` with `cores = 4` goes with it.
   `mean_imp_col_internal()` is deleted. `arma_uword_bytes()` moves to
   `src/armaSVD.cpp`.
-- `sample_each_rep_cpp()` takes integer vectors and an `int max_attempts`,
-  which `sample_na_loc()` already builds as integers, so nothing is
-  converted, and returns an integer matrix; `sample_na_loc()` drops its
+- `sample_each_rep_cpp()` takes integer vectors and an `int max_attempts`.
+  `sample_na_loc()` already builds the vectors as integers, so they are not
+  converted; `max_attempts` is, at the call, since its default is the
+  double `100` and `checkmate::assert_count()`, which bounds it to an int,
+  leaves its type alone. It returns an integer matrix; `sample_na_loc()` drops its
   `storage.mode()` line. It refuses an index or budget outside its range,
   NA included, and lengths that disagree, before it indexes with them; a
   new test in `tests/testthat/test-tune_imp.R` raises each refusal. Every
@@ -538,6 +540,34 @@ Step 3, on the working tree over `12ac4bd`:
   `pca_imp()` calls `col_vars()`, `check_finite()` and `mat_miss()`.
 - The suite with the manual tests, as for steps 1 and 2: 22 files, 275
   tests, none failed, errored or skipped.
+
+The Phase 1 review checkpoint (`dev/ad45ec5..5412876.md`) found no int
+narrowing, no Rcpp object or R call inside a worker, and the `R::runif`
+draws in the same order and number as Armadillo's. Its other findings were
+fixed on the working tree over `5412876`:
+
+- `col_ptr()`, the column-index refusal and a non-negative-count refusal
+  live in `src/matrix_checks.h`, which states the int and `size_t` rule
+  once. Every column offset in `src/mat_stats.cpp`,
+  `src/sample_each_rep_cpp.cpp` and the K-NN chain goes through
+  `col_ptr()`, which takes `size_t`, so an `int` argument is widened before
+  the multiply. The K-NN and sampler index refusals share one wording; the
+  K-NN one changed from "out-of-bounds column index".
+- `sample_each_rep_cpp()` refuses a column listed twice in `pool_idx_in`,
+  which could fill two slots from one column and return a cell twice.
+  `sample_na_loc()` never passes one.
+- The K-NN progress bar counts a column with no neighbor, so it reaches its
+  total.
+- `tests/testthat/test-tune_imp.R` pins the positions one seeded
+  `sample_each_rep_cpp()` call draws, read from the reference build, so a
+  change to the draws fails the suite and not only the capture.
+- `README.Rmd` no longer credits RcppArmadillo and RcppThread to
+  `col_vars()`.
+- Capture `p1r` against `76d4c60`: the same 7 deliberate failures as `p1s3`,
+  everything else bitwise. Edges at tolerance 0: 70 cases, the 2
+  `col_min_max()` failures and now `knn_idx_out`, whose message is the new
+  shared wording. The suite with the manual tests: 22 files, 276 tests, none
+  failed, errored or skipped.
 
 ## Phase 2: the PCA chain to R's BLAS and LAPACK
 

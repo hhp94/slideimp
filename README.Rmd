@@ -295,5 +295,5 @@ slide_imp(
 ```
 
 ## Other functions
-* `col_vars()`: Fast column-wise variance via `{RcppArmadillo}` and `{RcppThread}`.
+* `col_vars()`: Column-wise variance, skipping missing values.
 * `mat_miss()`: Efficient column or row missing statistics.

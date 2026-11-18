@@ -7,6 +7,7 @@
 #include <utility>
 #include <vector>
 #include "loc_timer.h"
+#include "matrix_checks.h"
 
 // One repetition of the constrained NA sampler behind sample_na_loc().
 //
@@ -24,25 +25,6 @@
 // Every uniform draw is R::runif(0, 1), from R's generator, so set.seed()
 // fixes the positions.
 
-// Refuses a vector holding a value below 0 (NA_integer_ included) or at or
-// above `bound`, so every value can index or count safely as std::size_t.
-static void check_range(const Rcpp::IntegerVector &v,
-                        const long long bound,
-                        const char *name)
-{
-  for (R_xlen_t i = 0; i < v.size(); ++i)
-  {
-    if (v[i] < 0 || v[i] >= bound)
-    {
-      Rcpp::stop(std::string(name) + " holds " +
-                 (v[i] == NA_INTEGER ? std::string("NA")
-                                     : std::to_string(v[i])) +
-                 " at position " + std::to_string(i + 1) +
-                 ", outside 0 .. " + std::to_string(bound - 1) + ".");
-    }
-  }
-}
-
 // [[Rcpp::export]]
 Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
                                         const Rcpp::IntegerVector &pool_idx_in, // 0-based column indices available for sampling
@@ -55,7 +37,6 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
   LOC_TIC(sample_each_rep, "sample_each_rep_total");
 
   const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
-  const long long int_max = std::numeric_limits<int>::max() + 1LL;
 
   // The kernel indexes with these values, so it checks them, not the caller.
   if (row_room.size() != obj.nrow())
@@ -71,10 +52,24 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
   {
     Rcpp::stop("max_attempts must be 0 or more.");
   }
-  check_range(pool_idx_in, obj.ncol(), "pool_idx_in");
-  check_range(na_per_col, int_max, "na_per_col");
-  check_range(row_room, int_max, "row_room");
-  check_range(pool_cap, int_max, "pool_cap");
+  stop_on_bad_col_index(pool_idx_in, obj.ncol(), "pool_idx_in");
+  stop_on_negative(na_per_col, "na_per_col");
+  stop_on_negative(row_room, "row_room");
+  stop_on_negative(pool_cap, "pool_cap");
+  // A column listed twice could fill two slots from the same unchanged
+  // column, returning one (row, col) twice.
+  {
+    std::vector<unsigned char> seen(static_cast<std::size_t>(obj.ncol()), 0);
+    for (R_xlen_t i = 0; i < pool_idx_in.size(); ++i)
+    {
+      if (seen[pool_idx_in[i]])
+      {
+        Rcpp::stop("pool_idx_in holds column index " +
+                   std::to_string(pool_idx_in[i]) + " more than once.");
+      }
+      seen[pool_idx_in[i]] = 1;
+    }
+  }
 
   const int *pool = pool_idx_in.begin();
   const int *need = na_per_col.begin();
@@ -138,7 +133,7 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
         continue;
       }
 
-      const double *candidate = x + static_cast<std::size_t>(col_idx) * n_rows;
+      const double *candidate = col_ptr(x, col_idx, n_rows);
 
       // Split the observed rows by row budget.
       //  - A row with budget left can take an NA: it goes to `left_temp`.

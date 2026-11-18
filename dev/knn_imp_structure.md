@@ -179,13 +179,15 @@ wrappers), `src/impute_knn_brute.cpp` (K-NN kernel and entry point),
 Project headers reached, following the `#include` graph:
 
 - `src/imputed_value.h` -- included by `src/impute_knn_brute.cpp` and
-  `src/imputed_value.cpp`. Defines `mask_t`, `col_ptr()`, `GroupLayout`, the
+  `src/imputed_value.cpp`. Defines `mask_t`, `GroupLayout`, the
   header-inline `validate_knn_inputs()`, and the two out-of-line declarations
   (`src/imputed_value.h`: `void initialize_result(`,
   `void impute_column_values(`).
 - `src/matrix_checks.h` -- pulled in by `src/imputed_value.h` and
-  `src/mat_stats.cpp`. Holds only `stop_on_inf()`, which the K-NN kernel and
-  `check_inf()` share.
+  `src/mat_stats.cpp` and `src/sample_each_rep_cpp.cpp`. Holds `col_ptr()`,
+  the column-index refusal `validate_knn_inputs()` and the sampler share,
+  a non-negative-count refusal, and `stop_on_inf()`, which the K-NN kernel
+  and `check_inf()` share.
 - `src/par_for.h` -- included by `src/impute_knn_brute.cpp` only. One
   function template: `par_for()` runs the loop body
   inline when `n_threads <= 1` and hands off to `RcppThread::parallelFor()`
@@ -213,7 +215,7 @@ the PCA, windowing, and simulation paths and are not reached from `knn_imp()`.
 indices, and every row and column index the kernel derives from them -- is
 `int`, bounded by `nrow()` or `ncol()`, which R holds as `int`. The offset of
 a column into a buffer is taken in `size_t` by `col_ptr()`
-(`src/imputed_value.h`: `inline T *col_ptr(`), so a matrix past `2^31` cells
+(`src/matrix_checks.h`: `inline T *col_ptr(`), so a matrix past `2^31` cells
 indexes correctly, and so are the result offsets (`src/imputed_value.cpp`:
 `std::size_t sum_missing = 0;`). The result is an R matrix, whose dims are
 `int`, so more than `2^31 - 1` missing cells in `grp_impute` is refused
@@ -343,7 +345,8 @@ callers of the kernel; one is a test (`tests/testthat/test-knn_imp.R`:
   common with the target) sit at the tail and are popped before returning. The
   caller can therefore receive fewer than `k` neighbors, or none at all; when
   none, the column's entries of `value` keep their initial `NA`
-  (`src/impute_knn_brute.cpp`: `if (n_neighbors == 0)`).
+  (`src/impute_knn_brute.cpp`: `if (n_neighbors > 0)`), and the column still
+  advances the progress bar.
 
 The structure is therefore a sorted fixed-size array with insertion, not a heap
 and not a full sort of all candidates: exactly one `std::stable_sort`, over `k`
