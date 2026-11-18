@@ -213,6 +213,16 @@ Owed:
   Armadillo's OpenMP in slideimp's own PCA and K-NN code, a cost not yet
   measured here. Measure it on those paths before making the change, as its
   own commit.
+- **`USE_FC_LEN_T` before the R headers.** `src/mipca.cpp` and
+  `src/mipca_crps.cpp` call BLAS through `R_ext/BLAS.h` and pass `FCONE`,
+  but neither defines `USE_FC_LEN_T` before its first R header, and neither
+  falls back with `#ifndef FCONE`, as *Writing R Extensions*, "Fortran
+  character strings", writes the call (`dev/r_manual/R-exts.md`). The
+  manual notes that `USE_FC_LEN_T` is the default from R 4.3.0, the oldest R
+  the package supports, so the lengths are passed today; that the calls are
+  right on R 4.3.0 itself is not measured here. Ruled 2026-11-18: a file
+  that disagrees with the manual is a bug to fix, not a model.
+  `src/si_lapack.cpp` has the manual's form. Upstream.
 - **The Spectra licence notice.** `src/Spectra/` is vendored, and its
   copyright holders are in `Authors@R`, but no notice file ships its
   licence: `inst/LICENSE.note` covers only the code adapted from carrier.

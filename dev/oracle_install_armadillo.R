@@ -9,8 +9,9 @@
 # CRAN's version is the source package's. The Windows binary is used when it
 # is the same version; when the binary lags, the source package is built,
 # which needs Rtools. Dependencies are not installed into <lib>: Rcpp comes
-# from the usual library, so the oracle run sets R_LIBS=<lib> before R starts
-# and keeps R_LIBS_USER as it is.
+# from the usual library. dev/oracle_run.R takes <lib> as its argument, puts
+# it first on the library path and stops unless RcppArmadillo then resolves
+# inside it, so R_LIBS_USER stays as it is.
 #
 # <lib> is regenerable and stays out of the repository. The oracle prints
 # packageVersion("RcppArmadillo") on every run; this script prints the

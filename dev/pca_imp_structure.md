@@ -65,7 +65,9 @@ C++ files in the chain: 3 translation units (`src/armaSVD.cpp`, `src/RcppExports
 `src/mat_stats.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`, `eig_sym_sel.h`,
 `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `matrix_checks.h`,
 `loc_timer.h`). Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
-`impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
+`impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`, and
+`si_lapack.cpp/.h`, the wrapper layer no file of the chain includes yet ("What the
+wrappers reproduce").
 
 ## Layer 1: R entry point (`R/pca_imp.R`)
 
@@ -437,6 +439,135 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` problem. The
 LOBPCG path never touches `n_gram`-sized LAPACK: its dense work is `n_gram x k` matvecs and
 QRs plus a `3k x 3k` dsyevd.
+
+## What the wrappers reproduce
+
+`src/si_lapack.h` declares, and `src/si_lapack.cpp` defines, R's BLAS and LAPACK as plain
+functions over `double*`, dimensions and an int status. No file of the chain calls one yet;
+the table above is still how BLAS and LAPACK are entered. Each wrapper stands in for one
+call the chain makes today, and this section records what that call does, so that a call
+site can be moved to its wrapper without reading Armadillo again.
+
+READ means read in `armadillo_bits` of the installed RcppArmadillo, version 15.6.2-1
+(Armadillo 15.6.2). NOT READ is said where it applies. `dev/oracle_run.R` runs every
+wrapper beside the call it stands in for.
+
+**How RcppArmadillo configures Armadillo** (READ: `RcppArmadilloConfig.h`, `config.hpp`,
+`typedef_elem.hpp`, `compiler_setup.hpp`). `ARMA_USE_BLAS` and `ARMA_USE_LAPACK` are
+defined; `blas_int` is `int`; symbols take a trailing underscore; `ARMA_USE_FORTRAN_HIDDEN_ARGS`
+is defined, so every Fortran character argument is followed by a hidden `size_t` length,
+passed as a literal 1. `ARMA_WARN_LEVEL` is 2: a warning of level 1 or 2 is written to
+`ARMA_CERR_STREAM`, which RcppArmadillo points at `Rcpp::Rcerr`, and is not an R warning;
+one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
+
+| wrapper | stands in for | routine and options | on failure |
+| --- | --- | --- | --- |
+| `si_la::gemm` | `arma::dgemm_`, called directly | dgemm, every argument passed through | BLAS has no status |
+| `si_la::gemv` | no direct call; `*` reaches it (below) | dgemv, unit strides | BLAS has no status |
+| `si_la::syrk` | `arma::dsyrk_`, called directly | dsyrk, every argument passed through | BLAS has no status |
+| `si_la::matmul` | `*`, `+=` and `-=` of a product of two `arma::mat` | dgemv or dgemm (below) | Armadillo throws on dimensions that do not conform |
+| `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declares itself | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or fewer eigenpairs than asked |
+| `si_la::syevd` | `arma::dsyevd_`, called directly | dsyevd, `jobz = 'V'` | `info != 0` |
+| `si_la::qr_econ` | `arma::qr_econ()` | dgeqrf, then dorgqr | returns false, `Q` and `R` reset |
+| `si_la::solve_tri` | `arma::solve()` on `trimatl()` or `trimatu()` | dtrtrs, dtrcon, and dgelsd as the fallback | throws `std::runtime_error` |
+| `si_la::svd_values` | `arma::svd()` returning the values alone | dgesdd, `jobz = 'N'` | throws `std::runtime_error` |
+
+The three direct calls are Armadillo's own declarations of the Fortran symbols (READ:
+`def_blas.hpp`, `def_lapack.hpp`), with nothing between the call site and BLAS. Armadillo
+declares no dsyevr and calls it nowhere, so `si_la::syevr_range` has no Armadillo
+counterpart; the oracle compares it with `arma::eig_sym()`, which is dsyevd (READ:
+`auxlib::eig_sym_dc()` calls `lapack::syevd`; the rest of it is NOT READ).
+
+**`arma::qr_econ(Q, R, X)`** (`src/lobpcg_warm.h`: `if (!arma::qr_econ(Q, R, V))`). READ:
+`fn_qr.hpp`, `auxlib::qr_econ()`, `auxlib::qr()`. For `m > n` it copies `X` into `Q`, runs
+dgeqrf there, copies the upper triangle into an `n x n` `R`, zero below, and runs dorgqr on
+`Q` with `k = n`. For `m <= n`, square included, it hands over to the full `qr()`: dgeqrf
+in an `m x n` `R`, the first `m` columns copied into an `m x m` `Q`, `R` zeroed below its
+diagonal, dorgqr with `k = m`. Both are dgeqrf on the `m x n` matrix and dorgqr on its first
+`min(m, n)` columns, which is how the wrapper writes it. One workspace serves both
+routines: dgeqrf is asked for its optimum, the answer is raised to `max(1, m, n)`, and
+dorgqr is not asked. An empty `X` succeeds without LAPACK. Nothing checks for NaN or Inf.
+On `info != 0` from either routine `auxlib` returns false; `qr_econ()` then resets `Q` and
+`R`, warns at level 3, which is dropped, and returns false. The caller tests that flag.
+
+**`arma::solve(arma::trimatl(A), B)`**
+(`src/lobpcg_warm.h`: `AQ = arma::solve(arma::trimatl(R.t()), AQ.t()).t();`). READ:
+`fn_solve.hpp`, `glue_solve_tri_default::apply()`, `auxlib::solve_trimat_rcond()`,
+`auxlib::rcond_trimat()`, `auxlib::solve_approx_svd()`. It is not a plain triangular
+solve:
+
+1. dtrtrs with `trans = 'N'`, `diag = 'N'` on a copy of `B`. `info != 0`, a zero on the
+   diagonal, counts as failed, with the estimate left at 0.
+2. Otherwise dtrcon estimates the reciprocal condition number in the 1-norm; `info != 0`
+   there makes it 0.
+3. If the solve failed, or the estimate is below `DBL_EPSILON` or NaN, Armadillo writes a
+   level-2 warning ("system is singular; attempting approx solution", or "system is close
+   to singular; rcond: ...") and discards the triangular answer. It copies the triangle
+   alone into a square matrix and solves by dgelsd, from `B` as given, treating singular
+   values under `n * DBL_EPSILON` times the largest as zero: the minimum-norm least-squares
+   solution. That fallback refuses NaN or Inf in the triangle or in `B`.
+4. If the fallback fails too, `solve()` throws `std::runtime_error`, "solve(): solution not
+   found", which Rcpp turns into an R error.
+
+So this call site goes on with an approximate `AQ` whenever `R` is singular to working
+precision, having printed a line and raised nothing. `si_la::solve_tri` does the same
+arithmetic and returns the estimate and a flag in place of the print. For an empty system
+Armadillo's estimate stays 0, so it prints the warning and returns the empty result; the
+wrapper returns the empty result with the flag unset.
+
+**`arma::svd(X)`** (`src/armaSVD.cpp`: `arma::vec s = arma::svd(V_prev.t() * V_new);`),
+in the `PCA_IMP_DIAGNOSTICS` build only. READ: `fn_svd.hpp`, `auxlib::svd_dc()`. dgesdd with
+`jobz = 'N'` on a copy of `X`. An empty `X` gives an empty result. NaN or Inf in `X` is
+refused before LAPACK. The workspace is the larger of
+`3 min(m, n) + max(max(m, n), 7 min(m, n))` and dgesdd's own optimum, which is asked for
+only when `X` has 1024 cells or more. A refusal or `info != 0` makes `svd()` throw
+`std::runtime_error`, "svd(): decomposition failed".
+
+**Products of two `arma::mat`** (READ: `glue_times_meat.hpp`, `mul_gemm.hpp`,
+`mul_gemv.hpp`, `mul_syrk.hpp`). `A * B` and `A.t() * B` choose their routine at run time,
+in this order, and `si_la::matmul` keeps the order:
+
+| product | routine |
+| --- | --- |
+| either operand has no cells | no BLAS: the result is zero-filled |
+| the result has one row | dgemv, `trans = 'T'`, on `B`, with the row as the vector |
+| else `B` has one column | dgemv on `A`, `'N'` for `A * B`, `'T'` for `A.t() * B` |
+| else `A.t() * A` on one object | dsyrk into the upper triangle, then mirrored; a vector, or `A` of 48 cells or fewer, by Armadillo's own loops |
+| else | dgemm, `'N'` or `'T'` for `A`, `'N'` for `B` |
+
+`C += A * B` and `C -= A * B` do not form the product and then add it: when `C` is not one
+of the operands they are one call of the same routine with `beta = 1` and `alpha = 1` or
+`-1` (`glue_times::apply_inplace_plus()`). When `C` is an operand, as in
+(`src/lobpcg_warm.h`: `V -= X * (X.t() * V);`), the product is formed first and
+subtracted cell by cell. A product inside a sum or difference, as in
+(`src/lobpcg_warm.h`: `P = X_prev - X_curr * (X_curr.t() * X_prev);`), is formed first
+too (NOT READ: that no rewrite of a sum of products into one BLAS call exists; the oracle
+does not cover those forms). Three operands written `A * (B * C)` are two products, the
+inner one first: `depth_lhs` counts only operands nested on the left (READ), so the
+parenthesised product is one operand (NOT READ: `partial_unwrap`, which evaluates it).
+
+Two things Armadillo does that `si_la::matmul` does not:
+
+- For a square matrix operand of 4 x 4 or less (dgemv), or two square operands of the same
+  size up to 4 x 4 (dgemm), Armadillo runs loops of its own and calls no BLAS (READ: the
+  tests in `gemm::apply_blas_type()` and `gemv::apply_blas_type()`; NOT READ: the loops).
+  The wrapper calls BLAS, so such a product can differ in its last bits. In the chain that
+  needs a Gram of at most 4 x 4 under LOBPCG.
+- The dsyrk route for `A.t() * A` on one object. No call site of the chain has that form.
+
+An in-place product with an empty inner dimension is passed on to dgemm with a leading
+dimension of 0 (READ from the arguments `gemm::apply_blas_type()` builds; not run, since
+BLAS answers that through xerbla). The wrapper scales `C` by `beta` and calls nothing.
+
+**Calls no wrapper stands in for.** `arma::norm(P, "fro")`
+(`src/lobpcg_warm.h`: `!(arma::norm(P, "fro") > min_projected_fro_norm))`) is dnrm2 over
+all cells, recomputed by a scaled loop when the result is 0 or not finite (READ:
+`fn_norm.hpp`, `op_norm::vec_norm_2_direct_std()`; NOT READ: the scaled loop).
+`arma::norm(A, "inf")` is `max(sum(abs(A), 1))` with no BLAS (READ: `op_norm::mat_norm_inf()`;
+NOT READ: the order `sum()` adds in). `arma::dot()` is Armadillo's own loop up to 32 elements
+and ddot above (READ: `op_dot::direct_dot()`; NOT READ: that the `head()` views of
+(`src/armaSVD.cpp`: `arma::dot(vs_top.head(ncp), vs_top.head(ncp))`) reach it).
+`arma::trace`, `accu`, `sum`, `cumsum`, `find`, `fliplr` and `reverse` are NOT READ.
 
 ## Data structures and ownership
 

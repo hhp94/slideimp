@@ -36,8 +36,10 @@ checked against both RcppEigen versions (see "Both RcppEigen versions").
   element loops - becomes plain Rcpp: raw pointers into R memory, `R_xlen_t`
   or `std::size_t` indices, the same loops.
 - Every BLAS and LAPACK call goes through R's own headers, `R_ext/BLAS.h` and
-  `R_ext/Lapack.h`, with `F77_CALL` and `FCONE`, the way `src/mipca.cpp`
-  already does. That covers the calls the PCA chain makes today through
+  `R_ext/Lapack.h`, with `F77_CALL` and `FCONE`, as *Writing R Extensions*
+  gives them. No file already in `src/` is the model: where one disagrees
+  with the manual, that is a bug to fix (maintainer, 2026-11-18). That
+  covers the calls the PCA chain makes today through
   Armadillo's wrappers (`dgemm_`, `dsyrk_`, `dsyevr_`, `dsyevd_`) and the
   LAPACK routines behind Armadillo's own algebra (`qr_econ`, `solve`, `inv`,
   `svd`). This is the interface Writing R Extensions documents for BLAS and
@@ -144,7 +146,9 @@ assumption until the candidate build of each step says so.
 
 ## The wrapper layer
 
-One header and one source file under `src/`, named when they are written.
+One header and one source file under `src/`, which are `src/si_lapack.h`
+and `src/si_lapack.cpp`. "The wrapper layer and the oracle, as written"
+below records what they hold and how they were checked.
 
 R's own guidance governs every wrapper, and wins over Armadillo's habits
 and over convenience. It is read from *Writing R Extensions*, kept as
@@ -173,13 +177,13 @@ stops and says so.
   plain functions over `double*`, dims and a status: no LAPACK declaration,
   no Armadillo type, no Eigen type. The PCA translation unit can then
   include it beside `RcppArmadillo.h` without the redeclaration warnings
-  `src/eig_sym_sel.h` describes, and calls move one at a time. NOT COMPILED:
-  this is an assumption until the first wrapper builds without a new
-  warning.
+  `src/eig_sym_sel.h` describes, and calls move one at a time. Measured, in
+  "The wrapper layer and the oracle, as written".
 - One wrapper per routine the chain calls: `dgemm`, `dsyrk`, `dsyevr`,
   `dsyevd`, and the routines behind `qr_econ`, the triangular `solve` and
-  `svd`. Which LAPACK routines those three are is NOT READ; each is written
-  down in `dev/pca_imp_structure.md` when it is.
+  `svd`. READ: those are dgeqrf with dorgqr; dtrtrs with dtrcon, and dgelsd
+  as Armadillo's fallback; and dgesdd. `dev/pca_imp_structure.md`, "What the
+  wrappers reproduce", has each.
 - Each wrapper does its own workspace query, passes Fortran character
   arguments with `FCONE`, and returns LAPACK's `info` as its status. It
   takes and returns plain C++ types and does not call the R API: raising
@@ -209,7 +213,8 @@ replaced.
 - A C++ file in dev/, compiled by `Rcpp::sourceCpp()` against that library,
   pulls in the wrapper source and exposes each pair to R: the wrapper, and
   the Armadillo call it replaces. Armadillo and `R_ext/Lapack.h` in one file
-  give the redeclaration warnings; in this file they are accepted.
+  give the redeclaration warnings; in this file they are accepted. As
+  written they do not arise: the wrapper source is a unit of its own.
 - An R script runs every pair on ordinary inputs and on degenerate ones:
   singular, rank-deficient, one column, one row, and whatever else the
   chain can pass. Per routine it prints the worst absolute and the worst
@@ -224,6 +229,91 @@ replaced.
   after an update is checked against what Armadillo changed first.
 - The scripts are tracked, each with its `!` line in `dev/.gitignore`; the
   library is regenerable and is not.
+
+## The wrapper layer and the oracle, as written
+
+On the working tree over `7d0c176`, 2026-11-18; not reviewed yet, and no
+file of the PCA chain calls a wrapper. Every figure is a reading on one
+machine with one BLAS.
+
+- `src/si_lapack.h` declares nine functions in namespace `si_la`: `gemm`,
+  `gemv`, `syrk`, `matmul`, `syevr_range`, `syevd`, `qr_econ`, `solve_tri`
+  and `svd_values`. Sizes are `std::size_t`; the status is 0, LAPACK's
+  positive `info`, or one of five codes of the wrapper's own. An illegal
+  argument is refused before the Fortran routine is entered, since under R
+  xerbla raises an R error from inside the library. Nothing calls the R
+  API or throws; a failed allocation is a status.
+- Two more than the list above. `*` on two `arma::mat` is not always dgemm:
+  READ, it is dgemv when the product has one row or one column, which the
+  products in `src/lobpcg_warm.h` are when one eigenpair is asked for, and
+  `+=` and `-=` of a product are one call with `beta = 1`. `gemv` is that
+  routine, and `matmul` chooses between the two as Armadillo does, so the
+  choice is tested in one place and not rewritten at each call site.
+- Not wrapped. `arma::norm(, "fro")` reaches dnrm2, and `arma::dot()`
+  reaches ddot above 32 elements (READ). Ruled 2026-11-18: no wrapper for
+  either, and a plain loop at each of the chain's three sites, in the step
+  that converts the file: the dot of the top singular values in
+  `src/armaSVD.cpp`, and the Frobenius norm of the projected block and the
+  infinity norm of `A` in `src/lobpcg_warm.h`. None is in a hot path by
+  operation count (not timed): each is lower order than the products beside
+  it. The Frobenius norm will not be bitwise equal to dnrm2, which scales
+  as it sums; the block is a projection of orthonormal vectors, so a plain
+  sum of squares cannot overflow, and the value only feeds a threshold
+  test. Armadillo's infinity norm calls no BLAS (READ). A difference shows
+  in the reference capture at its tolerance.
+- Where a wrapper is not Armadillo's call, each recorded in
+  `dev/pca_imp_structure.md`: products of square operands up to 4 x 4 go
+  to BLAS, where Armadillo runs loops of its own; `A.t() * A` on one object
+  is not sent to dsyrk; the dgelsd fallback of the triangular solve is
+  sized without ilaenv, whose routine name is a Fortran string longer than
+  the one character `FCONE` covers; that fallback is reported by a flag,
+  where Armadillo prints a warning; and an empty triangular system sets no
+  flag. Against the chain's own dsyevr call, which is not Armadillo's:
+  `syevr_range` asks for the workspace and allocates it on every call,
+  where `src/eig_sym_sel.h` asks once and keeps the buffers. Not timed.
+- Where it is not this plan's wording: `svd_values` asks dgesdd for its
+  workspace only from 1024 cells up, and `qr_econ` sizes dorgqr from
+  dgeqrf's answer, because Armadillo does and a different length can put
+  LAPACK on another code path. `dev/oracle_run.R` is given the library as
+  an argument and does not need `R_LIBS`. `Rcpp::sourceCpp()` builds
+  `si_lapack.cpp` as a translation unit of its own, so the oracle's unit
+  never includes `R_ext/Lapack.h` and there is no redeclaration warning to
+  accept.
+- R 4.3.0 is not checked. R's NEWS says 4.5.0 extended the routines
+  `R_ext/Lapack.h` declares without listing them, so the NEWS cannot
+  settle which of the eight LAPACK routines used here R 4.3.0 declares.
+  Ruled 2026-11-18: write against R-devel and the installed headers (R
+  4.6.1 declares all of them); the check on the Linux images settles 4.3.0.
+- Compiled outside the working tree, `-Wall -pedantic`: 511
+  `-Wignored-attributes` warnings at `7d0c176` and 511 with the two files
+  added, nothing else. The assumption under "The wrapper layer" is
+  measured: `src/armaSVD.cpp`, made in the scratch copy to include
+  `si_lapack.h` beside `RcppArmadillo.h` and call a wrapper, compiles with
+  the same 511.
+- Capture `wrap`, of a build that carries the new object: 71 cases, every
+  one bitwise identical to `p1r`, and against `76d4c60` the 7 deliberate
+  failures `p1r` has. The suite was not run for this step: no test reaches
+  a wrapper, and nothing under `R/` or `tests/` changed.
+- The oracle, against RcppArmadillo 15.6.2-1: 627 cases, all passing.
+  Every pair that enters the same routine is bitwise identical: `gemm`
+  154, `gemv` 46, `syrk` 119, `matmul` 83 and one that both sides refuse,
+  `syevd` 46, `qr_econ` 17, `solve_tri` 36 (16 solved exactly, 12 by
+  Armadillo's fallback, 4 failed on both sides, 4 empty), 4 in the form
+  `src/lobpcg_warm.h` writes, `svd_values` 14 and 2 failed on both sides.
+  The 42 products Armadillo runs in its own loops differ from BLAS by at
+  most 8.9e-16 absolute and 3.8e-15 relative, 18 of them bitwise.
+  `syevr_range` against `eig_sym()`, another algorithm: at most 1.7e-13
+  absolute and 7.6e-10 relative over the cells above 1e-6 of the largest,
+  34 cases. 29 refusals return the code expected.
+- `dev/oracle_selftest.R` breaks one wrapper at a time in a copy, twelve
+  ways (the other triangle in `syrk`, `syevr_range`, `syevd` and
+  `solve_tri` among them); the oracle named the broken routine each time
+  and passed on the unbroken source.
+- Found on the way. `src/mipca.cpp` and `src/mipca_crps.cpp` do not define
+  `USE_FC_LEN_T` before their R headers; they are vendored, so the fix is
+  an upstream item in `dev/to-do.md`. `uv run dev/check_map_anchors.py`
+  fails on `dev/r_manual/R-exts.md`, which cites paths of R's own source
+  tree, and passes on every other note.
 
 ## Who does which work
 
@@ -243,6 +333,7 @@ tested. When a piece is in doubt, it goes to Fable.
 | Phase 2, the call sites in `src/lobpcg_warm.h` and `src/armaSVD.cpp` where a factorization can fail | Fable | What the code does next must match what Armadillo's flag or fallback led to; LOBPCG iterates, so a last-bit change can grow |
 | Any step whose results move beyond the noise floor | Fable | Finding which call moved them before going on |
 | Phase 3 | Opus | Mechanical |
+| Phase 4 | Fable | Each item changes what a kernel does on purpose, with no Armadillo to compare against |
 
 The wrapper layer touches only new files, so it is written while Phase 1
 runs. Phase 1's K-NN chain is what the rest of `dev/si_mi_conversion.md`
@@ -607,9 +698,9 @@ order, each step compiling and passing on its own:
 For each Armadillo algebra call, first READ in RcppArmadillo's
 armadillo_bits which LAPACK routine it calls, with which options, and what
 it does on failure (READ: the general `solve()` warns and falls back to an
-approximate solution on a singular or near-singular system; whether the
-triangular path `src/lobpcg_warm.h` takes does the same is NOT READ;
-`qr_econ()` returns a flag the caller tests), then call the same routine
+approximate solution on a singular or near-singular system, and so does the
+triangular path `src/lobpcg_warm.h` takes; `qr_econ()` returns a flag the
+caller tests), then call the same routine
 with the same options and keep the failure path. Write down what was read
 in `dev/pca_imp_structure.md` as the step lands. That reading is done once,
 in the wrapper; a step below replaces the call with the wrapper and keeps
@@ -652,6 +743,91 @@ find out which call did it before going on.
   candidate current on that day, looked up again and not taken from this
   file. Record both versions in the commit body. Local CI on the Linux
   images is the maintainer's call.
+
+## Phase 4: off Armadillo's choices, before the release
+
+Written down 2026-11-18 at the maintainer's request; the items are the
+author's proposals, none ruled yet and none measured unless it says so.
+
+Phases 2 and 3 reproduce Armadillo so that the conversion can be shown
+bitwise. Several things the wrappers do exist only for that proof. They are
+scaffolding: once Phase 3 has passed, each is removed or replaced by what
+*Writing R Extensions* (`dev/r_manual/R-exts.md`) and the LAPACK
+documentation give, with no regard for what Armadillo did. The package that
+goes to CRAN should carry R's choices, not a second library's.
+
+The gate changes with this phase. The oracle compares against Armadillo, so
+a wrapper that leaves Armadillo's choice fails it by design. From here the
+gate is the Phase 0 reference capture at its tolerance, the suite, and a
+test of the wrapper's own written for the new behaviour, which must be shown
+to fail. Each item is its own commit, with worst absolute and worst relative
+difference against the capture and a timing from the driver.
+
+Scaffolding to remove, in `src/si_lapack.cpp` unless said otherwise:
+
+- `matmul`, which picks dgemv or dgemm as Armadillo's `*` does. Each call
+  site names the routine it wants.
+- `svd_values` asking dgesdd for its workspace only from 1024 cells up, and
+  `qr_econ` sizing dorgqr from dgeqrf's answer. Every routine is asked for
+  its own workspace, and the length used is the larger of the answer and
+  the documented minimum.
+- `qr_econ` taking the full-QR branch for square and wide input, if no call
+  site passes that shape. Count the shapes the chain passes first.
+- The dgelsd fallback in `solve_tri`, with dtrcon and the `approx` flag.
+  Armadillo goes on with a minimum-norm answer when the triangle is singular
+  to working precision. Without it a singular triangle is a status, and the
+  caller in `src/lobpcg_warm.h` decides: restart, or hand over to the dense
+  solver. This also deletes the workspace floors computed by hand because
+  ilaenv cannot be called under the `FCONE` rule, the weakest code in the
+  file. It changes results wherever the fallback fires today; how often real
+  data reaches it is not measured, and is measured before this is decided.
+- `syevd`, if no call site is left on it after Phase 2.
+- The oracle (`dev/oracle_pairs.cpp`, `dev/oracle_run.R`,
+  `dev/oracle_selftest.R`, `dev/oracle_install_armadillo.R`), their `!`
+  lines, and `dev/lib/`, once the last item above is gone and nothing is
+  left to compare. The section "What the wrappers reproduce" in
+  `dev/pca_imp_structure.md` is rewritten to say what the wrappers do, not
+  what they copy.
+
+Choices to make in the same phase:
+
+- Refuse NaN and Inf before every LAPACK call, not only where Armadillo
+  does (the SVD and the fallback). The scan is O(n^2) against a
+  factorization that is O(n^3); what a LAPACK build does with non-finite
+  input is not something to depend on.
+- Nothing compiled writes to the console. Armadillo printed its warnings to
+  the error stream; with it gone, a failure is a status, raised as one cli
+  error on the R side, on the main thread, never from a worker.
+- `-DUSE_FC_LEN_T` in `PKG_CPPFLAGS`, which the manual allows in place of
+  the define in each file. It would cover the two sampler files
+  (`dev/to-do.md`, "Sampler port: what is still owed") without an edit to
+  vendored code. Not compiled.
+- As few routines as the chain needs. Each one dropped is one less
+  declaration to depend on in the oldest supported R's `R_ext/Lapack.h`,
+  and one less path through an external BLAS or LAPACK on a check machine.
+
+To investigate, beyond the list above. Armadillo's choices were made for a
+general matrix library, not for this chain under R; with it gone, each one
+the code inherited is open again, as long as the answer stays inside R's
+guide:
+
+- Read how R's own sources call the same routines (the LAPACK module behind
+  `eigen()`, `qr()`, `svd()` and `La.svd()`), and where R and the wrapper
+  differ on options, workspace or checks, take R's form unless a
+  measurement says otherwise. R's usage is what CRAN's machines exercise
+  most. NOT READ yet.
+- Go through every remaining routine and option in the chain and ask what
+  it would be if chosen fresh: one symmetric eigensolver or two, whether
+  the values-only SVD is needed at all, whether a product that is
+  symmetric by construction should be dsyrk, whether the workspace of
+  `syevr_range` is kept across calls as `src/eig_sym_sel.h` keeps it today.
+- Go through *Writing R Extensions* once more against the finished `src/`,
+  not only the sections the wrapper layer needed: registration, visibility,
+  interrupts, allocation, the portability list. Record each rule and where
+  it is met, as the wrapper step did.
+- Each finding is a proposal with a measurement, put to the maintainer
+  before it is made. Nothing here licenses a hand-rolled kernel
+  (`dev/CPP.md`) or a call R's headers do not declare.
 
 ## Not settled yet
 

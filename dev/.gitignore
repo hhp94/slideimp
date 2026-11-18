@@ -24,6 +24,9 @@
 !eigen_time_worker.R
 !knn_imp_structure.md
 !oracle_install_armadillo.R
+!oracle_pairs.cpp
+!oracle_run.R
+!oracle_selftest.R
 !pca_imp_structure.md
 !probe_fallback_part.R
 !probe_mipca_progress_bytes.R
