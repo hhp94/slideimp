@@ -213,7 +213,7 @@ sample_na_loc <- function(
       "x" = "Problematic rows: {fmt_trunc(bad, 6)}"
     ))
   }
-  # never negative after the check above. It crosses into C++ as unsigned.
+  # never negative after the check above, which the sampler requires.
   row_room <- max_row_miss - row_miss
 
   # The most NAs each pool column can take: its room under `colmax`, less the
@@ -288,8 +288,6 @@ sample_na_loc <- function(
         call = fn_env
       )
     }
-    # arma::umat is a double matrix under 64-bit indices
-    storage.mode(result) <- "integer"
     colnames(result) <- c("row", "col")
     result
   })

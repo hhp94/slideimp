@@ -3,8 +3,6 @@
 #' Compute the sample variance for each column of a numeric matrix.
 #'
 #' @param obj A numeric matrix.
-#' @param cores Integer. Number of cores to use for parallel computation.
-#'   Defaults to `1`.
 #'
 #' @details
 #' Columns with fewer than two non-missing values are assigned `NA`.
@@ -34,7 +32,7 @@
 #'
 #' col_vars(obj)
 #' apply(obj, 2, var, na.rm = TRUE)
-col_vars <- function(obj, cores = 1) {
+col_vars <- function(obj) {
   checkmate::assert_matrix(
     obj,
     mode = "numeric",
@@ -43,8 +41,7 @@ col_vars <- function(obj, cores = 1) {
     min.cols = 1,
     .var.name = "obj"
   )
-  checkmate::assert_int(cores, lower = 1)
-  vars <- col_vars_internal(obj = obj, cores = cores)[1, ]
+  vars <- col_vars_internal(obj)
   names(vars) <- colnames(obj)
   return(vars)
 }

@@ -98,7 +98,7 @@ caller still holds cannot take an attribute in place (`R/utils.R`:
 
 Missingness and partitioning. `cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)`;
 `mat_miss()` (`R/mat_miss.R`: `mat_miss <- function(`) calls
-`col_miss_internal()` (`src/mat_stats.cpp`: `Rcpp::NumericMatrix col_miss_internal(`),
+`col_miss_internal()` (`src/mat_stats.cpp`: `Rcpp::IntegerVector col_miss_internal(`),
 which counts `std::isnan` per column and does not count `Inf` as missing
 (`src/mat_stats.cpp`: `count += std::isnan(p[i]);`). A second early return fires
 if no subset column has any missing value (`R/knn_imp.R`:
@@ -188,8 +188,8 @@ Project headers reached, following the `#include` graph:
   `src/mat_stats.cpp`. Holds only `stop_on_inf()`, which takes a pointer to
   the column-major cells and the dims, so the Armadillo kernel and the plain
   Rcpp exports of `src/mat_stats.cpp` share it.
-- `src/par_for.h` -- included by `src/impute_knn_brute.cpp` and
-  `src/mat_stats.cpp`. One function template: `par_for()` runs the loop body
+- `src/par_for.h` -- included by `src/impute_knn_brute.cpp` only. One
+  function template: `par_for()` runs the loop body
   inline when `n_threads <= 1` and hands off to `RcppThread::parallelFor()`
   otherwise. The reason is in the header's own comment -- RcppThread's free
   `parallelFor()` sets the global pool's thread count and restores it, and
@@ -213,7 +213,7 @@ the PCA, windowing, and simulation paths and are not reached from `knn_imp()`.
 
 `src/Makevars` sets `-DARMA_64BIT_WORD=1`, so `arma::uword` is 64-bit and
 kernel index arithmetic does not wrap on matrices past `2^32 - 1` elements;
-`src/mat_stats.cpp` exposes `arma_uword_bytes()` so the test suite can assert
+`src/armaSVD.cpp` exposes `arma_uword_bytes()` so the test suite can assert
 that flag survived.
 
 ## Layer 4 -- kernel setup and result skeleton
@@ -516,9 +516,9 @@ main thread to unwind the pool. The optional progress bar is an
 incremented from the workers (`src/impute_knn_brute.cpp`: `++(*bar);`).
 
 `src/Makevars` adds the OpenMP flags and links `RcppThread::LdFlags()`;
-`src/Makevars.win` omits the RcppThread link line. `col_vars_internal()` in
-`src/mat_stats.cpp` goes through the same `par_for()`, and so does
-`mean_imp_col_internal()`, which no R code calls.
+`src/Makevars.win` omits the RcppThread link line. The K-NN kernel is the
+only caller of `par_for()`; the column statistics in `src/mat_stats.cpp`
+run on one thread.
 
 ## How the wrappers reach knn_imp()
 

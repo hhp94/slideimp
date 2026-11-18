@@ -4,13 +4,10 @@
 \alias{col_vars}
 \title{Calculate Matrix Column Variances}
 \usage{
-col_vars(obj, cores = 1)
+col_vars(obj)
 }
 \arguments{
 \item{obj}{A numeric matrix.}
-
-\item{cores}{Integer. Number of cores to use for parallel computation.
-Defaults to \code{1}.}
 }
 \value{
 A numeric vector of column variances, named if \code{obj} has column

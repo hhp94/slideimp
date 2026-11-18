@@ -1714,9 +1714,7 @@ test_that("sample_na_loc positions are always observed cells", {
 })
 
 test_that("sample_na_loc returns integer index matrices", {
-  # sample_each_rep_cpp() hands back an arma::umat, which under 64-bit arma
-  # indices arrives as doubles. Indices are bounded by dim(), so they are
-  # coerced back to integer to match the documented return type.
+  # the documented return type, built by sample_each_rep_cpp() itself
   set.seed(1234)
   obj <- sim_mat(20, 30, perc_total_na = 0.2)$input
   locs <- sample_na_loc(obj, n_cols = 5, n_rows = 2, n_reps = 3)
@@ -1726,6 +1724,46 @@ test_that("sample_na_loc returns integer index matrices", {
     expect_equal(colnames(pos), c("row", "col"))
     expect_length(obj[pos], nrow(pos))
   }
+})
+
+test_that("the sampler checks the indices it relies on", {
+  # sample_each_rep_cpp() indexes `obj` and its budgets with these values,
+  # so one out of range would read past the matrix rather than fail
+  base <- list(
+    obj = matrix(c(1, 2, 3, 4, 5, 6), 3, 2),
+    pool_idx_in = 0:1,
+    na_per_col = 1L,
+    row_room = rep(1L, 3),
+    pool_cap = c(1L, 1L),
+    max_attempts = 5L
+  )
+  # well formed as written, so the failures below are the inputs
+  set.seed(1)
+  expect_identical(dim(do.call(sample_each_rep_cpp, base)), c(1L, 2L))
+
+  bad <- base
+  bad$pool_idx_in <- c(0L, 2L)
+  expect_error(do.call(sample_each_rep_cpp, bad), "pool_idx_in holds 2")
+
+  bad <- base
+  bad$row_room <- c(1L, NA, 1L)
+  expect_error(do.call(sample_each_rep_cpp, bad), "row_room holds NA")
+
+  bad <- base
+  bad$row_room <- 1L
+  expect_error(do.call(sample_each_rep_cpp, bad), "row_room has length 1")
+
+  bad <- base
+  bad$pool_cap <- 1L
+  expect_error(do.call(sample_each_rep_cpp, bad), "differ in length")
+
+  bad <- base
+  bad$na_per_col <- -1L
+  expect_error(do.call(sample_each_rep_cpp, bad), "na_per_col holds -1")
+
+  bad <- base
+  bad$max_attempts <- NA_integer_
+  expect_error(do.call(sample_each_rep_cpp, bad), "max_attempts")
 })
 
 # tune_imp() driver ----

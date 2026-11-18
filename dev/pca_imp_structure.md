@@ -64,7 +64,7 @@ R/pca_imp.R                pca_imp()                       user-facing entry
 C++ files in the chain: 3 translation units (`src/armaSVD.cpp`, `src/RcppExports.cpp`,
 `src/mat_stats.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`, `eig_sym_sel.h`,
 `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `matrix_checks.h`,
-`loc_timer.h`, `par_for.h`). Never touched: `find_windows.cpp`, `find_windows_flank.cpp`,
+`loc_timer.h`). Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
 `impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
 
 ## Layer 1: R entry point (`R/pca_imp.R`)
@@ -468,8 +468,8 @@ QRs plus a `3k x 3k` dsyevd.
   `dgemm_` calls, which is what lets the post-loop fill reuse the last iteration's copy.
 - Return crosses as an `Rcpp::List`, copying the triplet matrix
   into R. Only missing cells are transported, never the full imputed matrix.
-  `col_vars()` instead returns by value from `mat_stats.cpp`, a length-`p` row vector
-  copied into a SEXP. `mean_imp_col()` reaches no kernel of its own: it builds a mean
+  `col_vars()` instead returns by value from `mat_stats.cpp`, a length-`p` vector
+  written straight into a SEXP. `mean_imp_col()` reaches no kernel of its own: it builds a mean
   part in R and fills it through the matrix door (`R/parts.R`:
   `fill_parts <- function(obj, parts, keep = NULL) {`), one copy of the matrix.
 - `PCA_TOL = 1e-15` (`src/pca_linalg_utils.h`: `inline constexpr double PCA_TOL`) is the
@@ -493,7 +493,7 @@ QRs plus a `3k x 3k` dsyevd.
 
 **`-DARMA_64BIT_WORD=1`** -- set in `src/Makevars` and `src/Makevars.win`. Makes
 `arma::uword` 64 bits; without it a matrix past `2^32 - 1` elements wraps silently.
-`arma_uword_bytes()` (`src/mat_stats.cpp`: `int arma_uword_bytes()`) exists only so the test
+`arma_uword_bytes()` (`src/armaSVD.cpp`: `int arma_uword_bytes()`) exists only so the test
 suite can assert the flag survived.
 
 **`-DLOC_TIMER`** (`src/loc_timer.h`) -- when defined the header pulls in
@@ -531,8 +531,8 @@ logs are gated.
   neither does any header it pulls in. All intra-call parallelism comes from whatever BLAS
   the R installation links.
 - **RcppThread** is reached through `par_for()` (`src/par_for.h`: `inline void par_for(`),
-  which `col_vars_internal` in `mat_stats.cpp` calls, as does the K-NN kernel
-  (`src/impute_knn_brute.cpp`, not in this chain). With
+  which only the K-NN kernel calls (`src/impute_knn_brute.cpp`, not in this
+  chain); `col_vars()` runs on one thread. With
   `n_threads <= 1` it runs the body inline and never starts an RcppThread pool,
   and `pca_imp()` reaches that kernel with the default `cores = 1`
   (`R/col_vars.R`: `col_vars <- function(`).

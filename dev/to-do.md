@@ -42,6 +42,8 @@ Easy to miss in the diff, noted so the draft does not:
   variance is above zero but below `.Machine$double.eps`, the threshold
   `pca_imp()` uses for eligibility. Such a column was drawn before, and a
   `pca_imp()` repetition that blanked only such columns failed.
+- **Breaking:** `col_vars()` loses its `cores` argument and runs on one
+  thread; a call that passes `cores` is now an error.
 - **Breaking:** `mean_imp_col()` is no longer exported. The column means it
   sets, for `post_imp` and for `on_infeasible = "mean"` in every imputer, are
   now summed and divided in long double, so they can differ from 1.2.0's in
@@ -108,6 +110,25 @@ maintainer the same day:
     another order puts `rank` and `iter` on the wrong chunk without an error.
     With `knn_imp()` a second builder arrives: carry those fields on the
     part instead (`dev/si_mi_conversion.md`, "Review of Phases 1 to 6").
+
+## Kernel cleanup after the Eigen conversion
+
+Agreed 2026-11-18, to run once `dev/eigen_conversion.md` has landed, each as
+its own change. Vendored files (`dev/vendored.md`) are out of scope.
+
+- **Investigate dropping `col_min_max()`.** Its one caller is `sim_mat()`,
+  rescaling `rnorm()` output to [0, 1] when `beta = TRUE`. Measure whether
+  R's own column minima and maxima (`matrixStats` is not a dependency, so
+  base R or collapse) cost anything that matters at `sim_mat()`'s sizes,
+  and whether the output stays the same under a fixed seed; drop the
+  kernel if neither stands in the way.
+- **Comment trim pass over `src/`.** Comments that narrate history, repeat
+  the code, or explain the Armadillo version a file no longer uses go;
+  what stays says why the code is as it is, true for the code as written.
+- **Kernel hygiene pass over `src/`.** Hoist loop-invariant work, and move
+  checks, allocations and branches that do not depend on the loop index out
+  of hot paths. Measure each change against the reference capture and the
+  timing driver; no hand unrolling or OpenMP (`dev/CPP.md`).
 
 ## Release condition: pass on the RcppEigen candidate
 

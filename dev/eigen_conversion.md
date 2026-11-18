@@ -74,18 +74,33 @@ use no Armadillo; `src/mipca.cpp` says it must never include it.
   chain, `dev/pca_imp_structure.md` for the PCA chain. A step that changes
   cited code fixes the map in the same commit, and
   `uv run dev/check_map_anchors.py` passes before it is committed.
-- What R sees does not change. Each internal export returns the same R type,
-  the same dims and the same attributes as at the start commit; the harness
-  (Phase 0) records them on the unchanged build, so this is checked, not
-  remembered. Tidying an R caller - dropping the `[1, ]` in `R/col_vars.R`,
-  or the `as.integer()` in `R/mat_miss.R` - is a separate change, later, and
-  the maintainer's call.
-- 64-bit indexing stays. `-DARMA_64BIT_WORD=1` is in the Makevars so that a
-  matrix of more than 2^31 cells indexes correctly; the replacement indexes in
-  `R_xlen_t` or `std::size_t`, and never narrows to `int` where the Armadillo
-  code used `arma::uword`.
-- K-NN workers run on RcppThread. A worker reads raw pointers taken before
-  the parallel region and never touches an Rcpp object or the R API.
+- The C++ is written for itself, not to keep its R callers unchanged
+  (maintainer, 2026-11-18). An internal export takes and returns the type R
+  naturally holds for each value: data as `Rcpp::NumericMatrix`, read in
+  place; counts, indices and settings as `int` or `Rcpp::IntegerVector`; a
+  result per column or per row as a vector, not a 1 x p or n x 1 matrix. No
+  step reproduces how RcppArmadillo converted an argument (an index vector
+  read as doubles and cast to `arma::uword`), the shape an Armadillo type
+  came back to R in, or Armadillo's error text. A conversion or allocation
+  in C++ whose only purpose is to spare an R caller a change is not made;
+  the R caller changes, in the same commit.
+- `std::size_t` or `R_xlen_t` is for offsets computed in C++, such as
+  `col * n_rows`, so a matrix past 2^31 cells indexes correctly. A value
+  that crosses from R is bounded by `nrow()` or `ncol()`, which R holds as
+  `int`, and is `int`.
+- An export checks the values it indexes with, as `src/imputed_value.h`
+  checks its column groups, rather than trusting its caller: an index out
+  of range reads past the matrix instead of failing.
+- What the exported functions return, and their errors, change only where
+  the maintainer decides, and each such change gets a line in the NEWS
+  entry of `dev/to-do.md`. The capture compares them with the start commit.
+  Its cases that call an internal export directly fail the compare when the
+  export's interface changed; the step names each, and shows its values
+  unchanged.
+- Parallelism is spent in the K-NN kernel only; the column statistics in
+  `src/mat_stats.cpp` run on one thread (maintainer, 2026-11-18). K-NN
+  workers run on RcppThread. A worker reads raw pointers taken before the
+  parallel region and never touches an Rcpp object or the R API.
 - One commit per step. Before each: `air format .`, the whole suite with
   `load_all1(timer = FALSE)` and `check_manual()`, and the Phase 0 compare
   script against the reference. The timer must be off because the sampler
@@ -294,7 +309,8 @@ they were written to do:
   wide, with and without the Gram cache, row weights, random starts, and a
   run stopped before it converges. They raise each Inf error with the cell
   it names off the first row and column, and run `col_vars()` and
-  `mean_imp_col_internal()` on two threads. The auto choice is timed, so it
+  `mean_imp_col_internal()` on two threads (Phase 1 step 1 removed both).
+  The auto choice is timed, so it
   can differ between builds; that case is captured beside the same input
   under each forced solver, so a flip can be read against the one it now
   matches.
@@ -392,57 +408,75 @@ Expected to be bitwise unchanged, since the loops keep their order; the
 compare script asserts on a tolerance anyway and reports bitwise-ness.
 
 1. `src/matrix_checks.h`, and `src/mat_stats.cpp` with `col_min_max()`,
-   `col_vars_internal()`, `mean_imp_col_internal()`, `check_inf()`,
-   `check_finite()`, `col_miss_internal()`, `row_miss_internal()`.
-   `src/imputed_value.h` includes `src/matrix_checks.h`, so its helpers take
-   a pointer and dims, callable from Armadillo and Rcpp callers alike while
-   the K-NN chain still holds `arma::mat`. `arma_uword_bytes()` stays until
-   Phase 3.
+   `col_vars_internal()`, `check_inf()`, `check_finite()`,
+   `col_miss_internal()`, `row_miss_internal()`. `src/imputed_value.h`
+   includes `src/matrix_checks.h`, so its helpers take a pointer and dims,
+   callable from Armadillo and Rcpp callers alike while the K-NN chain still
+   holds `arma::mat`. `mean_imp_col_internal()`, which no R code calls
+   (`dev/si_mi_conversion.md`), is deleted rather than ported. RcppThread
+   and `cores` leave the file, and `col_vars()` loses its `cores` argument.
+   `arma_uword_bytes()` moves to `src/armaSVD.cpp`, so `src/mat_stats.cpp`
+   includes no Armadillo.
 2. `src/sample_each_rep_cpp.cpp`. Each `arma::randu()` becomes
    `R::runif(0, 1)`. READ: RcppArmadillo's rng/Alt_R_RNG.h defines
    `randu_val()` as `Rf_runif(0, 1)`. NOT READ: that the scalar
    `arma::randu()` reaches it. The compare script settles it: the sampled
-   positions under one `set.seed()` must be `identical()`. The `umat` return
-   comes back to R as a double matrix today, and the R side coerces it to
-   integer (a comment in `tests/testthat/test-tune_imp.R` says why); the
-   replacement keeps the double return, so nothing on the R side moves.
+   positions under one `set.seed()` must be `identical()`. It takes integer
+   vectors and returns an integer matrix, so `sample_na_loc()` drops its
+   `storage.mode()` coercion.
 3. The K-NN chain: `src/imputed_value.h`, `src/imputed_value.cpp`,
    `src/impute_knn_brute.cpp`. `arma::datum::inf` and `arma::datum::nan`
    become `std::numeric_limits`; `arma::Mat<mask_t>` becomes a flat buffer.
    The early-abandon chunking in `calc_distance_raw` is algorithmic and
    stays (`dev/CPP.md`).
 
-Step 1 ran 2026-11-18, on the working tree over `ad45ec5`. Every export in
-`src/mat_stats.cpp` but `arma_uword_bytes()` takes
-`const Rcpp::NumericMatrix &` and returns an `Rcpp::NumericMatrix` of the
-shape the Armadillo type came back to R in: 1 x p for `col_vars_internal()`,
-n x 1 doubles for the two missing counts. READ: RcppArmadillo built a
-`const arma::mat &` argument from that same `Rcpp::Matrix`
-(RcppArmadilloAs.h, `ArmaMat_InputParameter`), so input converts as
-before; it read `col_idx` as doubles and cast each to `arma::uword`, which
-`mean_imp_col_internal()` now reproduces from a `NumericVector`.
-`stop_on_inf()` takes a pointer and dims. The first argument of every
-export is `obj` (maintainer, 2026-11-18), and `R/col_vars.R`, the one
-caller that named it, follows. `src/mat_stats.cpp` still includes
-`RcppArmadillo.h`, for `arma_uword_bytes()` alone.
+Step 1 was first committed as `1ac016a` with the Armadillo interfaces
+reproduced: the same R types and shapes, `col_idx` cast from doubles, and
+`cores`. The maintainer rejected that on 2026-11-18 (the type rules under
+"Rules that apply to every step"), and steps 1 and 2 were redone together,
+on the working tree over `1ac016a`.
 
-- Capture `p1s1` against `76d4c60`: 75 cases, all bitwise identical.
-- `dev/eigen_p1_edges.R`, run on a clone of the start commit and on the
-  step, compared at tolerance 0: 76 cases, 72 identical, errors included.
-  Two pass but are not bitwise: `col_min_max()` on a column whose minimum
-  or maximum is a zero held as both 0 and -0 can return the other sign,
-  since Armadillo kept one running value over even rows and one over odd.
-  Its one caller, `sim_mat()`, rescales `rnorm()` output. Two fail on
-  purpose: `mean_imp_col_internal()` with `col_idx` 1e20 or `Inf`, which
-  the Armadillo cast left undefined and this x86 build took as column 0,
-  is now out of bounds, as NA, negatives and 1e10 already were. No R code
-  calls it.
-- The Inf error of `mean_imp_col_internal()` no longer narrows the row and
-  column to `int`; its text is unchanged below 2^31.
-- Not built against the RcppEigen candidate: the step adds no Eigen.
+- `src/mat_stats.cpp` includes `Rcpp.h` and nothing of Armadillo or
+  RcppThread. Every export takes `obj`, a `const Rcpp::NumericMatrix &`.
+  `col_vars_internal()` returns a double vector, `col_miss_internal()` and
+  `row_miss_internal()` integer vectors; `R/col_vars.R` drops `[1, ]` and
+  `R/mat_miss.R` drops `as.integer()`. `col_min_max()` keeps its 2 x p
+  matrix and refuses a matrix with no rows in its own words.
+- `col_vars()` loses `cores`, a breaking change noted in `dev/to-do.md`; the
+  test that compared `cores = 1` with `cores = 4` goes with it.
+  `mean_imp_col_internal()` is deleted. `arma_uword_bytes()` moves to
+  `src/armaSVD.cpp`.
+- `sample_each_rep_cpp()` takes integer vectors and an `int max_attempts`,
+  which `sample_na_loc()` already builds as integers, so nothing is
+  converted, and returns an integer matrix; `sample_na_loc()` drops its
+  `storage.mode()` line. It refuses an index or budget outside its range,
+  NA included, and lengths that disagree, before it indexes with them; a
+  new test in `tests/testthat/test-tune_imp.R` raises each refusal. Every
+  `arma::randu()` is `R::runif(0, 1)`, and the NOT READ above is settled by
+  measurement: the positions under one `set.seed()` are identical, so the
+  draws are R's.
+- `dev/ref_capture.R` drops the four cases whose call no longer exists
+  (`col_vars_x2_cores2` and the three `int_mean_imp_col*`). Capture `p1s2`
+  against `76d4c60`: 71 cases. Every case through an exported function is
+  bitwise identical, `na_loc_x1`, `na_loc_x1_num`, `tune_x1_knn` and
+  `tune_x1_pca` among them. Seven fail on purpose: the four that are
+  missing, and `int_col_vars`, `int_col_miss` and `int_row_miss`, whose
+  container changed. Read as doubles, those three hold identical values
+  (worst absolute and relative error 0 over 300, 300 and 60 cells).
+- `dev/eigen_p1_edges.R` reduces each result to its values as doubles and
+  passes only arguments both builds take. Run on a clone of the start
+  commit and on the step, compared at tolerance 0: 50 cases, 48 pass, all
+  8 sampler cases among them. Two pass but are not bitwise: `col_min_max()`
+  on a column whose minimum or maximum is a zero held as both 0 and -0 can
+  return the other sign, since Armadillo kept one running value over even
+  rows and one over odd. Its one caller, `sim_mat()`, rescales `rnorm()`
+  output. Two fail on purpose: `col_min_max()` on no rows, where the
+  Armadillo build raised `min(): object has no elements` for a 0 x 2
+  matrix and returned a 2 x 0 one for 0 x 0. `sim_mat()` requires two rows.
+- Not built against the RcppEigen candidate: neither step adds Eigen.
 - The suite with the manual tests, under `load_all1(timer = FALSE)`, the
   mirai daemons loading the step installed into a private library: 22
-  files, 274 tests, none failed, errored or skipped.
+  files, 275 tests, none failed, errored or skipped.
 
 ## Phase 2: the PCA chain to R's BLAS and LAPACK
 
@@ -492,8 +526,10 @@ find out which call did it before going on.
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.
 - In `src/Makevars` and `src/Makevars.win`, `-DARMA_64BIT_WORD=1` leaves
   `PKG_CPPFLAGS`. The OpenMP flags are left as the maintainer has them.
-- `arma_uword_bytes()` in `src/mat_stats.cpp`, its comment on the macro, and
-  the test in `tests/testthat/test-mat_miss.R` that pins it are deleted.
+- `arma_uword_bytes()` in `src/armaSVD.cpp`, its comment on the macro, and
+  the test in `tests/testthat/test-mat_miss.R` that pins it are deleted. If
+  a Phase 2 step takes Armadillo out of `src/armaSVD.cpp` first, they go in
+  that step.
 - `devtools::document()` regenerates `src/RcppExports.cpp` without
   `RcppArmadillo.h`.
 - `.claude/CLAUDE.md`, Layout, says `src/` is Rcpp with RcppArmadillo; it

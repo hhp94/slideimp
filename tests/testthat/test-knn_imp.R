@@ -417,8 +417,6 @@ test_that("the parallel path gives the same answer as the serial one", {
     r2 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 4)
     expect_identical(r1, r2)
   }
-
-  expect_identical(col_vars(obj, cores = 1), col_vars(obj, cores = 4))
 })
 
 test_that("the kernel checks the invariants it relies on", {

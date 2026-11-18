@@ -217,7 +217,8 @@ the memory probe after Phase 2 would show a copy.
 - A mean part: the mean of the observed values of each requested column, read
   from the input one column at a time with no slice, as the value of each of
   its holes. An all-`NA` column stays `NA`, as today's kernel leaves it
-  (`src/mat_stats.cpp`: `if (n == 0 || n == n_rows)`).
+  (`mean_imp_col_internal()`, deleted in Phase 1 of
+  `dev/eigen_conversion.md`; `git show 76d4c60:src/mat_stats.cpp`).
 - `mean_imp_col()` becomes the matrix door over one mean part, with the same
   refusals and messages (`check_inf()`, the subset resolution) and the same
   result.
@@ -232,7 +233,7 @@ the memory probe after Phase 2 would show a copy.
   about 1 x the input.
 
 Open: how the means are computed. Today's kernel sums in double, in row
-order (`src/mat_stats.cpp`: `Rcpp::NumericMatrix mean_imp_col_internal(`).
+order (`mean_imp_col_internal()`, since deleted; see above).
 R's `sum()` and `mean()` accumulate in long double, so means taken in R can
 differ in the last bits, which the compare script would report and the
 tolerance would pass. Keeping them bitwise needs a C++ entry that returns
@@ -343,7 +344,8 @@ Readings and choices:
   allocations over the call, so its two calls allocated nothing of matrix
   size outside R.
 - `mean_imp_col_internal()` stays in `src/mat_stats.cpp`, with no R caller
-  but the Phase 0 capture. The `eigen` branch can drop it rather than port it.
+  but the Phase 0 capture. The `eigen` branch can drop it rather than port it;
+  Phase 1 of `dev/eigen_conversion.md` did.
 - `slideimp_paper` still calls `mean_imp_col()`; not changed from here.
 
 Checked: the suite with `load_all1(timer = FALSE)` and the manual tests,

@@ -39,13 +39,12 @@ mat_miss <- function(obj, col = TRUE, prop = FALSE) {
   )
   checkmate::assert_flag(col, .var.name = "col")
   checkmate::assert_flag(prop, .var.name = "prop")
-  # counts are bounded by nrow/ncol, so they fit in an integer
   if (col) {
-    vec_miss <- as.integer(col_miss_internal(obj))
+    vec_miss <- col_miss_internal(obj)
     names(vec_miss) <- colnames(obj)
     denom <- nrow(obj)
   } else {
-    vec_miss <- as.integer(row_miss_internal(obj))
+    vec_miss <- row_miss_internal(obj)
     names(vec_miss) <- rownames(obj)
     denom <- ncol(obj)
   }

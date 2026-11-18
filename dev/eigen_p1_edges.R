@@ -1,18 +1,22 @@
-# Edge inputs for the exports Phase 1 of dev/eigen_conversion.md converts.
-# Step 1 (src/mat_stats.cpp): empty dims, integer and logical input, a
-# vector that is not a matrix, odd col_idx and cores values, and a zero held
-# as both 0 and -0 at a column's extreme. The Phase 0 capture runs these
-# exports on ordinary input only; this checks that a conversion accepts,
-# coerces and refuses what the Armadillo signatures did. A later step adds
-# its own cases here.
+# Edge inputs for the exports Phase 1 of dev/eigen_conversion.md converts:
+# empty dims, integer and logical input, a vector that is not a matrix, NA,
+# NaN and Inf, a zero held as both 0 and -0 at a column's extreme, and the
+# sampler's odd arguments. The Phase 0 capture runs these exports on
+# ordinary input only; this checks that the rewritten kernels compute what
+# the Armadillo ones did on the inputs both accept.
 #
 # Run from the package root of a build, with a label naming the capture:
 #   Rscript dev/eigen_p1_edges.R <label>
 # It writes dev/ref/<label>/ in dev/ref_capture.R's format, so two builds'
 # captures are compared with dev/ref_compare.R; compare at tolerance 0. Run
 # it on the start commit in a clone, as the reference capture was, and on
-# the converted build. Every call is positional, since step 1 renamed the
-# first argument from `mat` to `obj`. Character input is left out: under a
+# the converted build.
+#
+# Phase 1 changed the containers on purpose: vectors where Armadillo gave
+# 1 x p or n x 1 matrices, integer counts and positions where it gave
+# doubles. vals() reduces a result to its values as doubles, so the two
+# builds compare on what they compute. Calls are positional and pass only
+# arguments both builds take. Character input is left out: under a
 # load_all1() build it can kill the R process instead of raising.
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -49,7 +53,9 @@ saveRDS(
   ),
   file.path(out_dir, "_meta.rds")
 )
-cat("formals:", names(formals(col_vars_internal)), "\n")
+cat("col_vars_internal formals:", names(formals(col_vars_internal)), "\n")
+
+vals <- function(x) as.double(x)
 
 ## The runner, as in dev/ref_capture.R.
 case <- function(name, expr) {
@@ -111,7 +117,6 @@ mnan <- cbind(
   c(Inf, 1, 2),
   c(1, -Inf, NA)
 )
-mm <- cbind(c(1, NA, 3), c(NA, NA, NA), c(1, 2, 3), c(Inf, NA, 1), c(2, NaN, 4))
 inf_late <- cbind(c(1, Inf), c(NA, NA))
 
 ## ---- cases ----------------------------------------------------------------
@@ -128,48 +133,13 @@ case("cmm_zero_min", col_min_max(zmin))
 case("cmm_zero_max", col_min_max(zmax))
 case("cmm_nan", col_min_max(mnan))
 
-case("cv_one_row", col_vars_internal(one))
-case("cv_0rows", col_vars_internal(m0r))
-case("cv_0cols", col_vars_internal(m0c))
-case("cv_nan", col_vars_internal(mnan))
-case("cv_int", col_vars_internal(mi))
-case("cv_lgl", col_vars_internal(ml))
-case("cv_vec", col_vars_internal(vec))
-case("cv_cores_0", col_vars_internal(mnan, 0L))
-case("cv_cores_neg", col_vars_internal(mnan, -3L))
-case("cv_cores_na", col_vars_internal(mnan, NA_integer_))
-case("cv_cores_frac", col_vars_internal(mnan, 2.5))
-case("cv_cores_len2", col_vars_internal(mnan, c(1L, 2L)))
-case("cv_cores_2", col_vars_internal(mnan, 2L))
-
-case("mic_idx_empty", mean_imp_col_internal(mm, integer(0)))
-case("mic_idx_mean", mean_imp_col_internal(mm, c(0L, 4L)))
-case("mic_idx_allna", mean_imp_col_internal(mm, 1L))
-case("mic_idx_complete", mean_imp_col_internal(mm, 2L))
-case("mic_idx_dup", mean_imp_col_internal(mm, c(0L, 0L)))
-case("mic_idx_double", mean_imp_col_internal(mm, c(0, 4)))
-case("mic_idx_frac", mean_imp_col_internal(mm, 4.7))
-case("mic_idx_neg_frac", mean_imp_col_internal(mm, -0.5))
-case("mic_idx_neg1_frac", mean_imp_col_internal(mm, -1.5))
-case("mic_idx_neg_int", mean_imp_col_internal(mm, -1L))
-case("mic_idx_na_int", mean_imp_col_internal(mm, NA_integer_))
-case("mic_idx_na_real", mean_imp_col_internal(mm, NA_real_))
-case("mic_idx_nan", mean_imp_col_internal(mm, NaN))
-case("mic_idx_ncol", mean_imp_col_internal(mm, 5L))
-case("mic_idx_ncol_frac", mean_imp_col_internal(mm, 4.999))
-case("mic_idx_big", mean_imp_col_internal(mm, 1e10))
-case("mic_idx_huge", mean_imp_col_internal(mm, 1e20))
-case("mic_idx_neg_huge", mean_imp_col_internal(mm, -1e20))
-case("mic_idx_inf", mean_imp_col_internal(mm, Inf))
-case("mic_idx_neg_inf", mean_imp_col_internal(mm, -Inf))
-case("mic_idx_lgl", mean_imp_col_internal(mm, TRUE))
-case("mic_inf_col", mean_imp_col_internal(mm, 3L))
-case("mic_inf_unselected", mean_imp_col_internal(mm, c(0L, 2L)))
-case("mic_cores_2", mean_imp_col_internal(mm, c(0L, 4L), 2L))
-case("mic_0rows", mean_imp_col_internal(m0r, 0L))
-case("mic_0cols", mean_imp_col_internal(m0c, integer(0)))
-case("mic_int", mean_imp_col_internal(mi, c(0L, 1L)))
-case("mic_vec", mean_imp_col_internal(vec, 0L))
+case("cv_one_row", vals(col_vars_internal(one)))
+case("cv_0rows", vals(col_vars_internal(m0r)))
+case("cv_0cols", vals(col_vars_internal(m0c)))
+case("cv_nan", vals(col_vars_internal(mnan)))
+case("cv_int", vals(col_vars_internal(mi)))
+case("cv_lgl", vals(col_vars_internal(ml)))
+case("cv_vec", vals(col_vars_internal(vec)))
 
 case("ci_inf", check_inf(mnan))
 case("ci_neg_inf", check_inf(matrix(c(1, NA, -Inf), 3, 1)))
@@ -185,21 +155,123 @@ case("cf_nan_col", check_finite(cbind(c(NaN, NaN))))
 case("cf_int", check_finite(mi))
 case("cf_vec", check_finite(vec))
 
-case("colm_nan", col_miss_internal(mnan))
-case("colm_0rows", col_miss_internal(m0r))
-case("colm_0cols", col_miss_internal(m0c))
-case("colm_0x0", col_miss_internal(m00))
-case("colm_int", col_miss_internal(mi))
-case("colm_lgl", col_miss_internal(ml))
-case("colm_vec", col_miss_internal(vec))
+case("colm_nan", vals(col_miss_internal(mnan)))
+case("colm_0rows", vals(col_miss_internal(m0r)))
+case("colm_0cols", vals(col_miss_internal(m0c)))
+case("colm_0x0", vals(col_miss_internal(m00)))
+case("colm_int", vals(col_miss_internal(mi)))
+case("colm_lgl", vals(col_miss_internal(ml)))
+case("colm_vec", vals(col_miss_internal(vec)))
 
-case("rowm_nan", row_miss_internal(mnan))
-case("rowm_0rows", row_miss_internal(m0r))
-case("rowm_0cols", row_miss_internal(m0c))
-case("rowm_0x0", row_miss_internal(m00))
-case("rowm_int", row_miss_internal(mi))
-case("rowm_lgl", row_miss_internal(ml))
-case("rowm_vec", row_miss_internal(vec))
+case("rowm_nan", vals(row_miss_internal(mnan)))
+case("rowm_0rows", vals(row_miss_internal(m0r)))
+case("rowm_0cols", vals(row_miss_internal(m0c)))
+case("rowm_0x0", vals(row_miss_internal(m00)))
+case("rowm_int", vals(row_miss_internal(mi)))
+case("rowm_lgl", vals(row_miss_internal(ml)))
+case("rowm_vec", vals(row_miss_internal(vec)))
+
+## The sampler (src/sample_each_rep_cpp.cpp). Each case runs under
+## set.seed(1), so the draws from R's generator must give identical
+## positions.
+set.seed(42)
+sx <- matrix(round(rnorm(12 * 8), 1), 12, 8)
+sx[c(2, 15, 40, 77)] <- NA
+sx[, 8] <- 5 # constant: never usable
+sargs <- list(
+  pool = 0:7,
+  need = c(2L, 3L, 3L),
+  room = rep(2L, 12),
+  cap = c(rep(4L, 7), 0L)
+)
+case(
+  "ser_int",
+  vals(sample_each_rep_cpp(
+    sx,
+    sargs$pool,
+    sargs$need,
+    sargs$room,
+    sargs$cap,
+    50L
+  ))
+)
+case(
+  "ser_double",
+  vals(sample_each_rep_cpp(
+    sx,
+    as.numeric(sargs$pool),
+    as.numeric(sargs$need),
+    as.numeric(sargs$room),
+    as.numeric(sargs$cap),
+    50
+  ))
+)
+case(
+  "ser_tight_rows",
+  vals(sample_each_rep_cpp(
+    sx,
+    sargs$pool,
+    sargs$need,
+    rep(1L, 12),
+    sargs$cap,
+    50L
+  ))
+)
+case(
+  "ser_infeasible",
+  vals(sample_each_rep_cpp(
+    sx,
+    0:1,
+    c(5L, 5L, 5L),
+    rep(1L, 12),
+    c(9L, 9L),
+    20L
+  ))
+)
+case(
+  "ser_zero_attempts",
+  vals(sample_each_rep_cpp(
+    sx,
+    sargs$pool,
+    sargs$need,
+    sargs$room,
+    sargs$cap,
+    0L
+  ))
+)
+case(
+  "ser_no_need",
+  vals(sample_each_rep_cpp(
+    sx,
+    sargs$pool,
+    integer(0),
+    sargs$room,
+    sargs$cap,
+    5L
+  ))
+)
+case(
+  "ser_frac_attempts",
+  vals(sample_each_rep_cpp(
+    sx,
+    sargs$pool,
+    sargs$need,
+    sargs$room,
+    sargs$cap,
+    2.9
+  ))
+)
+case(
+  "ser_int_matrix",
+  vals(sample_each_rep_cpp(
+    matrix(1:40, 10, 4),
+    0:3,
+    c(2L, 2L),
+    rep(1L, 10),
+    rep(3L, 4),
+    10L
+  ))
+)
 
 cat(sprintf(
   "%d cases\n",

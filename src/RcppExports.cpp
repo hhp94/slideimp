@@ -39,6 +39,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// arma_uword_bytes
+int arma_uword_bytes();
+RcppExport SEXP _slideimp_arma_uword_bytes() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(arma_uword_bytes());
+    return rcpp_result_gen;
+END_RCPP
+}
 // find_windows
 List find_windows(const NumericVector x, double window, double overlap);
 RcppExport SEXP _slideimp_find_windows(SEXP xSEXP, SEXP windowSEXP, SEXP overlapSEXP) {
@@ -96,37 +106,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // col_vars_internal
-Rcpp::NumericMatrix col_vars_internal(const Rcpp::NumericMatrix& obj, int cores);
-RcppExport SEXP _slideimp_col_vars_internal(SEXP objSEXP, SEXP coresSEXP) {
+Rcpp::NumericVector col_vars_internal(const Rcpp::NumericMatrix& obj);
+RcppExport SEXP _slideimp_col_vars_internal(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(col_vars_internal(obj, cores));
-    return rcpp_result_gen;
-END_RCPP
-}
-// mean_imp_col_internal
-Rcpp::NumericMatrix mean_imp_col_internal(const Rcpp::NumericMatrix& obj, const Rcpp::NumericVector& col_idx, int cores);
-RcppExport SEXP _slideimp_mean_imp_col_internal(SEXP objSEXP, SEXP col_idxSEXP, SEXP coresSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type col_idx(col_idxSEXP);
-    Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(mean_imp_col_internal(obj, col_idx, cores));
-    return rcpp_result_gen;
-END_RCPP
-}
-// arma_uword_bytes
-int arma_uword_bytes();
-RcppExport SEXP _slideimp_arma_uword_bytes() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(arma_uword_bytes());
+    rcpp_result_gen = Rcpp::wrap(col_vars_internal(obj));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -151,7 +137,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // col_miss_internal
-Rcpp::NumericMatrix col_miss_internal(const Rcpp::NumericMatrix& obj);
+Rcpp::IntegerVector col_miss_internal(const Rcpp::NumericMatrix& obj);
 RcppExport SEXP _slideimp_col_miss_internal(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -162,7 +148,7 @@ BEGIN_RCPP
 END_RCPP
 }
 // row_miss_internal
-Rcpp::NumericMatrix row_miss_internal(const Rcpp::NumericMatrix& obj);
+Rcpp::IntegerVector row_miss_internal(const Rcpp::NumericMatrix& obj);
 RcppExport SEXP _slideimp_row_miss_internal(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
@@ -271,17 +257,17 @@ BEGIN_RCPP
 END_RCPP
 }
 // sample_each_rep_cpp
-arma::umat sample_each_rep_cpp(const arma::mat& obj, const arma::uvec& pool_idx_in, const arma::uvec& na_per_col, const arma::uvec& row_room, const arma::uvec& pool_cap, arma::uword max_attempts);
+Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix& obj, const Rcpp::IntegerVector& pool_idx_in, const Rcpp::IntegerVector& na_per_col, const Rcpp::IntegerVector& row_room, const Rcpp::IntegerVector& pool_cap, const int max_attempts);
 RcppExport SEXP _slideimp_sample_each_rep_cpp(SEXP objSEXP, SEXP pool_idx_inSEXP, SEXP na_per_colSEXP, SEXP row_roomSEXP, SEXP pool_capSEXP, SEXP max_attemptsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type pool_idx_in(pool_idx_inSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type na_per_col(na_per_colSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type row_room(row_roomSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type pool_cap(pool_capSEXP);
-    Rcpp::traits::input_parameter< arma::uword >::type max_attempts(max_attemptsSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type pool_idx_in(pool_idx_inSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type na_per_col(na_per_colSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type row_room(row_roomSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type pool_cap(pool_capSEXP);
+    Rcpp::traits::input_parameter< const int >::type max_attempts(max_attemptsSEXP);
     rcpp_result_gen = Rcpp::wrap(sample_each_rep_cpp(obj, pool_idx_in, na_per_col, row_room, pool_cap, max_attempts));
     return rcpp_result_gen;
 END_RCPP
@@ -289,13 +275,12 @@ END_RCPP
 
 static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 16},
+    {"_slideimp_arma_uword_bytes", (DL_FUNC) &_slideimp_arma_uword_bytes, 0},
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 9},
     {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 1},
-    {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 2},
-    {"_slideimp_mean_imp_col_internal", (DL_FUNC) &_slideimp_mean_imp_col_internal, 3},
-    {"_slideimp_arma_uword_bytes", (DL_FUNC) &_slideimp_arma_uword_bytes, 0},
+    {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 1},
     {"_slideimp_check_inf", (DL_FUNC) &_slideimp_check_inf, 1},
     {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},
     {"_slideimp_col_miss_internal", (DL_FUNC) &_slideimp_col_miss_internal, 1},

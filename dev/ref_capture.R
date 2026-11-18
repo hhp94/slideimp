@@ -105,8 +105,9 @@ stopifnot(!anyNA(x0))
 
 ## x2i: x2 with one Inf, for the messages that name the offending cell. It
 ## sits off the first row and column, so an off-by-one in the 1-based row
-## and column those messages print shows, and in a column with holes, since
-## mean_imp_col_internal() only looks at the columns it imputes.
+## and column those messages print shows. It sits in a column with holes for
+## mean_imp_col_internal(), deleted in Phase 1 of dev/eigen_conversion.md;
+## the placement stays so the input matches the reference capture's.
 x2i <- x2
 inf_col <- which(colSums(is.na(x2)) > 0L & seq_len(ncol(x2)) >= 10L)[[1]]
 inf_row <- which(!is.na(x2[, inf_col]) & seq_len(nrow(x2)) >= 3L)[[1]]
@@ -384,7 +385,6 @@ case(
 
 ## Small exports and the tune_imp() NA placement
 case("col_vars_x2", col_vars(x2))
-case("col_vars_x2_cores2", col_vars(x2, cores = 2))
 case("col_vars_chr21", col_vars(chr21))
 case("mat_miss_col", mat_miss(x2))
 case("mat_miss_row_prop", mat_miss(x2, col = FALSE, prop = TRUE))
@@ -416,15 +416,6 @@ case(
 ## Armadillo-facing internals called directly (dev/eigen_conversion.md)
 case("int_col_min_max", col_min_max(x2))
 case("int_col_vars", col_vars_internal(x2))
-case("int_mean_imp_col", mean_imp_col_internal(xa, c(0L, 5L, 8L)))
-case(
-  "int_mean_imp_col_cores2",
-  mean_imp_col_internal(xa, c(0L, 5L, 8L), cores = 2L)
-)
-case(
-  "int_mean_imp_col_inf_error",
-  mean_imp_col_internal(x2i, inf_col - 1L)
-)
 case("int_check_inf", check_inf(x2))
 case("int_check_inf_error", check_inf(x2i))
 case("int_check_finite", check_finite(x2))

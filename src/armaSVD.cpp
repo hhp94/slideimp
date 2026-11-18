@@ -1026,3 +1026,14 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad);
 #endif
 }
+
+// Width of an Armadillo index, in bytes. Exists so the test suite can assert
+// that -DARMA_64BIT_WORD=1 survived in src/Makevars: without it arma indices
+// are 32 bits and a matrix past 2^32-1 elements wraps silently rather than
+// erroring. Nothing else calls this. It lives with the PCA chain, the last
+// code on Armadillo, and leaves with it (dev/eigen_conversion.md, Phase 3).
+// [[Rcpp::export]]
+int arma_uword_bytes()
+{
+  return static_cast<int>(sizeof(arma::uword));
+}
