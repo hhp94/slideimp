@@ -76,16 +76,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // impute_knn_brute
-arma::mat impute_knn_brute(const arma::mat& obj, const arma::uword k, const arma::uvec& grp_impute, const arma::uvec& grp_miss_no_imp, const arma::uvec& grp_complete, const int method, const double dist_pow, int cores, const bool pb);
+Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix& obj, const int k, const Rcpp::IntegerVector& grp_impute, const Rcpp::IntegerVector& grp_miss_no_imp, const Rcpp::IntegerVector& grp_complete, const int method, const double dist_pow, int cores, const bool pb);
 RcppExport SEXP _slideimp_impute_knn_brute(SEXP objSEXP, SEXP kSEXP, SEXP grp_imputeSEXP, SEXP grp_miss_no_impSEXP, SEXP grp_completeSEXP, SEXP methodSEXP, SEXP dist_powSEXP, SEXP coresSEXP, SEXP pbSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const arma::uword >::type k(kSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type grp_impute(grp_imputeSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type grp_miss_no_imp(grp_miss_no_impSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type grp_complete(grp_completeSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const int >::type k(kSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type grp_impute(grp_imputeSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type grp_miss_no_imp(grp_miss_no_impSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type grp_complete(grp_completeSEXP);
     Rcpp::traits::input_parameter< const int >::type method(methodSEXP);
     Rcpp::traits::input_parameter< const double >::type dist_pow(dist_powSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);

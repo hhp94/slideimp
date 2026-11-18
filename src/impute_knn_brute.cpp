@@ -6,12 +6,16 @@
 #include "par_for.h"    // parallelFor with a serial path at one thread
 
 // standard library
-#include <stdexcept> // Errors
 #include <algorithm> // std::min, std::max, std::stable_sort, std::swap
-#include <cmath>     // std::isnan
+#include <cmath>     // std::isnan, std::abs, std::pow
 #include <cstddef>   // std::size_t
 #include <limits>    // std::numeric_limits<double>::infinity()
+#include <memory>    // std::unique_ptr
 #include <vector>    // std::vector<NeighborInfo>
+
+// Indices that come from R (rows, columns, k) are int, bounded by nrow() and
+// ncol(); a column's offset into a buffer is taken in size_t by col_ptr()
+// (src/imputed_value.h).
 
 // -----------------------------------------------------------------------------
 // metric definitions, add new metrics by defining a struct with an accumulate()
@@ -28,7 +32,9 @@ struct ManhattanMetric
 };
 
 // GRAIN size for early exit
-constexpr arma::uword GRAIN = 16;
+constexpr int GRAIN = 16;
+
+constexpr double DIST_INF = std::numeric_limits<double>::infinity();
 
 // -----------------------------------------------------------------------------
 // calc_distance_raw - Groups 1 & 2 (both target and other may have missing)
@@ -48,19 +54,19 @@ inline double calc_distance_raw(
     const mask_t *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
     const mask_t *__restrict__ other_nmiss,
-    const arma::uword n_rows,
-    const double worst_dist = std::numeric_limits<double>::infinity())
+    const int n_rows,
+    const double worst_dist = DIST_INF)
 {
     double dist = 0.0;
     double n_valid = 0.0;
-    const arma::uword n_full = n_rows / GRAIN;
-    arma::uword r = 0;
+    const int n_full = n_rows / GRAIN;
+    int r = 0;
 
-    for (arma::uword chunk = 0; chunk < n_full; ++chunk)
+    for (int chunk = 0; chunk < n_full; ++chunk)
     {
-        for (arma::uword i = 0; i < GRAIN; ++i)
+        for (int i = 0; i < GRAIN; ++i)
         {
-            const arma::uword rr = r + i;
+            const int rr = r + i;
             const double valid = target_nmiss[rr] & other_nmiss[rr]; // implicit
             const double diff = target_ptr[rr] - other_ptr[rr];
             dist += valid * Metric::accumulate(diff);
@@ -71,7 +77,7 @@ inline double calc_distance_raw(
         {
             if (dist > worst_dist * (n_valid + static_cast<double>(n_rows - r)))
             {
-                return arma::datum::inf;
+                return DIST_INF;
             }
         }
     }
@@ -85,7 +91,7 @@ inline double calc_distance_raw(
 
     if (n_valid == 0.0)
     {
-        return arma::datum::inf;
+        return DIST_INF;
     }
 
     return dist / n_valid;
@@ -103,9 +109,9 @@ inline double calc_distance_raw_complete(
     const double *__restrict__ target_ptr,
     const mask_t *__restrict__ target_nmiss,
     const double *__restrict__ other_ptr,
-    const arma::uword n_rows,
+    const int n_rows,
     const double n_valid,
-    const double worst_dist = std::numeric_limits<double>::infinity())
+    const double worst_dist = DIST_INF)
 {
     double dist = 0.0;
     [[maybe_unused]] double unnorm_bound = 0.0;
@@ -114,14 +120,14 @@ inline double calc_distance_raw_complete(
         unnorm_bound = worst_dist * n_valid;
     }
 
-    const arma::uword n_full = n_rows / GRAIN;
-    arma::uword r = 0;
+    const int n_full = n_rows / GRAIN;
+    int r = 0;
 
-    for (arma::uword chunk = 0; chunk < n_full; ++chunk)
+    for (int chunk = 0; chunk < n_full; ++chunk)
     {
-        for (arma::uword i = 0; i < GRAIN; ++i)
+        for (int i = 0; i < GRAIN; ++i)
         {
-            const arma::uword rr = r + i;
+            const int rr = r + i;
             const double diff = target_ptr[rr] - other_ptr[rr];
             dist += target_nmiss[rr] * Metric::accumulate(diff);
         }
@@ -130,7 +136,7 @@ inline double calc_distance_raw_complete(
         {
             if (dist > unnorm_bound)
             {
-                return arma::datum::inf;
+                return DIST_INF;
             }
         }
     }
@@ -150,18 +156,18 @@ inline double calc_distance_raw_complete(
 struct NeighborInfo
 {
     double distance;
-    arma::uword index;
-    NeighborInfo(double d, arma::uword i) : distance(d), index(i) {}
+    int index;
+    NeighborInfo(double d, int i) : distance(d), index(i) {}
 };
 
 // fill phase: we just need any k neighbors - no ordering yet.
-inline void insert_before_k(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
+inline void insert_before_k(std::vector<NeighborInfo> &top_k, double dist, int idx)
 {
     top_k.emplace_back(dist, idx);
 }
 
 // replacement phase: replace worst if new is better, then bubble into place.
-inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double dist, arma::uword idx)
+inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double dist, int idx)
 {
     if (dist >= top_k.back().distance)
     {
@@ -170,7 +176,7 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
 
     top_k.back() = NeighborInfo(dist, idx);
 
-    for (size_t i = top_k.size() - 1; i > 0 && top_k[i].distance < top_k[i - 1].distance; --i)
+    for (std::size_t i = top_k.size() - 1; i > 0 && top_k[i].distance < top_k[i - 1].distance; --i)
     {
         std::swap(top_k[i], top_k[i - 1]);
     }
@@ -187,24 +193,26 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k, double
 // A candidate that shares no observed row with the target has distance +inf.
 // It is not a neighbor: such entries are dropped from the tail of the sorted
 // result before it is returned, so the caller may receive fewer than k.
+// Runs in a worker, so it reads plain pointers only.
 // -----------------------------------------------------------------------------
 template <typename Metric>
 std::vector<NeighborInfo> distance_vector_impl(
-    const arma::mat &obj_masked,
-    const MaskMat &nmiss_masked,
+    const double *obj_masked,
+    const mask_t *nmiss_masked,
+    const int n_rows,
     const GroupLayout &layout,
-    const arma::uword index,
-    const arma::uword k,
-    const arma::vec &n_valid_vec,
-    const arma::mat &obj,
-    const arma::uvec &grp_complete)
+    const int index,
+    const int k,
+    const std::vector<double> &n_valid_vec,
+    const double *obj,
+    const int *grp_complete)
 {
-    const arma::uword n_rows = obj_masked.n_rows;
-    const arma::uword n_masked = layout.n_masked();
-    const arma::uword complete_start = layout.complete_start();
-    const double *target_ptr = obj_masked.colptr(index);
-    const mask_t *target_nmiss_ptr = nmiss_masked.colptr(index);
-    const double target_n_valid = n_valid_vec(index);
+    const int n_masked = layout.n_masked();
+    const int complete_start = layout.complete_start();
+    const std::size_t k_size = static_cast<std::size_t>(k);
+    const double *target_ptr = col_ptr(obj_masked, index, n_rows);
+    const mask_t *target_nmiss_ptr = col_ptr(nmiss_masked, index, n_rows);
+    const double target_n_valid = n_valid_vec[index];
 
     // A target with no observed row shares no row with any candidate, so by
     // the rule above it has no neighbors at all. calc_distance_raw() reaches
@@ -218,54 +226,54 @@ std::vector<NeighborInfo> distance_vector_impl(
     }
 
     std::vector<NeighborInfo> top_k;
-    top_k.reserve(k);
+    top_k.reserve(k_size);
 
-    auto masked_dist_unbounded = [&](arma::uword p) -> double
+    auto masked_dist_unbounded = [&](int p) -> double
     {
         return calc_distance_raw<Metric, false>(
             target_ptr, target_nmiss_ptr,
-            obj_masked.colptr(p), nmiss_masked.colptr(p),
+            col_ptr(obj_masked, p, n_rows), col_ptr(nmiss_masked, p, n_rows),
             n_rows);
     };
 
-    auto masked_dist_bounded = [&](arma::uword p, double worst) -> double
+    auto masked_dist_bounded = [&](int p, double worst) -> double
     {
         return calc_distance_raw<Metric, true>(
             target_ptr, target_nmiss_ptr,
-            obj_masked.colptr(p), nmiss_masked.colptr(p),
+            col_ptr(obj_masked, p, n_rows), col_ptr(nmiss_masked, p, n_rows),
             n_rows, worst);
     };
 
-    auto complete_dist_unbounded = [&](arma::uword c) -> double
+    auto complete_dist_unbounded = [&](int c) -> double
     {
         return calc_distance_raw_complete<Metric, false>(
             target_ptr, target_nmiss_ptr,
-            obj.colptr(grp_complete(c)),
+            col_ptr(obj, grp_complete[c], n_rows),
             n_rows, target_n_valid);
     };
 
-    auto complete_dist_bounded = [&](arma::uword c, double worst) -> double
+    auto complete_dist_bounded = [&](int c, double worst) -> double
     {
         return calc_distance_raw_complete<Metric, true>(
             target_ptr, target_nmiss_ptr,
-            obj.colptr(grp_complete(c)),
+            col_ptr(obj, grp_complete[c], n_rows),
             n_rows, target_n_valid, worst);
     };
 
-    arma::uword p1 = 0;
-    arma::uword p2 = index + 1;
-    arma::uword c = 0;
+    int p1 = 0;
+    int p2 = index + 1;
+    int c = 0;
 
     // fill to k nearest neighbors
-    for (; c < layout.n_complete && top_k.size() < k; ++c)
+    for (; c < layout.n_complete && top_k.size() < k_size; ++c)
     {
         insert_before_k(top_k, complete_dist_unbounded(c), complete_start + c);
     }
-    for (; p1 < index && top_k.size() < k; ++p1)
+    for (; p1 < index && top_k.size() < k_size; ++p1)
     {
         insert_before_k(top_k, masked_dist_unbounded(p1), p1);
     }
-    for (; p2 < n_masked && top_k.size() < k; ++p2)
+    for (; p2 < n_masked && top_k.size() < k_size; ++p2)
     {
         insert_before_k(top_k, masked_dist_unbounded(p2), p2);
     }
@@ -308,46 +316,47 @@ std::vector<NeighborInfo> distance_vector_impl(
 
 // dispatch once per target column, then the whole body is monomorphized.
 std::vector<NeighborInfo> distance_vector(
-    const arma::mat &obj_masked,
-    const MaskMat &nmiss_masked,
+    const double *obj_masked,
+    const mask_t *nmiss_masked,
+    const int n_rows,
     const GroupLayout &layout,
-    const arma::uword index,
-    const arma::uword k,
-    const arma::vec &n_valid_vec,
+    const int index,
+    const int k,
+    const std::vector<double> &n_valid_vec,
     const int method,
-    const arma::mat &obj,
-    const arma::uvec &grp_complete)
+    const double *obj,
+    const int *grp_complete)
 {
     if (method == 0)
     {
         return distance_vector_impl<EuclideanMetric>(
-            obj_masked, nmiss_masked, layout, index, k, n_valid_vec,
+            obj_masked, nmiss_masked, n_rows, layout, index, k, n_valid_vec,
             obj, grp_complete);
     }
     else
     {
         return distance_vector_impl<ManhattanMetric>(
-            obj_masked, nmiss_masked, layout, index, k, n_valid_vec,
+            obj_masked, nmiss_masked, n_rows, layout, index, k, n_valid_vec,
             obj, grp_complete);
     }
 }
 
 // inverse-distance KNN weights, rescaled so the largest weight is 1
-static arma::vec knn_weights(const std::vector<NeighborInfo> &top_k,
-                             double dist_pow)
+static std::vector<double> knn_weights(const std::vector<NeighborInfo> &top_k,
+                                       double dist_pow)
 {
-    const arma::uword n = top_k.size();
-    arma::vec w(n, arma::fill::ones);
+    const std::size_t n = top_k.size();
+    std::vector<double> w(n, 1.0);
 
     if (n == 0 || dist_pow == 0.0)
     {
         return w; // unweighted KNN
     }
 
-    double min_pos = std::numeric_limits<double>::infinity();
+    double min_pos = DIST_INF;
     bool has_zero = false;
 
-    for (arma::uword j = 0; j < n; ++j)
+    for (std::size_t j = 0; j < n; ++j)
     {
         const double d = top_k[j].distance;
         if (d <= 0.0)
@@ -373,17 +382,17 @@ static arma::vec knn_weights(const std::vector<NeighborInfo> &top_k,
         // positive-distance neighbors get tiny but nonzero weights.
         const double floor =
             min_pos * std::sqrt(std::numeric_limits<double>::epsilon());
-        for (arma::uword j = 0; j < n; ++j)
+        for (std::size_t j = 0; j < n; ++j)
         {
             const double d = std::max(top_k[j].distance, floor);
-            w(j) = std::pow(floor / d, dist_pow);
+            w[j] = std::pow(floor / d, dist_pow);
         }
     }
     else
     {
-        for (arma::uword j = 0; j < n; ++j)
+        for (std::size_t j = 0; j < n; ++j)
         {
-            w(j) = std::pow(min_pos / top_k[j].distance, dist_pow);
+            w[j] = std::pow(min_pos / top_k[j].distance, dist_pow);
         }
     }
 
@@ -393,13 +402,17 @@ static arma::vec knn_weights(const std::vector<NeighborInfo> &top_k,
 // -----------------------------------------------------------------------------
 // Entry point
 // -----------------------------------------------------------------------------
+// Returns list(loc, value): `loc` an integer matrix with a row per missing
+// cell of grp_impute (1-based row, 1-based column of obj), `value` the
+// imputed value of each, NA where no neighbor is observed. R writes them
+// with obj[loc] <- value.
 // [[Rcpp::export]]
-arma::mat impute_knn_brute(
-    const arma::mat &obj,
-    const arma::uword k,
-    const arma::uvec &grp_impute,
-    const arma::uvec &grp_miss_no_imp,
-    const arma::uvec &grp_complete,
+Rcpp::List impute_knn_brute(
+    const Rcpp::NumericMatrix &obj,
+    const int k,
+    const Rcpp::IntegerVector &grp_impute,
+    const Rcpp::IntegerVector &grp_miss_no_imp,
+    const Rcpp::IntegerVector &grp_complete,
     const int method,
     const double dist_pow,
     int cores = 1,
@@ -407,22 +420,29 @@ arma::mat impute_knn_brute(
 {
     validate_knn_inputs(
         obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow);
-    stop_on_inf(obj.memptr(), obj.n_rows, obj.n_cols);
-    GroupLayout layout{grp_impute.n_elem, grp_miss_no_imp.n_elem, grp_complete.n_elem};
-    const arma::uword n_rows = obj.n_rows;
-    const arma::uword n_masked = layout.n_masked();
+    stop_on_inf(obj);
+    const GroupLayout layout{
+        static_cast<int>(grp_impute.size()),
+        static_cast<int>(grp_miss_no_imp.size()),
+        static_cast<int>(grp_complete.size())};
+    const int n_rows = obj.nrow();
+    const int n_masked = layout.n_masked();
+    const double *obj_ptr = obj.begin();
+    const int *grp_complete_ptr = grp_complete.begin();
 
-    arma::mat obj_masked(n_rows, n_masked);
-    MaskMat nmiss_masked(n_rows, n_masked);
-    arma::uvec n_col_valid(n_masked, arma::fill::zeros);
+    const std::size_t n_cells =
+        static_cast<std::size_t>(n_rows) * static_cast<std::size_t>(n_masked);
+    std::vector<double> obj_masked(n_cells);
+    std::vector<mask_t> nmiss_masked(n_cells);
+    std::vector<int> n_col_valid(n_masked, 0);
 
-    auto copy_with_mask = [&](arma::uword local_pos, arma::uword orig_pos)
+    auto copy_with_mask = [&](int local_pos, int orig_pos)
     {
-        const double *src = obj.colptr(orig_pos);
-        double *dst = obj_masked.colptr(local_pos);
-        mask_t *mask_dst = nmiss_masked.colptr(local_pos);
-        arma::uword valid_count = 0;
-        for (arma::uword r = 0; r < n_rows; ++r)
+        const double *src = col_ptr(obj_ptr, orig_pos, n_rows);
+        double *dst = col_ptr(obj_masked.data(), local_pos, n_rows);
+        mask_t *mask_dst = col_ptr(nmiss_masked.data(), local_pos, n_rows);
+        int valid_count = 0;
+        for (int r = 0; r < n_rows; ++r)
         {
             double v = src[r];
             // `finite` is 1 when observed, 0 when NaN. Single isnan call, used
@@ -433,44 +453,54 @@ arma::mat impute_knn_brute(
             mask_dst[r] = finite;
             valid_count += finite;
         }
-        n_col_valid(local_pos) = valid_count;
+        n_col_valid[local_pos] = valid_count;
     };
 
     // group 1
-    for (arma::uword i = 0; i < layout.n_imp; ++i)
+    for (int i = 0; i < layout.n_imp; ++i)
     {
-        copy_with_mask(i, grp_impute(i));
+        copy_with_mask(i, grp_impute[i]);
     }
 
     // early exit after group 1. Shouldn't really reach this from R.
-    arma::uvec col_offsets;
-    std::vector<arma::uvec> rows_to_impute_vec;
-    arma::mat result = initialize_result_matrix(
-        nmiss_masked, grp_impute, layout, n_col_valid, col_offsets, rows_to_impute_vec);
+    std::vector<std::size_t> col_offsets;
+    std::vector<std::vector<int>> rows_to_impute;
+    Rcpp::IntegerMatrix loc;
+    Rcpp::NumericVector value;
+    initialize_result(
+        nmiss_masked, n_rows, grp_impute, layout, n_col_valid, col_offsets,
+        rows_to_impute, loc, value);
 
-    if (result.n_rows == 0)
+    if (value.size() == 0)
     {
-        return result;
+        return Rcpp::List::create(
+            Rcpp::Named("loc") = loc, Rcpp::Named("value") = value);
     }
 
     // group 2
-    for (arma::uword p = 0; p < layout.n_mni; ++p)
+    for (int p = 0; p < layout.n_mni; ++p)
     {
-        copy_with_mask(layout.mni_start() + p, grp_miss_no_imp(p));
+        copy_with_mask(layout.mni_start() + p, grp_miss_no_imp[p]);
     }
 
     // group 3: read directly from obj via grp_complete - no copy.
     // n_valid_vec built directly from the group-1 portion of n_col_valid
-    arma::vec n_valid_vec(layout.n_imp);
-    for (arma::uword i = 0; i < layout.n_imp; ++i)
+    std::vector<double> n_valid_vec(layout.n_imp);
+    for (int i = 0; i < layout.n_imp; ++i)
     {
-        n_valid_vec(i) = static_cast<double>(n_col_valid(i));
+        n_valid_vec[i] = static_cast<double>(n_col_valid[i]);
     }
+
+    // The workers get plain pointers and std containers, captured by name, so
+    // none can reach an Rcpp object.
+    const double *obj_masked_ptr = obj_masked.data();
+    const mask_t *nmiss_masked_ptr = nmiss_masked.data();
+    double *value_ptr = value.begin();
 
     // parallelFor setup
     cores = std::max(1, cores);
-    const size_t n_threads = static_cast<size_t>(cores);
-    const size_t n_batches = static_cast<size_t>(cores);
+    const std::size_t n_threads = static_cast<std::size_t>(cores);
+    const std::size_t n_batches = static_cast<std::size_t>(cores);
     std::unique_ptr<RcppThread::ProgressBar> bar;
     if (pb)
     {
@@ -481,8 +511,10 @@ arma::mat impute_knn_brute(
 
     par_for(
         0,
-        layout.n_imp,
-        [&](std::size_t i)
+        static_cast<std::size_t>(layout.n_imp),
+        [obj_masked_ptr, nmiss_masked_ptr, n_rows, &layout, k, &n_valid_vec,
+         method, obj_ptr, grp_complete_ptr, dist_pow, value_ptr, &col_offsets,
+         &rows_to_impute, pb, &bar](std::size_t i)
         {
             if (i % 5 == 0)
             {
@@ -490,25 +522,26 @@ arma::mat impute_knn_brute(
             }
             // LOC_TIMER_SCOPED(knn_tm, "neighbor_search");
             std::vector<NeighborInfo> top_k = distance_vector(
-                obj_masked, nmiss_masked, layout, i, k, n_valid_vec, method,
-                obj, grp_complete);
-            const arma::uword n_neighbors = top_k.size();
+                obj_masked_ptr, nmiss_masked_ptr, n_rows, layout,
+                static_cast<int>(i), k, n_valid_vec, method, obj_ptr,
+                grp_complete_ptr);
+            const std::size_t n_neighbors = top_k.size();
             if (n_neighbors == 0)
             {
                 // no candidate shares an observed row with this column: its
-                // result rows keep the NaN they were initialized with.
+                // result values keep the NA they were initialized with.
                 return;
             }
-            arma::uvec nn_columns(n_neighbors);
-            for (arma::uword jj = 0; jj < n_neighbors; ++jj)
+            std::vector<int> nn_columns(n_neighbors);
+            for (std::size_t jj = 0; jj < n_neighbors; ++jj)
             {
-                nn_columns(jj) = top_k[jj].index;
+                nn_columns[jj] = top_k[jj].index;
             }
-            arma::vec weights = knn_weights(top_k, dist_pow);
+            const std::vector<double> weights = knn_weights(top_k, dist_pow);
             impute_column_values(
-                result, obj_masked, nmiss_masked, layout,
-                col_offsets(i), nn_columns, weights, rows_to_impute_vec[i],
-                obj, grp_complete);
+                value_ptr + col_offsets[i], obj_masked_ptr, nmiss_masked_ptr,
+                n_rows, layout, nn_columns, weights, rows_to_impute[i],
+                obj_ptr, grp_complete_ptr);
             if (pb)
             {
                 ++(*bar);
@@ -518,5 +551,6 @@ arma::mat impute_knn_brute(
 
     LOC_TOC(knn_tm, "impute_total");
     LOC_TIMER_DUMP_RAW(knn_tm, "knn_tm_raw");
-    return result;
+    return Rcpp::List::create(
+        Rcpp::Named("loc") = loc, Rcpp::Named("value") = value);
 }

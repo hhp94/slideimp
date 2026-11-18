@@ -532,10 +532,8 @@ logs are gated.
   the R installation links.
 - **RcppThread** is reached through `par_for()` (`src/par_for.h`: `inline void par_for(`),
   which only the K-NN kernel calls (`src/impute_knn_brute.cpp`, not in this
-  chain); `col_vars()` runs on one thread. With
-  `n_threads <= 1` it runs the body inline and never starts an RcppThread pool,
-  and `pca_imp()` reaches that kernel with the default `cores = 1`
-  (`R/col_vars.R`: `col_vars <- function(`).
+  chain); `col_vars()` (`R/col_vars.R`: `col_vars <- function(`), which
+  `pca_imp()` does call, runs on one thread and takes no `cores`.
   `src/Makevars` links `RcppThread::LdFlags()`; `src/Makevars.win`
   does not.
 - **mirai** is used from R only, one level above `pca_imp()`: `R/group_imp.R`

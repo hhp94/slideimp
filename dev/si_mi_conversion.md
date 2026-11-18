@@ -892,11 +892,12 @@ Decided in discussion (maintainer, 2026-11-18):
 - The kernel fills those cells itself. It leaves a cell in two ways: a whole
   column, when no candidate shares an observed row with it
   (`src/impute_knn_brute.cpp`: `if (n_neighbors == 0)`), and a single cell,
-  when none of the chosen neighbors is observed at that row
-  (`src/imputed_value.cpp`: `(wt_ptr[r] > 0.0) ? (ws_ptr[r] / wt_ptr[r]) : arma::datum::nan;`).
+  when none of the chosen neighbors is observed at that row, so its weight
+  total is 0 and no value is written
+  (`src/imputed_value.cpp`: `out[r] = ws_ptr[r] / wt_ptr[r];`).
   Both kinds sit in an imputed column, whose masked copy (holes set to 0) and
   observed count the kernel already holds (`src/impute_knn_brute.cpp`:
-  `n_col_valid(local_pos) = valid_count;`), so the mean costs one pass over
+  `n_col_valid[local_pos] = valid_count;`), so the mean costs one pass over
   that column's copy, and nothing of the input's size.
 - The columns over `colmax` stay in R. The kernel never sees them: they are
   in none of its three groups (imputed; eligible with holes outside
@@ -922,7 +923,7 @@ the columns whose holes were all filled.
 ### The kernel
 
 - `impute_knn_brute()` gains `fill_mean`, R's `post_imp`. When it is TRUE, a
-  cell it would leave NaN gets its column's observed mean: the sum of the
+  cell it would leave NA gets its column's observed mean: the sum of the
   masked column divided by `n_col_valid`, in double. It is taken by the
   worker that owns the column, once, and only for a column that needs it.
   `check_finite()` refuses a column with no observed value, so the count is
@@ -935,18 +936,19 @@ the columns whose holes were all filled.
 - It also returns which result rows hold a mean, so R can record
   `mean_filled_cells`. Proposed: a byte per result row, written by the worker
   that owns the row (no race), collected after the loop into the 1-based
-  rows, beside the triplet matrix in a list. A fourth double column would
-  cost 8 bytes a hole where the byte costs 1.
-- With `fill_mean = FALSE` the leftover cells stay NaN, as today. R's pass
-  turning NaN into NA (`R/knn_imp.R`: `imputed_values[is.nan(imputed_values)] <- NA_real_`)
-  is replaced by dropping those rows from the map.
+  rows, as a third element of the list the kernel returns (`loc` and
+  `value` since `dev/eigen_conversion.md` Phase 1 step 3). A double per
+  hole would cost 8 bytes where the byte costs 1.
+- With `fill_mean = FALSE` the leftover cells stay NA, as the kernel writes
+  them today, and R drops those rows from the map before
+  `obj[imputed$loc] <- imputed$value` (`R/knn_imp.R`).
 - `dev/CPP.md` applies: plain loops, no OpenMP, nothing pinned. The map
   (`dev/knn_imp_structure.md`, layers 4 to 6 and "Feasibility and abort
   paths") follows the code in the same commit.
-- The `eigen` branch rewrites these files (`dev/eigen_conversion.md`, Phase
-  1, the K-NN chain) and checks that the kernel's return is unchanged from
-  its start commit. This step changes that return, so the two plans meet
-  here.
+- `dev/eigen_conversion.md` Phase 1 step 3 rewrote these files in plain
+  Rcpp and changed the kernel's container (`list(loc, value)`, `NA` where it
+  leaves a cell) with every value unchanged from its start commit. This step
+  changes the values of the cells it leaves.
 
 ### Parts (`R/parts.R`)
 

@@ -128,7 +128,12 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
 - **Kernel hygiene pass over `src/`.** Hoist loop-invariant work, and move
   checks, allocations and branches that do not depend on the loop index out
   of hot paths. Measure each change against the reference capture and the
-  timing driver; no hand unrolling or OpenMP (`dev/CPP.md`).
+  timing driver; no hand unrolling or OpenMP (`dev/CPP.md`). Candidates
+  seen in the K-NN kernel while converting it, none measured yet:
+  `rows_to_impute` repeats, 0-based, the rows `loc` already holds;
+  `obj_masked` and `nmiss_masked` are zero-filled by `std::vector` before
+  every cell is written; and `initialize_result()` guards invariants its
+  one caller has just established.
 
 ## Release condition: pass on the RcppEigen candidate
 

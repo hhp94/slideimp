@@ -26,8 +26,8 @@ test_that("`impute_knn_brute` calculate the missing location correctly", {
     cores = 1
   )
 
-  # extract only the location columns (row, local_col_1based) that the C++ already returns
-  idx_brute <- imputed_brute[, 1:2, drop = FALSE]
+  # the (row, local 1-based column) of each missing cell, as the C++ returns it
+  idx_brute <- imputed_brute$loc
 
   # sort so the comparison is order-independent
   expected_sorted <- expected_local[
@@ -41,7 +41,8 @@ test_that("`impute_knn_brute` calculate the missing location correctly", {
     drop = FALSE
   ]
 
-  expect_equal(brute_sorted, expected_sorted)
+  # both integer matrices, so the comparison is exact
+  expect_identical(brute_sorted, expected_sorted)
 })
 
 test_that("knn_imp fills every missing cell and touches nothing else", {
@@ -438,7 +439,22 @@ test_that("the kernel checks the invariants it relies on", {
     cores = 1L
   )
   # the call is well formed as written, so the failures below are the inputs
-  expect_no_error(do.call(impute_knn_brute, base))
+  ok <- do.call(impute_knn_brute, base)
+  expect_identical(ok$loc, cbind(3:6, 1L))
+  expect_type(ok$value, "double")
+  expect_false(anyNA(ok$value))
+
+  # an index outside the matrix, NA included, is refused before it is read
+  for (bad in list(-1L, 5L, NA_integer_)) {
+    out <- base
+    out$grp_complete <- c(1:3, bad)
+    expect_error(do.call(impute_knn_brute, out), "out-of-bounds column index")
+  }
+  for (bad in list(0L, NA_integer_)) {
+    out <- base
+    out$k <- bad
+    expect_error(do.call(impute_knn_brute, out), "k must be >= 1")
+  }
 
   # a column claimed by two groups would be its own neighbor at distance zero
   overlap <- base
@@ -455,8 +471,9 @@ test_that("the kernel checks the invariants it relies on", {
   all_na <- base
   all_na$obj[, 1] <- NA
   r <- do.call(impute_knn_brute, all_na)
-  expect_identical(nrow(r), nrow(obj))
-  expect_true(all(is.na(r[, 3])))
+  expect_identical(nrow(r$loc), nrow(obj))
+  # R's NA, written by the kernel, not a NaN for R to convert
+  expect_identical(r$value, rep(NA_real_, nrow(obj)))
 })
 
 test_that("post_imp fills columns K-NN could not finish", {

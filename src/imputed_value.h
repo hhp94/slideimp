@@ -1,58 +1,75 @@
 #ifndef IMPUTED_VALUE_H
 #define IMPUTED_VALUE_H
 
-#include <RcppArmadillo.h>
-#include <cstdint>
-#include <vector>
+#include <Rcpp.h>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <vector>
 #include "matrix_checks.h"
 
 // single source of truth for the mask storage type
 using mask_t = uint8_t;
-using MaskMat = arma::Mat<mask_t>;
+
+// The first cell of column `col` in column-major storage of `n_rows` rows.
+// The offset is taken in size_t, so a matrix past 2^31 cells indexes
+// correctly; `col` and `n_rows` are bounded by ncol() and nrow(), which R
+// holds as int.
+template <typename T>
+inline T *col_ptr(T *base, const int col, const int n_rows)
+{
+    return base + static_cast<std::size_t>(col) * static_cast<std::size_t>(n_rows);
+}
 
 // GroupLayout: single source of truth for group boundaries.
 // Groups 1+2 (imputed + missing-no-impute) share identical kernel treatment
 // and live together in obj_masked / nmiss_masked at local cols [0, n_masked()).
-// n_imp is retained so initialize_result_matrix knows which columns actually
-// get imputed.
+// n_imp is retained so initialize_result knows which columns actually get
+// imputed.
 //
 // complete_start() is a "virtual" index: there is no physical column at that
 // position in obj_masked. It's used as a tag in nn_columns to mark
 // "this neighbor came from group 3, offset (local - complete_start()) into
 // grp_complete".
+//
+// The groups are disjoint and in range (validate_knn_inputs), so every count
+// here is at most ncol().
 struct GroupLayout
 {
-    arma::uword n_imp;
-    arma::uword n_mni;
-    arma::uword n_complete;
-    arma::uword mni_start() const { return n_imp; }
-    arma::uword n_masked() const { return n_imp + n_mni; }
-    arma::uword complete_start() const { return n_imp + n_mni; }
-    arma::uword n_working() const { return n_imp + n_mni + n_complete; }
+    int n_imp;
+    int n_mni;
+    int n_complete;
+    int mni_start() const { return n_imp; }
+    int n_masked() const { return n_imp + n_mni; }
+    int complete_start() const { return n_imp + n_mni; }
+    int n_working() const { return n_imp + n_mni + n_complete; }
 };
 
 static inline void validate_knn_inputs(
-    const arma::mat &obj,
-    const arma::uword k,
-    const arma::uvec &grp_impute,
-    const arma::uvec &grp_miss_no_imp,
-    const arma::uvec &grp_complete,
+    const Rcpp::NumericMatrix &obj,
+    const int k,
+    const Rcpp::IntegerVector &grp_impute,
+    const Rcpp::IntegerVector &grp_miss_no_imp,
+    const Rcpp::IntegerVector &grp_complete,
     const int method,
     const double dist_pow)
 {
-    if (obj.n_rows == 0)
+    const int n_rows = obj.nrow();
+    const int n_cols = obj.ncol();
+
+    if (n_rows == 0)
     {
         Rcpp::stop("obj must have at least one row.");
     }
 
-    if (obj.n_cols < 2)
+    if (n_cols < 2)
     {
         Rcpp::stop("obj must have at least two columns.");
     }
 
-    if (k == 0)
+    // NA_integer_ is INT_MIN, so an NA k fails here too.
+    if (k < 1)
     {
         Rcpp::stop("k must be >= 1.");
     }
@@ -67,18 +84,19 @@ static inline void validate_knn_inputs(
         Rcpp::stop("dist_pow must be finite and >= 0.");
     }
 
-    auto check_group = [&](const arma::uvec &g, const char *name)
+    // Indices are 0-based. NA_integer_ is negative, so it is out of range.
+    auto check_group = [&](const Rcpp::IntegerVector &g, const char *name)
     {
-        for (arma::uword i = 0; i < g.n_elem; ++i)
+        for (R_xlen_t i = 0; i < g.size(); ++i)
         {
-            if (g(i) >= obj.n_cols)
+            if (g[i] < 0 || g[i] >= n_cols)
             {
                 Rcpp::stop(
                     std::string(name) +
                     " contains out-of-bounds column index " +
-                    std::to_string(g(i)) +
+                    (g[i] == NA_INTEGER ? std::string("NA") : std::to_string(g[i])) +
                     ". obj has " +
-                    std::to_string(obj.n_cols) +
+                    std::to_string(n_cols) +
                     " columns.");
             }
         }
@@ -92,21 +110,21 @@ static inline void validate_knn_inputs(
     // when it tags a group-3 neighbor by its offset into grp_complete, and a
     // column listed twice would appear as its own neighbor at distance zero
     // and take the whole weight, so the partition is checked, not assumed.
-    std::vector<mask_t> seen(obj.n_cols, 0);
-    auto claim_group = [&](const arma::uvec &g, const char *name)
+    std::vector<mask_t> seen(n_cols, 0);
+    auto claim_group = [&](const Rcpp::IntegerVector &g, const char *name)
     {
-        for (arma::uword i = 0; i < g.n_elem; ++i)
+        for (R_xlen_t i = 0; i < g.size(); ++i)
         {
-            if (seen[g(i)])
+            if (seen[g[i]])
             {
                 Rcpp::stop(
                     std::string(name) +
                     " contains column index " +
-                    std::to_string(g(i)) +
+                    std::to_string(g[i]) +
                     ", which already belongs to another group. The three "
                     "groups must be disjoint.");
             }
-            seen[g(i)] = 1;
+            seen[g[i]] = 1;
         }
     };
 
@@ -120,16 +138,17 @@ static inline void validate_knn_inputs(
     // missing imputed value with no error. This is where "complete" is
     // enforced; it costs one pass over the group-3 block, against the
     // k * n_complete distance passes the kernel is about to do.
-    for (arma::uword i = 0; i < grp_complete.n_elem; ++i)
+    const double *x = obj.begin();
+    for (R_xlen_t i = 0; i < grp_complete.size(); ++i)
     {
-        const double *col = obj.colptr(grp_complete(i));
-        for (arma::uword r = 0; r < obj.n_rows; ++r)
+        const double *col = col_ptr(x, grp_complete[i], n_rows);
+        for (int r = 0; r < n_rows; ++r)
         {
             if (std::isnan(col[r]))
             {
                 Rcpp::stop(
                     std::string("grp_complete column ") +
-                    std::to_string(grp_complete(i) + 1) +
+                    std::to_string(grp_complete[i] + 1) +
                     " has a missing value at row " +
                     std::to_string(r + 1) +
                     ". grp_complete columns must be fully observed.");
@@ -137,10 +156,11 @@ static inline void validate_knn_inputs(
         }
     }
 
-    const arma::uword n_working =
-        grp_impute.n_elem + grp_miss_no_imp.n_elem + grp_complete.n_elem;
+    // disjoint and in range, so at most n_cols
+    const int n_working = static_cast<int>(
+        grp_impute.size() + grp_miss_no_imp.size() + grp_complete.size());
 
-    if (grp_impute.n_elem > 0)
+    if (grp_impute.size() > 0)
     {
         if (n_working < 2)
         {
@@ -159,32 +179,42 @@ static inline void validate_knn_inputs(
     }
 }
 
-// n_col_valid: per-column valid-entry counts for the masked region
-// (groups 1+2). Populated by the caller during the copy-with-mask pass,
-// so initialize_result_matrix can derive missing counts without a second
-// accu over the byte matrix. Only entries [0, layout.n_imp) are read here.
-arma::mat initialize_result_matrix(
-    const MaskMat &nmiss_masked,
-    const arma::uvec &grp_impute,
+// The result has one entry per missing cell of group 1 (local columns
+// [0, n_imp) of the masked copy), column by column and down each column:
+// `loc` holds its 1-based row and original 1-based column, `value` holds NA
+// until impute_column_values() writes it. col_offsets[i] is where column i's
+// entries start, rows_to_impute[i] the 0-based rows they stand for.
+// n_col_valid holds the observed count of each masked column, taken during
+// the copy-with-mask pass, so the missing counts need no second pass over
+// the mask. Only entries [0, layout.n_imp) are read here.
+void initialize_result(
+    const std::vector<mask_t> &nmiss_masked,
+    const int n_rows,
+    const Rcpp::IntegerVector &grp_impute,
     const GroupLayout &layout,
-    const arma::uvec &n_col_valid,
-    arma::uvec &col_offsets,
-    std::vector<arma::uvec> &rows_to_impute_vec);
+    const std::vector<int> &n_col_valid,
+    std::vector<std::size_t> &col_offsets,
+    std::vector<std::vector<int>> &rows_to_impute,
+    Rcpp::IntegerMatrix &loc,
+    Rcpp::NumericVector &value);
 
+// Runs in a worker: plain pointers and std containers only, never an Rcpp
+// object. `out` is this column's slice of the result values.
+//
 // nn_columns holds tagged positions: values < layout.complete_start() index
 // directly into obj_masked/nmiss_masked; values >= layout.complete_start()
-// must be de-tagged via (nn_columns(j) - complete_start()) and looked up
+// must be de-tagged via (nn_columns[j] - complete_start()) and looked up
 // through grp_complete into obj.
 void impute_column_values(
-    arma::mat &result,
-    const arma::mat &obj_masked,
-    const MaskMat &nmiss_masked,
+    double *out,
+    const double *obj_masked,
+    const mask_t *nmiss_masked,
+    const int n_rows,
     const GroupLayout &layout,
-    const arma::uword col_offset,
-    const arma::uvec &nn_columns,
-    const arma::vec &nn_weights,
-    const arma::uvec &rows_to_impute,
-    const arma::mat &obj,
-    const arma::uvec &grp_complete);
+    const std::vector<int> &nn_columns,
+    const std::vector<double> &nn_weights,
+    const std::vector<int> &rows_to_impute,
+    const double *obj,
+    const int *grp_complete);
 
 #endif

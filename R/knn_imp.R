@@ -204,8 +204,9 @@ knn_imp <- function(
 
   method <- switch(method, "euclidean" = 0L, "manhattan" = 1L)
 
-  # impute using brute-force K-NN
-  imputed_values <- impute_knn_brute(
+  # impute using brute-force K-NN: `loc` holds the (row, col) of each missing
+  # cell of grp_impute, `value` its K-NN value, NA where K-NN found none
+  imputed <- impute_knn_brute(
     obj = obj,
     k = k,
     grp_impute = as.integer(grp_impute - 1L),
@@ -217,17 +218,13 @@ knn_imp <- function(
     pb = .progress
   )
 
-  # convert NaN values back to NA due to C++ handling
-  imputed_values[is.nan(imputed_values)] <- NA_real_
-
-  imp_indices <- cbind(imputed_values[, 1], imputed_values[, 2])
-  obj[imp_indices] <- imputed_values[, 3]
+  obj[imputed$loc] <- imputed$value
 
   # post-imputation: fill any remaining NAs with column means.
   # Only two kinds of subset column can still hold one: a column K-NN was not
   # allowed to touch (missing but over colmax), and a column K-NN could not
-  # finish (no candidate shared an observed row, leaving NA in the third
-  # result column). Both are known here without another pass over obj, and
+  # finish (no candidate shared an observed row, leaving NA in
+  # `imputed$value`). Both are known here without another pass over obj, and
   # naming them, with the call skipped when there are none (the usual case),
   # spares mean_imp_col() its passes over every column.
   #
@@ -242,10 +239,10 @@ knn_imp <- function(
     mean_cols <- unname(sort(
       setdiff(intersect(subset, has_miss_idx), grp_impute)
     ))
-    left <- is.na(imputed_values[, 3])
+    left <- is.na(imputed$value)
     mean_cells <- mean_filled_cells_matrix(
-      row = imputed_values[left, 1],
-      col = imputed_values[left, 2],
+      row = imputed$loc[left, 1],
+      col = imputed$loc[left, 2],
       n_row = nrow(obj)
     )
     na_cols <- sort(unique(c(mean_cols, mean_cells[, "col"])))

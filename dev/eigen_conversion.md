@@ -425,10 +425,11 @@ compare script asserts on a tolerance anyway and reports bitwise-ness.
    vectors and returns an integer matrix, so `sample_na_loc()` drops its
    `storage.mode()` coercion.
 3. The K-NN chain: `src/imputed_value.h`, `src/imputed_value.cpp`,
-   `src/impute_knn_brute.cpp`. `arma::datum::inf` and `arma::datum::nan`
-   become `std::numeric_limits`; `arma::Mat<mask_t>` becomes a flat buffer.
-   The early-abandon chunking in `calc_distance_raw` is algorithmic and
-   stays (`dev/CPP.md`).
+   `src/impute_knn_brute.cpp`. `arma::datum::inf` becomes
+   `std::numeric_limits`, and the NaN left in a cell the kernel cannot fill
+   becomes R's `NA` (step 3 below); `arma::Mat<mask_t>` becomes a flat
+   buffer. The early-abandon chunking in `calc_distance_raw` is algorithmic
+   and stays (`dev/CPP.md`).
 
 Step 1 was first committed as `1ac016a` with the Armadillo interfaces
 reproduced: the same R types and shapes, `col_idx` cast from doubles, and
@@ -477,6 +478,66 @@ on the working tree over `1ac016a`.
 - The suite with the manual tests, under `load_all1(timer = FALSE)`, the
   mirai daemons loading the step installed into a private library: 22
   files, 275 tests, none failed, errored or skipped.
+
+Step 3, on the working tree over `12ac4bd`:
+
+- The three files include `Rcpp.h`, RcppThread and the standard library,
+  nothing of Armadillo. `impute_knn_brute()` takes `obj` as a
+  `const Rcpp::NumericMatrix &`, `k`, `method` and `cores` as `int` and the
+  three groups as integer vectors, and returns `list(loc, value)`: `loc` an
+  integer matrix of each missing cell's 1-based row and column, `value` a
+  double vector. It returned an n x 3 double matrix holding the indices as
+  doubles. `knn_imp()` writes `obj[imputed$loc] <- imputed$value`, and its
+  `cbind()` of the two index columns goes.
+- Where the kernel leaves a cell it now leaves R's `NA`, not NaN: `value` is
+  filled with `NA_REAL` on the main thread, and a worker writes only where
+  the weight total is positive. `knn_imp()` drops its pass turning NaN into
+  NA. This departs from item 3 as first written, which had
+  `arma::datum::nan` become `std::numeric_limits`: under the type rules the
+  kernel returns the value R holds for a missing cell.
+- Every index that crosses from R, and every row and column index derived
+  from one, is `int`; column offsets are taken in `size_t` by `col_ptr()`
+  (`src/imputed_value.h`), and so are the result offsets. More than
+  2^31 - 1 missing cells in the imputed columns is refused, since `loc` is
+  an R matrix. `validate_knn_inputs()` refuses a negative or NA group index
+  in its own words; as `arma::uvec` it wrapped to a huge index, refused as
+  out of bounds with that number in the message. `tests/testthat/test-knn_imp.R`
+  raises both, and `k` of 0 and NA, and pins `loc` and the `NA`.
+- The worker lambda captures plain pointers, `std` containers and scalars by
+  name, so a use of an Rcpp object inside it does not compile; Rcpp's
+  `operator[]` can call R's `warning()`. The masked copy and the mask are
+  `std::vector`s, zero-filled before the copy writes every cell (listed for
+  the hygiene pass in `dev/to-do.md`, with two other candidates).
+- `stop_on_inf()` takes a `const Rcpp::NumericMatrix &`, since no Armadillo
+  caller is left.
+- Capture `p1s3` against `76d4c60`: 71 cases and the same 7 deliberate
+  failures as `p1s2`. Every K-NN case, through `knn_imp()`, `slide_imp()`,
+  `group_imp()` and `tune_imp()`, is bitwise identical.
+- `dev/eigen_p1_edges.R` gains 20 cases calling the kernel directly, each
+  reduced to (row, col, value) as doubles with `NA`: 5, 16, 17 and 40 rows
+  around the chunk size, both metrics, `dist_pow` 0, 1 and 2, the largest
+  `k`, two threads, a zero distance, no group 3, a target that shares no
+  observed row with any candidate and rows no chosen neighbor observes (all
+  9 cells left `NA` on both builds), `knn_imp()` on that input with and
+  without `post_imp`, integer input with ties, and two refusals both builds
+  word alike. 70 cases at tolerance 0: all 20 pass and are bitwise; the 2
+  failures are `col_min_max()` on no rows, as in step 2.
+- Not built against the RcppEigen candidate: the step adds no Eigen.
+- Timed against the start commit, both installed by
+  `dev/eigen_time_install.R` with the same flags, on the two K-NN workloads
+  only, 5 repetitions a run, BLAS and OpenMP threads at their defaults; read
+  2026-11-18 on one machine, two runs of about 145 s. `chr21_knn` gave a b/a
+  ratio of medians of 0.945 and 0.932, the step faster in 9 of the 10 paired
+  repetitions, on totals near 0.6 s for 5 calls. `sim_knn` gave 0.971 and
+  1.050, faster in 4 of 10: outside the band on opposite sides, so no
+  difference shows there, and the machine was noisier than when the band
+  was read. The reference is the start commit, so this covers steps 1 to 3:
+  `knn_imp()` also calls `check_finite()` and `mat_miss()`, which steps 1
+  and 2 changed. Where the `chr21_knn` gain comes from is not measured. The
+  PCA workloads were not timed for any step of this phase, though
+  `pca_imp()` calls `col_vars()`, `check_finite()` and `mat_miss()`.
+- The suite with the manual tests, as for steps 1 and 2: 22 files, 275
+  tests, none failed, errored or skipped.
 
 ## Phase 2: the PCA chain to R's BLAS and LAPACK
 

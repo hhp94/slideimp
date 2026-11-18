@@ -102,9 +102,7 @@ Rcpp::NumericVector col_vars_internal(const Rcpp::NumericMatrix &obj)
 // [[Rcpp::export]]
 void check_inf(const Rcpp::NumericMatrix &obj)
 {
-  stop_on_inf(obj.begin(),
-              static_cast<std::size_t>(obj.nrow()),
-              static_cast<std::size_t>(obj.ncol()));
+  stop_on_inf(obj);
 }
 
 // Inf/-Inf and all-NA/NaN columns. The gate for the imputation entry points.

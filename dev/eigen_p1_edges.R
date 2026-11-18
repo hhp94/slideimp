@@ -3,7 +3,8 @@
 # NaN and Inf, a zero held as both 0 and -0 at a column's extreme, and the
 # sampler's odd arguments. The Phase 0 capture runs these exports on
 # ordinary input only; this checks that the rewritten kernels compute what
-# the Armadillo ones did on the inputs both accept.
+# the Armadillo ones did on the inputs both accept. The K-NN kernel cases
+# at the end were added in step 3.
 #
 # Run from the package root of a build, with a label naming the capture:
 #   Rscript dev/eigen_p1_edges.R <label>
@@ -272,6 +273,81 @@ case(
     10L
   ))
 )
+
+## The K-NN kernel (src/impute_knn_brute.cpp), called directly. Step 3 made
+## it return list(loc, value) with NA where it leaves a cell; the Armadillo
+## build returned an n x 3 double matrix of (row, col, value) holding NaN
+## there, which knn_imp() turned into NA. kv() reduces either to
+## c(row, col, value) as doubles with NA. Row counts around GRAIN (16) take
+## the chunked distance loops with and without a tail; k = 4 of 11
+## candidates takes the pruned replacement phase.
+kv <- function(r) {
+  if (is.list(r)) {
+    return(c(as.double(r$loc), r$value))
+  }
+  r[is.nan(r)] <- NA_real_
+  as.double(r)
+}
+set.seed(7)
+kx <- lapply(c(5L, 16L, 17L, 40L), function(n) {
+  x <- matrix(rnorm(n * 12), n, 12)
+  for (j in 1:9) {
+    x[sample(n, max(1L, n %/% 4L)), j] <- NA
+  }
+  x
+})
+names(kx) <- c("n5", "n16", "n17", "n40")
+kimp <- 0:5
+kmni <- 6:8
+kcomp <- 9:11
+for (nm in names(kx)) {
+  for (m in 0:1) {
+    case(
+      sprintf("knn_%s_m%d", nm, m),
+      kv(impute_knn_brute(kx[[nm]], 4L, kimp, kmni, kcomp, m, 1, 1L))
+    )
+  }
+}
+x40 <- kx$n40
+case("knn_n40_pow0", kv(impute_knn_brute(x40, 4L, kimp, kmni, kcomp, 0L, 0)))
+case("knn_n40_pow2", kv(impute_knn_brute(x40, 4L, kimp, kmni, kcomp, 1L, 2)))
+case("knn_n40_kmax", kv(impute_knn_brute(x40, 11L, kimp, kmni, kcomp, 0L, 1)))
+case(
+  "knn_n40_cores2",
+  kv(impute_knn_brute(x40, 4L, kimp, kmni, kcomp, 0L, 1, 2L))
+)
+## column 2 equal to column 1 where both are observed: a zero distance
+xdup <- x40
+xdup[, 2] <- ifelse(is.na(xdup[, 2]), NA, xdup[, 1])
+case("knn_dup_zero", kv(impute_knn_brute(xdup, 4L, kimp, kmni, kcomp, 0L, 1)))
+## no group 3, so groups 1 and 2 only
+case(
+  "knn_no_complete",
+  kv(impute_knn_brute(x40, 3L, kimp, kmni, integer(0), 1L, 1))
+)
+## column 1 shares no observed row with 2 or 3: no neighbor, left NA; column
+## 2's one neighbor, column 3, is missing where column 2 is: rows left NA
+nov <- cbind(
+  c(1, 2, 3, NA, NA, NA),
+  c(NA, NA, NA, 4, 5, 6),
+  c(NA, NA, NA, 7, 8.5, 9)
+)
+case(
+  "knn_no_overlap",
+  kv(impute_knn_brute(nov, 1L, 0:2, integer(0), integer(0), 0L, 1))
+)
+case("knn_imp_no_overlap_post", knn_imp(nov, k = 1))
+case("knn_imp_no_overlap_nopost", knn_imp(nov, k = 1, post_imp = FALSE))
+## integer storage, small values: ties
+xi <- matrix(sample(c(1:4, NA), 20 * 8, replace = TRUE), 20, 8)
+xi[, 7:8] <- sample(1:4, 40, replace = TRUE)
+case("knn_int_ties", kv(impute_knn_brute(xi, 3L, 0:5, integer(0), 6:7, 0L, 1)))
+## refused by both builds in the same words
+case(
+  "knn_idx_out",
+  kv(impute_knn_brute(x40, 4L, kimp, kmni, c(9L, 10L, 12L), 0L, 1))
+)
+case("knn_k0", kv(impute_knn_brute(x40, 0L, kimp, kmni, kcomp, 0L, 1)))
 
 cat(sprintf(
   "%d cases\n",

@@ -36,7 +36,7 @@ R/knn_imp.R                         knn_imp()  -- user entry, validation, partit
   |              +- src/imputed_value.h       validate_knn_inputs()
   |              +- src/matrix_checks.h       stop_on_inf()
   |              +- src/impute_knn_brute.cpp  copy_with_mask lambda
-  |              +- src/imputed_value.cpp     initialize_result_matrix()
+  |              +- src/imputed_value.cpp     initialize_result()
   |              +- src/par_for.h             par_for()
   |                   +- src/impute_knn_brute.cpp  distance_vector()
   |                   |    +- src/impute_knn_brute.cpp  distance_vector_impl<Metric>()
@@ -46,7 +46,7 @@ R/knn_imp.R                         knn_imp()  -- user entry, validation, partit
   |                   |         +- src/impute_knn_brute.cpp  insert_if_better_than_worst()
   |                   +- src/impute_knn_brute.cpp  knn_weights()
   |                   +- src/imputed_value.cpp     impute_column_values()
-  +- R/knn_imp.R                    NaN -> NA, scatter triplets back into obj
+  +- R/knn_imp.R                    obj[loc] <- value
   +- R/mean_imp_col.R               mean_imp_col()  (post_imp, and only if
   |                                 anything is still missing)
   |    +- src/mat_stats.cpp         check_inf(), col_miss_internal()
@@ -119,11 +119,10 @@ candidate regardless of `subset`.
 (`R/tune_imp.R`: `sample_na_loc <- function(`, `max_row_miss <- max_miss_count(`),
 capping injected missingness per row.
 
-After the `.Call`, `knn_imp()` maps `NaN` back to `NA_real_`, since the kernel
-emits `NaN` for cells it could not fill (`R/knn_imp.R`:
-`imputed_values[is.nan(imputed_values)]`); uses the returned `(row, col)` pairs
-as a two-column index matrix to scatter values into `obj` (`R/knn_imp.R`:
-`obj[imp_indices] <- imputed_values[, 3]`); optionally runs column-mean fill
+After the `.Call`, `knn_imp()` writes the kernel's values into `obj` through
+its `loc`, an integer two-column index matrix (`R/knn_imp.R`:
+`obj[imputed$loc] <- imputed$value`); a cell the kernel could not fill is
+already `NA` there; optionally runs column-mean fill
 (`R/knn_imp.R`: `if (post_imp) {`); and attaches the `slideimp_results` class
 and attributes via `new_slideimp_results()` (`R/utils.R`:
 `new_slideimp_results <- function(`). The constructor first strips its input to
@@ -135,7 +134,7 @@ still be missing after the kernel: one `colmax` held out of `grp_impute`, and
 one the kernel could not finish because no candidate shared an observed row
 with it. Both sets are already in hand (`R/knn_imp.R`:
 `na_cols <- sort(unique(c(`) -- the first from `has_miss_idx` minus
-`grp_impute`, the second from the `NA`s in the third result column -- so
+`grp_impute`, the second from the `NA`s in the kernel's `value` -- so
 `mean_imp_col()` is called with just those columns, and not at all when there
 are none. That is the usual case, and skipping it saves the copy of the matrix
 that `mean_imp_col()` makes to fill, and its passes over every column (the
@@ -180,14 +179,13 @@ wrappers), `src/impute_knn_brute.cpp` (K-NN kernel and entry point),
 Project headers reached, following the `#include` graph:
 
 - `src/imputed_value.h` -- included by `src/impute_knn_brute.cpp` and
-  `src/imputed_value.cpp`. Defines `mask_t` / `MaskMat`, `GroupLayout`, the
+  `src/imputed_value.cpp`. Defines `mask_t`, `col_ptr()`, `GroupLayout`, the
   header-inline `validate_knn_inputs()`, and the two out-of-line declarations
-  (`src/imputed_value.h`: `arma::mat initialize_result_matrix(`,
+  (`src/imputed_value.h`: `void initialize_result(`,
   `void impute_column_values(`).
 - `src/matrix_checks.h` -- pulled in by `src/imputed_value.h` and
-  `src/mat_stats.cpp`. Holds only `stop_on_inf()`, which takes a pointer to
-  the column-major cells and the dims, so the Armadillo kernel and the plain
-  Rcpp exports of `src/mat_stats.cpp` share it.
+  `src/mat_stats.cpp`. Holds only `stop_on_inf()`, which the K-NN kernel and
+  `check_inf()` share.
 - `src/par_for.h` -- included by `src/impute_knn_brute.cpp` only. One
   function template: `par_for()` runs the loop body
   inline when `n_threads <= 1` and hands off to `RcppThread::parallelFor()`
@@ -204,17 +202,22 @@ Project headers reached, following the `#include` graph:
   `LOC_TIMER_PARAM` / `LOC_TIMER_ARG` to nothing, so the `LOC_*` calls in
   `src/impute_knn_brute.cpp` vanish in a normal build.
 
-Plus the external `RcppArmadillo.h` (included by `src/imputed_value.h`) and
-`RcppThread.h` (by `src/impute_knn_brute.cpp`). The remaining `src/` headers
+Plus the external `Rcpp.h` (included by `src/imputed_value.h`) and
+`RcppThread.h` (by `src/impute_knn_brute.cpp`); no Armadillo. The remaining `src/` headers
 (`eig_sym_sel.h`, `gram_ops.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`,
 `pca_linalg_utils.h`, `svd_triplet.h`) and `.cpp` files (`armaSVD.cpp`,
 `find_windows.cpp`, `find_windows_flank.cpp`, `sample_each_rep_cpp.cpp`) serve
 the PCA, windowing, and simulation paths and are not reached from `knn_imp()`.
 
-`src/Makevars` sets `-DARMA_64BIT_WORD=1`, so `arma::uword` is 64-bit and
-kernel index arithmetic does not wrap on matrices past `2^32 - 1` elements;
-`src/armaSVD.cpp` exposes `arma_uword_bytes()` so the test suite can assert
-that flag survived.
+**Index types.** What crosses from R -- `k`, `method`, `cores`, the group
+indices, and every row and column index the kernel derives from them -- is
+`int`, bounded by `nrow()` or `ncol()`, which R holds as `int`. The offset of
+a column into a buffer is taken in `size_t` by `col_ptr()`
+(`src/imputed_value.h`: `inline T *col_ptr(`), so a matrix past `2^31` cells
+indexes correctly, and so are the result offsets (`src/imputed_value.cpp`:
+`std::size_t sum_missing = 0;`). The result is an R matrix, whose dims are
+`int`, so more than `2^31 - 1` missing cells in `grp_impute` is refused
+(`src/imputed_value.cpp`: `the result has a row for each`).
 
 ## Layer 4 -- kernel setup and result skeleton
 
@@ -225,50 +228,54 @@ that flag survived.
    floored rather than validated (`src/impute_knn_brute.cpp`:
    `cores = std::max(1, cores);`), and the `k` bound applies only when a column
    needs imputing. It checks shape, `k >= 1`, `method` in `{0, 1}`, `dist_pow`
-   finite and non-negative, every group index in range, the three groups
+   finite and non-negative, every group index in `[0, ncol)` (a negative index
+   and `NA`, which is `INT_MIN`, included), the three groups
    disjoint, every `grp_complete` column free of `NaN`, and `k <= n_working - 1`
    for `n_working` = sum of the three group sizes. The partition and `NaN`
    checks are not redundant with the R layer: group 3 is read unmasked by
    `impute_column_values()`, so a `NaN` there would flow into the weighted sum
    and produce a missing value with no error, and a column claimed by two groups
-   would be its own neighbor at distance zero. A test exercises both
-   (`tests/testthat/test-knn_imp.R`: `the kernel checks the invariants`). Then
-   `stop_on_inf()` rescans `obj` for infinities
-   (`src/impute_knn_brute.cpp`: `stop_on_inf(obj.memptr(), obj.n_rows, obj.n_cols);`).
+   would be its own neighbor at distance zero. A test exercises both, and the
+   index and `k` refusals (`tests/testthat/test-knn_imp.R`:
+   `the kernel checks the invariants`). Then `stop_on_inf()` rescans `obj` for
+   infinities (`src/impute_knn_brute.cpp`: `stop_on_inf(obj);`).
 2. `GroupLayout layout{...}` in `src/impute_knn_brute.cpp` is the single
    source of truth for group boundaries: groups 1 and 2 occupy local columns
-   `[0, n_masked())` of the working matrices, and `complete_start()`
-   (`src/imputed_value.h`: `arma::uword complete_start() const`) is a *virtual*
+   `[0, n_masked())` of the working buffers, and `complete_start()`
+   (`src/imputed_value.h`: `int complete_start() const`) is a *virtual*
    index used as a tag -- a neighbor id `>= complete_start()` means "group 3,
    offset `id - complete_start()` into `grp_complete`".
-3. Working buffers `obj_masked` (`arma::mat`), `nmiss_masked`
-   (`arma::Mat<uint8_t>`) and `n_col_valid` are allocated
-   (`src/impute_knn_brute.cpp`: `arma::mat obj_masked(`) and filled by
+3. Working buffers `obj_masked` (`std::vector<double>`), `nmiss_masked`
+   (`std::vector<uint8_t>`), both flat and column-major, and `n_col_valid` are
+   allocated (`src/impute_knn_brute.cpp`: `std::vector<double> obj_masked(n_cells);`) and filled by
    `copy_with_mask`, which calls `std::isnan` once per cell and reuses the
    result as the mask byte, the count increment, and the zeroing test
    (`src/impute_knn_brute.cpp`: `mask_t finite = !std::isnan(v);`). Missing
    cells therefore hold a literal `0.0` in `obj_masked` and are excluded by the
    mask, never by a branch in the distance loop.
 4. Groups 1 and 2 are copied (`src/impute_knn_brute.cpp`:
-   `copy_with_mask(i, grp_impute(i))`, `copy_with_mask(layout.mni_start() + p`).
+   `copy_with_mask(i, grp_impute[i])`, `copy_with_mask(layout.mni_start() + p`).
    Group 3 is **not** copied: the kernel reads it straight out of `obj` through
    `grp_complete` (`src/impute_knn_brute.cpp`: `group 3: read directly from obj`),
    and in the lambdas (`src/impute_knn_brute.cpp`: `auto complete_dist_unbounded`).
-5. `initialize_result_matrix()` (`src/imputed_value.cpp`:
-   `arma::mat initialize_result_matrix(`) runs between the group-1 and group-2
+5. `initialize_result()` (`src/imputed_value.cpp`:
+   `void initialize_result(`) runs between the group-1 and group-2
    copies so the call can bail early when there is nothing to impute
-   (`src/impute_knn_brute.cpp`: `if (result.n_rows == 0)`).
+   (`src/impute_knn_brute.cpp`: `if (value.size() == 0)`).
 
-**Result skeleton.** The return value is a triplet matrix: 1-based row, original
-1-based column, value. Missing counts per target column come from `n_col_valid`
-rather than a second pass over the mask (`src/imputed_value.cpp`:
-`n_miss_i = mask_n_rows - n_col_valid(i)`), and a prefix sum builds
-`col_offsets` (`src/imputed_value.cpp`: `col_offsets.set_size(n_imp + 1)`) so
-each target column owns a contiguous slice of result rows and threads never
-collide. The matrix is filled with `NaN` (`src/imputed_value.cpp`:
-`result.fill(arma::datum::nan)`), columns 0 and 1 are populated up front
-(`src/imputed_value.cpp`: `orig_col_1based = grp_impute(i) + 1`), and
-`rows_to_impute_vec[i]` records which rows of target column `i` are missing.
+**Result skeleton.** The return value is `list(loc, value)`: `loc` an integer
+matrix of 1-based row and original 1-based column, one row per missing cell
+of `grp_impute`, and `value` a double vector of the same length. Both are R
+objects allocated here, on the main thread, before any worker starts. Missing
+counts per target column come from `n_col_valid` rather than a second pass
+over the mask (`src/imputed_value.cpp`: `n_miss_i = n_rows - n_col_valid[i]`),
+and a prefix sum builds `col_offsets` (`src/imputed_value.cpp`:
+`col_offsets[i + 1] = sum_missing;`) so each target column owns a contiguous
+slice of `value` and threads never collide. `value` starts as `NA`
+(`src/imputed_value.cpp`: `value = Rcpp::NumericVector(n_total, NA_REAL);`),
+`loc` is filled up front (`src/imputed_value.cpp`:
+`orig_col_1based = grp_impute[i] + 1`), and `rows_to_impute[i]` records which
+rows of target column `i` are missing.
 Empty cases short-circuit (`src/imputed_value.cpp`: `if (n_imp == 0)`,
 `if (sum_missing == 0)`), and `Rcpp::stop` consistency guards surround the
 bookkeeping.
@@ -286,7 +293,8 @@ pair where either side may be missing. Per row it forms
 `valid * Metric::accumulate(diff)` -- branchless, and correct because missing
 values were zeroed during the masked copy. It returns `dist / n_valid`, the mean
 per-coordinate contribution over rows observed in *both* columns, or
-`arma::datum::inf` when the two columns share no observed row
+`DIST_INF`, +infinity (`src/impute_knn_brute.cpp`:
+`constexpr double DIST_INF`), when the two columns share no observed row
 (`src/impute_knn_brute.cpp`: `if (n_valid == 0.0)`). No square root is taken for
 the euclidean case, so the stored quantity is a mean squared difference.
 `calc_distance_raw_complete<Metric, Bound>` is the group-3 variant: the other
@@ -334,7 +342,7 @@ callers of the kernel; one is a test (`tests/testthat/test-knn_imp.R`:
   is sorted ascending, so candidates at distance `+inf` (no observed row in
   common with the target) sit at the tail and are popped before returning. The
   caller can therefore receive fewer than `k` neighbors, or none at all; when
-  none, the column's result rows keep their initial `NaN`
+  none, the column's entries of `value` keep their initial `NA`
   (`src/impute_knn_brute.cpp`: `if (n_neighbors == 0)`).
 
 The structure is therefore a sorted fixed-size array with insertion, not a heap
@@ -381,7 +389,7 @@ back out of the imputed value and fails against the `std::sort` build at
 ## Layer 6 -- weights and imputation
 
 **Weights.** `knn_weights()` (`src/impute_knn_brute.cpp`:
-`static arma::vec knn_weights(`) returns a vector of ones when `dist_pow == 0`
+`static std::vector<double> knn_weights(`) returns a vector of ones when `dist_pow == 0`
 -- the plain unweighted mean of neighbors. Otherwise it finds the smallest
 strictly positive finite distance `min_pos` and notes whether any distance is
 zero. Infinite distances never reach this function (Layer 5 drops them), so
@@ -409,14 +417,16 @@ reference by a test (`tests/testthat/test-knn_imp.R`:
 **Accumulation.** `impute_column_values()` (`src/imputed_value.cpp`:
 `void impute_column_values(`) splits the neighbor ids into a masked bucket and a
 complete bucket by comparing against `complete_start()`
-(`src/imputed_value.cpp`: `if (nn_columns(j) < complete_start)`). Masked
+(`src/imputed_value.cpp`: `if (nn_columns[j] < complete_start)`). Masked
 neighbors contribute `w * nmiss[row]` to both the weighted sum and the weight
-total (`src/imputed_value.cpp`: `for (arma::uword j : masked_j)`), so a neighbor
+total (`src/imputed_value.cpp`: `for (std::size_t j : masked_j)`), so a neighbor
 that is itself missing in a given row drops out for that row only. Complete
 neighbors add `w * value` per row and a single shared `total_complete_w` to
-every row's weight total. The final value is `weighted_sum / weight_total`, or
-`NaN` when the total is zero (`src/imputed_value.cpp`: `ws_ptr[r] / wt_ptr[r]`),
-which R converts to `NA` (`R/knn_imp.R`: `imputed_values[is.nan(imputed_values)]`).
+every row's weight total. The final value is `weighted_sum / weight_total`
+(`src/imputed_value.cpp`: `ws_ptr[r] / wt_ptr[r]`), written only where the
+total is positive; elsewhere the entry keeps the `NA` that
+`initialize_result()` wrote, so R receives its own missing value and converts
+nothing.
 
 That per-row drop-out is user-visible and is stated on the help page
 (`R/knn_imp.R`: `Neighbors are selected once per column`): neighbors are chosen
@@ -457,41 +467,40 @@ fall back to `mean_imp_col()`.
 ## Data structures and ownership
 
 - The R matrix is **not** copied at the boundary. `input_parameter<const
-  arma::mat&>` in `src/RcppExports.cpp` resolves to
-  `ConstReferenceInputParameter`, which for a double matrix is
-  `ArmaMat_InputParameter<..., false_type>` in RcppArmadillo's
-  `RcppArmadillo/interface/RcppArmadilloAs.h`: it constructs
-  `arma::mat(ptr, nrow, ncol, false)` over an `Rcpp::NumericMatrix`, `copy_aux_mem =
-  false`. The branch is chosen by the Armadillo element type, so a `double` matrix
-  always takes it; the `ArmaMat_InputParameter<..., true_type>` specialization is
-  for element types that need a cast. For double-storage
-  input the `NumericMatrix` wraps R's own memory, so the kernel's `const arma::mat& obj`
-  aliases the R matrix and is never written to. Integer-storage input is coerced to a
-  fresh double copy when the `NumericMatrix` is built.
-- The kernel returns a freshly allocated `(n_missing x 3)` `arma::mat` of
-  triplets, not an imputed matrix. The only in-place mutation of the user's
-  matrix happens in R (`R/knn_imp.R`: `obj[imp_indices] <- imputed_values[, 3]`).
+  Rcpp::NumericMatrix&>` in `src/RcppExports.cpp` resolves to
+  `ConstReferenceInputParameter` (Rcpp's `InputParameter.h`), which builds the
+  `NumericMatrix` from the SEXP; that goes through `r_cast<REALSXP>`, which
+  returns a double matrix as it is (READ in Rcpp's `vector/Vector.h`). So for
+  double-storage input the kernel's `obj` is R's own memory, read in place and
+  never written to. Integer-storage input is coerced to a fresh double copy
+  there.
+- The kernel returns `list(loc, value)`, a fresh `n_missing x 2` integer
+  matrix and double vector, not an imputed matrix. The only in-place mutation
+  of the user's matrix happens in R (`R/knn_imp.R`:
+  `obj[imputed$loc] <- imputed$value`), which takes `loc` as its index matrix
+  with no conversion.
 - So the real full-matrix copies on this path are both on the R side: R's
   copy-on-modify at the scatter, and, when `mean_imp_col()` actually has work to
   do, the one copy its door makes at its first write (`R/parts.R`:
   `out[at] <- parts[[i]]$values`). The second one is skipped whenever
   nothing is still missing.
 - Groups 1 and 2 are materialized a second time into `obj_masked` /
-  `nmiss_masked` (`src/impute_knn_brute.cpp`: `arma::mat obj_masked(`) with NaNs
-  zeroed and a parallel byte mask; `nmiss_masked` is `arma::Mat<uint8_t>`
-  (`src/imputed_value.h`: `using mask_t = uint8_t;`), one byte per cell rather
-  than a `umat`. Group 3 is read in place from `obj`, so a matrix dominated by
+  `nmiss_masked` (`src/impute_knn_brute.cpp`: `std::vector<double> obj_masked(n_cells);`)
+  with NaNs zeroed and a parallel byte mask; `nmiss_masked` holds `mask_t`
+  (`src/imputed_value.h`: `using mask_t = uint8_t;`), one byte per cell.
+  Both are zero-filled by `std::vector` before `copy_with_mask` writes every
+  cell. Group 3 is read in place from `obj`, so a matrix dominated by
   complete columns pays no second copy.
 - Column indices cross the boundary 0-based, R subtracting 1 (`R/knn_imp.R`:
   `grp_impute = as.integer(grp_impute - 1L)`), and come back 1-based along with
-  the row indices, C++ adding 1 to both (`src/imputed_value.cpp`: `orig_col_1based = grp_impute(i) + 1`,
-  `rows_ref(r) + 1`).
+  the row indices, C++ adding 1 to both (`src/imputed_value.cpp`: `orig_col_1based = grp_impute[i] + 1`,
+  `rows_ref[r] + 1`).
 - Per-thread scratch is small and local: `top_k` (`src/impute_knn_brute.cpp`:
   `std::vector<NeighborInfo> top_k;`), whatever temporary buffer
   `std::stable_sort` takes for it, `nn_columns` and `weights`
-  (`src/impute_knn_brute.cpp`: `arma::uvec nn_columns(n_neighbors);`), and the
+  (`src/impute_knn_brute.cpp`: `std::vector<int> nn_columns(n_neighbors);`), and the
   two accumulators in `impute_column_values` (`src/imputed_value.cpp`:
-  `arma::vec weighted_sums(`). Past its door's copy, `mean_imp_col()`
+  `std::vector<double> weighted_sums(`). Past its door's copy, `mean_imp_col()`
   allocates in proportion to the columns it fills: `fallback_part()` copies
   them out, with their `is.na()` (`R/mean_imp_col.R`: `sub <- obj[, cols, drop = FALSE]`), and keeps
   the holes and their values. After K-NN those are the few columns it left
@@ -506,9 +515,18 @@ passed to the call, so the index range splits into as many contiguous batches as
 threads. At one thread `par_for()` (`src/par_for.h`) runs the body inline
 instead, for the reason given in Layer 3.
 
+A worker never touches an Rcpp object or the R API: Rcpp's `operator[]` can
+call R's `warning()` on an index past the end (Rcpp's `vector/traits.h`,
+`check_index`), and R is single-threaded. The loop body's lambda therefore
+captures by name only plain pointers taken before the loop, `std` containers
+and scalars (`src/impute_knn_brute.cpp`:
+`[obj_masked_ptr, nmiss_masked_ptr, n_rows, &layout, k, &n_valid_vec,`), so a
+use of `obj`, `grp_complete` or `value` inside it would not compile; the
+functions it calls take the same pointers.
+
 All threads read `obj`, `obj_masked`, `nmiss_masked`, and `grp_complete` without
-writing them, and each writes only rows `[col_offsets(i), col_offsets(i+1))` of
-`result`, a disjoint slice per target column, so no locks are taken. Interruption
+writing them, and each writes only entries `[col_offsets[i], col_offsets[i+1])`
+of `value`, a disjoint slice per target column, so no locks are taken. Interruption
 is checked with `RcppThread::checkUserInterrupt()` on every fifth index
 (`src/impute_knn_brute.cpp`: `if (i % 5 == 0)`), which RcppThread routes to the
 main thread to unwind the pool. The optional progress bar is an
@@ -546,8 +564,8 @@ and a window-local `subset`, wrapped in the same `slideimp_infeasible` handler
 
 ## Test entry points
 
-A test calls `impute_knn_brute()` directly and asserts the returned `(row, col)`
-triplet locations match `which(is.na(...))` (`tests/testthat/test-knn_imp.R`:
+A test calls `impute_knn_brute()` directly and asserts the returned `loc` is
+`identical()` to `which(is.na(...), arr.ind = TRUE)` (`tests/testthat/test-knn_imp.R`:
 `calculate the missing location correctly`); others cover `subset` by index and
 by name with `post_imp` both ways (`tests/testthat/test-knn_imp.R`:
 `works with post_imp = FALSE/TRUE`), all-NA rows and columns plus abort site 1

@@ -1,20 +1,19 @@
 #ifndef MATRIX_CHECKS_H
 #define MATRIX_CHECKS_H
 
-// Rcpp.h, not RcppArmadillo.h: the helpers here take a pointer to
-// column-major storage and its dims, so Armadillo callers (memptr(), n_rows,
-// n_cols) and Rcpp ones (begin(), nrow(), ncol()) share them. A translation
-// unit that also uses Armadillo includes RcppArmadillo.h before this header,
-// since RcppArmadillo.h refuses to come after Rcpp.h.
 #include <Rcpp.h>
 #include <cmath>
 #include <cstddef>
 #include <string>
 
-static inline void stop_on_inf(const double *x,
-                               const std::size_t n_rows,
-                               const std::size_t n_cols)
+// Shared by check_inf() (src/mat_stats.cpp) and the K-NN kernel
+// (src/impute_knn_brute.cpp). Column offsets are size_t, so a matrix past
+// 2^31 cells is read correctly.
+static inline void stop_on_inf(const Rcpp::NumericMatrix &obj)
 {
+    const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
+    const std::size_t n_cols = static_cast<std::size_t>(obj.ncol());
+    const double *x = obj.begin();
     for (std::size_t c = 0; c < n_cols; ++c)
     {
         const double *col = x + c * n_rows;
