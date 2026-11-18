@@ -79,6 +79,9 @@ with no flag (`dev/si_mi_conversion.md`, "What was decided"; the doors and
 `pca_imp()` do it there, Phases 5 and 6). What is left, delayed by the
 maintainer the same day:
 
+- Planned in `dev/si_mi_conversion.md`, "Phase 7", with what was decided
+  on 2026-11-18 (the leftover cells' mean, the kernel filling them) and
+  what is still to settle before the code.
 - `knn_imp()` lands in ONE change (maintainer, 2026-11-17): it builds parts,
   gains `output`, and its `subset` narrows its output through the doors'
   `keep`. Its `subset` resolves as `pca_imp()`'s does, through

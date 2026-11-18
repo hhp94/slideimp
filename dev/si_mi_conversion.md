@@ -864,6 +864,235 @@ what Phase 6 gave: 57 of 58 cases, `mean_xa_cores2` erroring on the removed
 `cores`; every `pca_*` case bitwise; the same six cases not bitwise, worst
 rel `6.65e-16`.
 
+## Phase 7: `knn_imp()` on parts, with its callers (plan)
+
+The change `dev/to-do.md` delays ("Parts for the other imputers"):
+`knn_imp()` builds parts, gains `output`, and its `subset` narrows its
+output. `tune_imp()`, `slide_imp()` and `group_imp()` change with it, since
+the narrowing breaks them. One change (maintainer, 2026-11-17), built in the
+steps at the end of this section.
+
+Decided in discussion (maintainer, 2026-11-18):
+
+- Under `post_imp = TRUE`, a cell K-NN leaves is filled with the mean of its
+  column's OBSERVED values, as a fallback part takes it and as `pca_imp()`
+  and ABB fill. Today `knn_imp()` writes the K-NN values first and runs
+  `mean_imp_col()` on the result (`R/knn_imp.R`:
+  `obj <- mean_imp_col(obj, subset = na_cols)`), so that mean includes the
+  values K-NN imputed in the same column, as the help says (`R/slideimp-package.R`:
+  `found no value. For such a cell, the column mean includes the values that`).
+  Those cells change value. The help sentence changes with them, and
+  `dev/to-do.md` gains the NEWS line.
+- The kernel fills those cells itself. It leaves a cell in two ways: a whole
+  column, when no candidate shares an observed row with it
+  (`src/impute_knn_brute.cpp`: `if (n_neighbors == 0)`), and a single cell,
+  when none of the chosen neighbors is observed at that row
+  (`src/imputed_value.cpp`: `(wt_ptr[r] > 0.0) ? (ws_ptr[r] / wt_ptr[r]) : arma::datum::nan;`).
+  Both kinds sit in an imputed column, whose masked copy (holes set to 0) and
+  observed count the kernel already holds (`src/impute_knn_brute.cpp`:
+  `n_col_valid(local_pos) = valid_count;`), so the mean costs one pass over
+  that column's copy, and nothing of the input's size.
+- The columns over `colmax` stay in R. The kernel never sees them: they are
+  in none of its three groups (imputed; eligible with holes outside
+  `subset`; eligible and complete), so filling them there would mean a
+  fourth group passed only to take means. They are a whole-column fallback,
+  as in `pca_imp()`: a mean part through `fallback_part()` under `post_imp`,
+  a `left_na` part with an empty map without it.
+
+What the call builds, by column and `post_imp`, over the kept columns:
+
+| Column | `post_imp = TRUE` | `post_imp = FALSE` |
+|---|---|---|
+| imputed, every hole given a K-NN value | the K-NN part | the K-NN part |
+| imputed, some cells left by K-NN | the same K-NN part, those cells holding the kernel's mean | a second K-NN part, `left_na` in the widened sense below |
+| over `colmax` | a mean part (`fallback_part()`) | a `left_na` part, empty map |
+| complete | a part with nothing to fill | the same |
+
+Only one cell of that table needs `left_na` widened: K-NN's leftover cells
+under `post_imp = FALSE`. The second K-NN part exists for `print()`, which
+counts every column of a `left_na` chunk; one `left_na` K-NN part would count
+the columns whose holes were all filled.
+
+### The kernel
+
+- `impute_knn_brute()` gains `fill_mean`, R's `post_imp`. When it is TRUE, a
+  cell it would leave NaN gets its column's observed mean: the sum of the
+  masked column divided by `n_col_valid`, in double. It is taken by the
+  worker that owns the column, once, and only for a column that needs it.
+  `check_finite()` refuses a column with no observed value, so the count is
+  never 0.
+- Double, not long double (maintainer, 2026-11-18). The R fallback keeps
+  `.colMeans()`, which sums and divides in long double (`R/mean_imp_col.R`:
+  `mean = .colMeans(sub, nrow(sub), ncol(sub), na.rm = TRUE),`), so the two
+  can differ in the last bits. They never fill the same column: the kernel
+  fills cells of imputed columns, R whole columns over `colmax`.
+- It also returns which result rows hold a mean, so R can record
+  `mean_filled_cells`. Proposed: a byte per result row, written by the worker
+  that owns the row (no race), collected after the loop into the 1-based
+  rows, beside the triplet matrix in a list. A fourth double column would
+  cost 8 bytes a hole where the byte costs 1.
+- With `fill_mean = FALSE` the leftover cells stay NaN, as today. R's pass
+  turning NaN into NA (`R/knn_imp.R`: `imputed_values[is.nan(imputed_values)] <- NA_real_`)
+  is replaced by dropping those rows from the map.
+- `dev/CPP.md` applies: plain loops, no OpenMP, nothing pinned. The map
+  (`dev/knn_imp_structure.md`, layers 4 to 6 and "Feasibility and abort
+  paths") follows the code in the same commit.
+- The `eigen` branch rewrites these files (`dev/eigen_conversion.md`, Phase
+  1, the K-NN chain) and checks that the kernel's return is unchanged from
+  `e5b3cf7`. This step changes that return, so the two branches meet here.
+  `eigen` has no commit past `e5b3cf7` yet.
+
+### Parts (`R/parts.R`)
+
+- `"knn"` joins `part_kinds`.
+- `left_na` widens to: a hole in the part's columns that its map does not
+  name stays NA. So a `left_na` part may hold a map (`validate_part()` now
+  refuses one: `if (left_na && n_map > 0L) {`), and today's `left_na` parts,
+  with empty maps, are the special case. Every column of a `left_na` part
+  keeps at least one hole: per column, the map lists fewer cells than the
+  column has holes, checked with one `tabulate()` of the map's columns.
+- The checks that no value lands on an observed cell extend to a `left_na`
+  part with a map. In `fill_parts()`, by count after the write: the holes left
+  in its columns are the holes before, less its map rows. In the `si_mi`
+  door, `refuse_observed_cells()` runs over every part with a map.
+- Finding 7 of the review: a part gains a seventh field, `prov`, the named
+  list of fields its chunk records. `parts_to_si_mi()` loses `prov_extra`,
+  and `pca_imp()` puts `rank` and `iter` on its PCA part.
+- The `si_mi` door needs nothing new for the widened `left_na`: a `left_na`
+  part with a map becomes a chunk with draws for its map and `prov$left_na`,
+  and `as.matrix.si_mi()` writes only map cells, so a hole outside the map
+  stays NA (`R/mi_pca_s3.R`: `as.matrix.si_mi <- function(x, draw = 1L, ...) {`).
+  But `print.si_mi()` counts every column of a `left_na` chunk
+  (`R/mi_pca_s3.R`: `function(ch) if (isTRUE(ch$prov$left_na)) ncol(ch$obj) else 0L,`)
+  and calls them "not imputed", which a K-NN column that keeps a hole is
+  not. That wording is vendored; see "To settle".
+
+### `knn_imp()`
+
+- `output = c("matrix", "mipca")`, after `dist_pow` and before `.progress`,
+  as `pca_imp()` placed it before its last argument; `subset` stays where it
+  is. Under `"mipca"`, `check_si_mi_names()` runs first, and the call is
+  stored through `.scrub_call(match.call(), "knn_imp")`. Neither argument
+  enters the parameter registry.
+- `subset` resolves through `resolve_narrow_subset()`, so an unknown name
+  and an empty `subset` are refused where `resolve_subset()` drops the one
+  with a message and returns early on the other (`R/knn_imp.R`:
+  `subset <- resolve_subset(subset, obj)`). The doors take it as `keep`. The
+  K-NN part lies inside `keep`, since the kernel imputes only `subset`
+  columns; the mean part covers only kept columns over `colmax`.
+- Early exit, no hole in a kept column: the matrix output is `obj`, or
+  `obj[, keep, drop = FALSE]` with `subset`, an integer input staying
+  integer, as in `pca_imp()`; the `"mipca"` output is one part over the kept
+  columns with an empty map. Its message is today's without `subset`, and
+  says the `subset` columns come back unchanged with it, since "Returning
+  input unchanged" is no longer true there. The two infeasibility messages
+  are unchanged.
+- An integer input with holes is coerced to double once, after the early
+  exit, and both the kernel and the doors read that copy. Today the kernel
+  converts its own copy and the write into `obj` converts another. That the
+  kernel then takes the double input without a copy is an assumption, to
+  measure.
+- The record is built once for both outputs, as `pca_imp_info()` does it,
+  and rides on every part as `info` under `"mipca"`. `mean_filled_cols` and
+  `mean_filled_cells` count in the output's numbering, the cells from the
+  kernel's mean rows.
+- Roxygen, following `dev/WRITING.md`. It adds `@param output`, and
+  `@param subset` saying what is returned and in what order, `@returns` for
+  both forms, and an example. The "Column mean fill" section loses the sentence above and says
+  the mean is over the observed values, for every imputer.
+
+### The callers
+
+- `tune_imp()`, `.f = "knn_imp"` and `"slide_imp"`: the result holds only
+  the `subset` columns tune_imp injects, so the estimates are read at
+  `match()` of each masked cell's column in that `subset`, in both paths.
+- `slide_imp()`: each window passes `subset = local_idx` to `knn_imp()` and
+  to `pca_imp()` alike, and gets the narrowed result back. The PCA
+  complete-targets check goes (`R/slide_imp.R`:
+  `targets_complete <- imp_method == "pca" &&`), as `pca_imp()`'s early exit
+  now makes it, and the mean fallback returns the window's targets only, so
+  every branch hands back the same width. The accumulation reads the window's
+  result whole (`R/slide_imp.R`: `imputed_window[, local_idx, drop = FALSE]`)
+  and the record is read in its numbering (`R/utils.R`:
+  `local_mean_filled <- function(res, keep, global) {`).
+- `group_imp()`: PCA groups pass `subset` too, and the workaround goes
+  (`R/group_imp.R`: `needs_imp <- vapply(`). A group's features are the first
+  columns of its slice (`R/group_imp.R`:
+  `p$subset <- indices[[i]]$features_idx_local`), so the narrowed result is
+  exactly those columns, in order. The reads take the result whole rather
+  than lean on that layout.
+- `slide_imp(subset = )` and `group_imp(subset = )` narrow their own output
+  by the same rule. `slide_imp()` resolves through `resolve_narrow_subset()`
+  (`R/slide_imp.R`: `subset <- resolve_subset(subset, obj, sort = TRUE)`),
+  so its empty-`subset` exit becomes a refusal, and it allocates its result
+  over the `subset` columns only. `group_imp()` already refuses a name not in
+  `obj`.
+- `dev/to-do.md`: the NEWS entry gains the **Breaking** line for the
+  narrowing and the refusals, and a line for the changed mean.
+
+### Tests
+
+- The kernel: under `fill_mean = TRUE`, each cell it leaves under `FALSE`
+  holds `.colMeans()` of its column's observed values, worst-case absolute and
+  relative error asserted on a tolerance, bitwise reported (the kernel sums
+  in double, `.colMeans()` in long double); its mean rows are
+  `identical()` to the NaN rows under `FALSE`. The input has both kinds of
+  leftover (a column sharing no observed row with any candidate, and a cell
+  where every chosen neighbor is missing), each asserted present.
+- The changed mean, pinned: on a column where the mean over observed values
+  and the mean over observed and imputed values differ (asserted), the cell
+  holds the first.
+- Parts: a `left_na` part with a map through both doors; refused, a `left_na`
+  part with a column that keeps no hole, and a map cell over an observed
+  value in a `left_na` part, in each door; `prov` on the part reaching its
+  chunk.
+- `knn_imp()`: as Phases 4 and 6 tested `pca_imp()`. With `subset`, the
+  matrix output is `identical()` to the full output's `[, subset]` in one
+  process (the kernel imputes each column from the same candidates either
+  way); `as.matrix()` of the `"mipca"` output is `identical()` to the matrix
+  output; the refusals; the record in the output's numbering on an input where
+  it differs from the input's; under `post_imp = FALSE`, the leftover cells
+  NA in both outputs, with the second K-NN part's chunk flagged.
+- The callers: `slide_imp()` and `group_imp()` with `subset`, narrowed,
+  `identical()` to the full output's columns; `tune_imp()` scores the same
+  cells as before.
+- The Phase 0 compare: every case that has no cell K-NN leaves is expected
+  unchanged, and the narrowed cases are compared against the reference's
+  columns, which `dev/ref_compare.R` learns to do. A case with leftover cells
+  changes there and only there; the compare reports which.
+- A memory probe of `knn_imp()` before and after, since the write moves from
+  `obj[imp_indices] <- ` into `fill_parts()`.
+
+### Steps
+
+Each passes the suite and the Phase 0 compare (differences as stated), with
+`air format .`, `devtools::document()` and the citation check.
+
+1. Parts: `"knn"`, the widened `left_na`, the `prov` field. `pca_imp()` moves
+   to `prov`. No output moves.
+2. The kernel: `fill_mean` and the mean rows. `knn_imp()` takes the kernel's
+   means, and only the columns over `colmax` still go through
+   `mean_imp_col()`. Only the leftover cells move.
+3. `knn_imp()` on parts and `output = "mipca"`, still full width. The matrix
+   output is `identical()` to step 2's.
+4. The narrowing: `knn_imp(subset = )` and the callers that it breaks.
+5. `slide_imp(subset = )` and `group_imp(subset = )` narrow their own output.
+
+### To settle before the code
+
+- Settled (maintainer, 2026-11-18): `eigen` goes first. Step 1 may go
+  ahead; steps 2 to 5 wait until `eigen`'s K-NN chain is merged into `dev`
+  and this branch takes it, so `fill_mean` is written in plain Rcpp.
+- `print.si_mi()` says "N columns not imputed" of a `left_na` chunk. For a
+  K-NN column that keeps a hole, ask upstream for wording true of both cases
+  (columns that keep holes), made in `hhp94/test` and arriving with the next
+  copy; or accept the line until then.
+- Median stays out: no imputer offers it, and `fallback_part()`'s
+  `"median"` has no caller, so a median would be a new user-facing option,
+  decided on its own.
+- Whether the five steps land as five commits or are squashed into the one
+  change the ruling names.
+
 ## Upstream, in `hhp94/test`
 
 Investigated and ruled in `hhp94/test` on 2026-11-15. The rulings are in
