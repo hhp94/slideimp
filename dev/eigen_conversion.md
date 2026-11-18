@@ -146,6 +146,28 @@ assumption until the candidate build of each step says so.
 
 One header and one source file under `src/`, named when they are written.
 
+R's own guidance governs every wrapper, and wins over Armadillo's habits
+and over convenience. It is read from *Writing R Extensions*, kept as
+`dev/r_manual/R-exts.md`: the R-devel manual (4.7.0, under development,
+2026-11-15), converted from its HTML with pandoc. R-devel is what CRAN
+checks against, so it is the stricter reading. The sections that bind
+the wrappers:
+
+- "Using `Makevars`": `$(LAPACK_LIBS)` comes before `$(BLAS_LIBS)` and
+  `$(FLIBS)`, in that order.
+- "Fortran character strings": `USE_FC_LEN_T` is defined before any R
+  header is included (and so before `Rcpp.h`, which includes them), and
+  every Fortran character argument carries its length through `FCONE`.
+- "Numerical analysis subroutines": the routines declared in
+  `R_ext/BLAS.h` and `R_ext/Lapack.h` are not part of the official API,
+  though unlikely to change, and routines have been added to them (most
+  recently in R 4.5.0). A wrapper calls only a routine that R's headers
+  declare in every R the package supports (`DESCRIPTION` says `R (>= 4.3.0)`),
+  checked against R's NEWS, never one reached by declaring it ourselves.
+
+Where the manual, the installed headers and this plan disagree, the work
+stops and says so.
+
 - The source file includes R's headers, `R_ext/BLAS.h` and
   `R_ext/Lapack.h`, and nothing from Armadillo or Eigen. The header declares
   plain functions over `double*`, dims and a status: no LAPACK declaration,

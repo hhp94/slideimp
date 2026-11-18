@@ -30,6 +30,8 @@
 !probe_mean_fill_peak.R
 !probe_mean_source.R
 !probe_pca_imp_peak.R
+!r_manual/
+!r_manual/R-exts.md
 !ref_capture.R
 !ref_compare.R
 !ref_compare_selftest.R
