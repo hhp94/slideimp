@@ -22,9 +22,10 @@
 # workload runs a then b on odd repetitions and b then a on even ones, so a
 # slow drift in the machine falls on both builds alike.
 #
-# Only the imputer calls are timed: each worker runs its call 5 times in one
-# replicate() and reports the total (dev/eigen_time_worker.R, n_calls), so
-# every time below is for 5 calls. Elapsed is wall time; cpu/wall is
+# Only the imputer calls are timed: each worker makes one untimed warm-up
+# call, then runs its call 5 times in one replicate() and reports the total
+# (dev/eigen_time_worker.R, n_calls), so every time below is for 5 calls.
+# Elapsed is wall time, from Sys.time(); cpu/wall is
 # (user + system) / elapsed of those calls, which shows how many threads
 # they kept busy (dev/CPP.md: a pin is verified by CPU time over wall time).
 
@@ -59,6 +60,9 @@ libs <- c(
   b = normalizePath(opt("lib-b"), winslash = "/", mustWork = TRUE)
 )
 reps <- as.integer(opt("reps", "3"))
+if (is.na(reps) || reps < 1L) {
+  stop("--reps must be a whole number >= 1", call. = FALSE)
+}
 workloads <- strsplit(
   opt(
     "workloads",

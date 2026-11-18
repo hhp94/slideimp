@@ -3,8 +3,8 @@
 #   Rscript dev/oracle_install_armadillo.R <lib> [--check]
 # It installs only when <lib> has no RcppArmadillo or an older one than
 # CRAN's; otherwise it says so and leaves the library alone. --check reports
-# the two versions and installs nothing. Either way it reads CRAN's package
-# index, which is a download.
+# the two versions and installs or creates nothing. Either way it reads
+# CRAN's package index, which is a download.
 #
 # CRAN's version is the source package's. The Windows binary is used when it
 # is the same version; when the binary lags, the source package is built,
@@ -26,8 +26,11 @@ if (length(pos) != 1L) {
   )
 }
 lib <- pos[[1]]
-dir.create(lib, recursive = TRUE, showWarnings = FALSE)
-lib <- normalizePath(lib, winslash = "/", mustWork = TRUE)
+## --check creates nothing, so a mistyped <lib> is not left behind.
+if (!check_only) {
+  dir.create(lib, recursive = TRUE, showWarnings = FALSE)
+}
+lib <- normalizePath(lib, winslash = "/", mustWork = !check_only)
 cran <- "https://cloud.r-project.org"
 pkg <- "RcppArmadillo"
 

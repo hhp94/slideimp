@@ -9,10 +9,16 @@
 # without its all-NA probes) or on sim_mat(sim_n, sim_p) under set.seed(1):
 #   chr21_pca_exact chr21_pca_lobpcg chr21_knn sim_pca_exact sim_pca_lobpcg
 #   sim_knn
-# Only the imputer calls are timed, not loading the data. The call runs
-# n_calls times in one replicate(), timed as a whole: a single PCA call on
-# chr21 takes under 0.1s, too close to the timer's resolution to compare two
-# builds. The times reported are the total over the n_calls calls.
+# Only the imputer calls are timed, not loading the data. One untimed call
+# runs first: the first call in a process pays for lazy loading and first
+# BLAS use, 1.4 to 2.5 times a later one on the chr21 PCA workloads, and
+# that cost is common to both builds, so it would pull every ratio towards 1.
+# Then the call runs n_calls times in one replicate(), timed as a whole: a
+# single PCA call on chr21 takes under 0.1s. The times reported are the
+# total over the n_calls calls. Elapsed is read from Sys.time(), which steps
+# in about 2 us here, not proc.time(), which steps in 10 ms on Windows, a
+# few percent of a chr21 PCA total; user and system time come from
+# proc.time() and keep its 10 ms steps, so cpu/wall is coarse on short runs.
 #
 # The last line printed is the result, for the driver to parse:
 #   RESULT <workload> <elapsed> <user> <system> <slideimp> <RcppEigen>
@@ -70,8 +76,12 @@ run <- switch(
 )
 
 set.seed(1)
+warm <- run()
+stopifnot(is.matrix(warm), !anyNA(warm))
 t0 <- proc.time()
+w0 <- Sys.time()
 res <- replicate(n_calls, run(), simplify = FALSE)
+elapsed <- as.numeric(difftime(Sys.time(), w0, units = "secs"))
 dt <- proc.time() - t0
 stopifnot(
   length(res) == n_calls,
@@ -79,9 +89,9 @@ stopifnot(
 )
 
 cat(sprintf(
-  "RESULT %s %.4f %.4f %.4f %s %s\n",
+  "RESULT %s %.6f %.4f %.4f %s %s\n",
   workload,
-  dt[["elapsed"]],
+  elapsed,
   dt[["user.self"]],
   dt[["sys.self"]],
   as.character(packageVersion("slideimp")),

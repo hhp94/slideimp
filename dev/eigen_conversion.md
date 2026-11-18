@@ -232,9 +232,19 @@ at four points, each before later work builds on what it covers:
 A reviewer is a fresh session: a different context matters more than a
 different model. It gets the diff and the READ notes in
 `dev/pca_imp_structure.md`, not the author's account of why the work is
-right. It writes a review note in dev/, with its probe scripts; the
-maintainer has the note audited, and what the audit upholds is fixed before
-the next phase starts, so each phase begins from reviewed code.
+right. It writes a review note in dev/, with its probe scripts. The
+maintainer starts it with `/code-review`, at an effort they choose, with a
+message saying what the checkpoint looks for and where the note lands.
+
+The session that did the work up to the checkpoint is the auditor of that
+note. `/code-review` starts without the author's context and can load
+context unrelated to the change, so a finding may rest on code or rules
+that do not apply here, and the reviewer has no verify pass of its own. The
+auditor checks each finding against the code and this plan: it reruns the
+claims the reviewer measured, measures the ones it left to inspection, and
+gives a verdict per finding in chat, with corrections. What the audit
+upholds is fixed, on the maintainer's word, before the next phase starts,
+so each phase begins from reviewed code.
 
 ## Where Armadillo is used today
 
@@ -277,12 +287,28 @@ they were written to do:
   seeds. It saves every result, with its type, dims and attributes, to an
   ignored folder under dev/. That folder is regenerable data: rerun the
   script at the start commit.
+- Its cases take every path of the PCA kernel that Phase 2 rewrites: exact
+  and LOBPCG, the kernel's own auto choice (`pca_imp()` demotes auto to
+  exact below 250 rows or eligible columns, so this needs a larger input),
+  LOBPCG failing and falling back to exact, EM and regularized, tall and
+  wide, with and without the Gram cache, row weights, random starts, and a
+  run stopped before it converges. They raise each Inf error with the cell
+  it names off the first row and column, and run `col_vars()` and
+  `mean_imp_col_internal()` on two threads. The auto choice is timed, so it
+  can differ between builds; that case is captured beside the same input
+  under each forced solver, so a flip can be read against the one it now
+  matches.
 - A compare script. It reads a capture and checks a build against it. For a
-  double result it reports `max(abs(a - b))` and `max(abs(a - b) / abs(b))`
-  (over the cells where `b != 0`, saying how many), asserts the worst case
-  against a tolerance, and reports whether the two are bitwise identical
-  without asserting it. Integer results, index maps and the NA placement use
-  `identical()`. Type, dims and attributes must match exactly.
+  double result it reports `max(abs(a - b))` and `max(abs(a - b) / m)`, with
+  `m = max(abs(a), abs(b))` per cell (over the cells where `m != 0`, saying
+  how many), asserts the worst case against a tolerance, and reports whether
+  the two are bitwise identical, byte for byte, without asserting it.
+  Dividing by the larger of the two makes the relative figure the same
+  whichever capture comes first; dividing by one side lets a cell that side
+  holds as 0 pass while the other holds a value under the abs tolerance.
+  Integer results, index maps and the NA placement use `identical()`. Type,
+  dims and attributes must match exactly; attribute names are compared as a
+  set, not in order. Messages are not captured, only warnings and errors.
 
 The reference capture is labelled `76d4c60`, the head of `si-mi` when it
 was taken (source commit `603fe33`), and every compare in this plan is
@@ -295,9 +321,16 @@ processes, and compare them. A threaded BLAS need not be deterministic, and
 no tolerance is chosen tighter than what the unchanged build reproduces
 against itself. The header of `dev/ref_compare.R` records the result and the
 default tolerances set from it, on one machine with one BLAS. Run
-2026-11-18 at `76d4c60`: 58 cases, all bitwise identical (worst absolute
-and relative difference 0), and `dev/ref_compare_selftest.R 76d4c60` caught
-the 11 planted changes at tolerance 0 and the 10 expected at the defaults.
+2026-11-18 at `76d4c60`, after the Phase 0 review added cases: 75 cases,
+all bitwise identical (worst absolute and relative difference 0), and
+`dev/ref_compare_selftest.R 76d4c60` caught the 13 planted changes at
+tolerance 0 and the 12 expected at the defaults, and reported a 0 turned
+into -0 as passing but not bitwise. The self-test fails on the compare as
+it was before the review, which divided by the new capture only. A capture
+of the same build with every export traced is bitwise identical too, and
+showed each path above taken by at least one case: the kernel's auto mode
+once (it chose LOBPCG), 12 failed LOBPCG iterations, 3 calls without the
+Gram cache (1 tall, 2 wide), 1 unconverged run.
 
 Then the same reference build against the candidate RcppEigen, compared to
 the capture. At the start commit the package's own code holds no Eigen, so the
@@ -306,9 +339,14 @@ is a finding to explain before Phase 1. This also proves the candidate
 library and the `R_LIBS` selection work before any step depends on them.
 Run 2026-11-18 against 0.4.9.9-5 (Eigen 5.0.1), as capture
 `76d4c60-eigen5`: every translation unit compiled against the candidate's
-headers, and all 58 cases are bitwise identical to `76d4c60`. The only
-compiler difference is the count of Eigen's own `-Wignored-attributes`
-warnings, which both versions emit.
+headers, and all 75 cases are bitwise identical to `76d4c60`, the auto
+choice included. The only compiler difference is the count of Eigen's own
+`-Wignored-attributes` warnings, which both versions emit (511 and 543).
+
+Every capture here is a `load_all1()` build, which compiles at `-O0` with
+`NDEBUG` undefined, so Eigen's own asserts are on in the captures; the
+timing builds below are installed at the user's `-O3`. Each comparison is
+between builds of one kind.
 
 Timing, in the same phase. Install the reference build into its own library,
 and each converted build into another, with `dev/eigen_time_install.R`; it
@@ -318,21 +356,35 @@ alternates Rscript processes between the two libraries
 (`dev/eigen_time_worker.R` is one process, and stops if slideimp loaded from
 the wrong library) and reports medians over interleaved repetitions of
 `pca_imp()` (both solvers) and `knn_imp()` on the chr21 data and on a larger
-`sim_mat()`, 200 x 5000 by default. Each process runs its call 5 times in
-one `replicate()` and reports the total, since one PCA call on chr21 takes
-under 0.1s, too close to the timer's resolution. Both builds are the same
-flags; `load_all1()` builds are not mixed with installed ones. Removing
-Armadillo also removes the OpenMP Armadillo turns on by itself in an OpenMP
-build, so this is the measurement of what that costs or saves.
+`sim_mat()`, 200 x 5000 by default. Each process makes one untimed call,
+since the first call in a process takes 1.4 to 2.5 times a later one on
+the chr21 PCA workloads, a cost common to both builds that would pull every
+ratio towards 1. It then runs its call 5 times in one `replicate()` and
+reports the total, since one PCA call on chr21 takes under 0.1s. Elapsed
+is read from `Sys.time()`, which steps in about 2 us here; `proc.time()`
+steps in 10 ms on Windows, a few percent of a chr21 PCA total. Both
+builds are the same flags; `load_all1()` builds are not mixed with
+installed ones. Removing Armadillo also removes the OpenMP Armadillo turns
+on by itself in an OpenMP build, so this is the measurement of what that
+costs or saves.
 
 The driver's own noise, read 2026-11-18 on one machine with the BLAS and
 OpenMP threads at their defaults: the reference installed twice and timed
-against itself, 5 repetitions, 165s in all. Five workloads gave a b/a ratio
-of medians between 0.97 and 1.05. `chr21_knn` gave 1.32, from a stretch of
-slow runs on one side in repetitions 1 to 3 whichever ran first; the two
-DLLs differ only in their header timestamp and checksum, so this was the
-machine. A converted build's ratio is read against this band, and one
-outside it is timed again before it counts as a finding.
+against itself, 5 repetitions, 165s in all, before the warm-up call and
+the finer clock. Five workloads gave a b/a ratio of medians between 0.97
+and 1.05, but every time was a multiple of 10 ms, and the 1.043 of
+`chr21_pca_lobpcg` is one tick (0.23 s against 0.24 s). `chr21_knn` gave
+1.32, from a stretch of slow runs on one side in repetitions 1 to 3
+whichever ran first. The two DLLs differ only in their header timestamp
+and checksum, which is measured; that the machine caused the stretch is an
+assumption, not measured.
+
+Read again the same day with the current worker, same machine and
+settings, 5 repetitions, 194s in all: all six workloads gave a b/a ratio of
+medians between 0.988 and 1.008. Single runs still stray (one `chr21_knn`
+run took 0.90 s against a median of 0.61 s), which the medians absorb. This
+is the band a converted build's ratio is read against; a ratio outside it
+is timed again before it counts as a finding.
 
 ## Phase 1: storage-only files to plain Rcpp
 
@@ -429,7 +481,3 @@ find out which call did it before going on.
 - What the timings say. They are recorded here when each phase has been
   run, as readings on one machine, not as numbers to pin. Phase 0's reading
   is the driver's noise band, under "Phase 0".
-- The capture case `mean_xa_cores2` in `dev/ref_capture.R` stores an error,
-  "unused argument (cores = 2)", since `mean_imp_col()` lost `cores`. The
-  other three `mean_*` cases still reach the function. Whether the case is
-  dropped or rewritten is for the Phase 0 review.

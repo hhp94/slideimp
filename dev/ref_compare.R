@@ -15,11 +15,18 @@
 # - Type, length, attribute names, and every non-double value (integer,
 #   logical, character, language, the NA placement, index maps): identical().
 #   Dims, dimnames and class are attributes, so they are checked this way.
+#   Attribute names are compared as a set, not in order: identical() ignores
+#   their order too, and nothing in the package reads an attribute by
+#   position.
 # - Doubles: NA, NaN and Inf in the same cells, identical(); over the finite
-#   cells it reports max(abs(a - b)) and max(abs(a - b) / abs(b)), the
-#   relative figure taken over the cells where b != 0 (it says how many),
-#   asserts both maxima against the tolerances, and reports whether the two
-#   are bitwise identical without asserting it. b is the FIRST capture.
+#   cells it reports max(abs(a - b)) and max(abs(a - b) / m), where m is
+#   max(abs(a), abs(b)) of that cell, the relative figure taken over the
+#   cells where m != 0 (it says how many). Dividing by the larger of the two
+#   makes the figure the same whichever capture is a: dividing by one side
+#   only lets a cell that side holds as 0 pass while the other holds a value
+#   under the abs tolerance. It asserts both maxima against the tolerances,
+#   and reports whether the two are bitwise identical without asserting it,
+#   comparing the bytes, so a 0 that became -0 shows as not bitwise.
 # - A case that errored in either capture: both must have errored with the
 #   same class and message. The warnings each case raised: same classes and
 #   messages, in order.
@@ -187,9 +194,10 @@ walk <- function(a, b, path) {
     }
     fin <- is.finite(va)
     d <- abs(va[fin] - vb[fin])
-    nz <- vb[fin] != 0
+    m <- pmax(abs(va[fin]), abs(vb[fin]))
+    nz <- m != 0
     max_abs <- if (length(d)) max(d) else 0
-    max_rel <- if (any(nz)) max(d[nz] / abs(vb[fin][nz])) else 0
+    max_rel <- if (any(nz)) max(d[nz] / m[nz]) else 0
     ok <- max_abs <= tol_abs && max_rel <= tol_rel
     add(
       path,
@@ -199,7 +207,8 @@ walk <- function(a, b, path) {
       abs = max_abs,
       rel = max_rel,
       n_rel = sum(nz),
-      bitwise = identical(va, vb)
+      ## identical() treats 0 and -0 as equal; the bytes do not.
+      bitwise = identical(writeBin(va, raw()), writeBin(vb, raw()))
     )
   } else {
     add(path, type, identical(bare(a), bare(b)))
@@ -314,7 +323,10 @@ for (name in all_names) {
 }
 
 s <- do.call(rbind, summary_rows)
-cat("\nper case (doubles: worst element; rel over cells where ref != 0):\n")
+cat(paste0(
+  "\nper case (doubles: worst element; rel over cells where ",
+  "max(|ref|, |new|) != 0):\n"
+))
 cat(
   sprintf(
     "  %-28s %-4s %5s %5s  abs %-9s rel %-9s %s%s\n",

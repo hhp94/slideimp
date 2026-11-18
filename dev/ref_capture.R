@@ -19,8 +19,9 @@
 # it is vendored and gated upstream (dev/vendored.md).
 #
 # Inputs: sim_mat() output under fixed seeds, edited to hold columns over
-# colmax, constant columns and an all-NA column; an input with no holes; and
-# the chr21 EPIC data (dev/GSE286313.EPICv1_chr21.qs2, which needs qs2). It
+# colmax, constant columns, an all-NA column or one Inf; an input with no
+# holes; inputs sized or holed so pca_imp() takes the kernel's auto mode and
+# the no-Gram-cache branches, wide and tall; and the chr21 EPIC data (dev/GSE286313.EPICv1_chr21.qs2, which needs qs2). It
 # has no genomic coordinates, so slide_imp() takes the column index as
 # location, and group_imp() takes blocks of consecutive columns as groups.
 
@@ -101,6 +102,30 @@ xa[, 9] <- NA
 set.seed(3)
 x0 <- sim_mat(n = 40, p = 100, perc_total_na = 0)$input
 stopifnot(!anyNA(x0))
+
+## x2i: x2 with one Inf, for the messages that name the offending cell. It
+## sits off the first row and column, so an off-by-one in the 1-based row
+## and column those messages print shows, and in a column with holes, since
+## mean_imp_col_internal() only looks at the columns it imputes.
+x2i <- x2
+inf_col <- which(colSums(is.na(x2)) > 0L & seq_len(ncol(x2)) >= 10L)[[1]]
+inf_row <- which(!is.na(x2[, inf_col]) & seq_len(nrow(x2)) >= 3L)[[1]]
+x2i[inf_row, inf_col] <- Inf
+
+## Inputs that take the PCA paths x1 does not (dev/eigen_conversion.md,
+## Phase 0 review). xb: large enough that solver = "auto" reaches the
+## kernel's own choice (R demotes auto to exact when min(nrow, eligible
+## columns) < 250). xw and xt: every column has a hole, so the kernel has no
+## Gram cache, wide and tall. xt2: tall, with complete columns, for LOBPCG.
+set.seed(11)
+xb <- sim_mat(n = 300, p = 400, perc_total_na = 0.1, perc_col_na = 0.5)$input
+set.seed(12)
+xw <- sim_mat(n = 60, p = 300, perc_total_na = 0.1, perc_col_na = 1)$input
+set.seed(13)
+xt <- sim_mat(n = 100, p = 50, perc_total_na = 0.1, perc_col_na = 1)$input
+set.seed(14)
+xt2 <- sim_mat(n = 100, p = 50, perc_total_na = 0.1, perc_col_na = 0.5)$input
+stopifnot(all(colSums(is.na(xw)) > 0L), all(colSums(is.na(xt)) > 0L))
 
 ## xi: a window that K-NN cannot impute (one complete row), for
 ## on_infeasible = "mean"; the pattern the slide_imp() tests use.
@@ -216,12 +241,47 @@ case(
   "pca_chr21_nopost",
   pca_imp(chr21, ncp = 5, solver = "exact", post_imp = FALSE)
 )
+## The kernel's auto mode. Its choice is timed, so it can differ between
+## builds: a case that flips shows as solver_chosen in the compare, and is
+## read against the same input under each forced solver.
+case("pca_xb_auto", pca_imp(xb, ncp = 3))
+case("pca_xb_exact", pca_imp(xb, ncp = 3, solver = "exact"))
+case("pca_xb_lobpcg", pca_imp(xb, ncp = 3, solver = "lobpcg"))
+## LOBPCG failing every iteration and falling back to exact.
+case(
+  "pca_x1_lobpcg_fallback",
+  pca_imp(
+    x1,
+    ncp = 3,
+    solver = "lobpcg",
+    lobpcg_control = lobpcg_control(maxiter = 1, tol = 1e-14)
+  )
+)
+## EM asks the eigensolver for ncp vectors, regularized for ncp + 1.
+case(
+  "pca_x1_em_lobpcg",
+  pca_imp(x1, ncp = 3, method = "EM", solver = "lobpcg")
+)
+## Stopped before converging: the warning that prints criterion_final.
+case(
+  "pca_x1_unconverged",
+  pca_imp(x1, ncp = 3, solver = "exact", maxiter = 3, miniter = 1)
+)
+## No Gram cache, wide and tall; unequal row weights on the wide one.
+case("pca_xw_nocache", pca_imp(xw, ncp = 3, solver = "exact"))
+case(
+  "pca_xw_nocache_roww",
+  pca_imp(xw, ncp = 3, row.w = seq_len(nrow(xw)), solver = "exact")
+)
+case("pca_xt_nocache", pca_imp(xt, ncp = 3, solver = "exact"))
+case("pca_xt2_lobpcg", pca_imp(xt2, ncp = 3, solver = "lobpcg"))
+case("pca_x2i_inf_error", pca_imp(x2i, ncp = 3))
 
 ## mean_imp_col()
 case("mean_xa_all", mean_imp_col(xa))
 case("mean_xa_subset", mean_imp_col(xa, subset = colnames(xa)[c(1, 6, 9, 20)]))
-case("mean_xa_cores2", mean_imp_col(xa, cores = 2))
 case("mean_chr21_all", mean_imp_col(chr21_all))
+case("mean_x2i_inf_error", mean_imp_col(x2i))
 
 ## knn_imp()
 case("knn_x1_euc", knn_imp(x1, k = 5))
@@ -233,6 +293,7 @@ case("knn_x2_post", knn_imp(x2, k = 5))
 case("knn_x2_nopost", knn_imp(x2, k = 5, post_imp = FALSE))
 case("knn_x0_noholes", knn_imp(x0, k = 5))
 case("knn_chr21", knn_imp(chr21, k = 10))
+case("knn_x2i_inf_error", knn_imp(x2i, k = 5))
 
 ## slide_imp()
 case(
@@ -323,6 +384,7 @@ case(
 
 ## Small exports and the tune_imp() NA placement
 case("col_vars_x2", col_vars(x2))
+case("col_vars_x2_cores2", col_vars(x2, cores = 2))
 case("col_vars_chr21", col_vars(chr21))
 case("mat_miss_col", mat_miss(x2))
 case("mat_miss_row_prop", mat_miss(x2, col = FALSE, prop = TRUE))
@@ -355,9 +417,19 @@ case(
 case("int_col_min_max", col_min_max(x2))
 case("int_col_vars", col_vars_internal(x2))
 case("int_mean_imp_col", mean_imp_col_internal(xa, c(0L, 5L, 8L)))
+case(
+  "int_mean_imp_col_cores2",
+  mean_imp_col_internal(xa, c(0L, 5L, 8L), cores = 2L)
+)
+case(
+  "int_mean_imp_col_inf_error",
+  mean_imp_col_internal(x2i, inf_col - 1L)
+)
 case("int_check_inf", check_inf(x2))
+case("int_check_inf_error", check_inf(x2i))
 case("int_check_finite", check_finite(x2))
 case("int_check_finite_allna_error", check_finite(xa))
+case("int_check_finite_inf_error", check_finite(x2i))
 case("int_col_miss", col_miss_internal(x2))
 case("int_row_miss", row_miss_internal(x2))
 case("int_find_windows", find_windows(seq_len(300), window = 50, overlap = 10))

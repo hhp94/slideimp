@@ -5,9 +5,9 @@
 # The candidate comes from the RcppCore r-universe, the source
 # https://github.com/RcppCore/RcppEigen/issues/151 names. It installs only
 # when <lib> has no RcppEigen or an older one than the r-universe's;
-# --check reports both versions and installs nothing. Either way it reads the
-# r-universe's package index, which is a download. Dependencies are not
-# installed into <lib>; Rcpp comes from the usual library.
+# --check reports both versions and installs or creates nothing. Either way
+# it reads the r-universe's package index, which is a download. Dependencies
+# are not installed into <lib>; Rcpp comes from the usual library.
 #
 # It prints packageVersion("RcppEigen") and the Eigen version the installed
 # headers define, so the log says which candidate was tested. <lib> is
@@ -23,8 +23,11 @@ if (length(pos) != 1L) {
   )
 }
 lib <- pos[[1]]
-dir.create(lib, recursive = TRUE, showWarnings = FALSE)
-lib <- normalizePath(lib, winslash = "/", mustWork = TRUE)
+## --check creates nothing, so a mistyped <lib> is not left behind.
+if (!check_only) {
+  dir.create(lib, recursive = TRUE, showWarnings = FALSE)
+}
+lib <- normalizePath(lib, winslash = "/", mustWork = !check_only)
 repo <- "https://rcppcore.r-universe.dev"
 pkg <- "RcppEigen"
 
