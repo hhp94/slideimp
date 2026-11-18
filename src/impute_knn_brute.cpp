@@ -407,7 +407,7 @@ arma::mat impute_knn_brute(
 {
     validate_knn_inputs(
         obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow);
-    stop_on_inf(obj);
+    stop_on_inf(obj.memptr(), obj.n_rows, obj.n_cols);
     GroupLayout layout{grp_impute.n_elem, grp_miss_no_imp.n_elem, grp_complete.n_elem};
     const arma::uword n_rows = obj.n_rows;
     const arma::uword n_masked = layout.n_masked();

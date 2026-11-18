@@ -17,28 +17,28 @@ impute_knn_brute <- function(obj, k, grp_impute, grp_miss_no_imp, grp_complete, 
     .Call(`_slideimp_impute_knn_brute`, obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores, pb)
 }
 
-col_min_max <- function(mat) {
-    .Call(`_slideimp_col_min_max`, mat)
+col_min_max <- function(obj) {
+    .Call(`_slideimp_col_min_max`, obj)
 }
 
-col_vars_internal <- function(mat, cores = 1L) {
-    .Call(`_slideimp_col_vars_internal`, mat, cores)
+col_vars_internal <- function(obj, cores = 1L) {
+    .Call(`_slideimp_col_vars_internal`, obj, cores)
 }
 
-mean_imp_col_internal <- function(mat, col_idx, cores = 1L) {
-    .Call(`_slideimp_mean_imp_col_internal`, mat, col_idx, cores)
+mean_imp_col_internal <- function(obj, col_idx, cores = 1L) {
+    .Call(`_slideimp_mean_imp_col_internal`, obj, col_idx, cores)
 }
 
 arma_uword_bytes <- function() {
     .Call(`_slideimp_arma_uword_bytes`)
 }
 
-check_inf <- function(mat) {
-    invisible(.Call(`_slideimp_check_inf`, mat))
+check_inf <- function(obj) {
+    invisible(.Call(`_slideimp_check_inf`, obj))
 }
 
-check_finite <- function(mat) {
-    invisible(.Call(`_slideimp_check_finite`, mat))
+check_finite <- function(obj) {
+    invisible(.Call(`_slideimp_check_finite`, obj))
 }
 
 col_miss_internal <- function(obj) {

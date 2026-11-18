@@ -1,3 +1,6 @@
+// RcppArmadillo.h only for arma_uword_bytes(), which stays until Armadillo
+// leaves the package (dev/eigen_conversion.md, Phase 3). It comes first:
+// RcppArmadillo.h refuses to follow Rcpp.h, which matrix_checks.h includes.
 #include <RcppArmadillo.h>
 #include <RcppThread.h>
 
@@ -9,66 +12,112 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
+// The exports take `const Rcpp::NumericMatrix &`. RcppArmadillo built the
+// `const arma::mat &` they took before from that same Rcpp::Matrix
+// (RcppArmadilloAs.h, ArmaMat_InputParameter), so the same inputs are
+// accepted, coerced and refused, and a double matrix is read in place. Dims
+// are int in R; every index and offset below is std::size_t, so a matrix
+// past 2^31 cells indexes correctly. A worker reads raw pointers taken
+// before the parallel region and nothing of R's.
+
 // [[Rcpp::export]]
-arma::mat col_min_max(const arma::mat &mat)
+Rcpp::NumericMatrix col_min_max(const Rcpp::NumericMatrix &obj)
 {
   // internal helper only, guaranteed no NA/Inf/NaN
-  const arma::uword p = mat.n_cols;
-  arma::mat out(2, p); // row 0 = min, row 1 = max
-  for (arma::uword j = 0; j < p; ++j)
+  const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
+  const std::size_t n_cols = static_cast<std::size_t>(obj.ncol());
+
+  // Armadillo's min() refused an empty column with this exception; a call
+  // with no rows fails as it did.
+  if (n_rows == 0 && n_cols > 0)
   {
-    out(0, j) = mat.col(j).min();
-    out(1, j) = mat.col(j).max();
+    throw std::logic_error("min(): object has no elements");
+  }
+
+  const double *x = obj.begin();
+  Rcpp::NumericMatrix out(2, obj.ncol()); // row 0 = min, row 1 = max
+  double *o = out.begin();
+
+  for (std::size_t j = 0; j < n_cols; ++j)
+  {
+    const double *col = x + j * n_rows;
+
+    // Armadillo's start values and comparisons, so NaN is skipped. It kept
+    // one running value over even rows and one over odd rows, so when the
+    // extreme is a zero held as both 0 and -0 it can return the other sign.
+    double lo = std::numeric_limits<double>::infinity();
+    double hi = -std::numeric_limits<double>::infinity();
+
+    for (std::size_t i = 0; i < n_rows; ++i)
+    {
+      const double v = col[i];
+      if (v < lo)
+        lo = v;
+      if (v > hi)
+        hi = v;
+    }
+
+    o[2 * j] = lo;
+    o[2 * j + 1] = hi;
   }
   return out;
 }
 
 // [[Rcpp::export]]
-arma::rowvec col_vars_internal(const arma::mat &mat, int cores = 1)
+Rcpp::NumericMatrix col_vars_internal(const Rcpp::NumericMatrix &obj,
+                                      int cores = 1)
 {
-  arma::rowvec out(mat.n_cols);
+  const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
+  const std::size_t n_cols = static_cast<std::size_t>(obj.ncol());
+
+  // 1 x p, the shape Armadillo's rowvec came back to R in.
+  Rcpp::NumericMatrix out(1, obj.ncol());
+
+  const double *x = obj.begin();
+  double *o = out.begin();
+  const double na = NA_REAL;
 
   // parallelFor setup
   cores = std::max(1, cores);
   const size_t n_threads = static_cast<size_t>(cores);
-  const size_t n_cols = static_cast<size_t>(mat.n_cols);
 
   par_for(
       0,
       n_cols,
-      [&](size_t kk)
+      [&](size_t k)
       {
-        const arma::uword k = static_cast<arma::uword>(kk);
-        const double *col = mat.colptr(k);
+        const double *col = x + k * n_rows;
 
         double mean = 0.0;
         double mean2 = 0.0;
-        arma::uword n = 0;
+        std::size_t n = 0;
 
-        for (arma::uword i = 0; i < mat.n_rows; ++i)
+        for (std::size_t i = 0; i < n_rows; ++i)
         {
-          const double x = col[i];
+          const double v = col[i];
 
           // missingness is NA/NaN.
           // Inf/-Inf are not treated as missing; they enter the arithmetic.
           // This gives R-like behavior: variance involving Inf can become NaN.
-          if (!std::isnan(x))
+          if (!std::isnan(v))
           {
             ++n;
 
-            const double delta = x - mean;
+            const double delta = v - mean;
             mean += delta / static_cast<double>(n);
 
-            const double delta2 = x - mean;
+            const double delta2 = v - mean;
             mean2 += delta * delta2;
           }
         }
 
-        // return NaN when fewer than two non-missing observations are available.
-        out(k) = (n < 2) ? NA_REAL : mean2 / static_cast<double>(n - 1);
+        // return NA when fewer than two non-missing observations are available.
+        o[k] = (n < 2) ? na : mean2 / static_cast<double>(n - 1);
       },
       n_threads);
 
@@ -76,80 +125,90 @@ arma::rowvec col_vars_internal(const arma::mat &mat, int cores = 1)
 }
 
 // [[Rcpp::export]]
-arma::mat mean_imp_col_internal(const arma::mat &mat,
-                                const arma::uvec &col_idx,
-                                int cores = 1)
+Rcpp::NumericMatrix mean_imp_col_internal(const Rcpp::NumericMatrix &obj,
+                                          const Rcpp::NumericVector &col_idx,
+                                          int cores = 1)
 {
-  if (col_idx.n_elem > 0 && col_idx.max() >= mat.n_cols)
+  const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
+  const std::size_t n_cols = static_cast<std::size_t>(obj.ncol());
+
+  // `col_idx` was an arma::uvec, which RcppArmadillo filled by reading the
+  // argument as doubles and casting each to an unsigned index
+  // (RcppArmadilloAs.h, ArmaVec_InputParameter). A value is a column when it
+  // truncates to 0 .. n_cols - 1, so 2.7 is column 2 and -0.5 is column 0,
+  // as the cast made them; anything else is out of bounds. The cast was
+  // undefined for NA, Inf and values outside the unsigned range, and on x86
+  // it took 1e20 and Inf as column 0; those are refused here too.
+  std::vector<uint8_t> needs_imp(n_cols, 0);
+  const R_xlen_t n_idx = col_idx.size();
+
+  for (R_xlen_t i = 0; i < n_idx; ++i)
   {
-    Rcpp::stop("`col_idx` out of bounds");
+    const double v = col_idx[i];
+    if (!(v > -1.0 && v < static_cast<double>(n_cols)))
+    {
+      Rcpp::stop("`col_idx` out of bounds");
+    }
+    needs_imp[static_cast<std::size_t>(v)] = 1;
   }
 
-  std::vector<uint8_t> needs_imp(mat.n_cols, 0);
-
-  for (arma::uword i = 0; i < col_idx.n_elem; ++i)
-  {
-    needs_imp[col_idx(i)] = 1;
-  }
-
-  const arma::uword n_rows = mat.n_rows;
+  const double *x = obj.begin();
 
   // validate selected columns before parallel work.
   // NA/NaN are allowed because they are the values to impute.
   // Inf/-Inf are treated as invalid observed values.
-  for (arma::uword c = 0; c < mat.n_cols; ++c)
+  for (std::size_t c = 0; c < n_cols; ++c)
   {
     if (!needs_imp[c])
       continue;
 
-    const double *ptr = mat.colptr(c);
+    const double *ptr = x + c * n_rows;
 
-    for (arma::uword i = 0; i < n_rows; ++i)
+    for (std::size_t i = 0; i < n_rows; ++i)
     {
       if (std::isinf(ptr[i]))
       {
         Rcpp::stop(
             "Infinite value found in column %d, row %d. "
             "Mean imputation requires finite observed values.",
-            static_cast<int>(c + 1),
-            static_cast<int>(i + 1));
+            c + 1,
+            i + 1);
       }
     }
   }
 
-  arma::mat out(n_rows, mat.n_cols, arma::fill::none);
+  Rcpp::NumericMatrix out(Rcpp::no_init_matrix(obj.nrow(), obj.ncol()));
+  double *o = out.begin();
+  const uint8_t *imp = needs_imp.data();
 
   cores = std::max(1, cores);
   const size_t n_threads = static_cast<size_t>(cores);
-  const size_t n_cols = static_cast<size_t>(mat.n_cols);
-  const size_t col_bytes = static_cast<size_t>(n_rows) * sizeof(double);
+  const size_t col_bytes = n_rows * sizeof(double);
 
   par_for(
       0,
       n_cols,
-      [&](size_t cc)
+      [&](size_t c)
       {
-        const arma::uword c = static_cast<arma::uword>(cc);
+        const double *in_ptr = x + c * n_rows;
+        double *out_ptr = o + c * n_rows;
 
-        const double *in_ptr = mat.colptr(c);
-        double *out_ptr = out.colptr(c);
-
-        if (!needs_imp[c])
+        if (!imp[c])
         {
           std::memcpy(out_ptr, in_ptr, col_bytes);
           return;
         }
 
         double sum = 0.0;
-        arma::uword n = 0;
+        std::size_t n = 0;
 
-        for (arma::uword i = 0; i < n_rows; ++i)
+        for (std::size_t i = 0; i < n_rows; ++i)
         {
-          const double x = in_ptr[i];
+          const double v = in_ptr[i];
 
-          if (!std::isnan(x))
+          if (!std::isnan(v))
           {
-            sum += x;
+            sum += v;
             ++n;
           }
         }
@@ -162,10 +221,10 @@ arma::mat mean_imp_col_internal(const arma::mat &mat,
 
         const double mean_val = sum / static_cast<double>(n);
 
-        for (arma::uword i = 0; i < n_rows; ++i)
+        for (std::size_t i = 0; i < n_rows; ++i)
         {
-          const double x = in_ptr[i];
-          out_ptr[i] = std::isnan(x) ? mean_val : x;
+          const double v = in_ptr[i];
+          out_ptr[i] = std::isnan(v) ? mean_val : v;
         }
       },
       n_threads);
@@ -188,21 +247,24 @@ int arma_uword_bytes()
 // untouched by design, and `sample_na_loc()` reports them through its own
 // variance pre-check.
 // [[Rcpp::export]]
-void check_inf(const arma::mat &mat)
+void check_inf(const Rcpp::NumericMatrix &obj)
 {
-  stop_on_inf(mat);
+  stop_on_inf(obj.begin(),
+              static_cast<std::size_t>(obj.nrow()),
+              static_cast<std::size_t>(obj.ncol()));
 }
 
 // Inf/-Inf and all-NA/NaN columns. The gate for the imputation entry points.
 // [[Rcpp::export]]
-void check_finite(const arma::mat &mat)
+void check_finite(const Rcpp::NumericMatrix &obj)
 {
-  const arma::uword nr = mat.n_rows;
-  const arma::uword nc = mat.n_cols;
+  const std::size_t nr = static_cast<std::size_t>(obj.nrow());
+  const std::size_t nc = static_cast<std::size_t>(obj.ncol());
+  const double *x = obj.begin();
 
-  for (arma::uword col = 0; col < nc; ++col)
+  for (std::size_t col = 0; col < nc; ++col)
   {
-    const double *cp = mat.colptr(col);
+    const double *cp = x + col * nr;
 
     bool has_finite = false;
 
@@ -210,11 +272,11 @@ void check_finite(const arma::mat &mat)
     // Inf/-Inf is rejected outright, wherever it appears. A column that ends
     // the pass with no finite cell holds nothing but NA/NaN and is rejected
     // too. Inf is checked first, so the second message never has to mention it.
-    for (arma::uword row = 0; row < nr; ++row)
+    for (std::size_t row = 0; row < nr; ++row)
     {
-      const double x = cp[row];
+      const double v = cp[row];
 
-      if (std::isinf(x))
+      if (std::isinf(v))
       {
         Rcpp::stop(
             std::string("Infinite value found at row ") +
@@ -225,7 +287,7 @@ void check_finite(const arma::mat &mat)
       }
 
       // Inf is already ruled out, so not-NaN means finite here.
-      if (!std::isnan(x))
+      if (!std::isnan(v))
       {
         has_finite = true;
       }
@@ -238,49 +300,57 @@ void check_finite(const arma::mat &mat)
   }
 }
 
+// n_cols x 1 doubles, the shape and type Armadillo's uvec came back to R in.
 // [[Rcpp::export]]
-arma::uvec col_miss_internal(const arma::mat &obj)
+Rcpp::NumericMatrix col_miss_internal(const Rcpp::NumericMatrix &obj)
 {
-  const arma::uword n_rows = obj.n_rows;
-  const arma::uword n_cols = obj.n_cols;
+  const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
+  const std::size_t n_cols = static_cast<std::size_t>(obj.ncol());
 
-  arma::uvec out(n_cols);
+  Rcpp::NumericMatrix out(obj.ncol(), 1);
+  const double *x = obj.begin();
+  double *o = out.begin();
 
-  for (arma::uword j = 0; j < n_cols; ++j)
+  for (std::size_t j = 0; j < n_cols; ++j)
   {
-    const double *p = obj.colptr(j);
+    const double *p = x + j * n_rows;
 
-    arma::uword count = 0;
+    std::size_t count = 0;
 
-    for (arma::uword i = 0; i < n_rows; ++i)
+    for (std::size_t i = 0; i < n_rows; ++i)
     {
       // count NA/NaN as missing.
       // Inf/-Inf are not counted as missing.
       count += std::isnan(p[i]);
     }
 
-    out(j) = count;
+    o[j] = static_cast<double>(count);
   }
 
   return out;
 }
 
+// n_rows x 1 doubles, as col_miss_internal(). A count is a whole number
+// below 2^31, so adding in double is exact.
 // [[Rcpp::export]]
-arma::uvec row_miss_internal(const arma::mat &obj)
+Rcpp::NumericMatrix row_miss_internal(const Rcpp::NumericMatrix &obj)
 {
-  const arma::uword n_rows = obj.n_rows;
-  const arma::uword n_cols = obj.n_cols;
+  const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
+  const std::size_t n_cols = static_cast<std::size_t>(obj.ncol());
 
-  arma::uvec out(n_rows, arma::fill::zeros);
-  for (arma::uword j = 0; j < n_cols; ++j)
+  Rcpp::NumericMatrix out(obj.nrow(), 1); // zero-filled
+  const double *x = obj.begin();
+  double *o = out.begin();
+
+  for (std::size_t j = 0; j < n_cols; ++j)
   {
-    const double *p = obj.colptr(j);
+    const double *p = x + j * n_rows;
 
-    for (arma::uword i = 0; i < n_rows; ++i)
+    for (std::size_t i = 0; i < n_rows; ++i)
     {
       // count NA/NaN as missing.
       // Inf/-Inf are not counted as missing.
-      out(i) += std::isnan(p[i]);
+      o[i] += std::isnan(p[i]);
     }
   }
 

@@ -232,7 +232,7 @@ the memory probe after Phase 2 would show a copy.
   about 1 x the input.
 
 Open: how the means are computed. Today's kernel sums in double, in row
-order (`src/mat_stats.cpp`: `arma::mat mean_imp_col_internal(const arma::mat &mat,`).
+order (`src/mat_stats.cpp`: `Rcpp::NumericMatrix mean_imp_col_internal(`).
 R's `sum()` and `mean()` accumulate in long double, so means taken in R can
 differ in the last bits, which the compare script would report and the
 tolerance would pass. Keeping them bitwise needs a C++ entry that returns

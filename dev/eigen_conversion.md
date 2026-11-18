@@ -412,6 +412,38 @@ compare script asserts on a tolerance anyway and reports bitwise-ness.
    The early-abandon chunking in `calc_distance_raw` is algorithmic and
    stays (`dev/CPP.md`).
 
+Step 1 ran 2026-11-18, on the working tree over `ad45ec5`. Every export in
+`src/mat_stats.cpp` but `arma_uword_bytes()` takes
+`const Rcpp::NumericMatrix &` and returns an `Rcpp::NumericMatrix` of the
+shape the Armadillo type came back to R in: 1 x p for `col_vars_internal()`,
+n x 1 doubles for the two missing counts. READ: RcppArmadillo built a
+`const arma::mat &` argument from that same `Rcpp::Matrix`
+(RcppArmadilloAs.h, `ArmaMat_InputParameter`), so input converts as
+before; it read `col_idx` as doubles and cast each to `arma::uword`, which
+`mean_imp_col_internal()` now reproduces from a `NumericVector`.
+`stop_on_inf()` takes a pointer and dims. The first argument of every
+export is `obj` (maintainer, 2026-11-18), and `R/col_vars.R`, the one
+caller that named it, follows. `src/mat_stats.cpp` still includes
+`RcppArmadillo.h`, for `arma_uword_bytes()` alone.
+
+- Capture `p1s1` against `76d4c60`: 75 cases, all bitwise identical.
+- `dev/eigen_p1_edges.R`, run on a clone of the start commit and on the
+  step, compared at tolerance 0: 76 cases, 72 identical, errors included.
+  Two pass but are not bitwise: `col_min_max()` on a column whose minimum
+  or maximum is a zero held as both 0 and -0 can return the other sign,
+  since Armadillo kept one running value over even rows and one over odd.
+  Its one caller, `sim_mat()`, rescales `rnorm()` output. Two fail on
+  purpose: `mean_imp_col_internal()` with `col_idx` 1e20 or `Inf`, which
+  the Armadillo cast left undefined and this x86 build took as column 0,
+  is now out of bounds, as NA, negatives and 1e10 already were. No R code
+  calls it.
+- The Inf error of `mean_imp_col_internal()` no longer narrows the row and
+  column to `int`; its text is unchanged below 2^31.
+- Not built against the RcppEigen candidate: the step adds no Eigen.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading the step installed into a private library: 22
+  files, 274 tests, none failed, errored or skipped.
+
 ## Phase 2: the PCA chain to R's BLAS and LAPACK
 
 The wrapper layer and its oracle come first, and pass their review

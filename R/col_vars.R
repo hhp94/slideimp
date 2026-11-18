@@ -44,7 +44,7 @@ col_vars <- function(obj, cores = 1) {
     .var.name = "obj"
   )
   checkmate::assert_int(cores, lower = 1)
-  vars <- col_vars_internal(mat = obj, cores = cores)[1, ]
+  vars <- col_vars_internal(obj = obj, cores = cores)[1, ]
   names(vars) <- colnames(obj)
   return(vars)
 }

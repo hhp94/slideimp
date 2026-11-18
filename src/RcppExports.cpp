@@ -85,38 +85,38 @@ BEGIN_RCPP
 END_RCPP
 }
 // col_min_max
-arma::mat col_min_max(const arma::mat& mat);
-RcppExport SEXP _slideimp_col_min_max(SEXP matSEXP) {
+Rcpp::NumericMatrix col_min_max(const Rcpp::NumericMatrix& obj);
+RcppExport SEXP _slideimp_col_min_max(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    rcpp_result_gen = Rcpp::wrap(col_min_max(mat));
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
+    rcpp_result_gen = Rcpp::wrap(col_min_max(obj));
     return rcpp_result_gen;
 END_RCPP
 }
 // col_vars_internal
-arma::rowvec col_vars_internal(const arma::mat& mat, int cores);
-RcppExport SEXP _slideimp_col_vars_internal(SEXP matSEXP, SEXP coresSEXP) {
+Rcpp::NumericMatrix col_vars_internal(const Rcpp::NumericMatrix& obj, int cores);
+RcppExport SEXP _slideimp_col_vars_internal(SEXP objSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(col_vars_internal(mat, cores));
+    rcpp_result_gen = Rcpp::wrap(col_vars_internal(obj, cores));
     return rcpp_result_gen;
 END_RCPP
 }
 // mean_imp_col_internal
-arma::mat mean_imp_col_internal(const arma::mat& mat, const arma::uvec& col_idx, int cores);
-RcppExport SEXP _slideimp_mean_imp_col_internal(SEXP matSEXP, SEXP col_idxSEXP, SEXP coresSEXP) {
+Rcpp::NumericMatrix mean_imp_col_internal(const Rcpp::NumericMatrix& obj, const Rcpp::NumericVector& col_idx, int cores);
+RcppExport SEXP _slideimp_mean_imp_col_internal(SEXP objSEXP, SEXP col_idxSEXP, SEXP coresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    Rcpp::traits::input_parameter< const arma::uvec& >::type col_idx(col_idxSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type col_idx(col_idxSEXP);
     Rcpp::traits::input_parameter< int >::type cores(coresSEXP);
-    rcpp_result_gen = Rcpp::wrap(mean_imp_col_internal(mat, col_idx, cores));
+    rcpp_result_gen = Rcpp::wrap(mean_imp_col_internal(obj, col_idx, cores));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -131,43 +131,43 @@ BEGIN_RCPP
 END_RCPP
 }
 // check_inf
-void check_inf(const arma::mat& mat);
-RcppExport SEXP _slideimp_check_inf(SEXP matSEXP) {
+void check_inf(const Rcpp::NumericMatrix& obj);
+RcppExport SEXP _slideimp_check_inf(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    check_inf(mat);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
+    check_inf(obj);
     return R_NilValue;
 END_RCPP
 }
 // check_finite
-void check_finite(const arma::mat& mat);
-RcppExport SEXP _slideimp_check_finite(SEXP matSEXP) {
+void check_finite(const Rcpp::NumericMatrix& obj);
+RcppExport SEXP _slideimp_check_finite(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type mat(matSEXP);
-    check_finite(mat);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
+    check_finite(obj);
     return R_NilValue;
 END_RCPP
 }
 // col_miss_internal
-arma::uvec col_miss_internal(const arma::mat& obj);
+Rcpp::NumericMatrix col_miss_internal(const Rcpp::NumericMatrix& obj);
 RcppExport SEXP _slideimp_col_miss_internal(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
     rcpp_result_gen = Rcpp::wrap(col_miss_internal(obj));
     return rcpp_result_gen;
 END_RCPP
 }
 // row_miss_internal
-arma::uvec row_miss_internal(const arma::mat& obj);
+Rcpp::NumericMatrix row_miss_internal(const Rcpp::NumericMatrix& obj);
 RcppExport SEXP _slideimp_row_miss_internal(SEXP objSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const arma::mat& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
     rcpp_result_gen = Rcpp::wrap(row_miss_internal(obj));
     return rcpp_result_gen;
 END_RCPP

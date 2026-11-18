@@ -98,7 +98,7 @@ caller still holds cannot take an attribute in place (`R/utils.R`:
 
 Missingness and partitioning. `cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)`;
 `mat_miss()` (`R/mat_miss.R`: `mat_miss <- function(`) calls
-`col_miss_internal()` (`src/mat_stats.cpp`: `arma::uvec col_miss_internal(`),
+`col_miss_internal()` (`src/mat_stats.cpp`: `Rcpp::NumericMatrix col_miss_internal(`),
 which counts `std::isnan` per column and does not count `Inf` as missing
 (`src/mat_stats.cpp`: `count += std::isnan(p[i]);`). A second early return fires
 if no subset column has any missing value (`R/knn_imp.R`:
@@ -185,7 +185,9 @@ Project headers reached, following the `#include` graph:
   (`src/imputed_value.h`: `arma::mat initialize_result_matrix(`,
   `void impute_column_values(`).
 - `src/matrix_checks.h` -- pulled in by `src/imputed_value.h` and
-  `src/mat_stats.cpp`. Holds only `stop_on_inf()`.
+  `src/mat_stats.cpp`. Holds only `stop_on_inf()`, which takes a pointer to
+  the column-major cells and the dims, so the Armadillo kernel and the plain
+  Rcpp exports of `src/mat_stats.cpp` share it.
 - `src/par_for.h` -- included by `src/impute_knn_brute.cpp` and
   `src/mat_stats.cpp`. One function template: `par_for()` runs the loop body
   inline when `n_threads <= 1` and hands off to `RcppThread::parallelFor()`
@@ -231,7 +233,8 @@ that flag survived.
    and produce a missing value with no error, and a column claimed by two groups
    would be its own neighbor at distance zero. A test exercises both
    (`tests/testthat/test-knn_imp.R`: `the kernel checks the invariants`). Then
-   `stop_on_inf(obj)` in `src/impute_knn_brute.cpp` rescans for infinities.
+   `stop_on_inf()` rescans `obj` for infinities
+   (`src/impute_knn_brute.cpp`: `stop_on_inf(obj.memptr(), obj.n_rows, obj.n_cols);`).
 2. `GroupLayout layout{...}` in `src/impute_knn_brute.cpp` is the single
    source of truth for group boundaries: groups 1 and 2 occupy local columns
    `[0, n_masked())` of the working matrices, and `complete_start()`
