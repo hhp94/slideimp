@@ -496,7 +496,9 @@ the maintainer before the code:
 - Every chunk carries the call's whole record as `info`: the 14 attributes
   of the matrix output after dim, dimnames and class, under their names and
   types, `mean_filled_cols` included as integers in the input's numbering.
-  So the record survives a `cbind()` that separates the chunks.
+  So the record survives a `cbind()` that separates the chunks, though its
+  column indices then still count this fit's columns, not the joined fit's
+  (see "Review of Phases 1 to 6").
 - The stored call is `.scrub_call(match.call(), "pca_imp")`, so a matrix
   passed by value through `do.call()` is not stored in the fit.
 - `knn_imp()` goes the same way later, and `group_imp()` will build from
@@ -790,6 +792,77 @@ it, and the kernel still runs on every eligible column. What `subset` saves
 is the result a call returns and keeps, a tenth of the input here instead of
 a whole copy, which lowers the peak of a caller that holds results while it
 works. No caller passes `subset` yet.
+
+## Review of Phases 1 to 6 (2026-11-17)
+
+A code review in a fresh session, on `e5b3cf7..3c84803` over `R/` and
+`tests/` without the vendored files, set up as the uncommitted diff of a
+throwaway worktree. It ran no code. Its findings were then audited here, and
+those that can be measured were measured with `dev/audit_pca_imp_cr.R`,
+numbered as below. What the audit found, and what was done:
+
+1. **Fixed.** On the one-chunk path of the `si_mi` door (one part over every
+   column and no `subset`, and the no-holes exit), the chunk held the input
+   itself, class and attributes included, and `as.matrix.si_mi()` starts
+   from that matrix there. So re-imputing a `knn_imp()` result returned a
+   `slideimp_results` with `imp_method = "knn"`, and a plain matrix kept its
+   own attributes, while a fit of two chunks, built from slices, kept
+   neither. `part_chunk_fit()` now cuts the input to its dims and dimnames
+   when it carries more (`R/parts.R`: `if (length(setdiff(names(attributes(sub)), c("dim", "dimnames")))) {`),
+   which copies it only then. Tests: at the door in `test-parts.R`, and in
+   `test-pca_imp-mipca.R` over a `slideimp_results` with holes, one without
+   (the no-holes exit) and a plain matrix with an attribute.
+2. **Wrong, not changed.** The claim was that `fallback_part()`'s map turns
+   double past 2^31 cells, since `which()` returns a double index there.
+   R 4.6.2's `arrayInd()` ends with `storage.mode(ind) <- "integer"`, and a
+   row or column number is always below 2^31, so the map stays integer.
+3. **Recorded, not changed.** The record on each chunk keeps
+   `mean_filled_cols` in the fit's own numbering, and a `cbind()` does not
+   renumber it, so after a join it points at the joined fit's other
+   columns. Nothing reads it yet (Phase 4, "As built"). The indices stay, as
+   decided for the output's numbering; the Phase 4 text and the comment in
+   `pca_imp()` now say they are not renumbered.
+4. **Fixed.** The mean fallback took complete columns too, and
+   `fallback_part()` copied them, with their `is.na()`, to fill nothing.
+   `mean_imp_col()` now hands it only the columns with a hole (`R/mean_imp_col.R`:
+   `cols <- cols[n_miss[cols] > 0L & n_miss[cols] < nrow(obj)]`), and
+   `pca_imp()` builds three parts in place of Phase 3's two: the ineligible
+   columns with a hole, filled or `left_na`, and those without, a part with
+   nothing to fill, as `post_imp = FALSE` already did. On 2000 x 5000 with a
+   tenth of the columns holed, the extra R-heap peak of a fallback over every
+   column drops from 2.52 x the input to 1.26 x, the result identical. The
+   `slide_imp()` and `group_imp()` fallbacks, which pass every target column
+   of a window or a group, gain the most. Tests: a new one in
+   `test-mean_imp_col.R`, and the post-step test in `test-pca_imp.R` now
+   asserts the fallback is asked for columns 1 and 2, not 3, which its title
+   already said.
+5. **Real, not changed.** The doors count holes again (`check_parts()`, and
+   `fill_parts()` after the write): a pass is 0.010 s on 2000 x 5000, two of
+   them 1.9 % of a 10-iteration `pca_imp()`, and 10 us on a 200 x 100
+   window. Also real: an integer input is copied once more than at
+   `e5b3cf7`, its extra R-heap peak 6.08 x the double size against 5.07 x
+   there, while a double input is unchanged (1.08 x and 1.07 x). Most of
+   that 5 x predates this work: each Rcpp call converts its own copy of an
+   integer matrix. One conversion right after the no-holes exit would remove
+   both; not done, as outside the review.
+6. **Fixed.** Three comments still said `pca_imp()` has no `subset`: in its
+   `row.w = "n_miss"` branch, and in the complete-targets checks of
+   `slide_imp()` and `group_imp()`, which now say the callers do not pass it
+   yet.
+7. **Deferred to the `knn_imp()` change.** `prov_extra` is matched to the
+   parts by position and checked only by length. `dev/to-do.md` carries it.
+
+Every new test fails with its fix undone: 10 failures over the three new
+tests, none elsewhere.
+
+Checked: the suite with `load_all1(timer = FALSE)` and the manual tests, 22
+files, 274 tests, 2774 expectations, none failed; its two `group_imp`
+errors are daemons running an older installed copy ("could not find
+function resolve_narrow_subset"), and the `group_imp` and `tune_imp` tests
+on an install of this checkout pass, 118 tests. The Phase 0 compare gives
+what Phase 6 gave: 57 of 58 cases, `mean_xa_cores2` erroring on the removed
+`cores`; every `pca_*` case bitwise; the same six cases not bitwise, worst
+rel `6.65e-16`.
 
 ## Upstream, in `hhp94/test`
 

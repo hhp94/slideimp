@@ -847,8 +847,9 @@ group_imp <- function(
   )
 
   # a group whose feature columns hold no missing value needs no imputation.
-  # pca_imp() has no `subset`: handed such a group it fits every column, aux
-  # included, to change nothing, and aborts when an aux column is infeasible.
+  # pca_imp() is not passed `subset` yet (dev/to-do.md, "Parts for the other
+  # imputers"): handed such a group it fits every column, aux included, to
+  # change nothing, and aborts when an aux column is infeasible.
   needs_imp <- vapply(feat_splits, function(f) any(cmiss[f] > 0L), logical(1))
 
   # a group too small for any `k` or `ncp` goes through `on_infeasible`, like

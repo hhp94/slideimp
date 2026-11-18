@@ -128,6 +128,34 @@ test_that("mean_imp_col() leaves a column with no observed value as it is", {
   })
 })
 
+test_that("mean_imp_col() hands the fallback only the columns it fills", {
+  # Regression: every selected column with an observed value went into the
+  # fallback part, complete ones included, so fallback_part() copied them and
+  # their is.na() to fill nothing. The slide_imp() and group_imp() fallbacks
+  # select every target column of a window or group.
+  m <- mean_input()
+  # non-vacuity: column 2 is complete and column 3 has no observed value
+  expect_false(anyNA(m[, 2]))
+  expect_true(all(is.na(m[, 3])))
+  real_fallback_part <- fallback_part
+  calls <- list()
+  local_mocked_bindings(
+    fallback_part = function(obj, cols, method = c("mean", "median")) {
+      calls <<- c(calls, list(cols))
+      real_fallback_part(obj, cols, method)
+    }
+  )
+  out <- mean_imp_col(m)
+  expect_identical(calls, list(c(1L, 4L, 5L)))
+  expect_identical(out[, 2], m[, 2])
+  expect_false(anyNA(out[, c(1, 4, 5)]))
+
+  # complete columns only: an empty part, and the input's values back
+  calls <- list()
+  expect_identical(mean_imp_col(m, subset = 2L), m)
+  expect_identical(calls, list(integer(0)))
+})
+
 test_that("mean_imp_col() returns a double matrix with dim and dimnames only", {
   m <- mean_input()
   plain <- mean_imp_col(m, subset = c(1L, 5L))

@@ -46,10 +46,10 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |
   +- R/pca_imp.R           mse guard, per restart
   +- R/pca_imp.R           clamp
-  +- R/pca_imp.R           PCA part from the triplets; mean part over the
-  |                        ineligible kept columns (without post_imp: a left
-  |                        NA part over those with a hole, a mean part with
-  |                        nothing to fill over the rest)
+  +- R/pca_imp.R           PCA part from the triplets; over the ineligible
+  |                        kept columns, a mean part over those with a hole
+  |                        (a left NA part without post_imp) and a part with
+  |                        nothing to fill over the rest
   +- R/pca_imp.R           pca_imp_info(): the call's record
   +- output = "matrix"
   |    +- R/parts.R        fill_parts(): one copy of obj's kept columns, the
@@ -143,14 +143,15 @@ the residual over every cell of each eligible column, holes included, before
 subtracting the holes' share (`src/armaSVD.cpp`: `sse -= s * ej2;`), so a NaN or
 Inf at any imputed cell surfaces there, and the triplet values themselves are
 never NA past this point. `clamp` is applied to the value column of the triplet
-matrix (imputed values only). The result is then built from two parts
+matrix (imputed values only). The result is then built from three parts
 (`R/parts.R`), which together cover every column: the PCA part
 (`R/pca_imp.R`: `pca_part <- new_part(`) is the triplets, the indices from C++
 already being 1-based original-matrix indices, over the eligible columns; the
-ineligible columns are covered through `fallback_part()` under `post_imp = TRUE`.
-Under `post_imp = FALSE` they are two parts: a `left_na` part over those with a
-hole, and a mean part with an empty map over those without, so that a `left_na`
-part names only columns that keep a hole. With `subset`, the PCA part still
+ineligible columns with a hole are one part, filled through `fallback_part()`
+under `post_imp = TRUE` and a `left_na` part under `post_imp = FALSE`; and those
+without a hole are a mean part with an empty map. So `fallback_part()` copies
+only the columns it fills, and a `left_na` part names only columns that keep a
+hole. With `subset`, the PCA part still
 covers every eligible column and the doors cut it to `keep`, while the mean parts
 cover only the kept ineligible columns, so no mean is computed for a column the
 result does not hold. An integer input is coerced to double
@@ -175,11 +176,12 @@ adds the rest of the record as attributes, in the order above.
 For `output = "mipca"`, every part takes the whole record as its `info`, and
 `parts_to_si_mi()` (`R/parts.R`: `parts_to_si_mi <- function(`)
 builds a one-draw `si_mi`: one chunk per part with columns, each a slice of `obj`
-(no slice when one part covers every column), its map rebased to the slice, its
-values as the draw, `tf_identity()` as the backward map and the empty diagnostic
-frame, joined with the parts' columns as the placement. The record rides on every
-chunk, which a `cbind()` keeps, and the PCA chunk's `prov` also holds `rank` and
-`iter`.
+(no slice when one part covers every column: `obj` itself, cut to its dims and
+dimnames when it carries more), its map rebased to the slice, its values as the
+draw, `tf_identity()` as the backward map and the empty diagnostic frame, joined
+with the parts' columns as the placement. The record rides on every chunk, which
+a `cbind()` keeps, though the join does not renumber its column indices, and the
+PCA chunk's `prov` also holds `rank` and `iter`.
 
 Both doors take `keep`, the input columns to return, and cut the parts to it
 after validating them (`R/parts.R`: `cut_parts <- function(parts, lins, keep, n_col) {`).

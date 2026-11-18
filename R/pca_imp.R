@@ -686,9 +686,9 @@ pca_imp <- function(
     row.w <- rep(1, nrow(obj))
   } else if (is.character(row.w) && row.w == "n_miss") {
     # per-row missingness without materializing any boolean subset. We
-    # purposefully scan the entire object here since for pca, we don't have the
-    # subset argument and if missingness is spreadout through all columns,
-    # obj[, eligible_idx] would materialize a full copy in RAM.
+    # purposefully scan the entire object here: if missingness is spread out
+    # through all columns, obj[, eligible_idx] would materialize a full copy
+    # in RAM. `subset` does not narrow it, since it narrows only the result.
     n_miss_per_row <- mat_miss(obj, col = FALSE, prop = FALSE)
     row.w <- 1 - (n_miss_per_row / ncol(obj))
     row.w[row.w < 1e-10] <- 1e-10
@@ -814,15 +814,16 @@ pca_imp <- function(
     )
   }
 
-  # two parts, which together cover every column the result holds. The PCA
+  # three parts, which together cover every column the result holds. The PCA
   # part is the kernel's triplets: the eligible columns and every hole in
   # them, already in the input's 1-based numbering, in the column-major order
   # the part's validator checks. With `subset`, the door cuts it to the kept
-  # columns. The mean part is every ineligible column the result holds: under
-  # `post_imp` each hole set to its column mean, otherwise left NA. No
+  # columns. The other two are the ineligible columns the result holds: those
+  # with a hole, under `post_imp` each hole set to its column mean and
+  # otherwise left NA, and those without, a part with nothing to fill. No
   # ineligible column is all NA, since check_finite() refuses one, so each
-  # has a mean. Neither part holds NA, as the mse check above guarantees for
-  # the kernel's values.
+  # has a mean. No part holds NA, as the mse check above guarantees for the
+  # kernel's values.
   map <- cbind(
     row = as.integer(best_imputed[, 1]),
     col = as.integer(best_imputed[, 2])
@@ -851,18 +852,19 @@ pca_imp <- function(
     mean_cols <- intersect(mean_cols, keep)
   }
   holed_cols <- mean_cols[cmiss[mean_cols] > 0L]
-  # Without `post_imp`, the ineligible columns with a hole are one `left_na`
-  # part, and those with none a mean part with nothing to fill, so a
-  # `left_na` part names only columns that keep a hole: print() of the
-  # `mipca` output counts its columns as "left NA".
-  mean_parts <- if (post_imp) {
-    list(fallback_part(obj, mean_cols, "mean"))
-  } else {
-    list(
-      new_part(cols = holed_cols, kind = "mean", left_na = TRUE),
-      new_part(cols = setdiff(mean_cols, holed_cols), kind = "mean")
-    )
-  }
+  # The ineligible columns with a hole are one part, filled under `post_imp`
+  # and `left_na` without it, so a `left_na` part names only columns that
+  # keep a hole: print() of the `mipca` output counts its columns as "left
+  # NA". Those with none are a part with nothing to fill, so fallback_part()
+  # copies only the columns it fills.
+  mean_parts <- list(
+    if (post_imp) {
+      fallback_part(obj, holed_cols, "mean")
+    } else {
+      new_part(cols = holed_cols, kind = "mean", left_na = TRUE)
+    },
+    new_part(cols = setdiff(mean_cols, holed_cols), kind = "mean")
+  )
   parts <- c(list(pca_part), mean_parts)
   rm(pca_part, mean_parts)
 
@@ -889,7 +891,8 @@ pca_imp <- function(
     return(pca_imp_results(obj, info))
   }
   # every chunk of the fit carries the call's whole record, so it survives a
-  # cbind() that separates them
+  # cbind() that separates them. Its column indices (`mean_filled_cols`)
+  # count this fit's columns, and a join does not renumber them.
   parts <- lapply(parts, function(part) {
     part$info <- info
     part

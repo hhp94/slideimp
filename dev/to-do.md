@@ -100,6 +100,11 @@ maintainer the same day:
   - `slide_imp(subset = )` and `group_imp(subset = )` narrow their own
     output too, by the same rule.
   - The NEWS entry above gains a **Breaking** line for all of it.
+  - `parts_to_si_mi()`'s `prov_extra` is a list beside `parts`, matched to
+    them by position and checked only by length, so a part list built in
+    another order puts `rank` and `iter` on the wrong chunk without an error.
+    With `knn_imp()` a second builder arrives: carry those fields on the
+    part instead (`dev/si_mi_conversion.md`, "Review of Phases 1 to 6").
 
 ## Sampler port: what is still owed
 

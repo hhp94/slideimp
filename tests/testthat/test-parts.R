@@ -299,6 +299,18 @@ test_that("parts_to_si_mi() takes one part, a part over no columns, and left_na"
   expect_identical(fit$chunks[[1]]$obj, m)
   expect_null(fit$placement)
   expect_identical(as.matrix(fit), fill_parts(m, list(every)))
+  # an input with more than dims and dimnames: the chunk holds it without
+  # them, since as.matrix() starts from the chunk's matrix on this path. The
+  # input itself keeps them.
+  tagged <- m
+  attr(tagged, "foo") <- "bar"
+  class(tagged) <- c("slideimp_results", class(m))
+  fit <- to_si_mi(tagged, list(every))
+  expect_length(fit$chunks, 1L)
+  expect_identical(fit$chunks[[1]]$obj, m)
+  expect_identical(as.matrix(fit), fill_parts(m, list(every)))
+  expect_identical(attr(tagged, "foo"), "bar")
+  expect_s3_class(tagged, "slideimp_results")
 
   # a part over no columns is dropped
   none <- new_part(cols = integer(0), kind = "mean")

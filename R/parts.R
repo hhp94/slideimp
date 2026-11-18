@@ -403,7 +403,8 @@ check_si_mi_names <- function(obj, call = parent.frame()) {
 # Each part with kept columns becomes one chunk; a part with none is
 # dropped, since a chunk needs one. A chunk holds the part's kept columns of
 # `obj` (a slice, with its row names dropped since the object holds them
-# once; no slice when one part covers every column and every column is kept),
+# once; no slice when one part covers every column and every column is kept,
+# but `obj` itself, cut to its dims and dimnames when it carries more),
 # the map in the slice's own numbering, the values as the one draw, the
 # identity backward map, and the empty diagnostic frame an ABB piece takes:
 # one draw has nothing to diagnose. The part's `info`, when it has any, is
@@ -503,6 +504,13 @@ part_chunk_fit <- function(obj, part, whole, prov_extra, call) {
   map <- part$map
   if (whole) {
     sub <- obj
+    # A chunk holds a bare matrix, as a slice is. as.matrix() starts from
+    # this matrix on its one-chunk path, so the input's own class and
+    # attributes (a `slideimp_results` from an earlier pass, say) would come
+    # back from it. Dropping them copies the input, so only when there are any.
+    if (length(setdiff(names(attributes(sub)), c("dim", "dimnames")))) {
+      attributes(sub) <- list(dim = dim(sub), dimnames = dimnames(sub))
+    }
   } else {
     sub <- obj[, cols, drop = FALSE]
     dimnames(sub) <- list(NULL, colnames(sub))

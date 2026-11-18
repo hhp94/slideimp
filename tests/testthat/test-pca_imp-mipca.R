@@ -111,6 +111,51 @@ test_that("an all-eligible input is one chunk holding the input itself", {
   )
 })
 
+test_that("a one-chunk fit drops the input's class and attributes", {
+  # Regression: the one-chunk fit held the input itself, and as.matrix()
+  # starts from that matrix, so a `slideimp_results` from an earlier pass
+  # came back with its class and that pass's record (`imp_method = "knn"`
+  # after a knn_imp()), and a plain matrix with its own attributes. A fit of
+  # more chunks is built from slices, which carry neither.
+  obj <- mipca_input()[, -c(6, 9)]
+  earlier <- pca_imp(obj, ncp = 2, seed = 1)
+  again <- earlier
+  again[cbind(1:5, 1:5)] <- NA
+  tagged <- obj
+  attr(tagged, "foo") <- "bar"
+  inputs <- list(
+    results_with_holes = again,
+    results_without_holes = earlier,
+    plain_with_attribute = tagged
+  )
+  # non-vacuity: each input carries more than dims and dimnames, and the
+  # first one has holes, so it takes the main path, not the no-holes exit
+  for (x in inputs) {
+    expect_gt(length(setdiff(names(attributes(x)), c("dim", "dimnames"))), 0L)
+  }
+  expect_true(anyNA(again))
+  expect_false(anyNA(earlier))
+
+  for (nm in names(inputs)) {
+    x <- inputs[[nm]]
+    fit <- suppressMessages(pca_imp(x, ncp = 2, seed = 1, output = "mipca"))
+    # the path that reuses the input rather than slicing it
+    expect_length(fit$chunks, 1L)
+    expect_null(fit$placement)
+    out <- as.matrix(fit)
+    expect_identical(names(attributes(out)), c("dim", "dimnames"), info = nm)
+    expect_identical(
+      out,
+      bare(suppressMessages(pca_imp(x, ncp = 2, seed = 1))),
+      info = nm
+    )
+    expect_identical(mipca_complete(fit, m = 1)[[1]], out, info = nm)
+  }
+  # the inputs keep what they carry
+  expect_s3_class(again, "slideimp_results")
+  expect_identical(attr(tagged, "foo"), "bar")
+})
+
 test_that("an input with no holes is one part with an empty map", {
   obj <- mipca_input()
   obj[is.na(obj)] <- 0.5

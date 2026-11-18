@@ -532,7 +532,8 @@ slide_imp <- function(
     sub_mat <- obj[, window_cols, drop = FALSE]
     local_idx <- subset_list[[i]]
 
-    # pca_imp() has no `subset`. It imputes the whole window, and it raises
+    # pca_imp() is not passed `subset` yet (dev/to-do.md, "Parts for the
+    # other imputers"). It imputes the whole window, and it raises
     # `slideimp_infeasible` for a window whose only missing values sit in
     # ineligible columns. When the requested columns of this window are already
     # complete there is nothing to take from it, so it is not called.

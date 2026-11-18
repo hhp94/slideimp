@@ -885,7 +885,8 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
 
   # column 1 above colmax, column 2 zero variance with NA, column 3 zero
   # variance without NA. The first two are the only columns that can still
-  # hold NA after the kernel; the third is ineligible but has nothing to fill.
+  # hold NA after the kernel; the third is ineligible but has nothing to fill,
+  # so it is not copied into the fallback either.
   y <- x
   y[sample(40, 38), 1] <- NA
   y[, 2] <- 7
@@ -897,7 +898,8 @@ test_that("post_imp mean-imputes only the columns that can still hold NA", {
   calls <- list()
   res_y <- run(y, post_imp = TRUE)
   expect_length(calls, 1L)
-  expect_identical(calls[[1L]], c(1L, 2L, 3L))
+  expect_identical(calls[[1L]], c(1L, 2L))
+  expect_false(anyNA(y[, 3]))
   expect_false(anyNA(res_y))
   expect_equal(
     unname(res_y[is.na(y[, 1]), 1]),
