@@ -109,6 +109,37 @@ maintainer the same day:
     With `knn_imp()` a second builder arrives: carry those fields on the
     part instead (`dev/si_mi_conversion.md`, "Review of Phases 1 to 6").
 
+## Release condition: pass on the RcppEigen candidate
+
+slideimp 1.2.0 on CRAN does not link to RcppEigen. The sampler port added it
+to `LinkingTo`, so the next release is the first that does, whether or not
+the Armadillo removal (`dev/eigen_conversion.md`) is in it. RcppEigen is
+moving from Eigen 3.4 to Eigen 5, and its maintainer is patching by hand the
+reverse dependencies that fail on the candidate
+(https://github.com/RcppCore/RcppEigen/issues/151). A release that passes
+only on CRAN's RcppEigen would add slideimp to that list.
+
+Before any release that links to RcppEigen, on both CRAN's RcppEigen and the
+candidate current on that day (0.3.4.0.2 and 0.4.9.9-2 when this was written,
+2026-11-18):
+
+- The whole suite, `check_manual()` and `devtools::check()`. The candidate
+  goes in its own private library, selected with `R_LIBS` before R starts;
+  `dev/eigen_conversion.md`, "Both RcppEigen versions", says how. Record
+  both versions tested in the release commit.
+- The sampler's draws under fixed seeds, compared between the two builds:
+  worst absolute and worst relative difference, and whether they are
+  bitwise identical. If they move beyond what the `test-mipca-*` files
+  tolerate, that is a finding for upstream (`hhp94/test`), since the sampler
+  is vendored.
+
+State when this was written: the maintainer has compiled the tree against
+the candidate. The suite, the check and the draw comparison against it have
+not been run.
+
+Nothing is vendored from Eigen and no version is pinned; that was considered
+and ruled out (maintainer, 2026-11-18).
+
 ## Sampler port: what is still owed
 
 The multiple-imputation sampler (`R/mi_pca_imp.R`, `R/mi_pca_s3.R`,

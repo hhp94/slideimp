@@ -17,6 +17,13 @@ verified steps win over speed.
 It ships as its own patch release, the one after 1.2.0, and only after a full
 local CI pass on the rhub Linux images.
 
+RcppEigen is itself moving from Eigen 3.4 to Eigen 5
+(https://github.com/RcppCore/RcppEigen/issues/151), and its maintainer is
+patching the reverse dependencies that fail on the candidate one by one.
+slideimp 1.2.0 on CRAN does not link to RcppEigen; the release that first
+does must not become one of those failures. So everything here is built and
+checked against both RcppEigen versions (see "Both RcppEigen versions").
+
 ## What was decided
 
 - Code that uses Armadillo only to hold numbers - containers, indexing,
@@ -27,7 +34,21 @@ local CI pass on the rhub Linux images.
   already does. That covers the calls the PCA chain makes today through
   Armadillo's wrappers (`dgemm_`, `dsyrk_`, `dsyevr_`, `dsyevd_`) and the
   LAPACK routines behind Armadillo's own algebra (`qr_econ`, `solve`, `inv`,
-  `svd`).
+  `svd`). This is the interface Writing R Extensions documents for BLAS and
+  LAPACK, not a non-API entry point.
+- Those calls live in one place, the wrapper layer (see "The wrapper
+  layer"), never at the call sites. The hard part of this plan is reading
+  what an Armadillo call does and reproducing it; the layer puts all of it
+  in one small file with its own test, and leaves the rest of the PCA chain
+  as substitution.
+- Armadillo stays available to dev scripts, and only to them, as the oracle
+  the wrappers are tested against (see "The Armadillo oracle"). Nothing from
+  it is vendored and the package does not link to it after Phase 3.
+- Accepted (maintainer, 2026-11-18): calling R's BLAS and LAPACK directly
+  puts slideimp among the packages CRAN notifies when R changes that
+  interface, a change RcppArmadillo's maintainer absorbs for its users
+  today. `src/mipca.cpp` already carries that for BLAS; this plan adds
+  LAPACK. With the wrapper layer such a change is made in one file.
 - Eigen is used where a small dense step reads more simply than a raw
   buffer: workspace matrices, `Eigen::Map` over a buffer, element-wise
   expressions. A matrix product that Armadillo sent to BLAS still goes to
@@ -64,31 +85,143 @@ use no Armadillo; `src/mipca.cpp` says it must never include it.
   script against the reference. The timer must be off because the sampler
   refuses more than one chain in a `-DLOC_TIMER` build.
 - No line numbers in this file or the maps; cite code by fragment.
+- A step that adds or changes Eigen code is also built, and the suite and
+  the compare script run, against the RcppEigen candidate before it is
+  committed (next section). A failure there is fixed in that step, in code
+  that compiles on both versions, never with a version switch.
 
-## Which model does which step
+## Both RcppEigen versions
 
-Opus does most of the plan. Fable takes the steps where the work is reading
-exactly what an Armadillo or LAPACK call does, or chasing a numerical
-difference: a mistake there compiles, can pass a loose tolerance, and shows
-up later as a failure on a platform that was not tested. When a step is in
-doubt, it goes to Fable.
+Two versions, as read on 2026-11-18; both move, so look them up again
+before relying on these numbers:
 
-| Step | Model | Why |
+- CRAN: RcppEigen 0.3.4.0.2, Eigen 3.4. What users and CRAN build with
+  today.
+- Candidate: RcppEigen 0.4.9.9-2, Eigen 5.0.1, from the r-universe and
+  GitHub builds issue 151 names. What they build with after the switch.
+
+Nothing is vendored and nothing is pinned: the package links to whichever
+RcppEigen is installed, and must pass on both. The candidate is installed
+into its own private library in a scratch folder, never over the CRAN one,
+and a run selects it with `R_LIBS` set before R starts, the way the timing
+driver separates its builds. Each run prints
+`packageVersion("RcppEigen")`, so a log says which one it tested.
+
+"Passes" means the reverse-dependency run's standard, not a compile: the
+whole suite and, at the end, `devtools::check()`. Compiling is necessary and
+proves little.
+
+The breakages issue 151 lists are mostly API: `MappedSparseMatrix`,
+`Eigen::all` and `Eigen::last`, functor traits, element-wise `pow()`. The
+Eigen this plan adds is `Eigen::Map` over dense buffers and coefficient-wise
+expressions, which is the part least likely to move, but that is an
+assumption until the candidate build of each step says so.
+
+## The wrapper layer
+
+One header and one source file under `src/`, named when they are written.
+
+- The source file includes R's headers, `R_ext/BLAS.h` and
+  `R_ext/Lapack.h`, and nothing from Armadillo or Eigen. The header declares
+  plain functions over `double*`, dims and a status: no LAPACK declaration,
+  no Armadillo type, no Eigen type. The PCA translation unit can then
+  include it beside `RcppArmadillo.h` without the redeclaration warnings
+  `src/eig_sym_sel.h` describes, and calls move one at a time. NOT COMPILED:
+  this is an assumption until the first wrapper builds without a new
+  warning.
+- One wrapper per routine the chain calls: `dgemm`, `dsyrk`, `dsyevr`,
+  `dsyevd`, and the routines behind `qr_econ`, the triangular `solve` and
+  `svd`. Which LAPACK routines those three are is NOT READ; each is written
+  down in `dev/pca_imp_structure.md` when it is.
+- Each wrapper does its own workspace query, passes Fortran character
+  arguments with `FCONE`, and returns LAPACK's `info` as its status. It
+  takes and returns plain C++ types and does not call the R API: raising
+  the R error stays with the caller, which keeps the failure path the
+  Armadillo code had.
+- LAPACK takes `int` sizes. A wrapper receives sizes in `R_xlen_t` or
+  `std::size_t`, and a size or workspace length that does not fit an `int`
+  is reported as a failure, never narrowed.
+- It reproduces the Armadillo call it replaces: the same routine, the same
+  options, the same behaviour on failure, as READ in armadillo_bits.
+- A wrapper is a function call where Armadillo's was inline. Beside a BLAS
+  or LAPACK call that should not show; the timing driver measures it.
+- Both Makevars already link `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)`, read on
+  2026-11-18, so nothing new has to link.
+
+## The Armadillo oracle
+
+Dev only, run by hand, like `dev/check_impute_knn.R`: once RcppArmadillo
+leaves `DESCRIPTION`, nothing under `tests/` may call it. It stays after
+Phase 3, so a wrapper changed later can still be checked against the call it
+replaced.
+
+- A script in dev/ installs RcppArmadillo from CRAN into a private library
+  in a scratch folder when it is missing or older than CRAN's. Nothing from
+  it enters the repository.
+- A C++ file in dev/, compiled by `Rcpp::sourceCpp()` against that library,
+  pulls in the wrapper source and exposes each pair to R: the wrapper, and
+  the Armadillo call it replaces. Armadillo and `R_ext/Lapack.h` in one file
+  give the redeclaration warnings; in this file they are accepted.
+- An R script runs every pair on ordinary inputs and on degenerate ones:
+  singular, rank-deficient, one column, one row, and whatever else the
+  chain can pass. Per routine it prints the worst absolute and the worst
+  relative difference, with the cells the relative figure was taken over,
+  asserts on the maximum, and asserts that the pair agree on whether the
+  call failed. It asserts each input set is non-empty.
+- It must be shown to fail: with a deliberately wrong wrapper (the other
+  triangle, say) it reports that routine.
+- The latest RcppArmadillo, not a pinned one. The script prints
+  `packageVersion("RcppArmadillo")`, and `dev/pca_imp_structure.md` records
+  the version the wrappers were READ against. A difference that appears
+  after an update is checked against what Armadillo changed first.
+- The scripts are tracked, each with its `!` line in `dev/.gitignore`; the
+  library is regenerable and is not.
+
+## Who does which work
+
+Split by kind of work, not by file. Opus does what is substitution; Fable
+does what depends on reading exactly what an Armadillo or LAPACK call does,
+or on chasing a numerical difference: a mistake there compiles, can pass a
+loose tolerance, and shows up later as a failure on a platform that was not
+tested. When a piece is in doubt, it goes to Fable.
+
+| Work | Model | Why |
 |---|---|---|
-| Phase 0: capture and compare scripts, noise floor, timing driver | Opus | Scripting against rules this file already states |
+| Phase 0, what is still owed | Opus | Scripting against rules this file already states |
+| The wrapper layer and the oracle | Fable | Reading armadillo_bits, the R interface (`F77_CALL`, `FCONE`, `int` sizes, workspace queries) and the failure paths |
 | Phase 1, steps 1 and 2 | Opus | Storage only; the compare script settles bitwise-ness and the RNG question |
-| Phase 1, step 3 (the K-NN chain) | Opus | Storage only, but threaded: check the worker rule and 64-bit indexing above |
-| Phase 2, steps 1 to 3 | Opus | One BLAS or LAPACK call per wrapper, arguments in plain sight |
-| Phase 2, step 4 (`src/lobpcg_warm.h`) | Fable | What `qr_econ`, the triangular `solve` and `norm` call in armadillo_bits and how each fails; LOBPCG iterates, so a last-bit change can grow |
-| Phase 2, step 5 | Opus | Storage and `trace` |
-| Phase 2, step 6 (`src/armaSVD.cpp`) | Fable | Which LAPACK routine `svd` calls and its fallback, and the switch of every declaration to `R_ext/BLAS.h` and `R_ext/Lapack.h` with `FCONE`, which is where other platforms warn |
+| Phase 1, step 3 (the K-NN chain) | Opus | Storage only, but threaded: the worker rule and 64-bit indexing above |
+| Phase 2, every file: containers, and each Armadillo call replaced by its wrapper | Opus | Substitution, once the wrapper is tested |
+| Phase 2, the call sites in `src/lobpcg_warm.h` and `src/armaSVD.cpp` where a factorization can fail | Fable | What the code does next must match what Armadillo's flag or fallback led to; LOBPCG iterates, so a last-bit change can grow |
 | Any step whose results move beyond the noise floor | Fable | Finding which call moved them before going on |
 | Phase 3 | Opus | Mechanical |
 
-After Phase 2, before Phase 3, each model reviews the other's Phase 2 work
-cold: Fable reads the diffs of steps 1 to 3 and 5, Opus reads steps 4 and 6.
-The reviewer gets the diff and the READ notes added to
-`dev/pca_imp_structure.md`, not the author's account of why it is right.
+The wrapper layer touches only new files, so it is written while Phase 1
+runs. Phase 1's K-NN chain is what the `si-mi` branch waits on
+(`dev/si_mi_conversion.md`, "To settle before the code"), and is not held
+behind the wrappers.
+
+## Review checkpoints
+
+The gate on every commit is mechanical: the suite and the compare script.
+Review is for what those cannot see: a failure path no capture exercises, an
+index narrowed to `int`, a worker touching an Rcpp object, a workspace
+length that overflows on a large input. So it is not done per commit, but
+at four points, each before later work builds on what it covers:
+
+| After | Reviewer | Looks for |
+|---|---|---|
+| Phase 0 | A fresh Fable session | That the compare can fail (`dev/ref_compare_selftest.R`, rerun), that the capture reaches every export in the table below, and that each solver path is actually taken by some case |
+| The wrapper layer and the oracle, before any call site uses them | A fresh Fable session | Each wrapper against armadillo_bits, read independently; the oracle run, and shown to fail |
+| Phase 1 | Either model, fresh | `int` narrowing, the worker rule, the RNG draw order |
+| Phase 2, before Phase 3 | Fable for the failure-path call sites, either model for the rest | The whole diff of the PCA chain |
+
+A reviewer is a fresh session: a different context matters more than a
+different model. It gets the diff and the READ notes in
+`dev/pca_imp_structure.md`, not the author's account of why the work is
+right. It writes a review note in dev/, with its probe scripts; the
+maintainer has the note audited, and what the audit upholds is fixed before
+the next phase starts, so each phase begins from reviewed code.
 
 ## Where Armadillo is used today
 
@@ -117,9 +250,10 @@ holding both during the switch is not new.
 
 ## Phase 0: a reference to compare against
 
-Before any source edit, while the branch is still `e5b3cf7`, two scripts in
-dev/, tracked (each gets its `!` line in `dev/.gitignore` in the commit that
-adds it):
+The scripts exist and are tracked: `dev/ref_capture.R`,
+`dev/ref_compare.R` and `dev/ref_compare_selftest.R`, shared with the
+`si-mi` branch. Their headers are the reference for how to run them; what
+they were written to do:
 
 - A capture script. On one build it runs every export whose signature uses
   Armadillo, and the R entry points that reach them (`knn_imp()`,
@@ -139,7 +273,17 @@ adds it):
 The noise floor comes first: capture the reference build twice, in two R
 processes, and compare them. A threaded BLAS need not be deterministic, and
 no tolerance is chosen tighter than what the unchanged build reproduces
-against itself.
+against itself. The header of `dev/ref_compare.R` records the result and the
+default tolerances set from it, on one machine with one BLAS.
+
+Still owed in this phase: the candidate capture and the timing driver, both
+below, and the install script of "The Armadillo oracle".
+
+Then the same reference build against the candidate RcppEigen, compared to
+the capture. At `e5b3cf7` the package's own code holds no Eigen, so the
+exports captured here should agree to the noise floor; a larger difference
+is a finding to explain before Phase 1. This also proves the candidate
+library and the `R_LIBS` selection work before any step depends on them.
 
 Timing, in the same phase. Install the reference build into its own library
 in a scratch folder, and each converted build into another; a driver
@@ -178,7 +322,9 @@ compare script asserts on a tolerance anyway and reports bitwise-ness.
 
 ## Phase 2: the PCA chain to R's BLAS and LAPACK
 
-Leaves first, in this order, each step compiling and passing on its own:
+The wrapper layer and its oracle come first, and pass their review
+checkpoint before any file below calls a wrapper. Then leaves first, in this
+order, each step compiling and passing on its own:
 
 1. `src/pca_linalg_utils.h`
 2. `src/gram_ops.h`
@@ -194,15 +340,23 @@ approximate solution on a singular or near-singular system; whether the
 triangular path `src/lobpcg_warm.h` takes does the same is NOT READ;
 `qr_econ()` returns a flag the caller tests), then call the same routine
 with the same options and keep the failure path. Write down what was read
-in `dev/pca_imp_structure.md` as the step lands.
+in `dev/pca_imp_structure.md` as the step lands. That reading is done once,
+in the wrapper; a step below replaces the call with the wrapper and keeps
+what the surrounding code does when it fails.
 
-Declarations switch last. `src/eig_sym_sel.h` explains why it declares
-`dsyevr_` itself: `R_ext/Lapack.h` redeclares symbols Armadillo has already
-declared, with different types, and warns in every translation unit that
-includes both. So steps 1 to 5 replace the containers while the BLAS and
-LAPACK calls keep Armadillo's declarations, and the commit that removes the
-last Armadillo type from the translation unit (step 6) moves every call to
-`R_ext/BLAS.h` and `R_ext/Lapack.h` and drops `RcppArmadillo.h` from it.
+Each call moves to its wrapper in the step that converts its file.
+`src/eig_sym_sel.h` explains why it declares `dsyevr_` itself:
+`R_ext/Lapack.h` redeclares symbols Armadillo has already declared, with
+different types, and warns in every translation unit that includes both.
+The wrapper's source file is its own translation unit and its header
+declares no LAPACK symbol, so the PCA translation unit never includes
+`R_ext/Lapack.h`; that self-declaration goes in step 3, and step 6 drops
+`RcppArmadillo.h` with the last Armadillo type.
+
+If the separate source file turns out not to keep the warnings away, the
+fallback is the order this plan had before: steps 1 to 5 replace the
+containers while the calls keep Armadillo's declarations, and step 6 moves
+every call at once.
 
 Tolerances here come from Phase 0's noise floor, not from a guess. LOBPCG
 iterates, so a last-bit difference early can move the converged answer by
@@ -221,12 +375,20 @@ find out which call did it before going on.
 - `.claude/CLAUDE.md`, Layout, says `src/` is Rcpp with RcppArmadillo; it
   says what `src/` is built on instead. `git grep -i armadillo` over the
   tracked notes finds anything else.
-- `devtools::check()`. Local CI on the Linux images is the maintainer's
-  call.
+- `devtools::check()`, once against CRAN's RcppEigen and once against the
+  candidate current on that day, looked up again and not taken from this
+  file. Record both versions in the commit body. Local CI on the Linux
+  images is the maintainer's call.
 
 ## Not settled yet
 
-- The tolerances, until Phase 0 has measured the noise floor.
+- Whether the noise floor measured on one machine holds on the BLAS of the
+  rhub Linux images. Until a capture is compared there, the default
+  tolerances are a reading from one BLAS.
+- Where the branch starts. This file says `e5b3cf7`; `si-mi` has changed
+  `pca_imp()` since, and `dev/si_mi_conversion.md` has `eigen` going first.
+  The reference capture is taken at whichever commit the branch starts
+  from.
 - Whether the R callers are tidied once the return types are free to change.
 - What the timings say. They are recorded here when Phase 0 and each phase
   have been run, as readings on one machine, not as numbers to pin.
