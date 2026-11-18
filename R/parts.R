@@ -33,6 +33,12 @@
 # linear index once, for its order check, and returns it, and fill_parts()
 # writes with it: writing with the two-column map would convert it to a
 # linear index again.
+#
+# Both doors take `keep`, the input columns to return, so a call given
+# `subset` returns only those columns (dev/si_mi_conversion.md, "What was
+# decided"). The doors cut the parts to `keep` after validating them, so an
+# imputer may hand over a part that also covers columns outside it, as the
+# PCA kernel's part does.
 
 part_kinds <- c("pca", "mean", "median")
 
@@ -149,11 +155,63 @@ validate_part <- function(part, n_row, n_col) {
   invisible(lin)
 }
 
+# A door's `keep`: NULL, or the input columns to return, strictly increasing,
+# at least one. Returns NULL for every column, so a `keep` that names every
+# column takes the same path as none, with no copy where none is needed.
+check_keep <- function(keep, n_col) {
+  if (is.null(keep)) {
+    return(NULL)
+  }
+  if (
+    !is.integer(keep) ||
+      length(keep) == 0L ||
+      anyNA(keep) ||
+      min(keep) < 1L ||
+      max(keep) > n_col
+  ) {
+    part_defect("`keep` is not one or more integer columns of the input")
+  }
+  if (length(keep) > 1L && any(diff(keep) <= 0L)) {
+    part_defect("`keep` is not strictly increasing")
+  }
+  if (length(keep) == n_col) NULL else keep
+}
+
+# Cuts validated parts to the columns in `keep`, with their linear indices.
+# A part wholly inside `keep` is passed on as it is, so the cut allocates only
+# for parts that cross its edge: their kept map rows and values. A cut part
+# is still valid, since a subset of a strictly increasing map stays so.
+cut_parts <- function(parts, lins, keep, n_col) {
+  kept <- logical(n_col)
+  kept[keep] <- TRUE
+  for (i in seq_along(parts)) {
+    part <- parts[[i]]
+    in_keep <- kept[part$cols]
+    if (all(in_keep)) {
+      next
+    }
+    part$cols <- part$cols[in_keep]
+    if (nrow(part$map) > 0L) {
+      rows <- kept[part$map[, "col"]]
+      part$map <- part$map[rows, , drop = FALSE]
+      part$values <- part$values[rows]
+      lins[[i]] <- lins[[i]][rows]
+    }
+    parts[[i]] <- part
+  }
+  list(parts = parts, lins = lins)
+}
+
 # The checks both doors make on their parts, given the input: every part
 # valid, no column in two parts, and each part that is not `left_na` lists as
-# many cells as its columns have holes. Returns each part's linear index (from
-# validate_part()) and which parts fill.
-check_parts <- function(obj, parts) {
+# many cells as its columns have holes. With `keep` (from check_keep()), the
+# parts are cut to it after the first two checks, so the hole count holds
+# each part to its kept columns only; a defect in a column not kept is not
+# looked for, since nothing of that column is returned. The count itself
+# still reads every column: col_miss_internal() takes no column subset.
+# Returns the parts, cut or not, each part's linear index in the input (from
+# validate_part()), and which parts fill.
+check_parts <- function(obj, parts, keep = NULL) {
   if (!is.list(parts) || inherits(parts, "slideimp_part")) {
     part_defect("`parts` is not a list of parts")
   }
@@ -167,6 +225,12 @@ check_parts <- function(obj, parts) {
       "two parts cover column ",
       all_cols[[anyDuplicated(all_cols)]]
     )
+  }
+
+  if (!is.null(keep)) {
+    cut <- cut_parts(parts, lins, keep, n_col)
+    parts <- cut$parts
+    lins <- cut$lins
   }
 
   # Holes per column, counted by C++ reading the input in place. A part that
@@ -185,33 +249,54 @@ check_parts <- function(obj, parts) {
       )
     }
   }
-  list(lins = lins, filling = filling)
+  list(parts = parts, lins = lins, filling = filling)
 }
 
 # The matrix door. `obj` is the input the parts were built from, a double
 # matrix; `parts` is a list of parts over disjoint columns. Columns no part
 # covers are returned as they are, holes included, so a caller that means to
 # fill every column passes parts that cover every column. In each part that is
-# not `left_na`, the map must be exactly the holes of the part's columns:
+# not `left_na`, the map must be exactly the holes of the part's kept columns:
 # every cell it writes is a hole (a value over an observed cell is a defect),
-# and no hole in its columns is left out.
+# and no hole in its kept columns is left out.
 #
-# The result is `obj` with the values written, its attributes untouched; the
-# caller sets the class. It is one copy of `obj`, made by the first write, and
-# no copy at all when no part writes anything.
-fill_parts <- function(obj, parts) {
+# Without `keep` (or with every column), the result is `obj` with the values
+# written, its attributes untouched; the caller sets the class. It is one copy
+# of `obj`, made by the first write, and no copy at all when no part writes
+# anything. With `keep`, it is one copy of the kept columns, made by `[`, so
+# it keeps the input's dimnames for them and no other attribute, and the
+# values go to their cells in the copy's own numbering.
+fill_parts <- function(obj, parts, keep = NULL) {
   if (!is.matrix(obj) || !is.double(obj)) {
     part_defect("the input is not a double matrix")
   }
-  chk <- check_parts(obj, parts)
+  n_row <- nrow(obj)
+  n_col <- ncol(obj)
+  keep <- check_keep(keep, n_col)
+  chk <- check_parts(obj, parts, keep)
+  parts <- chk$parts
   lins <- chk$lins
   filling <- chk$filling
 
-  out <- obj
+  if (is.null(keep)) {
+    out <- obj
+    out_col <- seq_len(n_col)
+  } else {
+    out <- obj[, keep, drop = FALSE]
+    # input column -> its column in `out`, 0 for a column not kept
+    out_col <- integer(n_col)
+    out_col[keep] <- seq_along(keep)
+  }
   wrote <- FALSE
   for (i in seq_along(parts)) {
     if (length(lins[[i]])) {
-      out[lins[[i]]] <- parts[[i]]$values
+      at <- if (is.null(keep)) {
+        lins[[i]]
+      } else {
+        map <- parts[[i]]$map
+        (out_col[map[, "col"]] - 1) * as.double(n_row) + map[, "row"]
+      }
+      out[at] <- parts[[i]]$values
       wrote <- TRUE
     }
   }
@@ -222,7 +307,7 @@ fill_parts <- function(obj, parts) {
   # after the write costs a pass over the result and nothing the size of the
   # map, which reading the input at every cell before the write would.
   fill_cols <- unlist(lapply(parts[filling], `[[`, "cols"), use.names = FALSE)
-  if (wrote && any(col_miss_internal(out)[fill_cols] > 0)) {
+  if (wrote && any(col_miss_internal(out)[out_col[fill_cols]] > 0)) {
     refuse_observed_cells(obj, parts, lins, filling)
     part_defect("leaves a hole open in a column it fills")
   }
@@ -304,24 +389,34 @@ check_si_mi_names <- function(obj, call = parent.frame()) {
 #
 # - `obj`: the input the parts were built from, a numeric matrix with unique
 #   row and column names (check_si_mi_names() has refused any other).
-# - `parts`: parts over disjoint columns that together cover EVERY column:
-#   the placement that puts the columns back in input order needs each column
-#   once.
+# - `parts`: parts over disjoint columns that together cover EVERY kept
+#   column: the placement that puts the columns back in input order needs
+#   each column once.
 # - `call`: the caller's match.call(), and `fn` the caller's name.
 #   .scrub_call() rewrites it so that a matrix passed by value through
 #   do.call() is not stored in the fit.
 # - `prov_extra`: NULL, or one list per part, of `prov` fields the imputer
 #   records on that part's chunk (the rank and iteration count of a PCA fit).
+# - `keep`: NULL, or the input columns the fit covers, strictly increasing.
+#   The parts are cut to them; a column outside `keep` is in no chunk.
 #
-# Each part with columns becomes one chunk; a part over no columns is
-# dropped, since a chunk needs one. A chunk holds the part's columns of `obj`
-# (a slice, with its row names dropped since the object holds them once; no
-# slice when one part covers every column), the map in the slice's own
-# numbering, the values as the one draw, the identity backward map, and the
-# empty diagnostic frame an ABB piece takes: one draw has nothing to
-# diagnose. The part's `info`, when it has any, is stored on the chunk, since
-# `.si_mi_new()` rebuilds the object from its own fields on every join.
-parts_to_si_mi <- function(obj, parts, call, fn, prov_extra = NULL) {
+# Each part with kept columns becomes one chunk; a part with none is
+# dropped, since a chunk needs one. A chunk holds the part's kept columns of
+# `obj` (a slice, with its row names dropped since the object holds them
+# once; no slice when one part covers every column and every column is kept),
+# the map in the slice's own numbering, the values as the one draw, the
+# identity backward map, and the empty diagnostic frame an ABB piece takes:
+# one draw has nothing to diagnose. The part's `info`, when it has any, is
+# stored on the chunk, since `.si_mi_new()` rebuilds the object from its own
+# fields on every join.
+parts_to_si_mi <- function(
+  obj,
+  parts,
+  call,
+  fn,
+  prov_extra = NULL,
+  keep = NULL
+) {
   if (!is.matrix(obj) || !is.numeric(obj)) {
     part_defect("the input is not a numeric matrix")
   }
@@ -330,19 +425,23 @@ parts_to_si_mi <- function(obj, parts, call, fn, prov_extra = NULL) {
   if (is.null(rn) || is.null(cn) || anyDuplicated(rn) || anyDuplicated(cn)) {
     part_defect("the si_mi door needs unique row and column names")
   }
-  chk <- check_parts(obj, parts)
   n_col <- ncol(obj)
+  keep <- check_keep(keep, n_col)
+  chk <- check_parts(obj, parts, keep)
+  parts <- chk$parts
   cols <- lapply(parts, `[[`, "cols")
-  # check_parts() refused a column in two parts, so this many columns means
-  # every column
+  # check_parts() refused a column in two parts and cut each to `keep`, so
+  # this many columns means every kept column
+  n_out <- if (is.null(keep)) n_col else length(keep)
   n_cov <- sum(lengths(cols))
-  if (n_cov != n_col) {
+  if (n_cov != n_out) {
     part_defect(
       "the parts cover ",
       n_cov,
       " of the ",
-      n_col,
-      " columns, and the si_mi door needs every column"
+      n_out,
+      if (is.null(keep)) " columns" else " kept columns",
+      ", and the si_mi door needs every one"
     )
   }
   # Here, at birth, rather than at the first as.matrix(), which asserts it
@@ -381,19 +480,21 @@ parts_to_si_mi <- function(obj, parts, call, fn, prov_extra = NULL) {
   }
 
   call <- .scrub_call(call, fn)
-  keep <- which(lengths(cols) > 0L)
-  whole <- length(keep) == 1L
-  fits <- lapply(keep, function(i) {
+  used <- which(lengths(cols) > 0L)
+  whole <- is.null(keep) && length(used) == 1L
+  fits <- lapply(used, function(i) {
     part_chunk_fit(obj, parts[[i]], whole, prov_extra[[i]], call)
   })
   if (length(fits) == 1L) {
     return(fits[[1L]])
   }
-  .si_mi_join(
-    fits,
-    call = call,
-    placement = unlist(cols[keep], use.names = FALSE)
-  )
+  # the placement counts in the fit's own columns: with `keep`, a column's
+  # position in it
+  placement <- unlist(cols[used], use.names = FALSE)
+  if (!is.null(keep)) {
+    placement <- match(placement, keep)
+  }
+  .si_mi_join(fits, call = call, placement = placement)
 }
 
 # One part as a one-chunk `si_mi`; parts_to_si_mi() checked the part.

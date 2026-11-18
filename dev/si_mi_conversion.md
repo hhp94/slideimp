@@ -72,6 +72,19 @@ this file when the branch merges; git history keeps it.
   is allowed (ruled in `hhp94/test`, see "Upstream").
 - `knn_imp()`, `slide_imp()` and `group_imp()` are out of scope, except that
   they keep returning what they return today.
+- **`subset` narrows the output, package-wide** (maintainer, 2026-11-17). A
+  call given `subset` returns only those columns, as `mipca(subset = )`
+  returns a fit over the requested columns only (`R/mi_pca_s3.R`:
+  `.rebase_subset <- function(x, fr) {`). No flag: `subset = NULL` keeps
+  every column, so only a caller who passes `subset` sees a change, and the
+  full width back is one assignment on their side. The columns come back in
+  the input's order, as `mipca()` returns them, whatever order `subset` names
+  them in. The record's column indices (`mean_filled_cols`, the `col` of
+  `mean_filled_cells`) count in the output's numbering. This branch does it in
+  the doors (Phase 5) and in `pca_imp()` (Phase 6). For `knn_imp()` it is a
+  breaking change to callers that pass `subset` today (`slide_imp()`,
+  `group_imp()`, `tune_imp()`), so it lands with their change, which is
+  delayed (`dev/to-do.md`, "Parts for the other imputers").
 
 ## Order of work (maintainer, 2026-11-15)
 
@@ -561,6 +574,151 @@ maps) sit under the kernel's. `as.matrix()` of the fit adds the completed
 matrix beside the fit's slices. The hand-built rows move by up to 0.3 x
 between this run and the one under "Why", with the timing of R's
 collections, as Phase 2 saw.
+
+## Phase 5: narrowing in the doors
+
+The rule is under "What was decided". Narrowing lives in the doors, once, so
+every imputer on parts gets it from one place.
+
+- `fill_parts()` and `parts_to_si_mi()` take `keep`: the columns of the input
+  to return, ascending, in the input's numbering. `NULL` means every column
+  and is today's behaviour, unchanged.
+- The parts must cover every column in `keep`. A part may also cover columns
+  outside it: the door drops those columns and their holes, so an imputer
+  whose kernel returns holes outside `keep` (the PCA kernel, Phase 6) hands
+  its part over whole. An imputer still builds nothing it can skip: a mean
+  part covers only kept columns, since each mean costs a pass over its
+  column.
+- The door cuts the parts to `keep` before its checks, so the checks
+  (`check_parts()`, the observed-cell check) read only kept columns.
+- The matrix door copies the kept columns once (`obj[, keep, drop = FALSE]`,
+  or the whole input when `keep` is every column), rebases the maps through
+  one inverse table, as `.rebase_subset()` does, and writes the values.
+- The `si_mi` door slices each part to its kept columns; placement is their
+  positions in `keep`. The no-slice case (the chunk's `obj` is the input
+  itself) applies only when one part covers every column and `keep` is every
+  column.
+- A part left with no kept column is dropped, as a part over no columns is
+  today.
+- Tests, in `tests/testthat/test-parts.R`: each door with `keep` is
+  `identical()`, in one process, to the same door without it followed by
+  `[, keep]` (for the `si_mi` door, through `as.matrix()`): interleaved parts,
+  a part crossing the edge of `keep`, a part wholly outside it, a `left_na`
+  part, `keep` of one column; `keep` of every column is `identical()` to
+  `NULL`. Refused: `keep` unsorted, repeated, out of range, or not covered
+  by the parts.
+- No imputer passes `keep` yet, so the suite and the Phase 0 compare do not
+  move.
+
+Done 2026-11-17, in `R/parts.R` only: `check_keep()`, `cut_parts()`, and a
+`keep` argument on `check_parts()`, `fill_parts()` and `parts_to_si_mi()`.
+No change under `src/`, to a vendored file, or to any imputer.
+
+As built, and where the text above turned out short or wrong:
+
+- The matrix door keeps its own contract: a kept column that no part covers
+  comes back as it is, holes included, as a column no part covers does
+  without `keep`. Only the `si_mi` door needs the parts to cover every kept
+  column. The list above put that need on both doors.
+- The checks do not all read only kept columns, as the list above says.
+  `validate_part()` and the two-parts check run on the parts as given, before
+  the cut, since the cut relies on a valid part. The hole count compares
+  each part with its kept columns only, but `col_miss_internal()` takes no
+  column subset, so it still reads every column of the input (no copy), and
+  `src/mat_stats.cpp` is not touched on this branch. The observed-cell check
+  reads only kept cells. A defect in a column outside `keep` is not looked
+  for, since nothing of that column is returned.
+- A `keep` that names every column is turned into `NULL` on entry, so it
+  takes today's path exactly: no copy before the first write, and the
+  no-slice case of the `si_mi` door.
+- A `keep` that is empty, double, `NA`, out of range, unsorted or repeated
+  is a package defect (`part_defect()`), not a user error: Phase 6 resolves
+  and refuses a bad `subset` before any door sees it.
+- With `keep`, the matrix door's result is `obj[, keep, drop = FALSE]`, so
+  it carries the input's dimnames for the kept columns and no other
+  attribute; without it, the input's attributes are untouched, as before.
+- The `si_mi` door's placement is `match()` of the parts' kept columns in
+  `keep`, the fit's own numbering.
+
+Tests, in `tests/testthat/test-parts.R`: both doors against the full fill cut
+to `keep`, with the parts given in either order, over five `keep`s (each part
+crossing the edge, interleaved, one part wholly inside and the other wholly
+outside, one column, only complete columns); `keep` of every column; a
+`left_na` part cut; a kept column no part covers (matrix door); the hole
+count refusing within `keep` and ignoring a cut-away column; an observed-cell
+write found in the narrowed copy and reported in the input's numbering; the
+interleaved fit's placement, slice, rebased map and draws; a part wholly
+outside `keep` dropped; one part narrowed to a slice; the coverage refusal;
+and each malformed `keep` in both doors.
+
+Checked: the suite with `load_all1(timer = FALSE)` and the manual tests, 21
+files, 264 tests, 2657 expectations, none failed; its two `group_imp` errors
+are again daemons running an older installed copy, and the `group_imp` and
+`tune_imp` tests on an install of this checkout pass, 118 tests. The Phase 0
+compare gives what Phase 4 gave: 57 of 58 cases, `mean_xa_cores2` erroring on
+the removed `cores`; every `pca_*` case bitwise; the same six cases not
+bitwise, worst rel `6.65e-16`. No memory probe: no imputer passes `keep`, so
+no path the probe measures changed.
+
+## Phase 6: `pca_imp(subset = )`
+
+- `subset`, resolved to ascending column indices from names or positions.
+  It goes after `output` and before `.progress`, as Phase 4 placed `output`,
+  so no argument but `.progress` moves.
+- An unknown name and an empty `subset` are refused, as `mipca()` refuses
+  them (`R/mi_pca_imp.R`:
+  `.resolve_cols <- function(subset, obj, what = "subset") {`), through cli
+  (maintainer, 2026-11-17). `resolve_subset()` instead drops an unknown name
+  with a message and turns an empty selection into an early return
+  (`R/utils.R`: `resolve_subset <- function(subset, obj, sort = FALSE) {`);
+  once the output's width depends on `subset`, a dropped name is a column
+  the caller asked for and does not get. `knn_imp()` follows in its own
+  change (`dev/to-do.md`), so `resolve_subset()` stays as it is here.
+- The kernel still runs on every eligible column. Every hole in every
+  eligible column is updated at each EM iteration and feeds the next fit, so
+  a column outside `subset` still shapes the result, and leaving it out
+  would change it: `subset` is a memory parameter here, not a compute one,
+  as at `mipca()`. The kernel's triplets outside `subset` reach the PCA part
+  and the door drops them (Phase 5); no change under `src/`. Returning only
+  the kept triplets from C++ waits on a measurement: in the probe's design
+  they are about 0.07 x the input (9000 holed eligible columns of 100 holes,
+  24 bytes a hole, against 307 MB), which is arithmetic from the probe's
+  set-up, not a reading.
+- The early exit: no hole in a `subset` column returns the kept columns
+  without running the kernel, as `knn_imp()` does. Under `"mipca"` that is
+  one part over them with an empty map.
+- The infeasibility check is restated over `subset`: no eligible `subset`
+  column with a hole is `slideimp_infeasible`, as in `knn_imp()` ("All
+  subset columns with missing values exceed colmax"). With `subset = NULL`
+  the check and its message are today's.
+- The mean part covers only the ineligible `subset` columns; under
+  `post_imp = FALSE` Phase 4's split into a `left_na` part and an empty mean
+  part applies to those.
+- `mean_filled_cols` and `mean_filled_cells` count in the output's numbering,
+  on the matrix output and in every chunk's `info`. With `subset = NULL`
+  that is the input's numbering, so nothing changes.
+- Under `"mipca"` the name check reads the whole input, as `mipca()`'s does.
+- `subset` is not added to the parameter registry (`R/utils.R`:
+  `.param_registry <- list(`), so `tune_imp()`'s `parameters` and
+  `group$parameters` cannot set it, as with `output`. No caller passes it
+  yet: their change is delayed with `knn_imp()`'s.
+- Tests: with `subset`, the matrix output's values and dimnames are
+  `identical()` to the full output's `[, subset]` in one process, since the
+  same fit ran, and `as.matrix()` of the `"mipca"` output is `identical()` to
+  the narrowed matrix output; `subset` of every column gives the full
+  output; names and positions give the same result; an unknown name and an
+  empty `subset` are refused; an unsorted `subset` comes back in input
+  order; the early exit never reaches the kernel (a
+  stubbed kernel that errors); the infeasible refusal; the record's indices
+  in the output's numbering, on an input where they differ from the input's
+  (asserted non-empty).
+- Roxygen, following `dev/WRITING.md`. It adds `@param subset` in its own
+  words, not inherited from `knn_imp()`, whose `subset` keeps the full width
+  until its own change. It says what is returned, in what order, and that
+  every eligible column still takes part in the fit.
+- The memory probe gains a stage with `subset` over a tenth of the columns,
+  for both outputs.
+- `dev/to-do.md` gains the NEWS line: `pca_imp()` gains `subset`.
 
 ## Upstream, in `hhp94/test`
 

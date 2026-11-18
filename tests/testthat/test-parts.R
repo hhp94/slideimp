@@ -243,13 +243,14 @@ test_that("validate_part() refuses malformed parts", {
 
 # the si_mi door ----
 
-to_si_mi <- function(m, parts, prov_extra = NULL) {
+to_si_mi <- function(m, parts, prov_extra = NULL, keep = NULL) {
   parts_to_si_mi(
     m,
     parts,
     call = quote(probe(m)),
     fn = "probe",
-    prov_extra = prov_extra
+    prov_extra = prov_extra,
+    keep = keep
   )
 }
 
@@ -365,6 +366,191 @@ test_that("parts_to_si_mi() refuses what it cannot build", {
   expect_error(
     to_si_mi(as.character(m), list(a, b)),
     "the input is not a numeric matrix",
+    fixed = TRUE
+  )
+})
+
+# keep: the doors narrowed to some columns ----
+
+# The two parts interleave: a over columns 1, 2, 5 and b over 3, 4, 6. Each
+# `keep` below is checked against the full fill cut to it afterwards.
+keep_cases <- list(
+  across_both = c(2L, 4L), # each part crosses the edge of keep
+  interleaved = c(1L, 3L, 5L, 6L),
+  one_part = c(1L, 2L, 5L), # a wholly inside, b wholly outside
+  one_col = 4L,
+  complete_only = c(3L, 5L) # no hole kept
+)
+
+test_that("fill_parts() with keep is the full fill cut to keep", {
+  m <- part_input()
+  m0 <- m
+  a <- filled_part(m, c(1L, 2L, 5L), "pca", 100)
+  b <- filled_part(m, c(3L, 4L, 6L), "mean", 200)
+  full <- fill_parts(m, list(a, b))
+  expect_true(anyNA(m[, keep_cases$across_both]))
+  expect_false(anyNA(m[, keep_cases$complete_only]))
+
+  for (nm in names(keep_cases)) {
+    keep <- keep_cases[[nm]]
+    expect_identical(
+      fill_parts(m, list(a, b), keep = keep),
+      full[, keep, drop = FALSE],
+      label = nm
+    )
+    expect_identical(
+      fill_parts(m, list(b, a), keep = keep),
+      full[, keep, drop = FALSE],
+      label = nm
+    )
+  }
+  # every column is the same as none: no cut, the input's own copy
+  expect_identical(fill_parts(m, list(a, b), keep = 1:6), full)
+  expect_identical(m, m0)
+
+  # a left_na part keeps its holes in the kept columns
+  la <- filled_part(m, 1:3)
+  lb <- new_part(cols = 4:6, kind = "mean", left_na = TRUE)
+  out <- fill_parts(m, list(la, lb), keep = c(2L, 4L))
+  expect_identical(colnames(out), c("c2", "c4"))
+  expect_false(anyNA(out[, "c2"]))
+  expect_true(anyNA(out[, "c4"]))
+  expect_identical(out[, "c4"], m[, "c4"])
+
+  # a kept column no part covers comes back as it is, as without keep
+  out <- fill_parts(m, list(la), keep = c(2L, 4L))
+  expect_identical(out[, "c4"], m[, "c4"])
+})
+
+test_that("fill_parts() checks the kept columns of a cut part", {
+  m <- part_input()
+
+  # a part over columns 1 and 2 that leaves out the first hole of column 1:
+  # refused when column 1 is kept, cut away with it when it is not
+  a <- filled_part(m, 1:2)
+  short <- new_part(
+    cols = a$cols,
+    map = a$map[-1, , drop = FALSE],
+    values = a$values[-1],
+    kind = "pca"
+  )
+  expect_identical(unname(a$map[1, ]), c(1L, 1L))
+  expect_error(
+    fill_parts(m, list(short), keep = c(1L, 3L)),
+    "fills 1 of the 2 holes in its columns",
+    fixed = TRUE
+  )
+  expect_false(anyNA(fill_parts(m, list(short), keep = 2L)))
+
+  # a value over an observed cell, found in the narrowed copy and reported in
+  # the input's numbering
+  over <- filled_part(m, 1:2)
+  expect_identical(over$map[2, ], c(row = 4L, col = 1L))
+  expect_false(is.na(m[5, 1]))
+  over$map[2, "row"] <- 5L
+  expect_error(
+    fill_parts(m, list(over), keep = c(1L, 4L)),
+    "writes over an observed cell (row 5, col 1)",
+    fixed = TRUE
+  )
+})
+
+test_that("both doors refuse a malformed keep", {
+  m <- part_input()
+  a <- filled_part(m, 1:3)
+  b <- filled_part(m, 4:6)
+  bad <- list(
+    "`keep` is not strictly increasing" = c(4L, 2L),
+    "`keep` is not strictly increasing" = c(2L, 2L),
+    "`keep` is not one or more integer columns of the input" = c(2, 4),
+    "`keep` is not one or more integer columns of the input" = 7L,
+    "`keep` is not one or more integer columns of the input" = 0L,
+    "`keep` is not one or more integer columns of the input" = c(2L, NA),
+    "`keep` is not one or more integer columns of the input" = integer(0)
+  )
+  for (i in seq_along(bad)) {
+    expect_error(
+      fill_parts(m, list(a, b), keep = bad[[i]]),
+      names(bad)[[i]],
+      fixed = TRUE
+    )
+    expect_error(
+      to_si_mi(m, list(a, b), keep = bad[[i]]),
+      names(bad)[[i]],
+      fixed = TRUE
+    )
+  }
+})
+
+test_that("parts_to_si_mi() with keep completes to the narrowed fill", {
+  m <- part_input()
+  a <- filled_part(m, c(1L, 2L, 5L), "pca", 100)
+  b <- filled_part(m, c(3L, 4L, 6L), "mean", 200)
+  full <- fill_parts(m, list(a, b))
+
+  for (nm in names(keep_cases)) {
+    keep <- keep_cases[[nm]]
+    expect_identical(
+      as.matrix(to_si_mi(m, list(a, b), keep = keep)),
+      full[, keep, drop = FALSE],
+      label = nm
+    )
+    expect_identical(
+      as.matrix(to_si_mi(m, list(b, a), keep = keep)),
+      full[, keep, drop = FALSE],
+      label = nm
+    )
+  }
+
+  # interleaved: a keeps input columns 1 and 5, b keeps 3 and 6, which are
+  # the fit's columns 1, 3 and 2, 4
+  fit <- to_si_mi(m, list(a, b), keep = keep_cases$interleaved)
+  expect_length(fit$chunks, 2L)
+  expect_identical(fit$placement, c(1L, 3L, 2L, 4L))
+  ch <- fit$chunks[[2]]
+  slice <- m[, c(3, 6)]
+  rownames(slice) <- NULL
+  expect_identical(ch$obj, slice)
+  # b's kept hole is (3, 6), the slice's column 2; its holes in column 4 are
+  # cut away with their values
+  expect_identical(b$map[3, ], c(row = 3L, col = 6L))
+  expect_identical(unname(ch$map[, "col"]), 2L)
+  expect_true(is.integer(ch$map))
+  expect_identical(ch$draws, matrix(b$values[[3]], ncol = 1L))
+
+  # a part wholly outside keep is dropped
+  expect_length(
+    to_si_mi(m, list(a, b), keep = keep_cases$one_part)$chunks,
+    1L
+  )
+
+  # one part over every column, narrowed: a slice, not the input
+  every <- filled_part(m, 1:6)
+  fit <- to_si_mi(m, list(every), keep = c(2L, 4L))
+  expect_length(fit$chunks, 1L)
+  expect_identical(colnames(fit$chunks[[1]]$obj), c("c2", "c4"))
+  expect_identical(
+    as.matrix(fit),
+    fill_parts(m, list(every))[, c(2L, 4L)]
+  )
+  # every column is the same as none: the input itself, no slice
+  fit <- to_si_mi(m, list(every), keep = 1:6)
+  expect_identical(fit$chunks[[1]]$obj, m)
+
+  # a left_na part, cut
+  la <- filled_part(m, 1:3)
+  lb <- new_part(cols = 4:6, kind = "mean", left_na = TRUE)
+  fit <- to_si_mi(m, list(la, lb), keep = c(2L, 4L))
+  expect_true(isTRUE(fit$chunks[[2]]$prov$left_na))
+  expect_identical(
+    as.matrix(fit),
+    fill_parts(m, list(la, lb), keep = c(2L, 4L))
+  )
+
+  # the parts must cover every kept column
+  expect_error(
+    to_si_mi(m, list(la), keep = c(2L, 4L)),
+    "the parts cover 1 of the 2 kept columns",
     fixed = TRUE
   )
 })

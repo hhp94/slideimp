@@ -153,7 +153,7 @@ for both outputs: `imp_method`, `fallback`, `post_imp`, `mean_filled_cols`,
 no-missing-values exit its defaults stand in for the solve that never ran:
 `solver_chosen = NA`, `solver_probed = FALSE`, `n_iter = 0`, `converged = NA`.
 
-For `output = "matrix"`, `fill_parts()` (`R/parts.R`: `fill_parts <- function(obj, parts) {`)
+For `output = "matrix"`, `fill_parts()` (`R/parts.R`: `fill_parts <- function(obj, parts, keep = NULL) {`)
 copies `obj` once and writes the parts (`R/pca_imp.R`: `obj <- fill_parts(obj, parts)`),
 checking that each filling part fills exactly the holes of its columns, and
 `pca_imp_results()` (`R/pca_imp.R`: `pca_imp_results <- function(obj, info) {`) builds the
@@ -162,13 +162,18 @@ which strips its input to a bare matrix, then sets class and standard attributes
 adds the rest of the record as attributes, in the order above.
 
 For `output = "mipca"`, every part takes the whole record as its `info`, and
-`parts_to_si_mi()` (`R/parts.R`: `parts_to_si_mi <- function(obj, parts, call, fn, prov_extra = NULL) {`)
+`parts_to_si_mi()` (`R/parts.R`: `parts_to_si_mi <- function(`)
 builds a one-draw `si_mi`: one chunk per part with columns, each a slice of `obj`
 (no slice when one part covers every column), its map rebased to the slice, its
 values as the draw, `tf_identity()` as the backward map and the empty diagnostic
 frame, joined with the parts' columns as the placement. The record rides on every
 chunk, which a `cbind()` keeps, and the PCA chunk's `prov` also holds `rank` and
 `iter`.
+
+Both doors also take `keep`, the input columns to return, and cut the parts to it
+after validating them (`R/parts.R`: `cut_parts <- function(parts, lins, keep, n_col) {`).
+`pca_imp()` passes none yet, so both return every column.
+
 `slide_imp()` pins every later window to `attr(x, "solver_chosen")`, but only from a window
 whose `solver_probed` is `TRUE`. A size-demoted window, or one whose probe never finished,
 leaves the next window on `"auto"` (`R/slide_imp.R`: `pca_solver_current == "auto" &&`).
@@ -452,7 +457,7 @@ QRs plus a `3k x 3k` dsyevd.
   `col_vars()` instead returns by value from `mat_stats.cpp`, a length-`p` row vector
   copied into a SEXP. `mean_imp_col()` reaches no kernel of its own: it builds a mean
   part in R and fills it through the matrix door (`R/parts.R`:
-  `fill_parts <- function(obj, parts) {`), one copy of the matrix.
+  `fill_parts <- function(obj, parts, keep = NULL) {`), one copy of the matrix.
 - `PCA_TOL = 1e-15` (`src/pca_linalg_utils.h`: `inline constexpr double PCA_TOL`) is the
   shared floor in `armaSVD.cpp` and
   `svd_triplet.h`: scale floors, inverse row-weight floor,

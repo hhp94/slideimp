@@ -471,7 +471,7 @@ fall back to `mean_imp_col()`.
 - So the real full-matrix copies on this path are both on the R side: R's
   copy-on-modify at the scatter, and, when `mean_imp_col()` actually has work to
   do, the one copy its door makes at its first write (`R/parts.R`:
-  `out[lins[[i]]] <- parts[[i]]$values`). The second one is skipped whenever
+  `out[at] <- parts[[i]]$values`). The second one is skipped whenever
   nothing is still missing.
 - Groups 1 and 2 are materialized a second time into `obj_masked` /
   `nmiss_masked` (`src/impute_knn_brute.cpp`: `arma::mat obj_masked(`) with NaNs

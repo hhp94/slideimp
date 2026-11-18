@@ -68,6 +68,32 @@ and `check_si_mi_names()` for the `"mipca"` output.
   `group_imp()` takes parts, it passes `output = "matrix"` to `pca_imp()`, as
   `slide_imp()` and `tune_imp()` do.
 
+Added 2026-11-17: `subset` narrows the output, package-wide, in input order,
+with no flag (`dev/si_mi_conversion.md`, "What was decided"; the doors and
+`pca_imp()` do it there, Phases 5 and 6). What is left, delayed by the
+maintainer the same day:
+
+- `knn_imp()` lands in ONE change (maintainer, 2026-11-17): it builds parts,
+  gains `output`, and its `subset` narrows its output through the doors'
+  `keep`. Its `subset` resolves as `pca_imp()`'s does after Phase 6: an
+  unknown name and an empty `subset` are refused, where `resolve_subset()`
+  drops the one with a message and returns early on the other. The
+  narrowing breaks every caller that passes `subset` today, and the refusals
+  may break `slide_imp()`; both are fixed in the same change:
+  - `tune_imp()` reads each repetition's estimates at `na_loc` in the full
+    matrix's numbering, in both its paths (`R/tune_imp.R`:
+    `estimate = imputed_result[na_positions]`), and must rebase them to the
+    narrowed columns.
+  - `slide_imp()` and `group_imp()` index each window's or group's result
+    by its local subset columns, and must read the narrowed result instead.
+    Both drop a workaround for `pca_imp()` having no `subset`, by passing it
+    instead: `slide_imp()`'s complete-targets check (`R/slide_imp.R`:
+    `targets_complete <- imp_method == "pca" &&`) and `group_imp()`'s
+    (`R/group_imp.R`: `needs_imp <- vapply(`).
+  - `slide_imp(subset = )` and `group_imp(subset = )` narrow their own
+    output too, by the same rule.
+  - The NEWS entry above gains a **Breaking** line for all of it.
+
 ## Sampler port: what is still owed
 
 The multiple-imputation sampler (`R/mi_pca_imp.R`, `R/mi_pca_s3.R`,
