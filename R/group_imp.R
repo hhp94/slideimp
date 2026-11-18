@@ -902,6 +902,10 @@ group_imp <- function(
     if (is_knn_mode) {
       p$cores <- cores
       p$subset <- indices[[i]]$features_idx_local
+    } else {
+      # the groups are written back into one matrix. `output` is not in the
+      # parameter registry, so no group can have set it.
+      p$output <- "matrix"
     }
 
     p

@@ -46,6 +46,27 @@ Easy to miss in the diff, noted so the draft does not:
   sets, for `post_imp` and for `on_infeasible = "mean"` in every imputer, are
   now summed and divided in long double, so they can differ from 1.2.0's in
   the last bits.
+- `pca_imp()` gains `output = c("matrix", "mipca")`. `"mipca"` returns the
+  point estimate as a one-draw fit for `mipca_complete()` and `cbind()`, and
+  is a new error on an input without unique row and column names. For an
+  integer input with no hole, `as.matrix()` of that fit is double where the
+  matrix output stays integer.
+
+## Parts for the other imputers
+
+Decided with the maintainer, 2026-11-17, after `pca_imp()` moved onto parts
+(`dev/si_mi_conversion.md`). The parts code is in `R/parts.R`, which holds
+`new_part()`, `fill_parts()` for the matrix output, and `parts_to_si_mi()`
+and `check_si_mi_names()` for the `"mipca"` output.
+
+- `knn_imp()` goes through the same change: it builds parts, and it gains
+  `output = c("matrix", "mipca")`, with the same name rule and the same
+  record on every chunk as `pca_imp()`.
+- `group_imp()` builds its result from its groups' parts, to save memory:
+  no group's full result matrix, and one write into one copy of the input.
+- `tune_imp()` and `slide_imp()` keep returning a matrix. Until
+  `group_imp()` takes parts, it passes `output = "matrix"` to `pca_imp()`, as
+  `slide_imp()` and `tune_imp()` do.
 
 ## Sampler port: what is still owed
 

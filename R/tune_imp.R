@@ -918,6 +918,11 @@ tune_imp <- function(
   if (is_knn_mode) {
     fixed_args$cores <- cores
   }
+  # the masked cells are read back from a matrix. `output` is not in the
+  # parameter registry, so `parameters` cannot have set it.
+  if (is.character(.f) && .f == "pca_imp") {
+    fixed_args$output <- "matrix"
+  }
 
   parameters_list <- lapply(
     split(parameters, f = as.factor(.rowid)),

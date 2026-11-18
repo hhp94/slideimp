@@ -14,8 +14,10 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   +- R/pca_imp.R           check_finite(obj)            -> src/mat_stats.cpp
   +- R/pca_imp.R           new_lobpcg_control()            R/pca_imp.R
   |    +- R/pca_imp.R      lobpcg_control()                exported constructor
+  +- R/parts.R             check_si_mi_names()             output = "mipca" only
   +- R/pca_imp.R           mat_miss()                   -> src/mat_stats.cpp
-  |    +- R/pca_imp.R      no missing value: return pca_imp_results()
+  |    +- R/pca_imp.R      no missing value: pca_imp_results(), or one
+  |                        part through parts_to_si_mi()
   +- R/pca_imp.R           col_vars()                   -> src/mat_stats.cpp
   +- R/pca_imp.R           for (i in seq_len(nb.init))     R-level restart loop
   |    |
@@ -45,10 +47,17 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   +- R/pca_imp.R           mse guard, per restart
   +- R/pca_imp.R           clamp
   +- R/pca_imp.R           PCA part from the triplets; mean part over the
-  |                        ineligible columns (left NA without post_imp)
-  +- R/parts.R             fill_parts(): one copy of obj, both parts written
-  +- R/pca_imp.R           pca_imp_results()
-       +- R/utils.R        new_slideimp_results()
+  |                        ineligible columns (without post_imp: a left NA
+  |                        part over those with a hole, a mean part with
+  |                        nothing to fill over the rest)
+  +- R/pca_imp.R           pca_imp_info(): the call's record
+  +- output = "matrix"
+  |    +- R/parts.R        fill_parts(): one copy of obj, the parts written
+  |    +- R/pca_imp.R      pca_imp_results()
+  |         +- R/utils.R   new_slideimp_results()
+  +- output = "mipca"
+       +- R/parts.R        parts_to_si_mi(): one slice of obj per part
+            +- R/mi_pca_s3.R   .si_mi_chunk(), .si_mi_new(), .si_mi_join()
 ```
 
 C++ files in the chain: 3 translation units (`src/armaSVD.cpp`, `src/RcppExports.cpp`,
@@ -86,10 +95,16 @@ this is deliberate, since the kernel is entered once per `nb.init` on an unchang
 `ncp` is bounded by `ncol(obj) - 1L`; `row.w` accepts a numeric vector, `"n_miss"`,
 or `NULL`; `seed` is guarded against `seed * (nb.init - 1)` exceeding int range;
 `.progress` becomes `trace_iter` (10 or 0), a C++-side print period.
+`output` is resolved by `match.arg()`; under `"mipca"`, `check_si_mi_names()`
+(`R/parts.R`: `check_si_mi_names <- function(obj, call = parent.frame()) {`) refuses an
+input without unique row and column names before anything else runs, the
+no-missing-values exit included.
 `cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)`, and a matrix with no missingness returns
-unchanged, through the same `pca_imp_results()` as the main path (`R/pca_imp.R`:
-`return(pca_imp_results(obj, post_imp = post_imp, solver = solver))`), so the result
-has the same class and attributes either way. `eligible`
+unchanged, with the same record as the main path (`R/pca_imp.R`:
+`info <- pca_imp_info(post_imp = post_imp, solver = solver)`): through
+`pca_imp_results()` for the matrix output, so the result has the same class and
+attributes either way, or as one part over every column, with an empty map, through
+`parts_to_si_mi()`. `eligible`
 combines the `colmax` missing-rate ceiling with a non-degenerate-variance test from
 `col_vars(obj)`. Feasibility caps (`R/pca_imp.R`: `max_ncp_rows <- nrow(obj) - 2L`)
 require `ncp` to be at most
@@ -124,21 +139,36 @@ matrix (imputed values only). The result is then built from two parts
 (`R/parts.R`), which together cover every column: the PCA part
 (`R/pca_imp.R`: `pca_part <- new_part(`) is the triplets, the indices from C++
 already being 1-based original-matrix indices, over the eligible columns; the
-mean part covers the ineligible columns, through `fallback_part()` under
-`post_imp = TRUE` and as a `left_na` part otherwise. An integer input is coerced
-to double first. `fill_parts()` (`R/parts.R`: `fill_parts <- function(obj, parts) {`)
-copies `obj` once and writes both parts, checking that the PCA part fills
-exactly the holes of its columns. `mean_filled_cols` is the ineligible columns
-that had a hole, under `post_imp` only (`R/pca_imp.R`:
-`mean_cols[cmiss[mean_cols] > 0L]`), and `mean_filled_cells` is always empty.
-`pca_imp_results()`
-(`R/pca_imp.R`: `pca_imp_results <- function(`) builds the result on both paths. It calls
-`new_slideimp_results()` (`R/utils.R`: `new_slideimp_results <- function(`), which strips
-its input to a bare matrix, then sets class and standard attributes, and adds
-`solver_requested`, `solver_chosen`, `solver_probed`, `n_iter`, `criterion_final`,
-`converged`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`. On the no-missing-values exit its
-defaults stand in for the solve that never ran: `solver_chosen = NA`, `solver_probed = FALSE`,
-`n_iter = 0`, `converged = NA`.
+ineligible columns are covered through `fallback_part()` under `post_imp = TRUE`.
+Under `post_imp = FALSE` they are two parts: a `left_na` part over those with a
+hole, and a mean part with an empty map over those without, so that a `left_na`
+part names only columns that keep a hole. An integer input is coerced to double
+first. `mean_filled_cols` is the ineligible columns that had a hole, under
+`post_imp` only (`R/pca_imp.R`: `mean_cols[cmiss[mean_cols] > 0L]`), and
+`mean_filled_cells` is always empty. `pca_imp_info()`
+(`R/pca_imp.R`: `pca_imp_info <- function(`) gathers the call's record, one list
+for both outputs: `imp_method`, `fallback`, `post_imp`, `mean_filled_cols`,
+`mean_filled_cells`, `solver_requested`, `solver_chosen`, `solver_probed`, `n_iter`,
+`criterion_final`, `converged`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`. On the
+no-missing-values exit its defaults stand in for the solve that never ran:
+`solver_chosen = NA`, `solver_probed = FALSE`, `n_iter = 0`, `converged = NA`.
+
+For `output = "matrix"`, `fill_parts()` (`R/parts.R`: `fill_parts <- function(obj, parts) {`)
+copies `obj` once and writes the parts (`R/pca_imp.R`: `obj <- fill_parts(obj, parts)`),
+checking that each filling part fills exactly the holes of its columns, and
+`pca_imp_results()` (`R/pca_imp.R`: `pca_imp_results <- function(obj, info) {`) builds the
+result. It calls `new_slideimp_results()` (`R/utils.R`: `new_slideimp_results <- function(`),
+which strips its input to a bare matrix, then sets class and standard attributes, and
+adds the rest of the record as attributes, in the order above.
+
+For `output = "mipca"`, every part takes the whole record as its `info`, and
+`parts_to_si_mi()` (`R/parts.R`: `parts_to_si_mi <- function(obj, parts, call, fn, prov_extra = NULL) {`)
+builds a one-draw `si_mi`: one chunk per part with columns, each a slice of `obj`
+(no slice when one part covers every column), its map rebased to the slice, its
+values as the draw, `tf_identity()` as the backward map and the empty diagnostic
+frame, joined with the parts' columns as the placement. The record rides on every
+chunk, which a `cbind()` keeps, and the PCA chunk's `prov` also holds `rank` and
+`iter`.
 `slide_imp()` pins every later window to `attr(x, "solver_chosen")`, but only from a window
 whose `solver_probed` is `TRUE`. A size-demoted window, or one whose probe never finished,
 leaves the next window on `"auto"` (`R/slide_imp.R`: `pca_solver_current == "auto" &&`).
@@ -392,7 +422,8 @@ QRs plus a `3k x 3k` dsyevd.
 ## Data structures and ownership
 
 - `obj` crosses as `const arma::mat&` and is never mutated in C++; the write-back happens in
-  R, through the matrix door (`R/pca_imp.R`: `obj <- fill_parts(obj, list(pca_part, mean_part))`). `row_w` crosses by value and
+  R, through the matrix door (`R/pca_imp.R`: `obj <- fill_parts(obj, parts)`), or not at
+  all through the `si_mi` door, whose chunks hold the holes and their values. `row_w` crosses by value and
   is normalized in place (`src/armaSVD.cpp`: `arma::rowvec row_w,`, `row_w /= row_w_sum;`).
 - `Xhat` is the working copy -- permuted column order, centered, scaled, mutated in
   place every outer iteration. `fittedX` is allocated once (`src/armaSVD.cpp`: `fittedX.zeros(`);

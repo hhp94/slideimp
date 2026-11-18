@@ -5,8 +5,9 @@
 # the columns it covers, the holes it filled and the value of each, all in the
 # INPUT's numbering. It holds no copy of the input, so passing parts between
 # functions copies nothing of matrix size. fill_parts() copies the input once
-# and writes every part's values at its holes. A second door, which builds an
-# `si_mi` from the same parts, comes later.
+# and writes every part's values at its holes. parts_to_si_mi() is the second
+# door: it builds a one-draw `si_mi`, the object mipca() returns, from the
+# same parts.
 #
 # The fields, in this order:
 # - `cols`: integer, the input columns the part covers, strictly increasing.
@@ -148,21 +149,11 @@ validate_part <- function(part, n_row, n_col) {
   invisible(lin)
 }
 
-# The matrix door. `obj` is the input the parts were built from, a double
-# matrix; `parts` is a list of parts over disjoint columns. Columns no part
-# covers are returned as they are, holes included, so a caller that means to
-# fill every column passes parts that cover every column. In each part that is
-# not `left_na`, the map must be exactly the holes of the part's columns:
-# every cell it writes is a hole (a value over an observed cell is a defect),
-# and no hole in its columns is left out.
-#
-# The result is `obj` with the values written, its attributes untouched; the
-# caller sets the class. It is one copy of `obj`, made by the first write, and
-# no copy at all when no part writes anything.
-fill_parts <- function(obj, parts) {
-  if (!is.matrix(obj) || !is.double(obj)) {
-    part_defect("the input is not a double matrix")
-  }
+# The checks both doors make on their parts, given the input: every part
+# valid, no column in two parts, and each part that is not `left_na` lists as
+# many cells as its columns have holes. Returns each part's linear index (from
+# validate_part()) and which parts fill.
+check_parts <- function(obj, parts) {
   if (!is.list(parts) || inherits(parts, "slideimp_part")) {
     part_defect("`parts` is not a list of parts")
   }
@@ -194,6 +185,27 @@ fill_parts <- function(obj, parts) {
       )
     }
   }
+  list(lins = lins, filling = filling)
+}
+
+# The matrix door. `obj` is the input the parts were built from, a double
+# matrix; `parts` is a list of parts over disjoint columns. Columns no part
+# covers are returned as they are, holes included, so a caller that means to
+# fill every column passes parts that cover every column. In each part that is
+# not `left_na`, the map must be exactly the holes of the part's columns:
+# every cell it writes is a hole (a value over an observed cell is a defect),
+# and no hole in its columns is left out.
+#
+# The result is `obj` with the values written, its attributes untouched; the
+# caller sets the class. It is one copy of `obj`, made by the first write, and
+# no copy at all when no part writes anything.
+fill_parts <- function(obj, parts) {
+  if (!is.matrix(obj) || !is.double(obj)) {
+    part_defect("the input is not a double matrix")
+  }
+  chk <- check_parts(obj, parts)
+  lins <- chk$lins
+  filling <- chk$filling
 
   out <- obj
   wrote <- FALSE
@@ -211,20 +223,228 @@ fill_parts <- function(obj, parts) {
   # map, which reading the input at every cell before the write would.
   fill_cols <- unlist(lapply(parts[filling], `[[`, "cols"), use.names = FALSE)
   if (wrote && any(col_miss_internal(out)[fill_cols] > 0)) {
-    for (i in which(filling)) {
-      observed <- which(!is.na(obj[lins[[i]]]))
-      if (length(observed)) {
-        cell <- parts[[i]]$map[observed[[1]], ]
-        part_defect(
-          "writes over an observed cell (row ",
-          cell[["row"]],
-          ", col ",
-          cell[["col"]],
-          ")"
-        )
-      }
-    }
+    refuse_observed_cells(obj, parts, lins, filling)
     part_defect("leaves a hole open in a column it fills")
   }
   out
+}
+
+# Stops at the first map cell of a filling part that is observed in `obj`.
+# It reads `obj` at every cell of the maps, so it costs a vector the length
+# of the maps.
+refuse_observed_cells <- function(obj, parts, lins, filling) {
+  for (i in which(filling)) {
+    observed <- which(!is.na(obj[lins[[i]]]))
+    if (length(observed)) {
+      cell <- parts[[i]]$map[observed[[1]], ]
+      part_defect(
+        "writes over an observed cell (row ",
+        cell[["row"]],
+        ", col ",
+        cell[["col"]],
+        ")"
+      )
+    }
+  }
+  invisible(NULL)
+}
+
+# The user-facing rule of the `si_mi` door: `output = "mipca"` takes only an
+# input with unique row and column names, as mipca() does (R/mi_pca_imp.R:
+# `.chk_matrix <- function(obj) {`). The join matches columns and rows by
+# name, so names an imputer made up would join two unnamed fits by position,
+# unchecked. A name that is NA or empty counts as missing, as checkmate's
+# "unique" reads it there. Called before the fit, so no fit is spent on an
+# input the door refuses. `call` is the imputer's frame, so the error names
+# the function the user called.
+check_si_mi_names <- function(obj, call = parent.frame()) {
+  # Each problem is rendered here and reaches cli_abort() below as an
+  # interpolated value, which cli does not parse again: a name may hold `{`.
+  problem <- function(nms, what) {
+    if (is.null(nms)) {
+      return(cli::format_inline("{.arg obj} has no {what} names."))
+    }
+    bad <- sum(is.na(nms) | !nzchar(nms))
+    if (bad > 0L) {
+      return(cli::format_inline(
+        "{.arg obj} has {bad} missing or empty {what} {cli::qty(bad)}name{?s}."
+      ))
+    }
+    dup <- unique(nms[duplicated(nms)])
+    if (length(dup)) {
+      return(cli::format_inline(
+        "{.arg obj} repeats {length(dup)} {what} {cli::qty(length(dup))}name{?s}: {fmt_trunc(dup, 6)}."
+      ))
+    }
+    NULL
+  }
+  found <- c(problem(rownames(obj), "row"), problem(colnames(obj), "column"))
+  if (length(found)) {
+    bullets <- stats::setNames(
+      sprintf("{found[[%d]]}", seq_along(found)),
+      rep("x", length(found))
+    )
+    cli::cli_abort(
+      c(
+        "With {.code output = 'mipca'}, {.arg obj} must have unique row and column names.",
+        bullets,
+        "i" = "Set {.code rownames(obj)} and {.code colnames(obj)} to unique values, or use {.code output = 'matrix'}."
+      ),
+      call = call
+    )
+  }
+  invisible(NULL)
+}
+
+# The `si_mi` door. From the same parts as fill_parts(), and with the same
+# checks, it builds a one-draw `si_mi`: the object mipca() returns, read with
+# as.matrix(), mipca_complete(), summary() and cbind(). This file is the one
+# caller of the vendored internals it uses (dev/vendored.md), so a port that
+# changes them breaks here only.
+#
+# - `obj`: the input the parts were built from, a numeric matrix with unique
+#   row and column names (check_si_mi_names() has refused any other).
+# - `parts`: parts over disjoint columns that together cover EVERY column:
+#   the placement that puts the columns back in input order needs each column
+#   once.
+# - `call`: the caller's match.call(), and `fn` the caller's name.
+#   .scrub_call() rewrites it so that a matrix passed by value through
+#   do.call() is not stored in the fit.
+# - `prov_extra`: NULL, or one list per part, of `prov` fields the imputer
+#   records on that part's chunk (the rank and iteration count of a PCA fit).
+#
+# Each part with columns becomes one chunk; a part over no columns is
+# dropped, since a chunk needs one. A chunk holds the part's columns of `obj`
+# (a slice, with its row names dropped since the object holds them once; no
+# slice when one part covers every column), the map in the slice's own
+# numbering, the values as the one draw, the identity backward map, and the
+# empty diagnostic frame an ABB piece takes: one draw has nothing to
+# diagnose. The part's `info`, when it has any, is stored on the chunk, since
+# `.si_mi_new()` rebuilds the object from its own fields on every join.
+parts_to_si_mi <- function(obj, parts, call, fn, prov_extra = NULL) {
+  if (!is.matrix(obj) || !is.numeric(obj)) {
+    part_defect("the input is not a numeric matrix")
+  }
+  rn <- rownames(obj)
+  cn <- colnames(obj)
+  if (is.null(rn) || is.null(cn) || anyDuplicated(rn) || anyDuplicated(cn)) {
+    part_defect("the si_mi door needs unique row and column names")
+  }
+  chk <- check_parts(obj, parts)
+  n_col <- ncol(obj)
+  cols <- lapply(parts, `[[`, "cols")
+  # check_parts() refused a column in two parts, so this many columns means
+  # every column
+  n_cov <- sum(lengths(cols))
+  if (n_cov != n_col) {
+    part_defect(
+      "the parts cover ",
+      n_cov,
+      " of the ",
+      n_col,
+      " columns, and the si_mi door needs every column"
+    )
+  }
+  # Here, at birth, rather than at the first as.matrix(), which asserts it
+  # too, so a defect shows where it was made.
+  refuse_observed_cells(obj, parts, chk$lins, chk$filling)
+
+  if (is.null(prov_extra)) {
+    prov_extra <- vector("list", length(parts))
+  }
+  door_prov <- c(
+    "chains",
+    "thin",
+    "ndraws",
+    "nmiss",
+    "thin_final",
+    "thin_effective",
+    "seam_state",
+    "left_na"
+  )
+  ok_extra <- function(x) {
+    is.null(x) ||
+      (is.list(x) &&
+        length(x) > 0L &&
+        !is.null(names(x)) &&
+        all(nzchar(names(x))) &&
+        !any(names(x) %in% door_prov))
+  }
+  if (
+    !is.list(prov_extra) ||
+      length(prov_extra) != length(parts) ||
+      !all(vapply(prov_extra, ok_extra, logical(1)))
+  ) {
+    part_defect(
+      "`prov_extra` is not one named list (or NULL) per part, of fields the door does not set"
+    )
+  }
+
+  call <- .scrub_call(call, fn)
+  keep <- which(lengths(cols) > 0L)
+  whole <- length(keep) == 1L
+  fits <- lapply(keep, function(i) {
+    part_chunk_fit(obj, parts[[i]], whole, prov_extra[[i]], call)
+  })
+  if (length(fits) == 1L) {
+    return(fits[[1L]])
+  }
+  .si_mi_join(
+    fits,
+    call = call,
+    placement = unlist(cols[keep], use.names = FALSE)
+  )
+}
+
+# One part as a one-chunk `si_mi`; parts_to_si_mi() checked the part.
+part_chunk_fit <- function(obj, part, whole, prov_extra, call) {
+  cols <- part$cols
+  map <- part$map
+  if (whole) {
+    sub <- obj
+  } else {
+    sub <- obj[, cols, drop = FALSE]
+    dimnames(sub) <- list(NULL, colnames(sub))
+    # the map's columns in the slice's numbering, an integer matrix still
+    inv <- integer(ncol(obj))
+    inv[cols] <- seq_along(cols)
+    map[, "col"] <- inv[map[, "col"]]
+  }
+  prov <- c(
+    list(
+      chains = 1L,
+      thin = 1L,
+      ndraws = 1L,
+      nmiss = nrow(map),
+      thin_final = 1L,
+      thin_effective = 1L,
+      seam_state = "never"
+    ),
+    prov_extra
+  )
+  if (part$left_na) {
+    prov$left_na <- TRUE
+  }
+  chunk <- .si_mi_chunk(
+    obj = sub,
+    map = map,
+    draws = matrix(part$values, ncol = 1L),
+    transform = tf_identity(),
+    diag = .diag_frame(
+      map = map[integer(0), , drop = FALSE],
+      draws = list(matrix(NA_real_, 0L, 1L)),
+      p = ncol(sub),
+      nms = colnames(sub),
+      prop_diag = .prop_diag_default()
+    ),
+    prov = prov,
+    call = call,
+    info = if (length(part$info)) part$info
+  )
+  .si_mi_new(
+    chunks = list(chunk),
+    rownames = rownames(obj),
+    nkeep = 1L,
+    call = call
+  )
 }

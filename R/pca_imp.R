@@ -256,15 +256,15 @@ new_lobpcg_control <- function(
   out
 }
 
-# The return value of pca_imp(): the shared constructor plus the attributes
-# only pca_imp() carries. Shared by the no-missing-values exit and the main
-# path so that a caller cannot tell from the result which one ran: the same
-# class, and the same attributes with the same types. The defaults describe a
-# call that ran no solve. No solver was chosen or probed, no iteration ran,
-# and `converged` is NA because there was nothing to converge. `n_iter`
-# defaults to a double because the kernel returns its count as one.
-pca_imp_results <- function(
-  obj,
+# What pca_imp() reports about a call, one list for both outputs: the
+# attributes of the matrix output, in the order it sets them, and the `info`
+# of every chunk of the `mipca` output, under the same names. Shared by the
+# no-missing-values exit and the main path so that a caller cannot tell from
+# the result which one ran: the same fields with the same types. The defaults
+# describe a call that ran no solve. No solver was chosen or probed, no
+# iteration ran, and `converged` is NA because there was nothing to converge.
+# `n_iter` defaults to a double because the kernel returns its count as one.
+pca_imp_info <- function(
   post_imp,
   solver,
   solver_chosen = NA_character_,
@@ -280,23 +280,45 @@ pca_imp_results <- function(
   mean_filled_cols = integer(0),
   mean_filled_cells = mean_filled_cells_matrix()
 ) {
-  out <- new_slideimp_results(
-    obj,
-    "pca",
+  list(
+    imp_method = "pca",
     fallback = FALSE,
     post_imp = post_imp,
     mean_filled_cols = mean_filled_cols,
-    mean_filled_cells = mean_filled_cells
+    mean_filled_cells = mean_filled_cells,
+    solver_requested = solver,
+    solver_chosen = solver_chosen,
+    solver_probed = solver_probed,
+    n_iter = diag$n_iter,
+    criterion_final = diag$criterion_final,
+    converged = diag$converged,
+    n_exact = diag$n_exact,
+    n_lobpcg_ok = diag$n_lobpcg_ok,
+    n_lobpcg_bad = diag$n_lobpcg_bad
   )
-  attr(out, "solver_requested") <- solver
-  attr(out, "solver_chosen") <- solver_chosen
-  attr(out, "solver_probed") <- solver_probed
-  attr(out, "n_iter") <- diag$n_iter
-  attr(out, "criterion_final") <- diag$criterion_final
-  attr(out, "converged") <- diag$converged
-  attr(out, "n_exact") <- diag$n_exact
-  attr(out, "n_lobpcg_ok") <- diag$n_lobpcg_ok
-  attr(out, "n_lobpcg_bad") <- diag$n_lobpcg_bad
+}
+
+# The matrix output of pca_imp(): the shared constructor plus the attributes
+# only pca_imp() carries, from pca_imp_info().
+pca_imp_results <- function(obj, info) {
+  out <- new_slideimp_results(
+    obj,
+    info$imp_method,
+    fallback = info$fallback,
+    post_imp = info$post_imp,
+    mean_filled_cols = info$mean_filled_cols,
+    mean_filled_cells = info$mean_filled_cells
+  )
+  shared <- c(
+    "imp_method",
+    "fallback",
+    "post_imp",
+    "mean_filled_cols",
+    "mean_filled_cells"
+  )
+  for (nm in setdiff(names(info), shared)) {
+    attr(out, nm) <- info[[nm]]
+  }
   out
 }
 
@@ -345,9 +367,22 @@ pca_imp_results <- function(
 #' @param clamp Optional numeric vector `c(lower, upper)` bounding PCA-imputed
 #'   values (use `-Inf`/`Inf` for one-sided, `NULL` for none). E.g., `c(0, 1)`
 #'   for DNAm beta values. Observed values are not clamped.
+#' @param output Character. One of `"matrix"` or `"mipca"`. The form of the
+#'   result, described in the Value section. Defaults to `"matrix"`.
 #'
-#' @returns A numeric matrix of the same dimensions as `obj`, with missing
-#' values imputed. The returned object has class `slideimp_results`.
+#' @returns With `output = "matrix"`, a numeric matrix of the same dimensions
+#' as `obj`, with missing values imputed. The returned object has class
+#' `slideimp_results`.
+#'
+#' With `output = "mipca"`, a fit of the kind that `mipca()` returns, which
+#' holds one draw: the same imputed values. `obj` must have unique row and
+#' column names. `as.matrix()` of the fit gives the imputed matrix, without
+#' the attributes of a `slideimp_results` object. Because the fit holds one
+#' draw:
+#' - `mipca_complete()` takes `m = 1` only.
+#' - `summary()` shows no cells, because one draw gives no Rhat or ESS.
+#' - `cbind()` joins the fit only to other fits of one draw. A `mipca()` fit
+#'   with one chain and one kept draw is one of them.
 #'
 #' @details
 #' This function reimplements the PCA imputation method from the `missMDA`
@@ -408,6 +443,11 @@ pca_imp_results <- function(
 #' # mean imputation. Select `ncp` with `tune_imp()`.
 #' pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 #'
+#' # The same imputation as a fit of one draw
+#' fit <- pca_imp(obj, ncp = 2, output = "mipca")
+#' fit
+#' as.matrix(fit)[1:4, 1:4]
+#'
 #' @export
 pca_imp <- function(
   obj,
@@ -426,6 +466,7 @@ pca_imp <- function(
   colmax = 0.9,
   post_imp = TRUE,
   clamp = NULL,
+  output = c("matrix", "mipca"),
   .progress = FALSE
 ) {
   # pre-conditioning
@@ -498,6 +539,11 @@ pca_imp <- function(
   checkmate::assert_number(colmax, lower = 0, upper = 1, .var.name = "colmax")
   checkmate::assert_flag(post_imp, null.ok = FALSE, .var.name = "post_imp")
   clamp <- resolve_clamp(clamp, arg = "clamp")
+  output <- match.arg(output)
+  # before the no-missing-values exit, so that exit refuses unnamed input too
+  if (output == "mipca") {
+    check_si_mi_names(obj)
+  }
   checkmate::assert_flag(.progress, .var.name = ".progress")
   trace_iter <- if (isTRUE(.progress)) 10L else 0L
 
@@ -505,10 +551,22 @@ pca_imp <- function(
   cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
 
   # early exit if no missingness at all. The input comes back unchanged, but
-  # in the same shape as the main path's result, as @returns promises.
+  # in the same shape as the main path's result, as @returns promises. Under
+  # `output = "mipca"` that is one part over every column, filling nothing.
   if (!any(cmiss > 0L)) {
     cli::cli_inform("No missing values in input. Returning input unchanged.")
-    return(pca_imp_results(obj, post_imp = post_imp, solver = solver))
+    info <- pca_imp_info(post_imp = post_imp, solver = solver)
+    if (output == "matrix") {
+      return(pca_imp_results(obj, info))
+    }
+    cl <- match.call()
+    return(parts_to_si_mi(
+      obj,
+      list(new_part(cols = seq_len(ncol(obj)), kind = "pca", info = info)),
+      call = cl,
+      fn = "pca_imp",
+      prov_extra = list(list(rank = as.integer(ncp), iter = info$n_iter))
+    ))
   }
 
   miss_rate <- cmiss / nrow(obj)
@@ -752,15 +810,23 @@ pca_imp <- function(
     storage.mode(obj) <- "double"
   }
   mean_cols <- unname(which(!eligible))
-  mean_part <- if (post_imp) {
-    fallback_part(obj, mean_cols, "mean")
+  holed_cols <- mean_cols[cmiss[mean_cols] > 0L]
+  # Without `post_imp`, the ineligible columns with a hole are one `left_na`
+  # part, and those with none a mean part with nothing to fill, so a
+  # `left_na` part names only columns that keep a hole: print() of the
+  # `mipca` output counts its columns as "left NA".
+  mean_parts <- if (post_imp) {
+    list(fallback_part(obj, mean_cols, "mean"))
   } else {
-    new_part(cols = mean_cols, kind = "mean", left_na = TRUE)
+    list(
+      new_part(cols = holed_cols, kind = "mean", left_na = TRUE),
+      new_part(cols = setdiff(mean_cols, holed_cols), kind = "mean")
+    )
   }
-  obj <- fill_parts(obj, list(pca_part, mean_part))
+  parts <- c(list(pca_part), mean_parts)
+  rm(pca_part, mean_parts)
 
-  return(pca_imp_results(
-    obj,
+  info <- pca_imp_info(
     post_imp = post_imp,
     solver = solver,
     solver_chosen = if (resolved_solver_code == 1L) "lobpcg" else "exact",
@@ -769,10 +835,28 @@ pca_imp <- function(
     # what `post_imp` set to a column mean: the ineligible columns that had a
     # hole. `mean_filled_cells` keeps its empty default, since the PCA part
     # fills every hole of its columns.
-    mean_filled_cols = if (post_imp) {
-      mean_cols[cmiss[mean_cols] > 0L]
-    } else {
-      integer(0)
-    }
-  ))
+    mean_filled_cols = if (post_imp) holed_cols else integer(0)
+  )
+
+  if (output == "matrix") {
+    obj <- fill_parts(obj, parts)
+    return(pca_imp_results(obj, info))
+  }
+  # every chunk of the fit carries the call's whole record, so it survives a
+  # cbind() that separates them
+  parts <- lapply(parts, function(part) {
+    part$info <- info
+    part
+  })
+  cl <- match.call()
+  parts_to_si_mi(
+    obj,
+    parts,
+    call = cl,
+    fn = "pca_imp",
+    prov_extra = c(
+      list(list(rank = as.integer(ncp), iter = best_diag$n_iter)),
+      vector("list", length(parts) - 1L)
+    )
+  )
 }

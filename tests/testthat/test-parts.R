@@ -240,3 +240,131 @@ test_that("validate_part() refuses malformed parts", {
     fixed = TRUE
   )
 })
+
+# the si_mi door ----
+
+to_si_mi <- function(m, parts, prov_extra = NULL) {
+  parts_to_si_mi(
+    m,
+    parts,
+    call = quote(probe(m)),
+    fn = "probe",
+    prov_extra = prov_extra
+  )
+}
+
+test_that("parts_to_si_mi() completes to what fill_parts() writes", {
+  m <- part_input()
+  a <- filled_part(m, c(1L, 2L, 5L), "pca", 100)
+  b <- filled_part(m, c(3L, 4L, 6L), "mean", 200)
+  expect_gt(nrow(a$map), 0L)
+  expect_gt(nrow(b$map), 0L)
+  filled <- fill_parts(m, list(a, b))
+
+  fit <- to_si_mi(m, list(a, b))
+  expect_s3_class(fit, "si_mi")
+  expect_identical(as.matrix(fit), filled)
+  # interleaved columns need a placement
+  expect_identical(fit$placement, c(1L, 2L, 5L, 3L, 4L, 6L))
+  # parts given out of column order
+  expect_identical(as.matrix(to_si_mi(m, list(b, a))), filled)
+
+  # each chunk: its slice without row names, its map in the slice's own
+  # numbering as an integer matrix, the values as the one draw
+  ch <- fit$chunks[[2]]
+  slice <- m[, c(3, 4, 6)]
+  rownames(slice) <- NULL
+  expect_identical(ch$obj, slice)
+  expect_true(is.integer(ch$map))
+  # holes at (2, 4), (5, 4) and (3, 6): input columns 4 and 6 are the
+  # slice's 2 and 3
+  expect_identical(unname(ch$map[, "col"]), c(2L, 2L, 3L))
+  expect_identical(ch$draws, matrix(b$values, ncol = 1L))
+  expect_identical(ch$prov$seam_state, "never")
+  expect_identical(ch$prov$thin_effective, 1L)
+  expect_identical(nrow(ch$diag$cells), 0L)
+  expect_null(ch$info)
+  # the call is rewritten to the caller's name, the matrix not stored
+  expect_identical(fit$call[[1]], as.name("probe"))
+})
+
+test_that("parts_to_si_mi() takes one part, a part over no columns, and left_na", {
+  m <- part_input()
+
+  # one part over every column: no slice, the input itself
+  every <- filled_part(m, 1:6)
+  fit <- to_si_mi(m, list(every))
+  expect_length(fit$chunks, 1L)
+  expect_identical(fit$chunks[[1]]$obj, m)
+  expect_null(fit$placement)
+  expect_identical(as.matrix(fit), fill_parts(m, list(every)))
+
+  # a part over no columns is dropped
+  none <- new_part(cols = integer(0), kind = "mean")
+  expect_length(to_si_mi(m, list(none, every))$chunks, 1L)
+
+  # a left_na part: no map, no draws, its holes stay NA
+  a <- filled_part(m, 1:3)
+  b <- new_part(cols = 4:6, kind = "mean", left_na = TRUE)
+  expect_true(anyNA(m[, 4:6]))
+  fit <- to_si_mi(m, list(a, b))
+  ch <- fit$chunks[[2]]
+  expect_true(isTRUE(ch$prov$left_na))
+  expect_identical(dim(ch$draws), c(0L, 1L))
+  expect_null(fit$chunks[[1]]$prov$left_na)
+  expect_identical(as.matrix(fit), fill_parts(m, list(a, b)))
+
+  # info and the imputer's prov fields reach their chunk
+  a$info <- list(note = "a")
+  fit <- to_si_mi(m, list(a, b), prov_extra = list(list(rank = 2L), NULL))
+  expect_identical(fit$chunks[[1]]$info, list(note = "a"))
+  expect_identical(fit$chunks[[1]]$prov$rank, 2L)
+  expect_null(fit$chunks[[2]]$info)
+})
+
+test_that("parts_to_si_mi() refuses what it cannot build", {
+  m <- part_input()
+  a <- filled_part(m, 1:3)
+  b <- filled_part(m, 4:6)
+
+  expect_error(
+    to_si_mi(m, list(a)),
+    "the parts cover 3 of the 6 columns",
+    fixed = TRUE
+  )
+  expect_error(
+    to_si_mi(m, list(a, filled_part(m, 3:6))),
+    "two parts cover column 3",
+    fixed = TRUE
+  )
+  # the observed-cell swap fill_parts() is tested with: the hole count still
+  # matches, so only the check at birth catches it
+  over <- filled_part(m, 1L)
+  over$map[2, "row"] <- 5L
+  rest <- filled_part(m, 2:6)
+  expect_error(
+    to_si_mi(m, list(over, rest)),
+    "writes over an observed cell (row 5, col 1)",
+    fixed = TRUE
+  )
+  expect_error(
+    to_si_mi(unname(m), list(a, b)),
+    "the si_mi door needs unique row and column names",
+    fixed = TRUE
+  )
+  expect_error(
+    to_si_mi(m, list(a, b), prov_extra = list(list(left_na = TRUE), NULL)),
+    "`prov_extra` is not one named list",
+    fixed = TRUE
+  )
+  expect_error(
+    to_si_mi(m, list(a, b), prov_extra = list(NULL)),
+    "`prov_extra` is not one named list",
+    fixed = TRUE
+  )
+  expect_error(
+    to_si_mi(as.character(m), list(a, b)),
+    "the input is not a numeric matrix",
+    fixed = TRUE
+  )
+})

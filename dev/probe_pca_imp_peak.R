@@ -1,6 +1,7 @@
-# Probe: where pca_imp()'s peak memory sits today, and what the two si_mi
-# output designs would cost after the kernel. Each stage runs in a FRESH R
-# process (callr), because a process's peak working set only ever grows.
+# Probe: where pca_imp()'s peak memory sits, for both outputs, and what the
+# two si_mi output designs cost after the kernel when built by hand. Each
+# stage runs in a FRESH R process (callr), because a process's peak working
+# set only ever grows.
 #
 # The DLL is built once here with load_all1(timer = FALSE); every child loads
 # that same DLL with pkgload::load_all(compile = FALSE), so no stage is
@@ -87,6 +88,21 @@ stage <- function(root, scenario, n, p, frac_mean) {
       threshold = 1e-4,
       post_imp = FALSE
     ))
+  } else if (
+    scenario %in% c("pca_imp, output = mipca", "pca_imp mipca + as.matrix")
+  ) {
+    fit <- suppressWarnings(pca_imp(
+      x,
+      ncp = 2,
+      solver = "exact",
+      maxiter = 10,
+      miniter = 1,
+      threshold = 1e-4,
+      output = "mipca"
+    ))
+    if (scenario == "pca_imp mipca + as.matrix") {
+      out <- as.matrix(fit)
+    }
   } else if (scenario == "today's post step alone") {
     ## pca_imp()'s write-back, then mean_imp_col() on the ineligible columns.
     obj <- x
@@ -161,6 +177,8 @@ stage <- function(root, scenario, n, p, frac_mean) {
 scenarios <- c(
   "pca_imp, post_imp = TRUE",
   "pca_imp, post_imp = FALSE",
+  "pca_imp, output = mipca",
+  "pca_imp mipca + as.matrix",
   "today's post step alone",
   "parts, matrix door",
   "slices, si_mi door",

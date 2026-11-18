@@ -21,6 +21,7 @@ pca_imp(
   colmax = 0.9,
   post_imp = TRUE,
   clamp = NULL,
+  output = c("matrix", "mipca"),
   .progress = FALSE
 )
 }
@@ -85,11 +86,27 @@ mean fill.}
 values (use \code{-Inf}/\code{Inf} for one-sided, \code{NULL} for none). E.g., \code{c(0, 1)}
 for DNAm beta values. Observed values are not clamped.}
 
+\item{output}{Character. One of \code{"matrix"} or \code{"mipca"}. The form of the
+result, described in the Value section. Defaults to \code{"matrix"}.}
+
 \item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj}, with missing
-values imputed. The returned object has class \code{slideimp_results}.
+With \code{output = "matrix"}, a numeric matrix of the same dimensions
+as \code{obj}, with missing values imputed. The returned object has class
+\code{slideimp_results}.
+
+With \code{output = "mipca"}, a fit of the kind that \code{mipca()} returns, which
+holds one draw: the same imputed values. \code{obj} must have unique row and
+column names. \code{as.matrix()} of the fit gives the imputed matrix, without
+the attributes of a \code{slideimp_results} object. Because the fit holds one
+draw:
+\itemize{
+\item \code{mipca_complete()} takes \code{m = 1} only.
+\item \code{summary()} shows no cells, because one draw gives no Rhat or ESS.
+\item \code{cbind()} joins the fit only to other fits of one draw. A \code{mipca()} fit
+with one chain and one kept draw is one of them.
+}
 }
 \description{
 Impute missing values in a numeric matrix using regularized or
@@ -184,6 +201,11 @@ obj[1:4, 1:4]
 # Randomly initialize missing values 5 times. The first initialization is
 # mean imputation. Select `ncp` with `tune_imp()`.
 pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
+
+# The same imputation as a fit of one draw
+fit <- pca_imp(obj, ncp = 2, output = "mipca")
+fit
+as.matrix(fit)[1:4, 1:4]
 
 }
 \references{

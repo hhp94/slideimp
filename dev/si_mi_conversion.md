@@ -470,6 +470,98 @@ peak; the kernel does, as "Why" expected of filling one copy from parts.
   included.
 - Rerun the memory probe.
 
+Done 2026-11-17, in `R/parts.R` (`parts_to_si_mi()`, `check_si_mi_names()`),
+`R/pca_imp.R`, and one line each in `R/slide_imp.R`, `R/group_imp.R` and
+`R/tune_imp.R`; no change under `src/` or to a vendored file. Settled with
+the maintainer before the code:
+
+- Under `post_imp = FALSE`, the ineligible columns are two parts, not one:
+  a `left_na` part over those with a hole and a mean part with an empty map
+  over those without. `print.si_mi()` counts a `left_na` chunk's columns as
+  "left NA", so a zero-variance column with no hole would have been counted.
+  The matrix output is unchanged: `fill_parts()` writes nothing for either.
+- Every chunk carries the call's whole record as `info`: the 14 attributes
+  of the matrix output after dim, dimnames and class, under their names and
+  types, `mean_filled_cols` included as integers in the input's numbering.
+  So the record survives a `cbind()` that separates the chunks.
+- The stored call is `.scrub_call(match.call(), "pca_imp")`, so a matrix
+  passed by value through `do.call()` is not stored in the fit.
+- `knn_imp()` goes the same way later, and `group_imp()` will build from
+  parts (`dev/to-do.md`, "Parts for the other imputers"), so the door and the
+  name check take any parts and say nothing about PCA. The imputer's own
+  `prov` fields (the PCA part's `rank` and `iter`) reach the door as
+  `prov_extra`, one list per part.
+
+As built, and where the text above turned out short or wrong:
+
+- A part over no columns must be dropped, which the list above does not
+  say: `.si_mi_new()` refuses a chunk with no columns, and Phase 3 builds an
+  empty mean part whenever every column is eligible. The door drops it, so
+  an all-eligible input is one chunk holding the input itself.
+- The door calls three vendored functions the rules above do not list:
+  `.scrub_call()`, `.prop_diag_default()` (the frame's `prop_diag`, so
+  `summary()` agrees it with a `mipca()` partner) and the exported
+  `tf_identity()`, whose `backward` is the identity map. `R/parts.R` is
+  still their one caller outside the vendored files.
+- `prov` also holds `nmiss` and `thin_final = 1`, as an ABB piece's does.
+- The door makes `fill_parts()`'s checks (shared as `check_parts()`), and
+  two of its own: the parts cover every column, and no map cell is observed.
+  The last is checked at birth, reading the input at every cell of the maps,
+  a vector the length of the maps, so a defect shows where it was made
+  rather than at the first `as.matrix()`, which asserts it again.
+- The door takes an integer input, which the no-holes exit passes through
+  as it is. `as.matrix()` of that fit is double, where the matrix output
+  stays integer: `as.matrix.si_mi()` assigns the (empty) double draws into
+  the stored matrix, and R coerces on that assignment. Every input with a
+  hole is coerced to double before either door, so this is the one case
+  where `as.matrix()` of the fit is not `identical()` to the matrix output.
+- The name check mirrors `.chk_matrix()`: a missing, NA or empty name, or a
+  repeated one, is refused, and the test asserts `.chk_matrix()` refuses
+  each case too. The error names the imputer, not the helper.
+- Vendored wording a `pca_imp()` user now meets, reported here and not
+  changed: `print.si_mi()` heads its output "si_mi fit", the class name the
+  decisions above call internal; `mipca_complete(m = 2)` says "the fit's 1
+  kept draws"; `update()` says "Fit again with mipca() and
+  `keep_state = TRUE`". The record in `info` has no exported reader: it is
+  `fit$chunks[[i]]$info`.
+
+Tests: `tests/testthat/test-pca_imp-mipca.R` (not under the `test-mipca-*`
+prefix, which belongs to the vendored copy) covers the list above, plus the
+no-holes exit, the all-eligible single chunk, the record on every chunk, the
+stored call without the matrix, the refusal reached before the kernel (a
+stubbed kernel that errors shows the stub is in place), and a `cbind()` with
+a one-draw `mipca()` fit that joins. `tests/testthat/test-parts.R` adds the
+door on its own: interleaved and out-of-order parts against `fill_parts()`,
+one part over every column, a part over no columns, a `left_na` part, and
+each refusal.
+
+Checked: the suite with `load_all1(timer = FALSE)` and the manual tests, 21
+files, 260 tests, 2593 expectations, none failed; its two `group_imp` errors
+were daemons running an older installed copy ("could not find function
+new_part"), and the `group_imp` and `tune_imp` tests on an install of this
+checkout (`dev/test_mirai_with_dev_install.R`) pass, 118 tests. The Phase 0
+compare gives what Phase 3 gave: 57 of 58 cases, `mean_xa_cores2` erroring on
+the removed `cores`; every `pca_*` case bitwise; the same six mean-fill cases
+not bitwise, worst rel `6.65e-16`.
+
+The memory probe (`dev/probe_pca_imp_peak.R`, two stages added), extra peak
+over the input, one run per stage:
+
+| Stage | Extra peak |
+|---|---|
+| `pca_imp()`, `post_imp = TRUE` | 2.42 x (2.43 x after Phase 3) |
+| `pca_imp()`, `post_imp = FALSE` | 2.43 x (2.43 x) |
+| `pca_imp(output = "mipca")` | 2.43 x |
+| the same, then `as.matrix()` | 2.78 x |
+| by hand: slices into an `si_mi` | 1.89 x (1.88 x under "Why") |
+| by hand: slices, then `as.matrix()` | 3.20 x (2.92 x) |
+
+So the `si_mi` door does not move the peak: its slices (0.9 x here, plus the
+maps) sit under the kernel's. `as.matrix()` of the fit adds the completed
+matrix beside the fit's slices. The hand-built rows move by up to 0.3 x
+between this run and the one under "Why", with the timing of R's
+collections, as Phase 2 saw.
+
 ## Upstream, in `hhp94/test`
 
 Investigated and ruled in `hhp94/test` on 2026-11-15. The rulings are in

@@ -581,6 +581,7 @@ slide_imp <- function(
               colmax = colmax,
               post_imp = post_imp,
               clamp = clamp,
+              output = "matrix",
               .progress = FALSE
             )
           }
