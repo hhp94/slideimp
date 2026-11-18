@@ -3,6 +3,10 @@
 The plan for the `si-mi` branch, which starts from `e5b3cf7` on `dev`. Delete
 this file when the branch merges; git history keeps it.
 
+The Armadillo removal (`dev/eigen_conversion.md`) is done on this branch too
+(maintainer, 2026-11-18). Where this file says "the `eigen` branch", it
+means that work; no such branch is merged.
+
 ## Why
 
 - One internal currency for every imputer and every fallback. An imputer
@@ -939,8 +943,8 @@ the columns whose holes were all filled.
   paths") follows the code in the same commit.
 - The `eigen` branch rewrites these files (`dev/eigen_conversion.md`, Phase
   1, the K-NN chain) and checks that the kernel's return is unchanged from
-  `e5b3cf7`. This step changes that return, so the two branches meet here.
-  `eigen` has no commit past `e5b3cf7` yet.
+  its start commit. This step changes that return, so the two plans meet
+  here.
 
 ### Parts (`R/parts.R`)
 
@@ -1081,8 +1085,9 @@ Each passes the suite and the Phase 0 compare (differences as stated), with
 ### To settle before the code
 
 - Settled (maintainer, 2026-11-18): `eigen` goes first. Step 1 may go
-  ahead; steps 2 to 5 wait until `eigen`'s K-NN chain is merged into `dev`
-  and this branch takes it, so `fill_mean` is written in plain Rcpp.
+  ahead; steps 2 to 5 wait until `eigen`'s K-NN chain
+  (`dev/eigen_conversion.md`, Phase 1) is committed on this branch, so
+  `fill_mean` is written in plain Rcpp.
 - `print.si_mi()` says "N columns not imputed" of a `left_na` chunk. For a
   K-NN column that keeps a hole, ask upstream for wording true of both cases
   (columns that keep holes), made in `hhp94/test` and arriving with the next

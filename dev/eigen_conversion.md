@@ -1,8 +1,14 @@
 # Removing Armadillo from src/
 
 The plan for taking RcppArmadillo out of the package's own C++. Work happens
-on the `eigen` branch, which starts from `e5b3cf7` on `dev` (the sampler
-port). Delete this file when the branch merges; git history keeps it.
+on the `si-mi` branch, beside the work of `dev/si_mi_conversion.md`
+(maintainer, 2026-11-18); there is no separate branch for it. Delete this
+file when Phase 3 lands; git history keeps it.
+
+"The start commit" below is the head of `si-mi` when Phase 0 takes its
+reference capture. It is not `e5b3cf7`, where the capture scripts were first
+run: `si-mi` has changed what `pca_imp()` returns since, on purpose, so the
+reference for this plan is captured again, under its own label.
 
 ## Why
 
@@ -69,7 +75,7 @@ use no Armadillo; `src/mipca.cpp` says it must never include it.
   cited code fixes the map in the same commit, and
   `uv run dev/check_map_anchors.py` passes before it is committed.
 - What R sees does not change. Each internal export returns the same R type,
-  the same dims and the same attributes as on `e5b3cf7`; the harness
+  the same dims and the same attributes as at the start commit; the harness
   (Phase 0) records them on the unchanged build, so this is checked, not
   remembered. Tidying an R caller - dropping the `[1, ]` in `R/col_vars.R`,
   or the `as.integer()` in `R/mat_miss.R` - is a separate change, later, and
@@ -197,9 +203,11 @@ tested. When a piece is in doubt, it goes to Fable.
 | Phase 3 | Opus | Mechanical |
 
 The wrapper layer touches only new files, so it is written while Phase 1
-runs. Phase 1's K-NN chain is what the `si-mi` branch waits on
-(`dev/si_mi_conversion.md`, "To settle before the code"), and is not held
-behind the wrappers.
+runs. Phase 1's K-NN chain is what the rest of `dev/si_mi_conversion.md`
+waits on ("To settle before the code" there), and is not held behind the
+wrappers. Once it is in, that plan's K-NN steps and this plan's Phase 2 run
+on the same branch: Phase 2 stays under `src/` in the PCA chain, and a
+session of one plan does not edit a file the other is changing.
 
 ## Review checkpoints
 
@@ -225,7 +233,8 @@ the next phase starts, so each phase begins from reviewed code.
 
 ## Where Armadillo is used today
 
-At `e5b3cf7`. "Storage" means containers, indexing and element loops only.
+Written at `e5b3cf7`; on 2026-11-18 the only file under `src/` changed since
+was the vendored `src/mipca.cpp`. "Storage" means containers, indexing and element loops only.
 
 | File | What it uses Armadillo for | Becomes |
 |---|---|---|
@@ -262,7 +271,7 @@ they were written to do:
   `sim_mat()` output and on `dev/GSE286313.EPICv1_chr21.qs2`, under fixed
   seeds. It saves every result, with its type, dims and attributes, to an
   ignored folder under dev/. That folder is regenerable data: rerun the
-  script at `e5b3cf7`.
+  script at the start commit.
 - A compare script. It reads a capture and checks a build against it. For a
   double result it reports `max(abs(a - b))` and `max(abs(a - b) / abs(b))`
   (over the cells where `b != 0`, saying how many), asserts the worst case
@@ -280,7 +289,7 @@ Still owed in this phase: the candidate capture and the timing driver, both
 below, and the install script of "The Armadillo oracle".
 
 Then the same reference build against the candidate RcppEigen, compared to
-the capture. At `e5b3cf7` the package's own code holds no Eigen, so the
+the capture. At the start commit the package's own code holds no Eigen, so the
 exports captured here should agree to the noise floor; a larger difference
 is a finding to explain before Phase 1. This also proves the candidate
 library and the `R_LIBS` selection work before any step depends on them.
@@ -384,11 +393,6 @@ find out which call did it before going on.
 
 - Whether the noise floor measured on one machine holds on the BLAS of the
   rhub Linux images. Until a capture is compared there, the default
-  tolerances are a reading from one BLAS.
-- Where the branch starts. This file says `e5b3cf7`; `si-mi` has changed
-  `pca_imp()` since, and `dev/si_mi_conversion.md` has `eigen` going first.
-  The reference capture is taken at whichever commit the branch starts
-  from.
-- Whether the R callers are tidied once the return types are free to change.
+  tolerances are a reading from one BLAS.- Whether the R callers are tidied once the return types are free to change.
 - What the timings say. They are recorded here when Phase 0 and each phase
   have been run, as readings on one machine, not as numbers to pin.
