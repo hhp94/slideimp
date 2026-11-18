@@ -47,16 +47,17 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   +- R/pca_imp.R           mse guard, per restart
   +- R/pca_imp.R           clamp
   +- R/pca_imp.R           PCA part from the triplets; mean part over the
-  |                        ineligible columns (without post_imp: a left NA
-  |                        part over those with a hole, a mean part with
+  |                        ineligible kept columns (without post_imp: a left
+  |                        NA part over those with a hole, a mean part with
   |                        nothing to fill over the rest)
   +- R/pca_imp.R           pca_imp_info(): the call's record
   +- output = "matrix"
-  |    +- R/parts.R        fill_parts(): one copy of obj, the parts written
+  |    +- R/parts.R        fill_parts(): one copy of obj's kept columns, the
+  |    |                   parts cut to them and written
   |    +- R/pca_imp.R      pca_imp_results()
   |         +- R/utils.R   new_slideimp_results()
   +- output = "mipca"
-       +- R/parts.R        parts_to_si_mi(): one slice of obj per part
+       +- R/parts.R        parts_to_si_mi(): one slice of obj per cut part
             +- R/mi_pca_s3.R   .si_mi_chunk(), .si_mi_new(), .si_mi_join()
 ```
 
@@ -99,19 +100,26 @@ or `NULL`; `seed` is guarded against `seed * (nb.init - 1)` exceeding int range;
 (`R/parts.R`: `check_si_mi_names <- function(obj, call = parent.frame()) {`) refuses an
 input without unique row and column names before anything else runs, the
 no-missing-values exit included.
-`cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)`, and a matrix with no missingness returns
-unchanged, with the same record as the main path (`R/pca_imp.R`:
+`subset` becomes `keep`, the result's columns, ascending, or `NULL` for every
+column (`R/pca_imp.R`: `keep <- resolve_narrow_subset(subset, obj)`), through
+`resolve_narrow_subset()` (`R/utils.R`:
+`resolve_narrow_subset <- function(subset, obj, call = parent.frame()) {`), which
+refuses an unknown name and an empty selection and turns a selection of every
+column into `NULL`. Every eligible column still enters the kernel: `subset`
+narrows only what is returned.
+`cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)`, and when no kept column has a hole
+the kept columns return unchanged, with the same record as the main path (`R/pca_imp.R`:
 `info <- pca_imp_info(post_imp = post_imp, solver = solver)`): through
 `pca_imp_results()` for the matrix output, so the result has the same class and
-attributes either way, or as one part over every column, with an empty map, through
-`parts_to_si_mi()`. `eligible`
+attributes either way, or as one part over the kept columns, with an empty map, through
+`parts_to_si_mi()`. The kernel is not called. `eligible`
 combines the `colmax` missing-rate ceiling with a non-degenerate-variance test from
 `col_vars(obj)`. Feasibility caps (`R/pca_imp.R`: `max_ncp_rows <- nrow(obj) - 2L`)
 require `ncp` to be at most
 `min(nrow(obj) - 2L, n_elig - 1L)`; both abort paths carry class `slideimp_infeasible`,
 which `group_imp()` and `slide_imp()` catch, and a third such abort
-(`R/pca_imp.R`: `if (!any(cmiss[eligible] > 0L)) {`) fires when every column with
-missingness is ineligible.
+(`R/pca_imp.R`: `if (!any(cmiss[out_cols][eligible[out_cols]] > 0L)) {`) fires when
+every kept column with missingness is ineligible.
 
 **solver = "auto" policy (R half).** The block (`R/pca_imp.R`: `# solver = "auto" policy.`)
 decides whether the C++ auto probe is worth running at all.
@@ -142,10 +150,13 @@ already being 1-based original-matrix indices, over the eligible columns; the
 ineligible columns are covered through `fallback_part()` under `post_imp = TRUE`.
 Under `post_imp = FALSE` they are two parts: a `left_na` part over those with a
 hole, and a mean part with an empty map over those without, so that a `left_na`
-part names only columns that keep a hole. An integer input is coerced to double
-first. `mean_filled_cols` is the ineligible columns that had a hole, under
-`post_imp` only (`R/pca_imp.R`: `mean_cols[cmiss[mean_cols] > 0L]`), and
-`mean_filled_cells` is always empty. `pca_imp_info()`
+part names only columns that keep a hole. With `subset`, the PCA part still
+covers every eligible column and the doors cut it to `keep`, while the mean parts
+cover only the kept ineligible columns, so no mean is computed for a column the
+result does not hold. An integer input is coerced to double
+first. `mean_filled_cols` is the kept ineligible columns that had a hole, under
+`post_imp` only (`R/pca_imp.R`: `mean_cols[cmiss[mean_cols] > 0L]`), numbered as
+the result's columns, and `mean_filled_cells` is always empty. `pca_imp_info()`
 (`R/pca_imp.R`: `pca_imp_info <- function(`) gathers the call's record, one list
 for both outputs: `imp_method`, `fallback`, `post_imp`, `mean_filled_cols`,
 `mean_filled_cells`, `solver_requested`, `solver_chosen`, `solver_probed`, `n_iter`,
@@ -154,7 +165,7 @@ no-missing-values exit its defaults stand in for the solve that never ran:
 `solver_chosen = NA`, `solver_probed = FALSE`, `n_iter = 0`, `converged = NA`.
 
 For `output = "matrix"`, `fill_parts()` (`R/parts.R`: `fill_parts <- function(obj, parts, keep = NULL) {`)
-copies `obj` once and writes the parts (`R/pca_imp.R`: `obj <- fill_parts(obj, parts)`),
+copies `obj` once and writes the parts (`R/pca_imp.R`: `obj <- fill_parts(obj, parts, keep = keep)`),
 checking that each filling part fills exactly the holes of its columns, and
 `pca_imp_results()` (`R/pca_imp.R`: `pca_imp_results <- function(obj, info) {`) builds the
 result. It calls `new_slideimp_results()` (`R/utils.R`: `new_slideimp_results <- function(`),
@@ -170,9 +181,10 @@ frame, joined with the parts' columns as the placement. The record rides on ever
 chunk, which a `cbind()` keeps, and the PCA chunk's `prov` also holds `rank` and
 `iter`.
 
-Both doors also take `keep`, the input columns to return, and cut the parts to it
+Both doors take `keep`, the input columns to return, and cut the parts to it
 after validating them (`R/parts.R`: `cut_parts <- function(parts, lins, keep, n_col) {`).
-`pca_imp()` passes none yet, so both return every column.
+With `keep`, the matrix door copies only the kept columns, and the `si_mi` door
+slices each part to its kept columns and places them in the fit's own numbering.
 
 `slide_imp()` pins every later window to `attr(x, "solver_chosen")`, but only from a window
 whose `solver_probed` is `TRUE`. A size-demoted window, or one whose probe never finished,
@@ -427,7 +439,7 @@ QRs plus a `3k x 3k` dsyevd.
 ## Data structures and ownership
 
 - `obj` crosses as `const arma::mat&` and is never mutated in C++; the write-back happens in
-  R, through the matrix door (`R/pca_imp.R`: `obj <- fill_parts(obj, parts)`), or not at
+  R, through the matrix door (`R/pca_imp.R`: `obj <- fill_parts(obj, parts, keep = keep)`), or not at
   all through the `si_mi` door, whose chunks hold the holes and their values. `row_w` crosses by value and
   is normalized in place (`src/armaSVD.cpp`: `arma::rowvec row_w,`, `row_w /= row_w_sum;`).
 - `Xhat` is the working copy -- permuted column order, centered, scaled, mutated in

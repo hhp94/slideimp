@@ -22,6 +22,7 @@ pca_imp(
   post_imp = TRUE,
   clamp = NULL,
   output = c("matrix", "mipca"),
+  subset = NULL,
   .progress = FALSE
 )
 }
@@ -89,18 +90,22 @@ for DNAm beta values. Observed values are not clamped.}
 \item{output}{Character. One of \code{"matrix"} or \code{"mipca"}. The form of the
 result, described in the Value section. Defaults to \code{"matrix"}.}
 
+\item{subset}{Optional character or integer vector. The columns to impute
+and return, by name or by number, or \code{NULL} for every column. Defaults to
+\code{NULL}.}
+
 \item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 }
 \value{
-With \code{output = "matrix"}, a numeric matrix of the same dimensions
-as \code{obj}, with missing values imputed. The returned object has class
-\code{slideimp_results}.
+With \code{output = "matrix"}, a numeric matrix with the rows of \code{obj}
+and the columns that \code{subset} selects, with missing values imputed. The
+returned object has class \code{slideimp_results}.
 
-With \code{output = "mipca"}, a fit of the kind that \code{mipca()} returns, which
-holds one draw: the same imputed values. \code{obj} must have unique row and
-column names. \code{as.matrix()} of the fit gives the imputed matrix, without
-the attributes of a \code{slideimp_results} object. Because the fit holds one
-draw:
+With \code{output = "mipca"}, a fit of the kind that \code{mipca()} returns, over the
+same columns, which holds one draw: the same imputed values. \code{obj} must
+have unique row and column names. \code{as.matrix()} of the fit gives the
+imputed matrix, without the attributes of a \code{slideimp_results} object.
+Because the fit holds one draw:
 \itemize{
 \item \code{mipca_complete()} takes \code{m = 1} only.
 \item \code{summary()} shows no cells, because one draw gives no Rhat or ESS.
@@ -120,6 +125,12 @@ package by Francois Husson and Julie Josse, based on Josse and Husson (2016).
 A column whose observed values do not vary takes no part in PCA imputation
 either. \code{post_imp} and the \code{mean_filled_cols} attribute treat it like a
 column over \code{colmax}.
+
+With \code{subset}, the result holds only the selected columns, in the order
+they have in \code{obj}. The other columns take part in the imputation as they
+do without \code{subset}. So \code{subset} makes the result smaller, not the imputation
+faster. A name that is not in \code{colnames(obj)}, or a \code{subset} that
+selects no column, is an error.
 }
 \section{PCA Performance tips}{
 
@@ -168,8 +179,8 @@ stay missing.
 
 The result records what the column means replaced, in two attributes:
 \itemize{
-\item \code{mean_filled_cols}: an integer vector with the index of each column that
-took no part and was filled.
+\item \code{mean_filled_cols}: an integer vector with the index, in the result, of
+each column that took no part and was filled.
 \item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
 one row for each cell that the method could not impute and that was
 filled.
@@ -201,6 +212,9 @@ obj[1:4, 1:4]
 # Randomly initialize missing values 5 times. The first initialization is
 # mean imputation. Select `ncp` with `tune_imp()`.
 pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
+
+# Impute every column, but return only the first three
+pca_imp(obj, ncp = 2, subset = 1:3)
 
 # The same imputation as a fit of one draw
 fit <- pca_imp(obj, ncp = 2, output = "mipca")

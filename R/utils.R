@@ -180,6 +180,75 @@ resolve_subset <- function(subset, obj, sort = FALSE) {
   if (sort) sort(subset) else subset
 }
 
+# `subset` for an imputer whose result holds only the selected columns
+# (dev/si_mi_conversion.md, "What was decided"). Unlike resolve_subset() above,
+# an unknown name and an empty selection are refused, as mipca() refuses them
+# (R/mi_pca_imp.R: `.resolve_cols <- function(subset, obj, what = "subset") {`):
+# the result's width depends on `subset`, so a dropped name would be a column
+# the caller asked for and does not get. Returns NULL for NULL (every column)
+# and for a selection of every column, so both take the same path; otherwise
+# the selected columns, ascending, which is the result's column order.
+# `call` is the imputer's frame, so an error names the function the user
+# called.
+resolve_narrow_subset <- function(subset, obj, call = parent.frame()) {
+  if (is.null(subset)) {
+    return(NULL)
+  }
+  if (length(subset) == 0L) {
+    cli::cli_abort(
+      c(
+        "{.arg subset} selects no columns.",
+        "i" = "Name at least one column of {.arg obj}, or use {.code subset = NULL} for every column."
+      ),
+      call = call
+    )
+  }
+  if (is.character(subset)) {
+    cn <- colnames(obj)
+    if (is.null(cn)) {
+      cli::cli_abort(
+        c(
+          "{.arg subset} names columns, but {.arg obj} has no column names.",
+          "i" = "Set {.code colnames(obj)}, or give column numbers."
+        ),
+        call = call
+      )
+    }
+    dup <- unique(subset[duplicated(subset)])
+    if (length(dup) > 0L) {
+      cli::cli_abort(
+        c(
+          "{.arg subset} names {length(dup)} column{?s} more than once: {fmt_trunc(dup, 6)}.",
+          "i" = "Name each column once."
+        ),
+        call = call
+      )
+    }
+    idx <- match(subset, cn)
+    bad <- subset[is.na(idx)]
+    if (length(bad) > 0L) {
+      cli::cli_abort(
+        c(
+          "{.arg subset} names {length(bad)} column{?s} not in {.arg obj}: {fmt_trunc(bad, 6)}.",
+          "i" = "Use names from {.code colnames(obj)}."
+        ),
+        call = call
+      )
+    }
+  } else {
+    checkmate::assert_integerish(
+      subset,
+      lower = 1L,
+      upper = ncol(obj),
+      any.missing = FALSE,
+      unique = TRUE,
+      .var.name = "subset"
+    )
+    idx <- as.integer(subset)
+  }
+  if (length(idx) == ncol(obj)) NULL else sort(idx)
+}
+
 #' Check and Validate BLAS Thread Pinning
 #'
 #' Verifies that the `RhpcBLASctl` package is installed if BLAS pinning is

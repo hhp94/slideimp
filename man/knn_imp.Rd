@@ -127,8 +127,8 @@ stay missing.
 
 The result records what the column means replaced, in two attributes:
 \itemize{
-\item \code{mean_filled_cols}: an integer vector with the index of each column that
-took no part and was filled.
+\item \code{mean_filled_cols}: an integer vector with the index, in the result, of
+each column that took no part and was filled.
 \item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
 one row for each cell that the method could not impute and that was
 filled.

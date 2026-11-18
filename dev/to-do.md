@@ -51,6 +51,12 @@ Easy to miss in the diff, noted so the draft does not:
   is a new error on an input without unique row and column names. For an
   integer input with no hole, `as.matrix()` of that fit is double where the
   matrix output stays integer.
+- `pca_imp()` gains `subset`: the result, in both forms, holds only the
+  selected columns, in input order, while every eligible column still takes
+  part in the fit. An unknown name or an empty `subset` is an error there,
+  where `knn_imp()`'s `subset` still drops the one with a message and returns
+  early on the other. The "Column mean fill" section now says
+  `mean_filled_cols` counts the result's columns.
 
 ## Parts for the other imputers
 
@@ -75,7 +81,8 @@ maintainer the same day:
 
 - `knn_imp()` lands in ONE change (maintainer, 2026-11-17): it builds parts,
   gains `output`, and its `subset` narrows its output through the doors'
-  `keep`. Its `subset` resolves as `pca_imp()`'s does after Phase 6: an
+  `keep`. Its `subset` resolves as `pca_imp()`'s does, through
+  `resolve_narrow_subset()` in `R/utils.R`: an
   unknown name and an empty `subset` are refused, where `resolve_subset()`
   drops the one with a message and returns early on the other. The
   narrowing breaks every caller that passes `subset` today, and the refusals

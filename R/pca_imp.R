@@ -369,16 +369,19 @@ pca_imp_results <- function(obj, info) {
 #'   for DNAm beta values. Observed values are not clamped.
 #' @param output Character. One of `"matrix"` or `"mipca"`. The form of the
 #'   result, described in the Value section. Defaults to `"matrix"`.
+#' @param subset Optional character or integer vector. The columns to impute
+#'   and return, by name or by number, or `NULL` for every column. Defaults to
+#'   `NULL`.
 #'
-#' @returns With `output = "matrix"`, a numeric matrix of the same dimensions
-#' as `obj`, with missing values imputed. The returned object has class
-#' `slideimp_results`.
+#' @returns With `output = "matrix"`, a numeric matrix with the rows of `obj`
+#' and the columns that `subset` selects, with missing values imputed. The
+#' returned object has class `slideimp_results`.
 #'
-#' With `output = "mipca"`, a fit of the kind that `mipca()` returns, which
-#' holds one draw: the same imputed values. `obj` must have unique row and
-#' column names. `as.matrix()` of the fit gives the imputed matrix, without
-#' the attributes of a `slideimp_results` object. Because the fit holds one
-#' draw:
+#' With `output = "mipca"`, a fit of the kind that `mipca()` returns, over the
+#' same columns, which holds one draw: the same imputed values. `obj` must
+#' have unique row and column names. `as.matrix()` of the fit gives the
+#' imputed matrix, without the attributes of a `slideimp_results` object.
+#' Because the fit holds one draw:
 #' - `mipca_complete()` takes `m = 1` only.
 #' - `summary()` shows no cells, because one draw gives no Rhat or ESS.
 #' - `cbind()` joins the fit only to other fits of one draw. A `mipca()` fit
@@ -391,6 +394,12 @@ pca_imp_results <- function(obj, info) {
 #' A column whose observed values do not vary takes no part in PCA imputation
 #' either. `post_imp` and the `mean_filled_cols` attribute treat it like a
 #' column over `colmax`.
+#'
+#' With `subset`, the result holds only the selected columns, in the order
+#' they have in `obj`. The other columns take part in the imputation as they
+#' do without `subset`. So `subset` makes the result smaller, not the imputation
+#' faster. A name that is not in `colnames(obj)`, or a `subset` that
+#' selects no column, is an error.
 #'
 #' @inheritSection slideimp-package Column mean fill
 #'
@@ -443,6 +452,9 @@ pca_imp_results <- function(obj, info) {
 #' # mean imputation. Select `ncp` with `tune_imp()`.
 #' pca_imp(obj, ncp = 2, nb.init = 5, seed = 123)
 #'
+#' # Impute every column, but return only the first three
+#' pca_imp(obj, ncp = 2, subset = 1:3)
+#'
 #' # The same imputation as a fit of one draw
 #' fit <- pca_imp(obj, ncp = 2, output = "mipca")
 #' fit
@@ -467,6 +479,7 @@ pca_imp <- function(
   post_imp = TRUE,
   clamp = NULL,
   output = c("matrix", "mipca"),
+  subset = NULL,
   .progress = FALSE
 ) {
   # pre-conditioning
@@ -544,28 +557,45 @@ pca_imp <- function(
   if (output == "mipca") {
     check_si_mi_names(obj)
   }
+  # the columns the result holds, ascending: NULL for every column. Every
+  # eligible column still takes part in the fit, since every hole in every
+  # eligible column is updated at each EM iteration and feeds the next one,
+  # so `subset` narrows what is returned, not what is computed.
+  keep <- resolve_narrow_subset(subset, obj)
+  out_cols <- if (is.null(keep)) seq_len(ncol(obj)) else keep
   checkmate::assert_flag(.progress, .var.name = ".progress")
   trace_iter <- if (isTRUE(.progress)) 10L else 0L
 
   # per-column missingnesss
   cmiss <- mat_miss(obj, col = TRUE, prop = FALSE)
 
-  # early exit if no missingness at all. The input comes back unchanged, but
-  # in the same shape as the main path's result, as @returns promises. Under
-  # `output = "mipca"` that is one part over every column, filling nothing.
-  if (!any(cmiss > 0L)) {
-    cli::cli_inform("No missing values in input. Returning input unchanged.")
+  # early exit if no column the result holds has a hole. Those columns come
+  # back unchanged, but in the same shape as the main path's result, as
+  # @returns promises. Under `output = "mipca"` that is one part over them,
+  # filling nothing.
+  if (!any(cmiss[out_cols] > 0L)) {
+    if (is.null(keep)) {
+      cli::cli_inform("No missing values in input. Returning input unchanged.")
+    } else {
+      cli::cli_inform(
+        "No missing values in the {.arg subset} columns. Returning them unchanged."
+      )
+    }
     info <- pca_imp_info(post_imp = post_imp, solver = solver)
     if (output == "matrix") {
-      return(pca_imp_results(obj, info))
+      return(pca_imp_results(
+        if (is.null(keep)) obj else obj[, keep, drop = FALSE],
+        info
+      ))
     }
     cl <- match.call()
     return(parts_to_si_mi(
       obj,
-      list(new_part(cols = seq_len(ncol(obj)), kind = "pca", info = info)),
+      list(new_part(cols = out_cols, kind = "pca", info = info)),
       call = cl,
       fn = "pca_imp",
-      prov_extra = list(list(rank = as.integer(ncp), iter = info$n_iter))
+      prov_extra = list(list(rank = as.integer(ncp), iter = info$n_iter)),
+      keep = keep
     ))
   }
 
@@ -610,11 +640,15 @@ pca_imp <- function(
     )
   }
 
-  # at least one eligible column must have missingness
-  if (!any(cmiss[eligible] > 0L)) {
+  # at least one eligible column the result holds must have missingness
+  if (!any(cmiss[out_cols][eligible[out_cols]] > 0L)) {
     cli::cli_abort(
       c(
-        "All columns with missing values are ineligible (exceed {.arg colmax} ({colmax}) or have zero variance).",
+        if (is.null(keep)) {
+          "All columns with missing values are ineligible (exceed {.arg colmax} ({colmax}) or have zero variance)."
+        } else {
+          "All {.arg subset} columns with missing values are ineligible (exceed {.arg colmax} ({colmax}) or have zero variance)."
+        },
         "i" = "Relax {.arg colmax} or remove zero-variance columns."
       ),
       class = "slideimp_infeasible"
@@ -780,10 +814,11 @@ pca_imp <- function(
     )
   }
 
-  # two parts, which together cover every column. The PCA part is the
-  # kernel's triplets: the eligible columns and every hole in them, already in
-  # the input's 1-based numbering, in the column-major order the part's
-  # validator checks. The mean part is every ineligible column: under
+  # two parts, which together cover every column the result holds. The PCA
+  # part is the kernel's triplets: the eligible columns and every hole in
+  # them, already in the input's 1-based numbering, in the column-major order
+  # the part's validator checks. With `subset`, the door cuts it to the kept
+  # columns. The mean part is every ineligible column the result holds: under
   # `post_imp` each hole set to its column mean, otherwise left NA. No
   # ineligible column is all NA, since check_finite() refuses one, so each
   # has a mean. Neither part holds NA, as the mse check above guarantees for
@@ -809,7 +844,12 @@ pca_imp <- function(
   if (!is.double(obj)) {
     storage.mode(obj) <- "double"
   }
+  # the ineligible columns the result holds. The PCA part keeps every
+  # eligible column, kept or not, and the door cuts it to `keep`.
   mean_cols <- unname(which(!eligible))
+  if (!is.null(keep)) {
+    mean_cols <- intersect(mean_cols, keep)
+  }
   holed_cols <- mean_cols[cmiss[mean_cols] > 0L]
   # Without `post_imp`, the ineligible columns with a hole are one `left_na`
   # part, and those with none a mean part with nothing to fill, so a
@@ -833,13 +873,19 @@ pca_imp <- function(
     solver_probed = solver_probed,
     diag = best_diag,
     # what `post_imp` set to a column mean: the ineligible columns that had a
-    # hole. `mean_filled_cells` keeps its empty default, since the PCA part
-    # fills every hole of its columns.
-    mean_filled_cols = if (post_imp) holed_cols else integer(0)
+    # hole, numbered as the result's columns. `mean_filled_cells` keeps its
+    # empty default, since the PCA part fills every hole of its columns.
+    mean_filled_cols = if (!post_imp) {
+      integer(0)
+    } else if (is.null(keep)) {
+      holed_cols
+    } else {
+      match(holed_cols, keep)
+    }
   )
 
   if (output == "matrix") {
-    obj <- fill_parts(obj, parts)
+    obj <- fill_parts(obj, parts, keep = keep)
     return(pca_imp_results(obj, info))
   }
   # every chunk of the fit carries the call's whole record, so it survives a
@@ -857,6 +903,7 @@ pca_imp <- function(
     prov_extra = c(
       list(list(rank = as.integer(ncp), iter = best_diag$n_iter)),
       vector("list", length(parts) - 1L)
-    )
+    ),
+    keep = keep
   )
 }

@@ -103,6 +103,23 @@ stage <- function(root, scenario, n, p, frac_mean) {
     if (scenario == "pca_imp mipca + as.matrix") {
       out <- as.matrix(fit)
     }
+  } else if (
+    scenario %in% c("pca_imp, subset = 10%", "pca_imp, subset 10%, mipca")
+  ) {
+    ## A tenth of the columns, two in every twenty: an odd column (no hole)
+    ## and an even one (holes), eligible below p - p * frac_mean and
+    ## ineligible above, so the kernel's part and the mean part are both cut.
+    sel <- sort(c(seq(1L, p, by = 20L), seq(2L, p, by = 20L)))
+    res <- suppressWarnings(pca_imp(
+      x,
+      ncp = 2,
+      solver = "exact",
+      maxiter = 10,
+      miniter = 1,
+      threshold = 1e-4,
+      subset = sel,
+      output = if (scenario == "pca_imp, subset = 10%") "matrix" else "mipca"
+    ))
   } else if (scenario == "today's post step alone") {
     ## pca_imp()'s write-back, then mean_imp_col() on the ineligible columns.
     obj <- x
@@ -179,6 +196,8 @@ scenarios <- c(
   "pca_imp, post_imp = FALSE",
   "pca_imp, output = mipca",
   "pca_imp mipca + as.matrix",
+  "pca_imp, subset = 10%",
+  "pca_imp, subset 10%, mipca",
   "today's post step alone",
   "parts, matrix door",
   "slices, si_mi door",

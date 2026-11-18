@@ -19,8 +19,8 @@
 #'
 #' The result records what the column means replaced, in two attributes:
 #'
-#' * `mean_filled_cols`: an integer vector with the index of each column that
-#'   took no part and was filled.
+#' * `mean_filled_cols`: an integer vector with the index, in the result, of
+#'   each column that took no part and was filled.
 #' * `mean_filled_cells`: an integer matrix with the columns `row` and `col`,
 #'   one row for each cell that the method could not impute and that was
 #'   filled.

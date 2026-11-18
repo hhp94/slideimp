@@ -720,6 +720,77 @@ no path the probe measures changed.
   for both outputs.
 - `dev/to-do.md` gains the NEWS line: `pca_imp()` gains `subset`.
 
+Done 2026-11-17, in `R/pca_imp.R`, `R/utils.R` (`resolve_narrow_subset()`) and
+one roxygen line in `R/slideimp-package.R`; no change under `src/`, to a
+vendored file, or to any caller.
+
+As built, and where the text above turned out short or wrong:
+
+- The refusals are one new helper beside `resolve_subset()`, written for
+  `knn_imp()` to take in its own change: cli errors for an empty `subset`, a
+  name `obj` does not have, a name given twice, and names on an input
+  without column names; checkmate (`.var.name = "subset"`) for numbers out
+  of range, repeated, `NA`, not whole, or not numbers at all. It returns
+  `NULL` for a selection of every column, so `subset = 12:1` on 12 columns
+  is the call without `subset`, record and message included.
+- The early exit keeps its message when `subset` is `NULL` and says "No
+  missing values in the `subset` columns. Returning them unchanged." when it
+  is not. The infeasibility message names `subset` in the same way; its fix
+  line is unchanged.
+- The matrix output's early exit is `obj[, keep, drop = FALSE]`, not a
+  door, as the full early exit returns `obj` itself: an integer input stays
+  integer there, as before.
+- An integer input with holes is still coerced to double whole before the
+  doors, so with `subset` it is copied whole once more than a double input.
+  Not changed: the coercion is Phase 3's, and integer input is rare.
+- The "Column mean fill" section, shared by every imputer's help page, now
+  says `mean_filled_cols` holds the index "in the result". That is true of
+  every imputer, since only `pca_imp()` narrows and the others' results
+  number as their inputs do; `knn_imp.Rd`, `slide_imp.Rd`, `group_imp.Rd`
+  and `slideimp-package.Rd` change with it.
+- The memory probe's first subset (every tenth column from column 1) picked
+  only odd columns, which hold no hole in its design, so the only holes in
+  `subset` were in columns over `colmax` and `pca_imp()` refused the call as
+  infeasible, as the rule above says it should. The stage takes two columns
+  in every twenty instead, one with holes and one without.
+
+Tests: `tests/testthat/test-pca_imp-subset.R`. With `subset` (sorted,
+unsorted, names, doubles, one column) and both `post_imp`, the matrix output
+is `identical()` to the full output's selected columns, and its record to the
+full record but `mean_filled_cols`; a `subset` of every column, in any order,
+is the call without it; `mean_filled_cols` counts the result's columns (6 in
+the input, 2 in the result); `as.matrix()` of the `"mipca"` output is the
+narrowed matrix output, with the record on every chunk and the column left
+NA; a `subset` without holes never reaches the kernel (a stubbed kernel that
+errors, which a `subset` with a hole shows is in place); the infeasible
+refusal and its class; each refusal names `pca_imp()`; `tune_imp()` refuses
+`subset` in `parameters`.
+
+Checked: the suite with `load_all1(timer = FALSE)` and the manual tests, 22
+files, 272 tests, 2738 expectations, none failed; its two `group_imp` errors
+are again daemons running an older installed copy, and the `group_imp` and
+`tune_imp` tests on an install of this checkout pass, 118 tests. The Phase 0
+compare gives what Phases 4 and 5 gave: 57 of 58 cases, `mean_xa_cores2`
+erroring on the removed `cores`; every `pca_*` case bitwise; the same six
+cases not bitwise, worst rel `6.65e-16`.
+
+The memory probe, extra peak over the input, one run per stage:
+
+| Stage | Extra peak |
+|---|---|
+| `pca_imp()`, `post_imp = TRUE` | 2.44 x (2.42 x in Phase 4) |
+| `pca_imp()`, `post_imp = FALSE` | 2.43 x (2.43 x) |
+| `pca_imp(output = "mipca")` | 2.44 x (2.43 x) |
+| the same, then `as.matrix()` | 2.79 x (2.78 x) |
+| `pca_imp(subset = )`, a tenth of the columns | 2.43 x |
+| the same, `output = "mipca"` | 2.43 x |
+
+So `subset` does not move the peak of one call, as expected: the kernel sets
+it, and the kernel still runs on every eligible column. What `subset` saves
+is the result a call returns and keeps, a tenth of the input here instead of
+a whole copy, which lowers the peak of a caller that holds results while it
+works. No caller passes `subset` yet.
+
 ## Upstream, in `hhp94/test`
 
 Investigated and ruled in `hhp94/test` on 2026-11-15. The rulings are in
