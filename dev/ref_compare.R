@@ -87,6 +87,15 @@ show_meta <- function(d, role) {
     basename(m$la_library),
     m$time
   ))
+  ## Captures older than these fields leave them NULL.
+  if (!is.null(m$rcppeigen)) {
+    cat(sprintf(
+      "  RcppEigen %s from %s, RcppArmadillo %s\n",
+      m$rcppeigen,
+      m$rcppeigen_lib,
+      m$rcpparmadillo
+    ))
+  }
 }
 show_meta(dir_a, "ref")
 show_meta(dir_b, "new")

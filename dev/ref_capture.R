@@ -1,8 +1,8 @@
 # Reference capture: run a fixed set of calls on one build and save every
 # result, with its type, dims and attributes, so a later build can be checked
-# against it by dev/ref_compare.R. Shared by the si-mi branch
-# (dev/si_mi_conversion.md, Phase 0) and the eigen branch
-# (dev/eigen_conversion.md, Phase 0), so it covers what both list.
+# against it by dev/ref_compare.R. Shared by the two plans on the si-mi
+# branch, dev/si_mi_conversion.md and dev/eigen_conversion.md (Phase 0 in
+# each), so it covers what both list.
 #
 # Run from the package root, with a label naming the capture:
 #   Rscript dev/ref_capture.R e5b3cf7
@@ -50,6 +50,12 @@ meta <- list(
   r_version = R.version.string,
   la_library = La_library(),
   blas = extSoftVersion()[["BLAS"]],
+  ## The build links to whichever RcppEigen and RcppArmadillo come first on
+  ## the library path, which R_LIBS set before R starts can change
+  ## (dev/eigen_conversion.md, "Both RcppEigen versions").
+  rcppeigen = as.character(packageVersion("RcppEigen")),
+  rcppeigen_lib = dirname(find.package("RcppEigen")),
+  rcpparmadillo = as.character(packageVersion("RcppArmadillo")),
   time = format(Sys.time(), "%Y-%m-%d %H:%M:%S")
 )
 saveRDS(meta, file.path(out_dir, "_meta.rds"))
@@ -59,6 +65,12 @@ cat(sprintf(
   meta$source_commit,
   if (meta$source_dirty) " (DIRTY)" else "",
   meta$head
+))
+cat(sprintf(
+  "RcppEigen %s from %s; RcppArmadillo %s\n",
+  meta$rcppeigen,
+  meta$rcppeigen_lib,
+  meta$rcpparmadillo
 ))
 
 ## ---- inputs ---------------------------------------------------------------

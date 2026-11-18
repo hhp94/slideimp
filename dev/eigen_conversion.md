@@ -103,15 +103,19 @@ before relying on these numbers:
 
 - CRAN: RcppEigen 0.3.4.0.2, Eigen 3.4. What users and CRAN build with
   today.
-- Candidate: RcppEigen 0.4.9.9-2, Eigen 5.0.1, from the r-universe and
-  GitHub builds issue 151 names. What they build with after the switch.
+- Candidate: RcppEigen 0.4.9.9-5, Eigen 5.0.1, from the RcppCore
+  r-universe that issue 151 names (it named 0.4.9.9-2 when the issue was
+  opened). What they build with after the switch.
 
 Nothing is vendored and nothing is pinned: the package links to whichever
 RcppEigen is installed, and must pass on both. The candidate is installed
-into its own private library in a scratch folder, never over the CRAN one,
-and a run selects it with `R_LIBS` set before R starts, the way the timing
-driver separates its builds. Each run prints
-`packageVersion("RcppEigen")`, so a log says which one it tested.
+into its own private library, never over the CRAN one, by
+`dev/eigen_install_candidate.R`, which takes the library as an argument,
+installs only when it is missing or older than the r-universe's, and prints
+the Eigen version the headers define. A run selects it with `R_LIBS` set
+before R starts, the way the timing driver separates its builds. Each
+capture records and prints `packageVersion("RcppEigen")` and the library it
+came from, so a log says which one it tested.
 
 "Passes" means the reverse-dependency run's standard, not a compile: the
 whole suite and, at the end, `devtools::check()`. Compiling is necessary and
@@ -161,9 +165,10 @@ leaves `DESCRIPTION`, nothing under `tests/` may call it. It stays after
 Phase 3, so a wrapper changed later can still be checked against the call it
 replaced.
 
-- A script in dev/ installs RcppArmadillo from CRAN into a private library
-  in a scratch folder when it is missing or older than CRAN's. Nothing from
-  it enters the repository.
+- `dev/oracle_install_armadillo.R` installs RcppArmadillo from CRAN into a
+  private library, given as an argument, when it is missing or older than
+  CRAN's; `--check` reports both versions and installs nothing. Nothing from
+  the library enters the repository.
 - A C++ file in dev/, compiled by `Rcpp::sourceCpp()` against that library,
   pulls in the wrapper source and exposes each pair to R: the wrapper, and
   the Armadillo call it replaces. Armadillo and `R_ext/Lapack.h` in one file
@@ -279,29 +284,55 @@ they were written to do:
   without asserting it. Integer results, index maps and the NA placement use
   `identical()`. Type, dims and attributes must match exactly.
 
+The reference capture is labelled `76d4c60`, the head of `si-mi` when it
+was taken (source commit `603fe33`), and every compare in this plan is
+against it. It was taken in a clone of that commit outside the working
+tree, since other sessions build here, and copied into `dev/ref/`. A capture
+is regenerable: check out `76d4c60` in a clone and rerun.
+
 The noise floor comes first: capture the reference build twice, in two R
 processes, and compare them. A threaded BLAS need not be deterministic, and
 no tolerance is chosen tighter than what the unchanged build reproduces
 against itself. The header of `dev/ref_compare.R` records the result and the
-default tolerances set from it, on one machine with one BLAS.
-
-Still owed in this phase: the candidate capture and the timing driver, both
-below, and the install script of "The Armadillo oracle".
+default tolerances set from it, on one machine with one BLAS. Run
+2026-11-18 at `76d4c60`: 58 cases, all bitwise identical (worst absolute
+and relative difference 0), and `dev/ref_compare_selftest.R 76d4c60` caught
+the 11 planted changes at tolerance 0 and the 10 expected at the defaults.
 
 Then the same reference build against the candidate RcppEigen, compared to
 the capture. At the start commit the package's own code holds no Eigen, so the
 exports captured here should agree to the noise floor; a larger difference
 is a finding to explain before Phase 1. This also proves the candidate
 library and the `R_LIBS` selection work before any step depends on them.
+Run 2026-11-18 against 0.4.9.9-5 (Eigen 5.0.1), as capture
+`76d4c60-eigen5`: every translation unit compiled against the candidate's
+headers, and all 58 cases are bitwise identical to `76d4c60`. The only
+compiler difference is the count of Eigen's own `-Wignored-attributes`
+warnings, which both versions emit.
 
-Timing, in the same phase. Install the reference build into its own library
-in a scratch folder, and each converted build into another; a driver
-alternates Rscript processes between the two libraries and reports medians
-over interleaved repetitions of `pca_imp()` (both solvers) and `knn_imp()`
-on the chr21 data and on a larger `sim_mat()`. Both builds are the same
+Timing, in the same phase. Install the reference build into its own library,
+and each converted build into another, with `dev/eigen_time_install.R`; it
+writes the source commit and the RcppEigen and RcppArmadillo versions the
+build compiled against into the library. `dev/eigen_time_builds.R`
+alternates Rscript processes between the two libraries
+(`dev/eigen_time_worker.R` is one process, and stops if slideimp loaded from
+the wrong library) and reports medians over interleaved repetitions of
+`pca_imp()` (both solvers) and `knn_imp()` on the chr21 data and on a larger
+`sim_mat()`, 200 x 5000 by default. Each process runs its call 5 times in
+one `replicate()` and reports the total, since one PCA call on chr21 takes
+under 0.1s, too close to the timer's resolution. Both builds are the same
 flags; `load_all1()` builds are not mixed with installed ones. Removing
 Armadillo also removes the OpenMP Armadillo turns on by itself in an OpenMP
 build, so this is the measurement of what that costs or saves.
+
+The driver's own noise, read 2026-11-18 on one machine with the BLAS and
+OpenMP threads at their defaults: the reference installed twice and timed
+against itself, 5 repetitions, 165s in all. Five workloads gave a b/a ratio
+of medians between 0.97 and 1.05. `chr21_knn` gave 1.32, from a stretch of
+slow runs on one side in repetitions 1 to 3 whichever ran first; the two
+DLLs differ only in their header timestamp and checksum, so this was the
+machine. A converted build's ratio is read against this band, and one
+outside it is timed again before it counts as a finding.
 
 ## Phase 1: storage-only files to plain Rcpp
 
@@ -393,6 +424,12 @@ find out which call did it before going on.
 
 - Whether the noise floor measured on one machine holds on the BLAS of the
   rhub Linux images. Until a capture is compared there, the default
-  tolerances are a reading from one BLAS.- Whether the R callers are tidied once the return types are free to change.
-- What the timings say. They are recorded here when Phase 0 and each phase
-  have been run, as readings on one machine, not as numbers to pin.
+  tolerances are a reading from one BLAS.
+- Whether the R callers are tidied once the return types are free to change.
+- What the timings say. They are recorded here when each phase has been
+  run, as readings on one machine, not as numbers to pin. Phase 0's reading
+  is the driver's noise band, under "Phase 0".
+- The capture case `mean_xa_cores2` in `dev/ref_capture.R` stores an error,
+  "unused argument (cores = 2)", since `mean_imp_col()` lost `cores`. The
+  other three `mean_*` cases still reach the function. Whether the case is
+  dropped or rewritten is for the Phase 0 review.
