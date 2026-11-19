@@ -575,7 +575,12 @@ first two are on purpose; the third was found when the dsyevd call moved:
   deficient and `ncp`, plus one when regularized, exceeds its rank: samples that are exact
   copies of each other, holes included, or columns that are. `si_la::syevr_range` holds the
   `n` cells itself and copies `iu - il + 1` out, so its caller's buffer needs no more, and
-  `eig_sym_sel()` now calls it.
+  `eig_sym_sel()` now calls it. The write was not harmless. Measured on Windows
+  (`dev/review_p2.md`, finding 1): on 30 samples of which 6 are distinct, 1.2.0 built from
+  source and every commit before the move end the R process with a segmentation fault,
+  `pca_imp(x, ncp = 5)` at its defaults included, and the builds after it return. The
+  regression test is that input
+  (`tests/testthat/test-pca_imp.R`: `test_that("pca_imp returns on replicate samples with ncp above their rank", {`).
 - *NaN and Inf.* Neither of the chain's own calls tested its matrix, and LAPACK does not
   refuse such input. Measured on one machine with R's own LAPACK: dsyevr asked for every eigenpair
   of a matrix holding NaN does not return, a proper subset comes back with `info = 0` and
@@ -583,7 +588,12 @@ first two are on purpose; the third was found when the dsyevd call moved:
   eigenvalues. Both wrappers test the triangle LAPACK reads, and only that one, before
   the routine is entered, and return `err_nonfinite`. `pca_imp()` refuses NaN and Inf in
   its input (`R/pca_imp.R`: `check_finite(obj)`), so only arithmetic inside the fit could
-  put one in a Gram; whether any input does is NOT MEASURED. On the exact path such a Gram
+  put one in a Gram. Finite input whose squares overflow does: unscaled values near 1e160,
+  or near 1e200 with `scale = TRUE`, end in the stop below under either solver, the same
+  before and after the wrappers, and near 1e150 the fit returns (measured,
+  `dev/review_p2.md`, finding 3). A test pins that stop
+  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops in the eigensolver", {`).
+  Which status the wrapper returned there is not measured. On the exact path such a Gram
   is now the stop of a failed eigensolve (Layer 6, "Exact path"), where the chain's own
   call either reported a wrong count, the same stop, or did not return. On the LOBPCG
   path a small Gram holding NaN or Inf is a failed Rayleigh-Ritz, so that outer iteration
@@ -727,7 +737,10 @@ Two things Armadillo does that `si_la::matmul` does not:
   size up to 4 x 4 (dgemm), Armadillo runs loops of its own and calls no BLAS (READ: the
   tests in `gemm::apply_blas_type()` and `gemv::apply_blas_type()`; NOT READ: the loops).
   The wrapper calls BLAS, so such a product can differ in its last bits. In the chain that
-  needs a Gram of at most 4 x 4 under LOBPCG.
+  needs a Gram of at most 4 x 4 under LOBPCG. Measured (`dev/review_p2.md`, finding 2): with
+  `solver = "lobpcg"` on a Gram of order 2 to 4, when one eigenpair or every eigenpair is
+  asked for, 267 of 280 fits differ from the Armadillo build, by at most 5.2e-9 absolute;
+  fits outside that rule, and every fit under the exact solver, are identical.
 - The dsyrk route for `A.t() * A` on one object. No call site of the chain has that form.
 
 An in-place product with an empty inner dimension is passed on to dgemm with a leading

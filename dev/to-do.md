@@ -59,9 +59,13 @@ Easy to miss in the diff, noted so the draft does not:
   where `knn_imp()`'s `subset` still drops the one with a message and returns
   early on the other. The "Column mean fill" section now says
   `mean_filled_cols` counts the result's columns.
-- `pca_imp()` no longer writes past a buffer when asked for more components
-  than the data has rank (1.2.0 does, in its dsyevr call:
-  `dev/eigen_conversion.md`, "The review of the wrapper layer").
+- `pca_imp()` no longer ends the R session when asked for more components
+  than the completed data has rank, as on replicate samples. 1.2.0 writes
+  past a buffer in its dsyevr call there, and that is a crash, not a silent
+  write: built from source on Windows it segfaults on `pca_imp(x, ncp = 5)`,
+  every other argument at its default, for 30 samples of which 6 are
+  distinct (`dev/review_p2.md`, finding 1; no other platform measured).
+  `tests/testthat/test-pca_imp.R` has the regression test.
 - `pca_imp()` under LOBPCG with 17 or more eigenpairs (`ncp` of 16 or more
   when regularized, 17 or more with `method = "EM"`) returns values that
   differ from 1.2.0's by about 1e-8, inside what the fit's own `threshold`
@@ -74,11 +78,39 @@ Easy to miss in the diff, noted so the draft does not:
   in the chunks of its `mipca` output (`dev/eigen_conversion.md`, Phase 2,
   step 6).
 - `pca_imp()` with `ncp` above 32 returns values that differ from 1.2.0's:
-  in the last digits under the exact solver (about 1e-14), by about 1e-8
-  under LOBPCG, where the solver counts can differ too. The sum of the
-  squared leading singular values is taken by one loop at every length,
-  where 1.2.0 gave more than 32 of them to ddot (`dev/eigen_conversion.md`,
-  Phase 2, step 6).
+  in the last digits under the exact solver, by about 1e-8 under LOBPCG,
+  where the solver counts can differ too. Neither is a bound, since the
+  difference grows with the iteration count: under the exact solver, at
+  most 8.2e-15 absolute on the plan's cases, and 1.6e-13 absolute, 1.2e-11
+  relative, on a fit of 202 iterations (`dev/review_p2.md`, finding 6).
+  The sum of the squared leading singular values is taken by one loop at
+  every length, where 1.2.0 gave more than 32 of them to ddot
+  (`dev/eigen_conversion.md`, Phase 2, step 6).
+- `pca_imp()` with `solver = "lobpcg"` on a Gram of order 2 to 4, when one
+  eigenpair or every eigenpair of it is asked for, returns values that
+  differ from 1.2.0's: by 5.2e-9 absolute at most over the 267 fits measured
+  to differ. `n_iter` is the same in each; `n_exact`, `n_lobpcg_ok` and
+  `n_lobpcg_bad` differ in most fits that ask for every eigenpair. A product
+  of that size goes to BLAS, where Armadillo ran loops of its own
+  (`dev/eigen_conversion.md`, Phase 2, step 4, "What changes and is
+  reachable"). The default solver takes the exact path at that size and
+  returns what it did; `group_imp()` passing `solver = "lobpcg"` to groups
+  of two to four features is the likely way in, not measured.
+- The error of a failed eigensolve reads "top-k symmetric eigensolver
+  failed to converge", where 1.2.0 reads "`eig_sym_sel` failed to
+  converge" (changed in `c7a253b`). Finite input whose squares overflow
+  raises it in both, unscaled values near 1e160 for one, and a test now
+  pins its class and wording (`dev/review_p2.md`, finding 3).
+- A failed triangular solve inside LOBPCG is an `Rcpp::exception`,
+  "lobpcg_solve: triangular solve failed", where Armadillo raised a
+  `std::runtime_error`, "solve(): solution not found", and Armadillo's
+  "system is singular" line on the console is gone
+  (`dev/eigen_conversion.md`, Phase 2, step 4). No input is known to reach
+  either without an injected failure, so this may need no NEWS text.
+- `pca_imp()` refuses, with a new error, an input whose eligible columns
+  hold more than `.Machine$integer.max` missing values
+  (`dev/eigen_conversion.md`, Phase 2, step 6). No test or measurement
+  raises it: it needs a matrix of more than that many cells.
 
 ## Parts for the other imputers
 

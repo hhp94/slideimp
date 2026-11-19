@@ -1019,6 +1019,66 @@ test_that("pca_imp refuses a fit whose mse is not finite, as a defect", {
   expect_error(run(), "slideimp internal, part: `values` holds NA")
 })
 
+test_that("pca_imp returns on replicate samples with ncp above their rank", {
+  # Regression test. 30 samples of which 6 are distinct, holes included,
+  # leave the centered completed data with rank 5 at most, so each call below
+  # asks dsyevr for a range of eigenvalues that cuts a group of equal ones.
+  # Up to 1.2.0 the chain gave dsyevr one eigenvalue cell per eigenpair asked
+  # for, where LAPACK documents the order of the matrix, and dsyevr wrote
+  # past them: each of these calls ended the R process (measured on Windows;
+  # dev/review_p2.md, finding 1). A build with that defect fails here by
+  # taking the test process down, not by an expectation.
+  set.seed(21)
+  base6 <- sim_mat(n = 6, p = 80, perc_total_na = 0.1, perc_col_na = 0.5)$input
+  x <- base6[rep(seq_len(6), times = 5), ]
+  rownames(x) <- sprintf("s%02d", seq_len(nrow(x)))
+  expect_true(anyNA(x))
+  expect_identical(nrow(unique(x)), 6L)
+
+  cases <- list(
+    list(ncp = 5L, method = "regularized", k_eig = 6L),
+    list(ncp = 7L, method = "regularized", k_eig = 8L),
+    list(ncp = 12L, method = "regularized", k_eig = 13L),
+    list(ncp = 7L, method = "EM", k_eig = 7L)
+  )
+  for (case in cases) {
+    label <- sprintf("ncp = %d, method = %s", case$ncp, case$method)
+    set.seed(1)
+    res <- pca_imp(x, ncp = case$ncp, method = case$method)
+    expect_identical(dim(res), dim(x), label = label)
+    expect_false(anyNA(res), label = label)
+    # the premise: more eigenpairs asked for than the completed data has rank
+    m <- matrix(as.vector(res), nrow(res))
+    centered <- sweep(m, 2, colMeans(m))
+    expect_lt(qr(centered)$rank, case$k_eig, label = label)
+  }
+})
+
+test_that("finite input whose squares overflow stops in the eigensolver", {
+  # Values near 1e200 are finite, so check_finite() passes them, and their
+  # cross-products are not: the Gram handed to the eigensolver holds Inf.
+  # si_la::syevr_range refuses it before LAPACK is entered, and the kernel
+  # stops. This pins the stop a user with such data sees, class and wording.
+  set.seed(1234)
+  x0 <- sim_mat(30, 10, perc_total_na = 0.1, perc_col_na = 1)$input
+  x <- x0 * 1e200
+  expect_true(anyNA(x))
+  expect_true(all(is.finite(x[!is.na(x)])))
+
+  # the premise: the same data at its own scale is fitted
+  expect_false(anyNA(pca_imp(x0, ncp = 2, scale = FALSE)))
+
+  for (solver in c("exact", "lobpcg")) {
+    expect_error(
+      pca_imp(x, ncp = 2, scale = FALSE, solver = solver),
+      "top-k symmetric eigensolver failed to converge",
+      fixed = TRUE,
+      class = "Rcpp::exception",
+      label = solver
+    )
+  }
+})
+
 # lobpcg ----
 test_that("LOBPCG mode during warmup matches forced exact path", {
   set.seed(1234)

@@ -61,6 +61,15 @@ checked against both RcppEigen versions (see "Both RcppEigen versions").
   buffer: workspace matrices, `Eigen::Map` over a buffer, element-wise
   expressions. A matrix product that Armadillo sent to BLAS still goes to
   BLAS, never to Eigen's own product, so the arithmetic stays the same.
+  As carried out, Phase 2 put no Eigen in the chain: the kernel holds
+  `std::vector<double>` and raw pointers, and LOBPCG holds its matrices in
+  a type of its own, `lobpcg_detail::Block`. The author's reasons, neither
+  measured: a raw buffer shows the order of every operation, which the
+  bitwise comparison with Armadillo rests on, and the chain stays clear of
+  the switch between RcppEigen versions. No step record said the plan had
+  changed, which the review of Phase 2 found. Accepted (maintainer,
+  2026-11-19, with the recommendations of `dev/review_p2.md` as a whole):
+  the chain stays on raw buffers, and Phase 4 has the item for `Block`.
 - The OpenMP flags in `src/Makevars` and `src/Makevars.win` are the
   maintainer's to change and are not part of this plan.
 
@@ -354,8 +363,11 @@ What was wrong in the wrappers, and is fixed:
   `ncp = 7` up to 6; on 10 columns of which 3 are identical, `ncp = 8`
   wrote 1. Nothing was written on random data, on the duplicated data
   while `ncp + 1` stayed within its rank, or on the chr21 file at `ncp` 2,
-  10 and 40. Every run returned normally; where the cells land was not
-  looked at. `dev/to-do.md` carries it until step 3 of Phase 2.
+  10 and 40. Every run of that clone returned normally, which says nothing
+  of a build with the defect: the clone's buffer held the `n` cells, so
+  nothing was written past it. The review of Phase 2 ran the builds as they
+  are, and there the write ends the R process ("The review of Phase 2"
+  below). `dev/to-do.md` carried it until step 3 of Phase 2.
 - Neither eigen wrapper tested for NaN or Inf, as the chain's calls do
   not. dsyevr asked for every eigenpair of a matrix holding NaN did not
   return within 60 s, 4 of 4 cases at orders 6 and 60; a proper subset
@@ -428,7 +440,11 @@ the reviewer's sixteen are among what it catches.
 Not done, and why. The scan for NaN and Inf is not timed. The Armadillo
 version of `src/eig_sym_sel.h` is not patched: a patch for CRAN is a
 separate thread (maintainer, 2026-11-18), and the conversion does not wait
-for it. Step 3 of Phase 2 ended the overrun on this branch. R 4.3.0 is not checked, as before.
+for it. Step 3 of Phase 2 ended the overrun on this branch. That ruling was
+given when the overrun had been seen to do nothing. Measured since, it is a
+segfault in 1.2.0 on replicate samples ("The review of Phase 2" below), so
+whether 1.2.x is patched is open again and is the maintainer's to decide.
+R 4.3.0 is not checked, as before.
 
 ## Who does which work
 
@@ -493,6 +509,8 @@ so each phase begins from reviewed code.
 
 Written at `e5b3cf7`; on 2026-11-18 the only file under `src/` changed since
 was the vendored `src/mipca.cpp`. "Storage" means containers, indexing and element loops only.
+The last column is the plan as written. Where it names Eigen, Phase 2 used
+raw buffers instead ("What was decided", as carried out).
 
 | File | What it uses Armadillo for | Becomes |
 |---|---|---|
@@ -954,11 +972,16 @@ Step 3, on the working tree over `905e1ac`:
   range that cuts a group of equal eigenvalues no longer writes past
   `eigvals`. That ends the defect `dev/to-do.md` carried: its entry is
   deleted, its NEWS line moved to the list for the draft, and its demand
-  for a guard-cell check moved to Phase 4 above. A Gram holding NaN or Inf
-  in its upper triangle is refused before dsyevr is entered and stops with
-  the message above, where the chain's call came back with a wrong count
-  (the same stop) or did not return. Only the arithmetic of the fit could
-  put one there, not measured, and no test does.
+  for a guard-cell check moved to Phase 4 above. The defect was a crash,
+  not a silent write, which this step did not know: on replicate samples
+  every build before this step ends the R process, and this one returns
+  ("The review of Phase 2" below, which added the regression test). A Gram
+  holding NaN or Inf in its upper triangle is refused before dsyevr is
+  entered and stops with the message above, where the chain's call came
+  back with a wrong count (the same stop) or did not return. Only the
+  arithmetic of the fit could put one there. It does, on finite input
+  whose squares overflow, and both ends of Phase 2 stop the same way there;
+  measured and tested by the same review.
 - `dev/review_eigen_wrappers.md` cited the line that sized the eigenvalue
   buffer; it now names that line at `79cce0f`.
 - The timer build and the diagnostics build compile, with no warning from
@@ -1220,6 +1243,25 @@ Step 4, the containers and products, on the working tree over `ff0e394`:
   internal error where Armadillo's conformance check threw. The QR's `Q` and
   `R` are zero-filled where `arma::fill::none` left them; the wrapper writes
   every cell before anything reads one.
+- What changes and is reachable. Found by the review of Phase 2; this
+  record did not have it until then. A product whose matrix operand is
+  square and 4 x 4 or less goes to BLAS through `si_la::matmul`, where
+  Armadillo ran loops of its own (`dev/pca_imp_structure.md`, "Two things
+  Armadillo does that `si_la::matmul` does not"). In the chain that is a
+  Gram of order 2 to 4 under `solver = "lobpcg"` with one eigenpair asked
+  for, or every one. Measured, `59920f4` against `597d28e`
+  (`dev/review_p2_cases.R`, groups `tiny` and `tinysweep`): of 280 such fits
+  at the default controls 267 differ, by at most 5.2e-9 absolute and 1.0e-9
+  relative on the result's cells, with `n_iter` and `converged` the same in
+  each; where every eigenpair is asked for, `n_exact` and `n_lobpcg_ok`
+  differ in 71 of 80 fits and `n_lobpcg_bad` in 77. The 80 fits outside
+  the rule and every fit under the exact solver are identical. The gate
+  below is bitwise because neither the capture nor the edge cases hold a
+  Gram that small. The default solver takes the exact path below order 250,
+  so the caller has to name LOBPCG. Accepted (maintainer, 2026-11-19, with
+  the recommendations of `dev/review_p2.md` as a whole): it stays, with a
+  line in `dev/to-do.md` for the NEWS draft. Phase 4 takes Armadillo's
+  choice of routine out of `matmul` and leaves these products on BLAS.
 - Armadillo left in the file, all of it at the boundary with
   `src/hybrid_topk_eig.h`, which step 5 converts: `#include
   <RcppArmadillo.h>`; `LOBPCGState`'s `X` and `P` as `arma::mat`, which
@@ -1520,7 +1562,12 @@ diagnostics build, and the rest is the substitution around it.
     for Phase 4. Ruled (maintainer, 2026-11-18, with the figures above):
     Armadillo's order stays, in place of the plain loop "Not wrapped"
     names. The row-weight sum was put to the maintainer in the same report
-    and stays in Armadillo's order on the same footing.
+    and stays in Armadillo's order on the same footing. That was the
+    author's reading, with no word given on that sum by name, as the review
+    of Phase 2 found. Accepted since (maintainer, 2026-11-19, with the
+    recommendations of `dev/review_p2.md` as a whole): `sum_two_partial()`
+    stays through Phases 2 and 3 and is on Phase 4's list with the other
+    two.
 - What is not bitwise: more than 32 components. Armadillo's `dot()` ran its
   own loop up to 32 values and gave a longer vector to ddot (READ:
   `op_dot::direct_dot()`). "Not wrapped" rules ddot out, so
@@ -1606,6 +1653,79 @@ The gate, read 2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo
   `.claude/CLAUDE.md` names only `.github/workflows/pkgdown.yaml`, as in
   step 4.
 
+## The review of Phase 2
+
+The fourth checkpoint of "Review checkpoints", on `59920f4..597d28e`, run
+2026-11-18 and 19. `dev/review_p2.md` has the findings; its probe scripts
+are `dev/review_p2_run.sh`, `dev/review_p2_cases.R`,
+`dev/review_p2_compare.R`, `dev/review_p2_show.R`, `dev/review_p2_tag.sh`,
+`dev/review_p2_suite.sh` with `dev/review_p2_suite.R`, and
+`dev/review_p2_crash_events.ps1`. Not a fresh session: the maintainer ran
+`/code-review` in the session that wrote step 6 and the failure-path half
+of step 4, and the same session audited the note. What it says of those two
+steps is their author reading them again; its measurements are scripts with
+saved output. Seven findings, none a wrong result at `597d28e`. All seven
+were fixed or recorded on 2026-11-19 on the maintainer's word, as the note
+recommends, with no change under `src/` or `R/`. Every figure is a reading
+on one machine: Windows, R 4.6.2, R's LAPACK 3.12.0.
+
+What the notes had wrong, and is fixed:
+
+- The overrun step 3 ended is a crash. On 30 samples of which 6 are
+  distinct, 11 of 18 calls end the R process on `v1.2.0` built from source,
+  on `59920f4` and on `905e1ac`, `pca_imp(x, ncp = 5)` at its defaults
+  among them; `eade032` and `597d28e` return on all 18. This file said
+  every such run returned normally, from runs of a clone that held the full
+  buffer, and concluded that no test through `pca_imp()` could see it.
+  Those sentences are corrected where they stood, and the regression test
+  exists
+  (`tests/testthat/test-pca_imp.R`: `test_that("pca_imp returns on replicate samples with ncp above their rank", {`).
+  Shown to fail: `dev/review_p2_fix_check.sh` ran that test alone against
+  five installed builds, and the process ended with a segmentation fault,
+  exit 139, on `v1.2.0`, `59920f4` and `905e1ac`, and passed, 14
+  expectations, on `eade032` and `597d28e`. Only Windows was measured.
+- A Gram that is not finite is reachable from finite input: unscaled
+  values near 1e160, or near 1e200 with `scale = TRUE`, stop with "top-k
+  symmetric eigensolver failed to converge" under either solver, the same
+  at both ends of the phase. Step 3 and the map called it unmeasured. A
+  test now pins the class and the wording
+  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops in the eigensolver", {`).
+  Run the same way it passes on the four builds of this branch and fails
+  on `v1.2.0` on the wording alone, which read "`eig_sym_sel` failed to
+  converge" until `c7a253b`; `dev/to-do.md` has a line for that. By reading
+  alone, the stop under the exact solver is the wrapper's refusal: the
+  triangle is tested before dsyevr is entered. Which status came back is
+  not measured.
+- The reminder for `ncp` above 32 gave "about 1e-14" under the exact
+  solver. A fit of 202 iterations moved by 1.6e-13 absolute and 1.2e-11
+  relative, so the line now says the figure grows with the iteration count.
+
+What was recorded, with no change to the code:
+
+- A Gram of order 2 to 4 under `solver = "lobpcg"` returns other values
+  than the Armadillo build. Step 4's record has it now ("What changes and
+  is reachable"), with a line in `dev/to-do.md`. Accepted as it is.
+- `sum_two_partial()` is named in step 6's record and on Phase 4's list.
+- `dev/to-do.md` has lines for the class and message of a failed triangular
+  solve and for the refusal of more than `INT_MAX` missing values, which
+  had none.
+- The chain stays on raw buffers where "What was decided" and "Where
+  Armadillo is used today" name Eigen; both say so now, and Phase 4 has the
+  item for `lobpcg_detail::Block`.
+
+The gate after the fixes, a clone of `597d28e` holding the working tree's
+tests, `load_all1(timer = FALSE)`, manual tests included: the two PCA test
+files, 39 tests and 352 expectations, none failed, errored or skipped.
+The whole suite on such a clone, the mirai daemons loading it installed
+into a private library: 22 files, 278 tests, none failed, errored or
+skipped, two tests more than step 6.
+
+Left open. Whether 1.2.x is patched for CRAN, which the measurement above
+reopens and the maintainer decides. Another platform, another BLAS or
+LAPACK, R 4.3.0. The three two-partial-sum loops were not folded into one
+helper: Phase 4 removes them, and an edit to them now would need the
+bitwise gate again.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.
@@ -1674,14 +1794,23 @@ Scaffolding to remove, in `src/si_lapack.cpp` unless said otherwise:
   tail energy, in the order of Armadillo's own `dot()` loop; kept on the
   same footing (step 6 of Phase 2, which has what a plain sum moves). The
   two go together: one commit, one measurement.
+- In `src/armaSVD.cpp`, `sum_two_partial()`, the sum of the row weights in
+  the order of `arma::accu()`, the third loop of the same kind (step 6 of
+  Phase 2: a plain sum leaves the capture bitwise and moves 4 of the 5
+  diagnostics cases with unequal weights, by at most 3.9e-12). Left off
+  this list until the review of Phase 2 found it missing.
 - The oracle (`dev/oracle_pairs.cpp`, `dev/oracle_run.R`,
   `dev/oracle_selftest.R`, `dev/oracle_install_armadillo.R`), their `!`
   lines, and `dev/lib/`, once the last item above is gone and nothing is
   left to compare. One check of the oracle's outlives it: guard cells after
   the eigenvalue buffer of `syevr_range`, on a range that cuts a group of
   equal eigenvalues, shown to fail when the wrapper hands dsyevr the
-  caller's buffer. A test through `pca_imp()` cannot see that overrun:
-  every run measured to write past the buffer returned normally. The
+  caller's buffer. A test through `pca_imp()` sees that overrun only where
+  it does harm: `tests/testthat/test-pca_imp.R` has one, on replicate
+  samples, which ends the test process on a Windows build with the defect
+  ("The review of Phase 2" above). Where the cells land depends on how the
+  compiler laid out the frame, so on another platform the same build may
+  pass it; the guard cells do not depend on that. The
   section "What the wrappers reproduce" in
   `dev/pca_imp_structure.md` is rewritten to say what the wrappers do, not
   what they copy.
@@ -1697,7 +1826,20 @@ Choices to make in the same phase:
   open, and the scan is not timed.
 - Nothing compiled writes to the console. Armadillo printed its warnings to
   the error stream; with it gone, a failure is a status, raised as one cli
-  error on the R side, on the main thread, never from a worker.
+  error on the R side, on the main thread, never from a worker. One such
+  error has a known cause to name: "top-k symmetric eigensolver failed to
+  converge" is what finite input whose squares overflow gets, values near
+  1e160 unscaled ("The review of Phase 2" above), where nothing failed to
+  converge and the Gram was refused as not finite. The wrapper's status
+  tells the two apart; the text and class are the maintainer's to choose,
+  and a test pins today's.
+- `lobpcg_detail::Block` in `src/lobpcg_warm.h`, a matrix type written by
+  hand with eleven helpers, about 180 lines, carrying Armadillo's member
+  names (`memptr()`, `n_rows`). The chain stays on raw buffers ("What was
+  decided", as carried out), so the type stays; the hygiene pass decides
+  its names and whether any helper is one of several of the same shape. It
+  is not replaced by Eigen without a measurement that the order of every
+  operation is kept.
 - `-DUSE_FC_LEN_T` in `PKG_CPPFLAGS`, which the manual allows in place of
   the define in each file. It would cover the two sampler files
   (`dev/to-do.md`, "Sampler port: what is still owed") without an edit to
