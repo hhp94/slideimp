@@ -117,6 +117,14 @@ Easy to miss in the diff, noted so the draft does not:
   between dgemv and dgemm (`dev/eigen_conversion.md`, "Phase 4, as carried
   out"). Measured worst on the Phase 0 capture: 9.25e-11 absolute, 3.3e-9
   relative on the imputed values. The exact solver is not affected.
+- `pca_imp()` under either solver returns values that differ in their last
+  digits from the build before: the trace of the cross-product, the sum of
+  the squared singular values and the sum of the row weights are plain sums,
+  no longer in Armadillo's order (`dev/eigen_conversion.md`, "Phase 4, as
+  carried out"). Measured worst on the Phase 0 capture: under the exact
+  solver 6.0e-15 absolute on the imputed values; under LOBPCG 6.24e-10
+  absolute, 3.4e-8 relative. `criterion_final` moves by up to 3.4e-6
+  relative.
 - `pca_imp()` refuses, with a new error, an input whose eligible columns
   hold more than `.Machine$integer.max` missing values
   (`dev/eigen_conversion.md`, Phase 2, step 6). No test or measurement

@@ -35,56 +35,6 @@ static inline void for_each_missing_in_col(std::size_t cidx,
 }
 
 // ---------------------------------------------------------------------------
-// Two sums in the order Armadillo took them: one partial sum over the even
-// positions and one over the odd, added at the end (arrayops::accumulate()
-// behind arma::accu(), op_dot::direct_dot_generic() behind arma::dot()).
-// dev/CPP.md bans such a reduction. These are kept on the footing of
-// gram_trace() in src/svd_triplet.h: the first normalizes the row weights
-// and the second is the other term of the tail energy, every iteration of
-// the EM loop, so a plain sum moves results (dev/eigen_conversion.md, step 6
-// of Phase 2), and Phase 4 revisits them with the rest of Armadillo's
-// choices.
-// ---------------------------------------------------------------------------
-static inline double sum_two_partial(const double *x, const std::size_t n)
-{
-  double acc1 = 0.0;
-  double acc2 = 0.0;
-  std::size_t i = 0;
-  std::size_t j = 1;
-  for (; j < n; i += 2, j += 2)
-  {
-    acc1 += x[i];
-    acc2 += x[j];
-  }
-  if (i < n)
-  {
-    acc1 += x[i];
-  }
-  return acc1 + acc2;
-}
-
-// Armadillo took this sum itself up to 32 values and gave a longer one to
-// ddot; here every length is summed the same way.
-static inline double sum_squares_two_partial(const double *x,
-                                             const std::size_t n)
-{
-  double val1 = 0.0;
-  double val2 = 0.0;
-  std::size_t i = 0;
-  std::size_t j = 1;
-  for (; j < n; i += 2, j += 2)
-  {
-    val1 += x[i] * x[i];
-    val2 += x[j] * x[j];
-  }
-  if (i < n)
-  {
-    val1 += x[i] * x[i];
-  }
-  return val1 + val2;
-}
-
-// ---------------------------------------------------------------------------
 // impute_restandardize
 //
 // changing columns occupy positions [n_fixed, n_fixed + n_mc) of the
@@ -503,15 +453,15 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::stop("row_w must be finite");
     }
   }
+  double row_w_sum = 0.0;
   for (std::size_t i = 0; i < nrX; ++i)
   {
     if (w[i] < 0.0)
     {
       Rcpp::stop("row_w must be non-negative");
     }
+    row_w_sum += w[i];
   }
-
-  const double row_w_sum = sum_two_partial(w.data(), nrX);
   if (!(row_w_sum > 0.0))
   {
     Rcpp::stop("row_w must have positive sum");
@@ -906,7 +856,11 @@ Rcpp::List pca_imp_internal_cpp(
 
     LOC_TIC(pca_imp_gram, "post_svd");
     sigma2 = 0.0;
-    const double sum_top_sq = sum_squares_two_partial(vs_top.data(), n_cp);
+    double sum_top_sq = 0.0;
+    for (std::size_t cp = 0; cp < n_cp; ++cp)
+    {
+      sum_top_sq += vs_top[cp] * vs_top[cp];
+    }
     // clamp tail energy once and use consistently in both sigma2 (was unclamped)
     // and the objective.
     const double tail = std::max(0.0, trace_val - sum_top_sq);

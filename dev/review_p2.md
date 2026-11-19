@@ -363,10 +363,10 @@ head's stop comes from the refusal or from dsyevr.
 
 `dev/CPP.md` bans a manual multi-accumulator reduction. The range adds
 three: `gram_trace()` (`src/svd_triplet.h`: `static inline double gram_trace(`),
-ruled in step 5; `sum_squares_two_partial()`
-(`src/armaSVD.cpp`: `static inline double sum_squares_two_partial(`),
-ruled in step 6; and the sum of the row weights
-(`src/armaSVD.cpp`: `const double row_w_sum = sum_two_partial(w.data(), nrX);`).
+ruled in step 5; `sum_squares_two_partial()` in `src/armaSVD.cpp`,
+ruled in step 6; and the sum of the row weights, `sum_two_partial()` in
+the same file. (Item 10 of Phase 4 made all three plain sums and removed
+the last two functions, so they are named here without a fragment.)
 READ: for the third the record does not claim a ruling. It says the
 question was put in the same report
 (`dev/eigen_conversion.md`: `and stays in Armadillo's order on the same footing.`).

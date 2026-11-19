@@ -803,17 +803,15 @@ loops that replace them in `src/lobpcg_warm.h` and `src/svd_triplet.h`:
   loop up to 32 values, two partial sums over the even and the odd positions added at
   the end, and ddot above (READ: `op_dot::apply()`, where two `subview_col` take the
   vector branch, `partial_unwrap` being fast for them; `op_dot::direct_dot()`;
-  `op_dot::direct_dot_generic()`). Now `sum_squares_two_partial()` (`src/armaSVD.cpp`:
-  `static inline double sum_squares_two_partial(`), which takes the two partial sums at
-  every length: bitwise equal up to 32 components, not above, where it stands in for
-  ddot. Kept in that order on the footing of `gram_trace()` below
-  (`dev/eigen_conversion.md`, step 6 of Phase 2, has the measurements).
+  `op_dot::direct_dot_generic()`). Now a plain sum in order (`src/armaSVD.cpp`:
+  `sum_top_sq += vs_top[cp] * vs_top[cp];`), so not bitwise equal from two components
+  up; Phase 4 chose it with the trace below (`dev/eigen_conversion.md`, "Phase 4, as
+  carried out", has the measurements).
 - `arma::accu(row_w)`, the sum the row weights are divided by, was two partial sums over
   the even and the odd positions, added at the end (READ: `op_accu_mat::apply()`,
-  `arrayops::accumulate()`). Now `sum_two_partial()` (`src/armaSVD.cpp`:
-  `static inline double sum_two_partial(`), in that order, so it is bitwise equal. Equal
-  weights sum exactly in either order; with unequal ones a plain sum moves results
-  (`dev/eigen_conversion.md`, step 6), so it is kept on the same footing.
+  `arrayops::accumulate()`). Now a plain sum in order, taken in the loop that tests the
+  weights' sign (`src/armaSVD.cpp`: `row_w_sum += w[i];`). Equal weights sum exactly in
+  either order; with unequal ones the last bits can differ.
 - The rest of what `src/armaSVD.cpp` asked of Armadillo did no arithmetic that depends
   on an order, and is written as loops: `row_w /= row_w_sum` divided each cell (READ:
   `arrayops::inplace_div_base()`); `cumsum()` of a column kept one running sum (READ:
@@ -825,10 +823,10 @@ loops that replace them in `src/lobpcg_warm.h` and `src/svd_triplet.h`:
 - `arma::trace(AA_NxN)` in `SVD_triplet()`, the tail energy's trace, was two partial sums,
   one over the even and one over the odd diagonal cells, added at the end (READ:
   `fn_trace.hpp`, `trace()` of a `Base`), no BLAS. Now `gram_trace()` (`src/svd_triplet.h`:
-  `static inline double gram_trace(`), which sums in that order, so it is bitwise equal. That
-  order is the multi-accumulator reduction `dev/CPP.md` bans, kept by the maintainer's ruling
-  because a plain sum moves results through the EM loop (`dev/eigen_conversion.md`, step 5);
-  Phase 4 revisits it.
+  `static inline double gram_trace(`), a plain sum in order, so not bitwise equal: the two
+  partial sums were the multi-accumulator reduction `dev/CPP.md` bans, kept through Phases 2
+  and 3 and dropped in Phase 4 with the two sums above (`dev/eigen_conversion.md`, "Phase 4,
+  as carried out").
 
 `find`, `fliplr` and `reverse`, which `src/lobpcg_warm.h` called and now writes as loops, move
 values and do no arithmetic (NOT READ); the captures of step 4 are bitwise across the change.

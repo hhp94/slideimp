@@ -51,29 +51,16 @@ static inline void split_eigvec_block(const double *eigvecs,
 }
 
 // ---------------------------------------------------------------------------
-// the sum of the diagonal of the n x n A, as arma::trace() took it
-// (fn_trace.hpp): two partial sums, over the even and the odd cells, added
-// at the end. dev/CPP.md bans such a reduction; this one is kept by the
-// maintainer's ruling, because a plain sum moves results through the EM
-// loop (dev/eigen_conversion.md, step 5 of Phase 2), and Phase 4 revisits
-// it with the rest of Armadillo's choices.
+// the sum of the diagonal of the n x n A, in order
 // ---------------------------------------------------------------------------
 static inline double gram_trace(const double *A, const std::size_t n)
 {
-  double val1 = 0.0;
-  double val2 = 0.0;
-  std::size_t i = 0;
-  std::size_t j = 1;
-  for (; j < n; i += 2, j += 2)
+  double trace = 0.0;
+  for (std::size_t i = 0; i < n; ++i)
   {
-    val1 += A[i + i * n];
-    val2 += A[j + j * n];
+    trace += A[i + i * n];
   }
-  if (i < n)
-  {
-    val1 += A[i + i * n];
-  }
-  return val1 + val2;
+  return trace;
 }
 
 inline constexpr char GRAM_NOT_FINITE_MSG[] =

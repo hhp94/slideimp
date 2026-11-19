@@ -2106,6 +2106,57 @@ diagnostics build in `src/armaSVD.cpp` is `si_la::gemm`.
   capture that follows it (item 10b). `dev/to-do.md` has the reminder line.
 - The oracle no longer compiles: `dev/oracle_pairs.cpp` calls
   `si_la::matmul`. Item 14 removes it.
+- Identified during item 10: the per-iteration vector with the largest
+  figures in the diagnostics compare is `eig_lobpcg_max_rel_res`, the
+  residual LOBPCG stopped at, a number near 1e-9 that is noise below the
+  tolerance it passed.
+
+**The trace and two sums as plain sums** (item 10; maintainer, 2026-11-19).
+The three reductions kept in Armadillo's order, two partial sums over the
+even and the odd positions, are plain sums in order: `gram_trace()` in
+`src/svd_triplet.h`, and in `src/armaSVD.cpp` the sum of the squared
+leading singular values and the sum of the row weights, both now loops at
+their one call site (`sum_squares_two_partial()` and `sum_two_partial()`
+are gone). `dev/CPP.md` bans the form they had.
+
+- Measured against `dcc1364`, the item 9 build, in one run of
+  `dev/eigen_p4_gate.sh` (R 4.6.1; the same figures under both RcppEigen
+  versions). Relative figures on the imputed values are over the cells
+  that hold a nonzero value.
+
+  | | not bitwise | worst on the imputed values | worst on `criterion_final` |
+  | --- | --- | --- | --- |
+  | capture, 71 cases | 27 (21 past the defaults) | 6.24e-10 abs, 3.4e-8 rel | 3.41e-6 rel |
+  | diagnostics, 49 cases | 49 (19 past the defaults) | 2.48e-8 abs, 1.1e-7 rel | |
+  | edges, 68 cases | 61 (60 past the defaults) | 7.56e-8 abs, 1.2e-6 rel | see below |
+
+  Suite with manual tests: 278 pass under both RcppEigen versions.
+- In the capture the worst case on both figures is `pca_x1_lobpcg`. The 21
+  past the defaults are all on `criterion_final`, 3 of them on the imputed
+  values too. Under the exact solver the imputed values move by at most
+  6.0e-15 absolute and `criterion_final` by at most 1.4e-9 relative; the
+  larger figures are all under LOBPCG, where the changed tail energy
+  reaches the iteration through the next warm start.
+- Edges: `n_exact`, `n_lobpcg_ok` or `n_lobpcg_bad` differ in 10 cases;
+  `n_iter` and `converged` in none. Over the calls of `lobpcg_solve()`,
+  base and item 10: 1316 and 1318 calls; converged 1174, 1172; `BAD_SEED`
+  33, 37; the other endings the same. The worst case on the imputed
+  values is `big_xb_ncp25`.
+- `criterion_final` on the rank-deficient edge cases (duplicated columns,
+  `ncp` at or past the rank) is not a number to read: there the tail
+  energy is a difference of two equal sums, and the criterion moved from
+  NaN to 0.085 (`dup_xd_ncp07`), from 1.7e-15 to 0.5 (`dup_xd_ncp07_em`),
+  from 0.013 to 0.496 (`dup_xd_ncp12`) and from NaN to Inf
+  (`dup_xdc_ncp08`), while the imputed values of those cases agree to
+  5.5e-13 absolute and `converged` is `TRUE` on both sides. It was NaN
+  before this item too, so the defect is older than the change; it is
+  reported to the maintainer, not fixed here.
+- Timing, 5 repetitions, base as a: 1.298, 0.792, 1.209, 1.060 with ranges
+  as wide as 1.1-7.1 s on one side, a busy machine. The change is three
+  scalar loops outside every BLAS call, so no effect is expected and this
+  run cannot show one either way; it was not repeated.
+- `dev/to-do.md` has the reminder line. The reference capture that follows
+  (item 10b) absorbs this move and item 9's.
 
 ## Not settled yet
 
