@@ -2158,6 +2158,29 @@ are gone). `dev/CPP.md` bans the form they had.
 - `dev/to-do.md` has the reminder line. The reference capture that follows
   (item 10b) absorbs this move and item 9's.
 
+**A new reference capture, `aa1ceee`** (item 10b; 2026-11-19). Taken in a
+scratch clone of `aa1ceee`, the item 10 commit, and copied into `dev/ref/`
+on this machine with a second capture, `aa1ceee-b`, and one against the
+candidate RcppEigen, `aa1ceee-eigen5`. Like every capture it is ignored
+and regenerable: clone `aa1ceee` and rerun `dev/ref_capture.R`. From here
+an item of Phase 4 that should not move results is compared against it;
+`dev/eigen_p4_gate.sh` compares a clone of HEAD with the working tree, so
+it needs no label.
+
+- 71 cases. Noise floor: `aa1ceee` against `aa1ceee-b` at tolerance 0, all
+  bitwise identical. Against the candidate at tolerance 0: all bitwise
+  identical. `dev/ref_compare_selftest.R aa1ceee` caught the 13 planted
+  changes at tolerance 0 and the 12 expected at the defaults, and reported
+  the 0 turned into -0 as passing but not bitwise.
+- The whole move since `76d4c60`, the capture of the Armadillo build (75
+  cases): worst on the imputed values 5.97e-10 absolute and 3.1e-8
+  relative, worst on `criterion_final` 3.48e-6 relative, all three in
+  `pca_x1_lobpcg`; 27 cases not bitwise. The other differences are ones
+  ruled on before: `n_iter` an integer where it was a double (24 cases),
+  and 4 cases of functions since removed (`col_vars_x2_cores2`,
+  `int_mean_imp_col`, `int_mean_imp_col_cores2`,
+  `int_mean_imp_col_inf_error`).
+
 ## Not settled yet
 
 - Whether the noise floor measured on one machine holds on the BLAS of the
