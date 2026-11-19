@@ -1054,6 +1054,44 @@ test_that("pca_imp returns on replicate samples with ncp above their rank", {
   }
 })
 
+test_that("criterion_final is NA when the objective alone stopped the fit", {
+  # Regression test. With ncp at or above the rank of the data the fit is
+  # exact and stops because its objective is below `threshold`. The
+  # criterion, abs(1 - objective / old), is then a ratio of two values near
+  # zero: it was NaN, Inf or 0.5 by rounding, and moved with the build.
+  # Rounding can also put that ratio below `threshold`, and then it is
+  # reported, so what holds on every build is that a converged fit reports
+  # NA or a criterion below `threshold`, never NaN or a larger number.
+  set.seed(21)
+  base6 <- sim_mat(n = 6, p = 80, perc_total_na = 0.1, perc_col_na = 0.5)$input
+  x <- base6[rep(seq_len(6), times = 5), ]
+  rownames(x) <- sprintf("s%02d", seq_len(nrow(x)))
+  for (ncp in c(5L, 6L, 7L, 12L)) {
+    set.seed(1)
+    res <- pca_imp(x, ncp = ncp)
+    crit <- attr(res, "criterion_final")
+    expect_true(attr(res, "converged"), label = sprintf("ncp = %d", ncp))
+    expect_true(
+      identical(crit, NA_real_) || isTRUE(crit < 1e-6),
+      label = sprintf("ncp = %d, criterion_final %s", ncp, format(crit))
+    )
+  }
+
+  # A fit the criterion stopped still reports it, below the threshold.
+  set.seed(4)
+  y <- sim_mat(n = 30, p = 80, perc_total_na = 0.1, perc_col_na = 0.5)$input
+  set.seed(1)
+  res <- pca_imp(y, ncp = 2, threshold = 1e-6)
+  expect_true(attr(res, "converged"))
+  expect_lt(attr(res, "criterion_final"), 1e-6)
+
+  # So does a fit that ran out of iterations, above it.
+  set.seed(1)
+  res <- suppressWarnings(pca_imp(y, ncp = 2, threshold = 1e-12, maxiter = 6))
+  expect_false(attr(res, "converged"))
+  expect_gt(attr(res, "criterion_final"), 1e-12)
+})
+
 test_that("finite input whose squares overflow stops before the eigensolver", {
   # Values near 1e200 are finite, so check_finite() passes them, and their
   # cross-products are not: the Gram holds Inf. The kernel tests the Gram

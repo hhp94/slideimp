@@ -213,6 +213,73 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
   before every cell that is read is written, where only `fittedX` needs its
   zeros; and `row_w` is copied before it is checked.
 
+## Phase 4 of the Eigen conversion: what is left
+
+State on 2026-11-19; the record is `dev/eigen_conversion.md`, "Phase 4, as
+carried out".
+
+- **`criterion_final` as `NA`.** Ruled, coded and committed. The kernel
+  edit passed the gate; the rewritten test in
+  `tests/testthat/test-pca_imp.R` has not been run. Left: run the suite
+  under both RcppEigen versions, fix the test if it fails, and add the
+  reminder line to the NEWS entry above
+  (`criterion_final` is `NA` when the fit converged on its objective; it
+  was NaN, Inf or a number). One question is open for the maintainer:
+  whether it should be `NA` whenever the objective is below `threshold`,
+  which also covers a rounding criterion that lands below it.
+- **Ruled, not carried out,** each its own commit with the gate: rename
+  `lobpcg_detail::Block` off Armadillo's member names; the wrapper test as
+  a `dev/` script through `Rcpp::sourceCpp()`; remove the oracle and
+  `dev/lib/arma` and rewrite "What the wrappers reproduce"; the pass
+  through *Writing R Extensions* against `src/`.
+- **Not ruled:** the OpenMP flag in `src/Makevars` (see "Sampler port: what
+  is still owed").
+
+## Test suite: cleanup and tiers for local and CRAN runs
+
+Asked for by the maintainer 2026-11-19. A plan only: every step below is a
+proposal, ruled on before a test is moved or dropped. Vendored tests, if
+`dev/vendored.md` lists any, are out of scope.
+
+What there is today, counted 2026-11-19: 22 test files, 9115 lines, 279
+tests, 2851 expectations. One tier switch, the skip in
+`tests/testthat/helper.R` on `MANUAL_TESTS`, used 16 times in 4 files
+(`test-tune_imp.R` 7, `test-group_imp.R` 4, `test-pca_imp.R` 4,
+`test-crate.R` 1). No test calls `skip_on_cran()`, so CRAN runs everything
+that is not manual. Time per file or per test is NOT MEASURED.
+
+1. **Measure first.** Time every test on one machine with a testthat
+   reporter that gives times, in a scratch clone, and list the slowest. For
+   each test write down in one line what it pins: public API, error
+   wording or class, a numeric result, a regression of a named bug, or an
+   internal. Measure line coverage of `R/` and `src/` before anything
+   moves (`covr` is not a declared dependency, so from a `dev/` script).
+2. **Three tiers, proposed.**
+   - CRAN: what a caller pins on. The exported API, the error surface, and
+     small numeric checks with tolerances, on at most 2 cores, no mirai
+     daemons, nothing that depends on a BLAS build's last digits. A time
+     budget for the whole tier is set by the maintainer from step 1.
+   - Local, run by `devtools::test()`: the CRAN tier and the regression
+     tests pinned to bugs, the larger inputs, the internals. Switched with
+     testthat's own `skip_on_cran()`.
+   - Manual, as today: `MANUAL_TESTS`, through `check_manual()`.
+3. **Cleanup, each kind listed for a ruling before any edit.** Tests that
+   repeat another; tests that cannot fail (a subset never shown non-empty,
+   a comparator never shown to fail); comparisons against a stored
+   reference by `identical()`; tests and comments that name Armadillo or
+   pin its behaviour; tests of functions no longer exported
+   (`test-mean_imp_col.R` is one to look at); files past a thousand lines
+   that hold several subjects.
+4. **Rules for the pass.** A test is dropped only with a note of which
+   test still covers the behaviour, and coverage is measured again after
+   and compared with step 1. A regression test pinned to a bug moves tier,
+   it is never dropped. The error surface stays in the CRAN tier. One
+   commit per file or per kind, the suite run under both RcppEigen
+   versions with and without `NOT_CRAN` set, so that both tiers are seen
+   to pass.
+5. **Write it down.** `.claude/CLAUDE.md`, "Layout", gains the invariant:
+   which tier a new test goes in and how each is run.
+
 ## Take cli out; audit every message against the R manuals
 
 Planned by the maintainer, 2026-11-19; not started, and its own change, not

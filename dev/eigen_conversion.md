@@ -2150,7 +2150,8 @@ are gone). `dev/CPP.md` bans the form they had.
   (`dup_xdc_ncp08`), while the imputed values of those cases agree to
   5.5e-13 absolute and `converged` is `TRUE` on both sides. It was NaN
   before this item too, so the defect is older than the change; it is
-  reported to the maintainer, not fixed here.
+  reported to the maintainer, not fixed here. The maintainer has since
+  ruled on it: "`criterion_final` as `NA`" below.
 - Timing, 5 repetitions, base as a: 1.298, 0.792, 1.209, 1.060 with ranges
   as wide as 1.1-7.1 s on one side, a busy machine. The change is three
   scalar loops outside every BLAS call, so no effect is expected and this
@@ -2180,6 +2181,71 @@ it needs no label.
   and 4 cases of functions since removed (`col_vars_x2_cores2`,
   `int_mean_imp_col`, `int_mean_imp_col_cores2`,
   `int_mean_imp_col_inf_error`).
+
+**`criterion_final` as `NA`** (maintainer, 2026-11-19: "option 1", then
+"Code option 1"). Committed at the maintainer's request with the test as
+it now stands NOT RUN.
+
+- The ruling: a fit that stopped because its objective fell below
+  `threshold`, and not because its criterion did, reports `criterion_final`
+  as `NA`. The fit itself is unchanged.
+- What the objective is in the six rank-deficient edge cases (diagnostics
+  build of `894826d`, `threshold` 1e-6, 15 iterations each). All six
+  stopped on the objective alone:
+
+  | case | last two objectives | criterion from them |
+  |---|---|---|
+  | `dup_xd_ncp05` | 0, 0 | NaN |
+  | `dup_xd_ncp07` | 1.60e-13, 1.46e-13 | 0.085 |
+  | `dup_xd_ncp12` | 2.91e-14, 1.47e-14 | 0.496 |
+  | `dup_xd_ncp07_em` | 2.84e-14, 1.42e-14 | 0.5 |
+  | `dup_xdc_ncp05` | 1.00e-12, 1.29e-13 | 0.871 |
+  | `dup_xdc_ncp08` | 0, 1.78e-15 | Inf |
+
+  In `dup_xdc_ncp05` the objective falls steadily from 1.9e-2, so its
+  ratio is a real one; in the others it is rounding.
+- The kernel edit is one assignment after the loop in `src/armaSVD.cpp`.
+  Gate against `894826d` (scratch clone, R 4.6.1, both RcppEigen versions):
+  capture 71 of 71 bitwise, diagnostics 49 of 49 bitwise, edges 68 of 68
+  bitwise on everything but `criterion_final`, which is `NA` in the six
+  cases of the table and unchanged in the other 62.
+- The suite: 278 of 279 passed under both versions. The one failure was
+  the new test, which expected `NA` at `ncp = 5` on the replicate-sample
+  input under the default settings and got 1.1e-16. There both arms of the
+  stop rule fired: rounding put the ratio below `threshold`. Measured on
+  that input over `ncp` 4, 5, 6, 7, 12, the three solvers and both
+  methods: `NA` everywhere from `ncp = 5` up, except 1.1e-16 at `ncp = 5`
+  with `method = "regularized"`; at `ncp = 4`, below the rank, a criterion
+  as before.
+- So the rule as ruled leaves one gap: a criterion that is rounding is
+  still reported when it lands below `threshold`. `NA` whenever the
+  objective is below `threshold` would close it; that is a different rule
+  and is put to the maintainer, not coded.
+- The test was rewritten to what holds on every build: a converged fit
+  reports `NA` or a criterion below `threshold`, never NaN or a larger
+  number. That version has not been run; the suite run was stopped at the
+  maintainer's request. `dev/to-do.md` has what is left.
+
+**Rulings on the last items** (maintainer, 2026-11-19: "agree all" to the
+author's recommendations). Recorded here; none is carried out.
+
+- `lobpcg_detail::Block` is renamed off Armadillo's member names. The
+  updates that alias their own operand stay as they are until a profile
+  shows they cost something.
+- The test of the wrapper layer's own, guard cells after the eigenvalue
+  buffer of `syevr_range` included, is a script in `dev/` that compiles
+  through `Rcpp::sourceCpp()` and is run by hand. No test-only export is
+  added to the package.
+- The oracle, its four files, their `!` lines and `dev/lib/arma` are
+  removed; it has not compiled since `matmul` went. "What the wrappers
+  reproduce" in `dev/pca_imp_structure.md` is rewritten to say what the
+  wrappers do.
+- `syevr_range` goes on asking dsyevr for its workspace on every call.
+- The pass through *Writing R Extensions* against the finished `src/` is
+  its own item. `src/loc_timer.h` keeps its macro names.
+- Not ruled: whether the OpenMP flag stays in `src/Makevars`. The author
+  gave no recommendation. `dev/to-do.md`, "Sampler port: what is still
+  owed", has the entry that covers it, with a measurement owed first.
 
 ## Not settled yet
 

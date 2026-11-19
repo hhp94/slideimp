@@ -338,6 +338,10 @@ order; each value comes from the final `Xhat` at the missing position, de-standa
 not from `fittedX`. The
 ordinary-build return list carries `loc`, `value`, `mse`, `n_iter` (an integer),
 `criterion_final`, `converged`, `solver_chosen`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`.
+`criterion_final` is `NA` when the fit converged on its objective alone, the criterion
+being at or above `threshold` (`src/armaSVD.cpp`:
+`(converged && !(criterion < threshold)) ? NA_REAL : criterion;`): with `ncp` at or
+above the rank of the data the objective is near zero and the ratio is rounding.
 `solver_chosen` comes from `HybridEigContext::solver_chosen_code()`
 (`src/hybrid_topk_eig.h`: `int solver_chosen_code() const`): 0 forced exact, 1 forced lobpcg,
 2 auto never decided, 3 auto chose exact, 4 auto chose lobpcg. Under `solver = "auto"` only

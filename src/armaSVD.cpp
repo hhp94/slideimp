@@ -1002,7 +1002,11 @@ Rcpp::List pca_imp_internal_cpp(
     if (stop_now)
     {
       n_iter_final = nb_iter;
-      criterion_final = criterion;
+      // A fit stopped by its objective alone has no criterion to report:
+      // there the ratio is of two values near zero, NaN, Inf or anything
+      // between by rounding.
+      criterion_final =
+          (converged && !(criterion < threshold)) ? NA_REAL : criterion;
       break;
     }
   }
