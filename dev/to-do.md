@@ -111,6 +111,12 @@ Easy to miss in the diff, noted so the draft does not:
   it announced (`dev/eigen_conversion.md`, Phase 2, step 4, and "Phase 4, as
   carried out"). No input is known to reach either without an injected
   failure, so this may need no NEWS text.
+- `pca_imp()` under `solver = "lobpcg"`, and `"auto"` where it picks
+  LOBPCG, returns values that differ in their last digits from the build
+  before: the products of the iteration no longer follow Armadillo's choice
+  between dgemv and dgemm (`dev/eigen_conversion.md`, "Phase 4, as carried
+  out"). Measured worst on the Phase 0 capture: 9.25e-11 absolute, 3.3e-9
+  relative on the imputed values. The exact solver is not affected.
 - `pca_imp()` refuses, with a new error, an input whose eligible columns
   hold more than `.Machine$integer.max` missing values
   (`dev/eigen_conversion.md`, Phase 2, step 6). No test or measurement

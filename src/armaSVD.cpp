@@ -973,13 +973,12 @@ Rcpp::List pca_imp_internal_cpp(
     {
       // the smallest singular value of V_prev' * V_new: the cosine of the
       // largest angle between the two subspaces.
-      int st = si_la::matmul(true, 1.0, V_prev.data(), n_gram, n_cp,
-                             eigvecs.data(), n_gram, n_cp,
-                             0.0, V_cross.data());
+      int st = si_la::gemm('T', 'N', n_cp, n_cp, n_gram, 1.0,
+                           V_prev.data(), n_gram, eigvecs.data(), n_gram,
+                           0.0, V_cross.data(), n_cp);
       if (st != si_la::ok)
       {
-        Rcpp::stop("internal error: dgemm or dgemv refused its arguments "
-                   "(status %d)",
+        Rcpp::stop("internal error: dgemm refused its arguments (status %d)",
                    st);
       }
       st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());

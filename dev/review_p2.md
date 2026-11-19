@@ -269,10 +269,11 @@ or on none.
 
 ### 2. A Gram of order 2 to 4 under LOBPCG returns other values, and no record lists it
 
-Every product of `src/lobpcg_warm.h` goes through one call
-(`src/lobpcg_warm.h`: `si_la::matmul(trans_a, alpha, a, a_rows, a_cols, B.memptr(),`),
-and the wrapper says what it does not reproduce
-(`src/si_lapack.h`: `Not as Armadillo: for square operands up to 4 x 4 Armadillo runs its own`).
+Every product of `src/lobpcg_warm.h` went through one call, to
+`si_la::matmul` (removed since, in Phase 4; the function is now
+`src/lobpcg_warm.h`: `inline void product_into(`),
+and the wrapper's header said what it did not reproduce: for square
+operands up to 4 x 4 Armadillo runs its own loops.
 The map carries the consequence in one sentence
 (`dev/pca_imp_structure.md`: `needs a Gram of at most 4 x 4 under LOBPCG.`).
 That is all. Step 4's record lists what changes under

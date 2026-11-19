@@ -473,7 +473,9 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 **Storage on the LOBPCG path.** The iteration holds its matrices in `lobpcg_detail::Block`
 (`src/lobpcg_warm.h`: `struct Block`), a column-major buffer whose members carry
 Armadillo's names, so the three calls into `si_la` read as they did on `arma::mat`.
-Every product goes through `si_la::matmul` (`src/lobpcg_warm.h`: `inline void matmul_into(`),
+Every product goes through one function (`src/lobpcg_warm.h`: `inline void product_into(`):
+a right operand of one column is a vector and the product is dgemv through `si_la::gemv`,
+any other is dgemm through `si_la::gemm`. The products are
 written the way Armadillo evaluated each one ("Products of two `arma::mat`" below): a
 product inside a sum or difference, or one whose target is among its operands, is formed
 first and added cell by cell; `-=` of a product whose operands do not include its target is
@@ -517,7 +519,7 @@ wrapper, and what was measured.
 | dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
 | dgeqrf and dorgqr, through `si_la::qr_econ` | `qr_orthonormalize()` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization |
 | dtrtrs, through `si_la::solve_tri` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
-| dgemm or dgemv, through `si_la::matmul` | `matmul_into()` (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
+| dgemm through `si_la::gemm`, or dgemv through `si_la::gemv` for a block of one column | `product_into()` (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
 
 The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` problem. The
 LOBPCG path never touches `n_gram`-sized LAPACK: its dense work is `n_gram x k` matvecs and
@@ -529,7 +531,7 @@ QRs plus a `3k x 3k` dsyevd.
 functions over `double*`, dimensions and an int status. So far `src/pca_linalg_utils.h` calls
 `si_la::gemm`, `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, `src/eig_sym_sel.h`
 calls `si_la::syevr_range`, and `src/lobpcg_warm.h` calls `si_la::qr_econ`,
-`si_la::solve_tri`, `si_la::syevd` and `si_la::matmul`; the table above says how each site enters BLAS and
+`si_la::solve_tri`, `si_la::syevd`, `si_la::gemm` and `si_la::gemv`; the table above says how each site enters BLAS and
 LAPACK. Each wrapper stands in for one
 call the chain makes, or made until its file was converted, and this section records what
 that call does, so that a call
@@ -550,9 +552,8 @@ one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
 | wrapper | stands in for | routine and options | on failure |
 | --- | --- | --- | --- |
 | `si_la::gemm` | `arma::dgemm_`, called directly | dgemm, every argument passed through | BLAS has no status |
-| `si_la::gemv` | no direct call; `*` reaches it (below) | dgemv, unit strides | BLAS has no status |
+| `si_la::gemv` | no direct call; `*` reached it for a product of one row or one column (below) | dgemv, unit strides | BLAS has no status |
 | `si_la::syrk` | `arma::dsyrk_`, called directly | dsyrk, every argument passed through | BLAS has no status |
-| `si_la::matmul` | `*`, `+=` and `-=` of a product of two `arma::mat` | dgemv or dgemm (below) | Armadillo throws on dimensions that do not conform |
 | `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declared itself until it moved to this wrapper | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or another number of eigenpairs than asked; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::syevd` | `arma::dsyevd_`, which `small_eig_desc()` called directly until it moved to this wrapper | dsyevd, `jobz = 'V'` | `info != 0`; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::qr_econ` | `arma::qr_econ()` | dgeqrf, then dorgqr | returns false, `Q` and `R` reset |
@@ -708,8 +709,9 @@ only when `X` has 1024 cells or more. A refusal or `info != 0` makes `svd()` thr
 optimum at every size since Phase 4 of `dev/eigen_conversion.md`, and is compiled only
 when `PCA_IMP_DIAGNOSTICS` is set, so the package as shipped does not reference dgesdd.
 
-The call site now forms the product with `si_la::matmul`, which sends it where `*` did
-(dgemv for one component, dgemm otherwise), and hands it to `si_la::svd_values`
+The call site now forms the product with `si_la::gemm` (dgemm for one component too,
+where `*` took dgemv; this is the diagnostics build only) and hands it to
+`si_la::svd_values`
 (`src/armaSVD.cpp`: `st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());`).
 A positive status or `err_nonfinite` is an R error, as the throw was, in the chain's own
 words and as an `Rcpp::exception` (`src/armaSVD.cpp`:
@@ -722,7 +724,9 @@ versions.
 
 **Products of two `arma::mat`** (READ: `glue_times_meat.hpp`, `mul_gemm.hpp`,
 `mul_gemv.hpp`, `mul_syrk.hpp`). `A * B` and `A.t() * B` choose their routine at run time,
-in this order, and `si_la::matmul` keeps the order:
+in this order. The chain kept the order in a wrapper, `si_la::matmul`, until Phase 4 of
+`dev/eigen_conversion.md`. Since then `product_into()` has one rule of its own, a right
+operand of one column goes to dgemv, and the table below is Armadillo's alone:
 
 | product | routine |
 | --- | --- |
@@ -746,12 +750,17 @@ does not cover those forms; the capture runs them. Three operands written `A * (
 inner one first: `depth_lhs` counts only operands nested on the left (READ), so the
 parenthesised product is one operand (NOT READ: `partial_unwrap`, which evaluates it).
 
-Two things Armadillo does that `si_la::matmul` does not:
+Three things Armadillo does that the chain does not:
 
+- The one-row test, taken before the one-column test: a result of one row is dgemv on
+  `B` with `A` as the vector. The chain tests only for one column of `B`, so a 1 x 1
+  result, every `X' * Y` of a fit with one component, is dgemv on `A` with `B` as the
+  vector, and a result of one row and several columns is dgemm. The products are the
+  same; the bits need not be, and the record of Phase 4 has what was measured.
 - For a square matrix operand of 4 x 4 or less (dgemv), or two square operands of the same
   size up to 4 x 4 (dgemm), Armadillo runs loops of its own and calls no BLAS (READ: the
   tests in `gemm::apply_blas_type()` and `gemv::apply_blas_type()`; NOT READ: the loops).
-  The wrapper calls BLAS, so such a product can differ in its last bits. In the chain that
+  The chain calls BLAS, so such a product can differ in its last bits. In the chain that
   needs a Gram of at most 4 x 4 under LOBPCG. Measured (`dev/review_p2.md`, finding 2): with
   `solver = "lobpcg"` on a Gram of order 2 to 4, when one eigenpair or every eigenpair is
   asked for, 267 of 280 fits differ from the Armadillo build, by at most 5.2e-9 absolute;
@@ -909,7 +918,7 @@ it they stay empty and
 `log_at()` (`src/hybrid_topk_eig.h`: `auto log_at = [&](`) is a no-op because its bounds check
 fails; the
 history buffers `eigval_hist`, `obj_hist`, `subspace_cos_hist` and their update
-block, which adds the singular values of `V_prev' * V_new` per iteration (`si_la::matmul`, `si_la::svd_values`) to track
+block, which adds the singular values of `V_prev' * V_new` per iteration (`si_la::gemm`, `si_la::svd_values`) to track
 subspace rotation; and a wider return list. The counters `n_exact`,
 `n_lobpcg_ok`, `n_lobpcg_bad` are always maintained and returned; only the per-iteration
 logs are gated.

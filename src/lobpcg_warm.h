@@ -160,18 +160,29 @@ namespace lobpcg_detail
   }
 
   // C = alpha * op(A) * B + beta * C, where op(A) is A' when trans_a and A
-  // is the a_rows x a_cols buffer at a. si_la::matmul sends it to the BLAS
-  // routine Armadillo's * sent it to, dgemv or dgemm. A status other than 0
-  // is operands that do not conform, which no call here passes.
-  inline void matmul_into(const bool trans_a, const double alpha,
-                          const double *a, const std::size_t a_rows,
-                          const std::size_t a_cols, const Block &B,
-                          const double beta, Block &C)
+  // is the a_rows x a_cols buffer at a. A block B of one column is a
+  // vector, and the product is dgemv; any other is dgemm. Operands that do
+  // not conform are an error here; no call passes them.
+  inline void product_into(const bool trans_a, const double alpha,
+                           const double *a, const std::size_t a_rows,
+                           const std::size_t a_cols, const Block &B,
+                           const double beta, Block &C)
   {
     const std::size_t c_rows = trans_a ? a_cols : a_rows;
-    if (C.n_rows != c_rows || C.n_cols != B.n_cols ||
-        si_la::matmul(trans_a, alpha, a, a_rows, a_cols, B.memptr(),
-                      B.n_rows, B.n_cols, beta, C.memptr()) != si_la::ok)
+    const std::size_t inner = trans_a ? a_rows : a_cols;
+    if (B.n_rows != inner || C.n_rows != c_rows || C.n_cols != B.n_cols)
+    {
+      Rcpp::stop("internal error: a product of blocks that do not conform");
+    }
+    const char trans = trans_a ? 'T' : 'N';
+    const int st =
+        (B.n_cols == 1)
+            ? si_la::gemv(trans, a_rows, a_cols, alpha, a, a_rows, B.memptr(),
+                          beta, C.memptr())
+            : si_la::gemm(trans, 'N', c_rows, B.n_cols, inner, alpha, a,
+                          a_rows, B.memptr(), B.n_rows, beta, C.memptr(),
+                          c_rows);
+    if (st != si_la::ok)
     {
       Rcpp::stop("internal error: dgemm or dgemv refused its arguments");
     }
@@ -183,7 +194,7 @@ namespace lobpcg_detail
                    const std::size_t a_cols, const Block &B)
   {
     Block C(a_rows, B.n_cols);
-    matmul_into(false, 1.0, a, a_rows, a_cols, B, 0.0, C);
+    product_into(false, 1.0, a, a_rows, a_cols, B, 0.0, C);
     return C;
   }
 
@@ -196,7 +207,7 @@ namespace lobpcg_detail
   inline Block tmul(const Block &A, const Block &B)
   {
     Block C(A.n_cols, B.n_cols);
-    matmul_into(true, 1.0, A.memptr(), A.n_rows, A.n_cols, B, 0.0, C);
+    product_into(true, 1.0, A.memptr(), A.n_rows, A.n_cols, B, 0.0, C);
     return C;
   }
 
@@ -207,7 +218,7 @@ namespace lobpcg_detail
   // the caller writes sub_cells(V, mul(X, tmul(X, V))) instead.
   inline void sub_mul(Block &C, const Block &A, const Block &B)
   {
-    matmul_into(false, -1.0, A.memptr(), A.n_rows, A.n_cols, B, 1.0, C);
+    product_into(false, -1.0, A.memptr(), A.n_rows, A.n_cols, B, 1.0, C);
   }
 
   // C -= D and C += D, cell by cell: how Armadillo adds a product inside a

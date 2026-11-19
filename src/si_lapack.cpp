@@ -289,44 +289,6 @@ namespace si_la
     return ok;
   }
 
-  // The order of the tests is Armadillo's (glue_times::apply): a product
-  // with one row is taken before one with one column.
-  int matmul(const bool trans_a,
-             const double alpha,
-             const double *a, const std::size_t a_rows, const std::size_t a_cols,
-             const double *b, const std::size_t b_rows, const std::size_t b_cols,
-             const double beta,
-             double *c)
-  {
-    const std::size_t c_rows = trans_a ? a_cols : a_rows;
-    const std::size_t inner = trans_a ? a_rows : a_cols;
-    if (inner != b_rows)
-    {
-      return err_arg;
-    }
-    if (c_rows == 0 || b_cols == 0)
-    {
-      return ok;
-    }
-    if (inner == 0)
-    {
-      scale_range(c, c_rows * b_cols, beta);
-      return ok;
-    }
-    if (c_rows == 1)
-    {
-      // op(A) is one row, held as the vector a: the product is (B' a)'.
-      return gemv('T', b_rows, b_cols, alpha, b, b_rows, a, beta, c);
-    }
-    if (b_cols == 1)
-    {
-      return gemv(trans_a ? 'T' : 'N', a_rows, a_cols, alpha, a, a_rows, b,
-                  beta, c);
-    }
-    return gemm(trans_a ? 'T' : 'N', 'N', c_rows, b_cols, inner, alpha,
-                a, a_rows, b, b_rows, beta, c, c_rows);
-  }
-
   int syevr_range(const char uplo, const std::size_t n,
                   const std::size_t il, const std::size_t iu,
                   double *a, double *w, double *z)

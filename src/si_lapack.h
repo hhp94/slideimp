@@ -87,22 +87,6 @@ namespace si_la
            double beta,
            double *c, std::size_t ldc);
 
-  // C = alpha * op(A) * B + beta * C for two whole matrices, sent to the BLAS
-  // routine Armadillo's operator* sends it to: dgemv when the product is one
-  // row or one column, dgemm otherwise. op(A) is A' when trans_a, else A. C
-  // is (rows of op(A)) x b_cols, stored without padding. err_arg when the
-  // inner dimensions differ.
-  //
-  // Not as Armadillo: for square operands up to 4 x 4 Armadillo runs its own
-  // loops, and for A' * A on one object it calls dsyrk; here both go to dgemm
-  // or dgemv.
-  int matmul(bool trans_a,
-             double alpha,
-             const double *a, std::size_t a_rows, std::size_t a_cols,
-             const double *b, std::size_t b_rows, std::size_t b_cols,
-             double beta,
-             double *c);
-
   // dsyevr, jobz 'V', range 'I', abstol 0: eigenpairs il..iu of the symmetric
   // n x n matrix whose uplo triangle is in a, counted from 1 in ascending
   // order, so il = n - k + 1 and iu = n are the k largest. a is destroyed.

@@ -65,6 +65,12 @@ nan_line <- "std::numeric_limits<double>::quiet_NaN();"
 old_anchor <- "        arma::vec s = arma::svd(V_prev.t() * V_new);"
 new_anchor <-
   "      int st = si_la::matmul(true, 1.0, V_prev.data(), n_gram, n_cp,"
+## From item 9 of Phase 4 the product is si_la::gemm.
+gemm_anchor <-
+  "      int st = si_la::gemm('T', 'N', n_cp, n_cp, n_gram, 1.0,"
+if (gemm_anchor %in% txt) {
+  new_anchor <- gemm_anchor
+}
 info_anchor <-
   "      st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());"
 if (old_anchor %in% txt) {

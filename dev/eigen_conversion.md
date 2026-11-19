@@ -2051,6 +2051,62 @@ is expected to be bitwise.
   scan (Phase 2, step 4), cannot arise while the wrapper scans. Neither
   check has a test in `tests/`: both need an instrumented build.
 
+**`matmul` removed; a block of one column goes to dgemv** (item 9;
+maintainer, 2026-11-19). `si_la::matmul`, which kept the order of
+Armadillo's tests (a result of one row first, then a right operand of one
+column, then dgemm), is gone. The LOBPCG products go through one function,
+`product_into()` in `src/lobpcg_warm.h`, with one rule of its own: a right
+operand of one column is a vector and the product is dgemv on the left
+operand; any other is dgemm. `si_la::gemv` stays for it. The product of the
+diagnostics build in `src/armaSVD.cpp` is `si_la::gemm`.
+
+- Two forms were built and measured against `6927d58`, each in one run of
+  `dev/eigen_p4_gate.sh` (R 4.6.1; the figures are the same under both
+  RcppEigen versions). A: dgemm for every product, `si_la::gemv` removed
+  too. B: the rule above. Neither is bitwise:
+
+  | | A, dgemm always | B, one column to dgemv |
+  | --- | --- | --- |
+  | capture, 71 cases, not bitwise | 6 | 6 |
+  | worst on the imputed values | 1.19e-10 abs, 5.3e-9 rel | 9.25e-11 abs, 3.3e-9 rel |
+  | worst on `criterion_final` | 2.65e-7 rel | 6.94e-8 rel |
+  | diagnostics, 49 cases, not bitwise (past the defaults) | 21 (16) | 21 (16) |
+  | edges, 68 cases, not bitwise | 52 | 51 |
+  | worst on the imputed values | 8.16e-8 abs, 2.4e-6 rel | 6.57e-8 abs, 1.5e-6 rel |
+  | edges where `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad` differ | 10 | 10 |
+  | suite with manual tests, both RcppEigen | 278 pass | 278 pass |
+
+  The six capture cases are the same in both, all under LOBPCG:
+  `pca_chr21_lobpcg`, `pca_x1_em_lobpcg`, `pca_x1_lobpcg` (the worst),
+  `pca_xb_auto`, `pca_xb_lobpcg`, `pca_xt2_lobpcg`; the relative figures on
+  the imputed values are over the cells that hold a nonzero value. No case
+  under the exact solver moves. In the diagnostics compare the largest
+  figures (A 2.05e-2 abs, B 1.54e-4 abs, both near 1 relative) are in one
+  per-iteration vector of the kernel's log, not identified further; the
+  imputed values there move as in the capture.
+- Why B moves at all, when it calls dgemv as Armadillo did for one column:
+  the capture's fits ask for more than one component, so the products that
+  differ are those B no longer sends where Armadillo's order did, a result
+  of one row and several columns (dgemv on the right operand then, dgemm
+  now) and a 1 x 1 result (the other operand as the vector). Which sites
+  form them was not traced.
+- Over the 1316 calls of `lobpcg_solve()` in the edge cases, base, A, B:
+  converged 1178, 1174, 1174; stalled 38, 45, 42; at `maxiter` 34, 32, 34;
+  `BAD_SEED` 33, 32, 33. The other statuses are the same.
+- Timing, with one component, where every product is matrix times vector
+  (`pca_lobpcg1`, added to `dev/eigen_time_worker.R`), A as a and B as b,
+  11 repetitions: chr21 1.011 (a 0.150-0.215 s, b 0.150-0.231 s), sim 0.986
+  (a 0.418-0.606 s, b 0.417-0.737 s). A first run of 5 on a busier machine
+  gave 0.914 and 0.706 with a range of 0.504-2.965 s on a, and is not
+  relied on. The gate's own four workloads, base against B, 5
+  repetitions: 1.014, 0.909, 0.999, 1.000. So B is not measurably faster
+  than A here; it was chosen as the convention, dgemv for matrix times
+  vector, not for speed or for bits.
+- The move is of the size item 10 makes and is absorbed by the reference
+  capture that follows it (item 10b). `dev/to-do.md` has the reminder line.
+- The oracle no longer compiles: `dev/oracle_pairs.cpp` calls
+  `si_la::matmul`. Item 14 removes it.
+
 ## Not settled yet
 
 - Whether the noise floor measured on one machine holds on the BLAS of the
