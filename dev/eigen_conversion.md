@@ -1961,6 +1961,39 @@ is expected to be bitwise.
   `-DPCA_IMP_DIAGNOSTICS=1` to compile. No user-visible change, so no NEWS
   reminder.
 
+**The triangular solve is plain dtrtrs** (ruled 2026-11-19).
+
+- `si_la::solve_tri` is dtrtrs and nothing else: dtrcon, the dgelsd
+  fallback, the `rcond` and `approx` outputs and the workspace floors
+  computed by hand are gone. R's own `qr.coef()` solves a triangle the same
+  way. A positive status makes `qr_orthonormalize_update_matvec()` return
+  false, which its two callers already treat as `LOBPCG_P_COLLAPSED`, so
+  that outer iteration goes to the exact solver; the R error "lobpcg_solve:
+  triangular solve failed" no longer exists.
+- How often the fallback fired, the measurement this item waited for: at
+  `0c76579`, instrumented, no solve of the Phase 0 capture took it, and at
+  `cefd88b` 4 of 19164 in `dev/eigen_p2s4_edges.R` did, all four in cases
+  that set a pivot to 0 by injection. The smallest estimate
+  among the others was 1.5e-14, in `big_xb_ncp40`, against the threshold of
+  2.2e-16. Not measured on real data beyond the chr21 cases of the capture.
+- Measured on R 4.6.1, `cefd88b` against the change: the capture is bitwise
+  on 71 cases under both RcppEigen versions, and the diagnostics build on
+  49. Of the 60 edge cases, 58 give bitwise the same result. The other two,
+  `inj_solve_01` and `inj_solve_02`, where the solve is made to return 1,
+  ended in the error and now return a result with no NA or NaN, after
+  `P_COLLAPSED` at iteration 0. The three `inj_singular` cases under
+  LOBPCG alone took the fallback and stalled (`STALLED` at iteration 13, 13
+  and 7); now dtrtrs reports the zero and they end in `P_COLLAPSED` at
+  iteration 0, 0 and 2, with the same imputed values to the bit, since both
+  ways end in the exact solver. The Gram-NaN cases end in the same error as
+  before. The suite with manual tests passes under both RcppEigen versions.
+- The DLL imports 8 BLAS and LAPACK routines: dtrcon and dgelsd are gone.
+- `dev/probe_p2s4_patch.R` instruments either form of the call; for the
+  plain one it logs `rcond -1`, there being no estimate.
+- NaN or Inf in the triangle or the right-hand side is no longer refused
+  here; the Gram scan and the residual test of the next items are what
+  stand in front of it.
+
 ## Not settled yet
 
 - Whether the noise floor measured on one machine holds on the BLAS of the

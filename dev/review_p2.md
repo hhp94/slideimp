@@ -387,7 +387,8 @@ decides, with a line in the NEWS entry of `dev/to-do.md` for each. READ,
 that entry has no line for either of these:
 
 - A failed triangular solve
-  (`src/lobpcg_warm.h`: `Rcpp::stop("lobpcg_solve: triangular solve failed");`).
+  ("lobpcg_solve: triangular solve failed" in `src/lobpcg_warm.h`, at the
+  commit reviewed; Phase 4 has since removed that stop).
   MEASURED by the edge probe's two injections: the condition was
   `std::runtime_error`, "solve(): solution not found", and is
   `Rcpp::exception` with the text above. The change is deliberate and

@@ -492,7 +492,7 @@ which no call here can produce once kernel setup has refused dimensions past
 | site | call | a numerical failure leads to |
 | --- | --- | --- |
 | `qr_orthonormalize()` | `si_la::qr_econ` | `V` reset and a rank of 0, the same as a block whose first pivot is 0. The caller decides: at entry, `have_P` is false and the first Rayleigh-Ritz is over `X` alone; on the active residuals, `LOBPCG_RESIDUAL_COLLAPSED`; on `P_active`, `LOBPCG_P_COLLAPSED`; in `build_momentum_P()`, no `P`, so the state is left unseeded after an exact solve, or the post-RR `P` is kept after a LOBPCG success |
-| `qr_orthonormalize_update_matvec()` | `si_la::solve_tri` | an R error (`src/lobpcg_warm.h`: `Rcpp::stop("lobpcg_solve: triangular solve failed");`), which ends `pca_imp()`. A triangle that is singular to working precision is not a failure: the wrapper returns the least-squares solution with `approx` set, and the iteration goes on with it |
+| `qr_orthonormalize_update_matvec()` | `si_la::solve_tri` | false, which both callers turn into `LOBPCG_P_COLLAPSED`. The one numerical failure of plain dtrtrs is a zero on the diagonal of `R`, which the pivot test of `qr_orthonormalize()` has already ruled out for a block that kept every column, so no input is known to reach it. Nothing estimates the condition of `R`: a triangle singular to working precision is solved as it is |
 | `small_eig_desc()` | `si_la::syevd` | false. From `rr_two_block()` or the `X`-only form before the loop, `LOBPCG_INITIAL_RR_FAILED`; inside the loop, `LOBPCG_RR_FAILED` |
 
 Every `LOBPCG_*` status but `LOBPCG_CONVERGED` leaves the state untouched and
@@ -511,7 +511,7 @@ wrapper, and what was measured.
 | dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
 | dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
 | dgeqrf and dorgqr, through `si_la::qr_econ` | `qr_orthonormalize()` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization |
-| dtrtrs and dtrcon, and dgelsd as the fallback, through `si_la::solve_tri` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
+| dtrtrs, through `si_la::solve_tri` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
 | dgemm or dgemv, through `si_la::matmul` | `matmul_into()` (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
 
 The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` problem. The
@@ -551,7 +551,7 @@ one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
 | `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declared itself until it moved to this wrapper | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or another number of eigenpairs than asked; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::syevd` | `arma::dsyevd_`, which `small_eig_desc()` called directly until it moved to this wrapper | dsyevd, `jobz = 'V'` | `info != 0`; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::qr_econ` | `arma::qr_econ()` | dgeqrf, then dorgqr | returns false, `Q` and `R` reset |
-| `si_la::solve_tri` | `arma::solve()` on `trimatl()` or `trimatu()` | dtrtrs, dtrcon, and dgelsd as the fallback | throws `std::runtime_error` |
+| `si_la::solve_tri` | `arma::solve()` on `trimatl()` or `trimatu()`, until Phase 4 (below) | dtrtrs alone; Armadillo adds dtrcon, and dgelsd as the fallback | throws `std::runtime_error` |
 | `si_la::svd_values` | `arma::svd()` returning the values alone | dgesdd, `jobz = 'N'` | throws `std::runtime_error` |
 
 The three direct calls are Armadillo's own declarations of the Fortran symbols (READ:
@@ -675,18 +675,17 @@ solve:
    found", which Rcpp turns into an R error.
 
 So this call site went on with an approximate `AQ` whenever `R` was singular to working
-precision, having printed a line and raised nothing. `si_la::solve_tri` does the same
-arithmetic and returns the estimate and a flag in place of the print. For an empty system
-Armadillo's estimate stays 0, so it prints the warning and returns the empty result; the
-wrapper returns the empty result with the flag unset.
+precision, having printed a line and raised nothing, and so did `si_la::solve_tri` through
+Phases 2 and 3.
 
-The call site now writes the two transposes out, as the oracle's `pair_solve_chain` does
-(READ: `glue_solve_tri_default::apply()` evaluates the triangle's expression into a matrix
-with `quasi_unwrap` before dtrtrs, so `R.t()` was formed there too), ignores the flag, and
-so goes on with the approximate `AQ` as before, without the printed line. A non-zero
-status, which is the fallback failing or meeting NaN or Inf, is an R error, as Armadillo's
-throw in item 4 was, in the chain's own words and as an `Rcpp::exception` where
-Armadillo's was a `std::runtime_error`.
+Since Phase 4 of `dev/eigen_conversion.md` the wrapper is step 1 alone, which is how R's
+own `qr.coef()` solves a triangle (READ: `qr_coef_real` in R's `Lapack.c`, dtrtrs with
+`info != 0` an error): no dtrcon, no dgelsd, no flag. The call site writes the two
+transposes out (READ: `glue_solve_tri_default::apply()` evaluates the triangle's expression
+into a matrix with `quasi_unwrap` before dtrtrs, so `R.t()` was formed there too). A
+positive status, a zero on the diagonal, makes `qr_orthonormalize_update_matvec()` return
+false, which is `LOBPCG_P_COLLAPSED`, and no longer an R error. NaN or Inf in either
+operand is not refused and goes through to `AQ`.
 
 **`arma::svd(X)`**, which the `PCA_IMP_DIAGNOSTICS` build called as
 `arma::svd(V_prev.t() * V_new)` until step 6 of Phase 2, once per iteration from the

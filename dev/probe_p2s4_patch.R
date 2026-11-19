@@ -27,7 +27,9 @@
 #     syevdnan  a NaN is written into the small Gram before dsyevd
 #     gramnan   a NaN is written into the Gram handed to lobpcg_solve()
 #     singular  the last pivot of the triangle handed to the solve is set
-#               to 0, so the solve takes its least-squares fallback
+#               to 0, so the solve takes its least-squares fallback, or,
+#               from Phase 4 on, dtrtrs reports the zero and the block
+#               counts as collapsed
 # - SLIDEIMP_P2S4_FRESH, the file of step 3 only: dsyevd gets the workspace
 #   length of its own query on every call, where step 3 kept the longest one
 #   so far. si_la::syevd always does.
@@ -60,6 +62,8 @@ anchor <- function(...) {
   hit[[1]]
 }
 arma_calls <- holds("arma::qr_econ(Q, R, V)")
+## Phase 4 made si_la::solve_tri plain dtrtrs, without the two outputs.
+plain_solve <- !arma_calls && !holds("Y.memptr(), &rcond, &approx)")
 
 patch_file <- function(f, edits) {
   txt <- paste(readLines(f), collapse = "\n")
@@ -337,19 +341,38 @@ if (arma_calls) {
           "      p2s4::log(\"qr_failed\\n\");"
         )
       ),
-      ed(
-        "      if (la_failed(si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),\n                                     Y.memptr(), &rcond, &approx),\n                    \"dtrtrs or dgelsd\"))",
-        lines(
-          "      const int p2s4_st =",
-          "          p2s4::inject(\"solve\")",
-          "              ? 1",
-          "              : si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),",
-          "                                 Y.memptr(), &rcond, &approx);",
-          "      p2s4::log(\"solve %llu %llu rcond %.6g approx %d\\n\", p2s4::ull(r),",
-          "                p2s4::ull(AQ.n_rows), rcond, static_cast<int>(approx));",
-          "      if (la_failed(p2s4_st, \"dtrtrs or dgelsd\"))"
+      if (plain_solve) {
+        ## Phase 4: plain dtrtrs, no estimate and no fallback. The line keeps
+        ## the fields dev/probe_p2s4_summary.R reads, with rcond -1 standing
+        ## for "not estimated".
+        ed(
+          "      if (la_failed(si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),\n                                     Y.memptr()),\n                    \"dtrtrs\"))",
+          lines(
+            "      const int p2s4_st =",
+            "          p2s4::inject(\"solve\")",
+            "              ? 1",
+            "              : si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),",
+            "                                 Y.memptr());",
+            "      p2s4::log(\"solve %llu %llu rcond -1 approx 0\\n\", p2s4::ull(r),",
+            "                p2s4::ull(AQ.n_rows));",
+            "      if (la_failed(p2s4_st, \"dtrtrs\"))"
+          )
         )
-      ),
+      } else {
+        ed(
+          "      if (la_failed(si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),\n                                     Y.memptr(), &rcond, &approx),\n                    \"dtrtrs or dgelsd\"))",
+          lines(
+            "      const int p2s4_st =",
+            "          p2s4::inject(\"solve\")",
+            "              ? 1",
+            "              : si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),",
+            "                                 Y.memptr(), &rcond, &approx);",
+            "      p2s4::log(\"solve %llu %llu rcond %.6g approx %d\\n\", p2s4::ull(r),",
+            "                p2s4::ull(AQ.n_rows), rcond, static_cast<int>(approx));",
+            "      if (la_failed(p2s4_st, \"dtrtrs or dgelsd\"))"
+          )
+        )
+      },
       ed(aq_line, log_dropped),
       ed(
         "    if (la_failed(si_la::syevd('U', n, M.memptr(), w.memptr()), \"dsyevd\"))\n    {",

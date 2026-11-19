@@ -101,12 +101,13 @@ Easy to miss in the diff, noted so the draft does not:
   converge" (changed in `c7a253b`). Finite input whose squares overflow
   raises it in both, unscaled values near 1e160 for one, and a test now
   pins its class and wording (`dev/review_p2.md`, finding 3).
-- A failed triangular solve inside LOBPCG is an `Rcpp::exception`,
-  "lobpcg_solve: triangular solve failed", where Armadillo raised a
-  `std::runtime_error`, "solve(): solution not found", and Armadillo's
-  "system is singular" line on the console is gone
-  (`dev/eigen_conversion.md`, Phase 2, step 4). No input is known to reach
-  either without an injected failure, so this may need no NEWS text.
+- A failed triangular solve inside LOBPCG is no longer an error: that
+  outer iteration goes to the exact solver, where 1.2.0 raised Armadillo's
+  `std::runtime_error`, "solve(): solution not found". Armadillo's "system
+  is singular" line on the console is gone, with the least-squares answer
+  it announced (`dev/eigen_conversion.md`, Phase 2, step 4, and "Phase 4, as
+  carried out"). No input is known to reach either without an injected
+  failure, so this may need no NEWS text.
 - `pca_imp()` refuses, with a new error, an input whose eligible columns
   hold more than `.Machine$integer.max` missing values
   (`dev/eigen_conversion.md`, Phase 2, step 6). No test or measurement
@@ -194,6 +195,25 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
   `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`
   before every cell that is read is written, where only `fittedX` needs its
   zeros; and `row_w` is copied before it is checked.
+
+## Take cli out; audit every message against the R manuals
+
+Planned by the maintainer, 2026-11-19; not started, and its own change, not
+part of `dev/eigen_conversion.md`. No entry for it existed before this one.
+
+- cli leaves the package: errors, warnings and messages become base
+  `stop()`, `warning()` and `message()`. Until this lands, new code in the
+  PCA chain raises plain errors with no class, and existing cli calls are
+  left alone.
+- In the same pass, every message the package raises, from R and from C++,
+  is audited against what the R manuals say about error messages
+  (`dev/r_manual/`), and `dev/WRITING.md` is rewritten to that guidance, so
+  the two do not disagree afterwards.
+- To settle before starting: what becomes of the `slideimp_infeasible`
+  class, which `group_imp()` and callers catch by class; the house rule
+  "Errors and messages go through cli" in `.claude/CLAUDE.md`, which has to
+  change first; and the tests that pin wording.
+- The NEWS entry above gains a line for whatever wording or class changes.
 
 ## Release condition: pass on the RcppEigen candidate
 

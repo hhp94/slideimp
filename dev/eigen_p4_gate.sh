@@ -14,6 +14,11 @@
 #   diag     dev/eigen_p2s6_diag.R, the diagnostics build, on both clones
 #            against CRAN's RcppEigen, compared the same way: the one build
 #            that compiles and calls si_la::svd_values
+#   edges    two more clones, `edge-base` and `edge-p4`, instrumented by
+#            dev/probe_p2s4_patch.R, and dev/eigen_p2s4_edges.R on each with
+#            the event log: LOBPCG past what the capture asks of it, and
+#            each of its factorizations made to fail. Compared the same way,
+#            then dev/probe_p2s4_summary.R on the two logs
 #   suite    dev/review_p2_suite.R on `p4`, the whole suite with manual
 #            tests, once per RcppEigen, each with its own private library
 #            for the mirai daemons
@@ -98,6 +103,29 @@ diag)
     "$(w "$base/dev/ref/base-diag")" "$(w "$p4/dev/ref/p4-diag")"
   cmp diag-default \
     "$(w "$base/dev/ref/base-diag")" "$(w "$p4/dev/ref/p4-diag")"
+  ;;
+edges)
+  for clone in base p4; do
+    dir="$scratch/edge-$clone"
+    rm -rf "$dir" "$scratch/edge-$clone.log"
+    cp -r "$scratch/$clone" "$dir"
+    rm -rf "$dir/dev/ref/edges"
+    cp "$repo/dev/probe_p2s4_patch.R" "$repo/dev/eigen_p2s4_edges.R" "$dir/dev/"
+    (cd "$dir" && Rscript dev/probe_p2s4_patch.R --in-scratch-clone new &&
+      SLIDEIMP_P2S4_LOG="$(w "$scratch/edge-$clone.log")" \
+        Rscript dev/eigen_p2s4_edges.R edges > "$scratch/edges-$clone.out" 2>&1)
+    echo "== edges $clone: exit $?"
+    grep "cases, " "$scratch/edges-$clone.out"
+  done
+  cmp edges-tol0 --tol-abs=0 --tol-rel=0 \
+    "$(w "$scratch/edge-base/dev/ref/edges")" "$(w "$scratch/edge-p4/dev/ref/edges")"
+  cmp edges-default \
+    "$(w "$scratch/edge-base/dev/ref/edges")" "$(w "$scratch/edge-p4/dev/ref/edges")"
+  Rscript dev/probe_p2s4_summary.R \
+    "$(w "$scratch/edge-base.log")" "$(w "$scratch/edge-p4.log")" \
+    "$(w "$scratch/edge-base/dev/ref/edges")" "$(w "$scratch/edge-p4/dev/ref/edges")" \
+    > "$scratch/summary-edges.out" 2>&1
+  echo "== summary edges: exit $?"
   ;;
 suite)
   # dev/review_p2_suite.R takes R_LIBS as one library, so the candidate is

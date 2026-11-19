@@ -44,8 +44,6 @@ namespace
   constexpr std::size_t int_max =
       static_cast<std::size_t>(std::numeric_limits<int>::max());
 
-  constexpr double eps = std::numeric_limits<double>::epsilon();
-
   bool to_int(const std::size_t v, int &out)
   {
     if (v > int_max)
@@ -153,17 +151,6 @@ namespace
       x[i] *= beta;
     }
   }
-
-  // An upper bound on the levels of dgelsd's divide and conquer for an n x n
-  // problem. LAPACK derives the count from SMLSIZ, which it reads through
-  // ilaenv; this is the count for SMLSIZ = 1, and a larger SMLSIZ needs no
-  // more, so a workspace sized with it is long enough without asking.
-  double gelsd_levels(const std::size_t n)
-  {
-    const double l = std::floor(std::log2(static_cast<double>(n) / 2.0)) + 1.0;
-    return (l > 0.0) ? l : 0.0;
-  }
-
 } // namespace
 
 namespace si_la
@@ -587,11 +574,8 @@ namespace si_la
   }
 
   int solve_tri(const char uplo, const std::size_t n, const std::size_t nrhs,
-                const double *a, double *b,
-                double *rcond, bool *approx)
+                const double *a, double *b)
   {
-    *rcond = 0.0;
-    *approx = false;
     if (!is_ul(uplo))
     {
       return err_arg;
@@ -605,122 +589,12 @@ namespace si_la
     {
       return err_size;
     }
-
-    // The least-squares fallback starts from the right-hand side as given,
-    // not from what dtrtrs left in b.
-    std::vector<double> rhs;
-    if (!alloc(rhs, n * nrhs))
-    {
-      return err_alloc;
-    }
-    std::copy(b, b + n * nrhs, rhs.begin());
-
     const char trans = 'N';
     const char diag = 'N';
     int info = 0;
     F77_CALL(dtrtrs)(&uplo, &trans, &diag, &n_i, &nrhs_i, a, &n_i, b, &n_i,
                      &info FCONE FCONE FCONE);
-
-    // info > 0 is a zero on the diagonal: nothing was solved, and the
-    // estimate stays 0.
-    bool solved = (info == 0);
-    if (solved)
-    {
-      std::vector<double> work;
-      std::vector<int> iwork;
-      if (!alloc(work, 3 * n) || !alloc(iwork, n))
-      {
-        return err_alloc;
-      }
-      const char norm = '1';
-      double estimate = 0.0;
-      F77_CALL(dtrcon)(&norm, &uplo, &diag, &n_i, a, &n_i, &estimate,
-                       work.data(), iwork.data(), &info FCONE FCONE FCONE);
-      *rcond = (info == 0) ? estimate : 0.0;
-      solved = !(*rcond < eps) && !std::isnan(*rcond);
-    }
-    if (solved)
-    {
-      return ok;
-    }
-
-    // The triangle on its own, the other one zero.
-    std::vector<double> tri;
-    if (!alloc(tri, n * n))
-    {
-      return err_alloc;
-    }
-    for (std::size_t j = 0; j < n; ++j)
-    {
-      const std::size_t first = (uplo == 'U') ? 0 : j;
-      const std::size_t last = (uplo == 'U') ? j + 1 : n;
-      std::copy(a + j * n + first, a + j * n + last, tri.data() + j * n + first);
-    }
-    if (!all_finite(tri.data(), n * n) || !all_finite(rhs.data(), n * nrhs))
-    {
-      return err_nonfinite;
-    }
-
-    // Floors under what dgelsd reports, from its documented minima: SMLSIZ =
-    // 25 in the terms that grow with it, and the level bound above in the
-    // terms that shrink with it. A library that does not report an integer
-    // workspace length leaves iwork_q at 0, and the floor stands.
-    const double nd = static_cast<double>(n);
-    const double levels = gelsd_levels(n);
-    const double lwork_min = 12.0 * nd + 2.0 * nd * 25.0 + 8.0 * nd * levels +
-                             nd * static_cast<double>(nrhs) + 26.0 * 26.0;
-    const double liwork_min = 3.0 * nd * levels + 11.0 * nd;
-    if (!fits_int(lwork_min) || !fits_int(liwork_min))
-    {
-      return err_size;
-    }
-
-    std::vector<double> sv;
-    if (!alloc(sv, n))
-    {
-      return err_alloc;
-    }
-    int m_i = n_i;
-    int lda = n_i;
-    int ldb = n_i;
-    int rank = 0;
-    double rcond_sv = nd * eps;
-
-    double work_q = 0.0;
-    int iwork_q = 0;
-    int lwork_query = -1;
-    F77_CALL(dgelsd)(&m_i, &n_i, &nrhs_i, tri.data(), &lda, rhs.data(), &ldb,
-                     sv.data(), &rcond_sv, &rank, &work_q, &lwork_query,
-                     &iwork_q, &info);
-    if (info != 0)
-    {
-      return info;
-    }
-
-    int lwork, liwork;
-    if (!work_len(work_q, lwork_min, lwork) ||
-        !work_len(static_cast<double>(iwork_q), liwork_min, liwork))
-    {
-      return err_size;
-    }
-    std::vector<double> work;
-    std::vector<int> iwork;
-    if (!alloc(work, static_cast<std::size_t>(lwork)) ||
-        !alloc(iwork, static_cast<std::size_t>(liwork)))
-    {
-      return err_alloc;
-    }
-
-    F77_CALL(dgelsd)(&m_i, &n_i, &nrhs_i, tri.data(), &lda, rhs.data(), &ldb,
-                     sv.data(), &rcond_sv, &rank, work.data(), &lwork,
-                     iwork.data(), &info);
-    if (info != 0)
-    {
-      return info;
-    }
-    std::copy(rhs.begin(), rhs.end(), b);
-    *approx = true;
-    return ok;
+    return info;
   }
 
 #if PCA_IMP_DIAGNOSTICS

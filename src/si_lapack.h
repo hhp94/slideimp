@@ -129,23 +129,14 @@ namespace si_la
   int qr_econ(std::size_t m, std::size_t n, const double *x,
               double *q, double *r);
 
-  // The solve of arma::solve(arma::trimatu(A), B) and of trimatl, with
-  // default options: X with tri(A) * X = B, where tri(A) is the uplo triangle
-  // ('U' or 'L') of the n x n matrix a and the other triangle is not read. b
-  // is n x nrhs and is overwritten with X.
-  //
-  // dtrtrs solves and dtrcon estimates the reciprocal condition number in
-  // the 1-norm, returned in *rcond. When dtrtrs finds a zero on the diagonal,
-  // or *rcond is below DBL_EPSILON or NaN, the triangular answer is discarded
-  // and b receives the minimum-norm least-squares solution from dgelsd, with
-  // singular values under n * DBL_EPSILON times the largest treated as zero;
-  // *approx is then true and the status is still 0. Armadillo prints a
-  // warning to its error stream at that point and goes on with that
-  // solution; whether to accept it is the caller's decision. err_nonfinite
-  // when that fallback is entered with NaN or Inf in tri(A) or B.
+  // dtrtrs, trans 'N', diag 'N': X with tri(A) * X = B, where tri(A) is the
+  // uplo triangle ('U' or 'L') of the n x n matrix a and the other triangle
+  // is not read. b is n x nrhs and is overwritten with X. A positive status
+  // i is dtrtrs's: diagonal element i of tri(A) is exactly zero, and b is as
+  // it was given. Nothing estimates the condition of tri(A), and NaN or Inf
+  // in either operand is not refused: it goes through to X.
   int solve_tri(char uplo, std::size_t n, std::size_t nrhs,
-                const double *a, double *b,
-                double *rcond, bool *approx);
+                const double *a, double *b);
 
   // dgesdd, jobz 'N': the min(m, n) singular values of the m x n matrix a,
   // descending, into s. a is destroyed. An empty matrix succeeds and writes

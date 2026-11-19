@@ -510,18 +510,13 @@ namespace lobpcg_detail
       }
       const Block Rt = transpose(R);
       Block Y = transpose(AQ);
-      // When R is singular to working precision si_la::solve_tri returns the
-      // minimum-norm least-squares solution and sets `approx`; the iteration
-      // goes on with it. dev/eigen_conversion.md, Phase 4, decides whether
-      // it should.
-      double rcond = 0.0;
-      bool approx = false;
+      // A zero on the diagonal of R is the block collapsing, as a QR that
+      // drops every column is.
       if (la_failed(si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),
-                                     Y.memptr(), &rcond, &approx),
-                    "dtrtrs or dgelsd"))
+                                     Y.memptr()),
+                    "dtrtrs"))
       {
-        // The least-squares fallback failed too, or met NaN or Inf.
-        Rcpp::stop("lobpcg_solve: triangular solve failed");
+        return false;
       }
       AQ = transpose(Y);
     }
