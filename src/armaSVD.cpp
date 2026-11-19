@@ -2,6 +2,9 @@
 #define PCA_IMP_DIAGNOSTICS 0
 #endif
 
+// before svd_triplet.h: the chain it pulls in includes Rcpp.h, which
+// RcppArmadillo.h refuses to follow.
+#include <RcppArmadillo.h>
 #include "svd_triplet.h"
 #include "loc_timer.h"
 #include <cmath>
@@ -657,13 +660,21 @@ Rcpp::List pca_imp_internal_cpp(
     Rcpp::stop("internal error: eigenpair count out of range");
   }
 
-  // AA_NxN and X_work are written through raw pointers before any arma
-  // resize could happen; the remaining buffers are sized by SVD_triplet.
+  // every buffer SVD_triplet() reads or writes is sized here, once, and
+  // written through raw pointers; the sizes are the ones its header lists.
+  // In the wide case V's fixed rows stay unwritten until postprocessing.
   AA_NxN.set_size(n_gram, n_gram);
   if (tall)
   {
     X_work.set_size(nrX, n_elig);
   }
+  U.set_size(nrX, ncp);
+  V.set_size(n_elig, ncp);
+  Vn.set_size(n_gram, ncp);
+  eigvecs.set_size(n_gram, k);
+  eigvals.set_size(k);
+  vs_top.set_size(k);
+  d_inv.set_size(ncp);
   lambda_shrinked.set_size(ncp);
 
   LOC_TIC(pca_imp_gram, "gram_cache_init");
@@ -775,9 +786,10 @@ Rcpp::List pca_imp_internal_cpp(
     LOC_TOC(pca_imp_gram, "restandardize");
 
     LOC_TIC(pca_imp_gram, "svd");
-    SVD_triplet(Xhat, sptr, ncp, tall,
-                vs_top, trace_val, U, V, X_work, AA_NxN,
-                d_inv, Vn, eigvals, eigvecs,
+    SVD_triplet(Xhat.memptr(), sptr, ncp, tall,
+                vs_top.memptr(), trace_val, U.memptr(), V.memptr(),
+                X_work.memptr(), AA_NxN.memptr(),
+                d_inv.memptr(), Vn.memptr(), eigvals.memptr(), eigvecs.memptr(),
                 gram_ws, gram_cache,
                 hyb_ctx, static_cast<int>(nb_iter - 1) LOC_TIMER_ARG(pca_imp_gram));
     LOC_TOC(pca_imp_gram, "svd");

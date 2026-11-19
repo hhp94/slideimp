@@ -9,7 +9,10 @@
 # through si_la (si_la::qr_econ, si_la::solve_tri, si_la::syevd): ff0e394,
 # whose containers are still arma::mat, or the second half of step 4, whose
 # are lobpcg_detail::Block. Two anchors differ between those two and are
-# taken from whichever the file holds. Every version gets the same three
+# taken from whichever the file holds. The call into it in
+# src/hybrid_topk_eig.h is likewise found by its form: the Gram an arma::mat
+# before step 5 of Phase 2, a raw buffer with its two dimensions from step 5
+# on. Every version gets the same three
 # things, driven by environment variables read at run time, so one build
 # serves every run:
 #
@@ -148,18 +151,31 @@ harness <- lines(
 nan_cell <- "std::numeric_limits<double>::quiet_NaN()"
 
 ## Common to both: the status of every lobpcg_solve() call, and the NaN in
-## the Gram.
+## the Gram. Until step 5 the Gram is an arma::mat; from step 5 it is a raw
+## buffer and the call takes its two dimensions.
+hybrid_txt <- paste(readLines("src/hybrid_topk_eig.h"), collapse = "\n")
+solve_arma <- "    lob_res = lobpcg_solve(A, ctx.lobpcg_state, ctx.lobpcg_opt);"
+solve_raw <- lines(
+  "    lob_res = lobpcg_solve(A, a_rows, a_cols, ctx.lobpcg_state,",
+  "                           ctx.lobpcg_opt);"
+)
+gram_arma <- grepl(solve_arma, hybrid_txt, fixed = TRUE)
+if (!gram_arma && !grepl(solve_raw, hybrid_txt, fixed = TRUE)) {
+  stop("src/hybrid_topk_eig.h holds neither form of the lobpcg_solve() call")
+}
+solve_line <- if (gram_arma) solve_arma else solve_raw
+gram_cell <- if (gram_arma) "A(0, 0)" else "A[0]"
 patch_file(
   "src/hybrid_topk_eig.h",
   list(
     ed(
-      "    lob_res = lobpcg_solve(A, ctx.lobpcg_state, ctx.lobpcg_opt);",
+      solve_line,
       lines(
         "    if (p2s4::inject(\"gramnan\"))",
         "    {",
-        sprintf("      A(0, 0) = %s;", nan_cell),
+        sprintf("      %s = %s;", gram_cell, nan_cell),
         "    }",
-        "    lob_res = lobpcg_solve(A, ctx.lobpcg_state, ctx.lobpcg_opt);",
+        solve_line,
         "    p2s4::log(\"lobpcg status %d iterations %d fail_iter %d k %llu\\n\",",
         "              lob_res.status, lob_res.iterations, lob_res.fail_iter,",
         "              p2s4::ull(ctx.lobpcg_state.X.n_cols));"
@@ -359,5 +375,6 @@ cat(
   mode,
   "clone:",
   if (arma_calls) "calls through Armadillo" else "calls through si_la",
+  if (gram_arma) "(Gram as arma::mat)" else "(Gram as a raw buffer)",
   "\n"
 )

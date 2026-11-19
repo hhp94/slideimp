@@ -330,7 +330,7 @@ collapses 1 and 4 to "lobpcg" and everything else to "exact"; the string is set 
 `SVD_triplet()` (`src/svd_triplet.h`: `inline void SVD_triplet(`) never forms an SVD directly.
 It builds the
 weighted Gram into `AA_NxN` via `form_weighted_gram()`, takes
-`trace_val = arma::trace(AA_NxN)` for the tail energy, calls `hybrid_topk_eig()`
+the trace of `AA_NxN` for the tail energy (`gram_trace()`), calls `hybrid_topk_eig()`
 (failure being an `Rcpp::stop`), converts eigenvalues to singular values and
 inverses with a `PCA_TOL` floor, and recovers the other factor with one dgemm
 through `si_la::gemm` (`src/svd_triplet.h`: `LOC_TIC(timer, "recover_factors")`): tall gives
@@ -343,10 +343,13 @@ Gram cache the way `form_weighted_gram()` does. Both helpers take raw buffers an
 dimensions, refuse operands whose dimensions do not fit, and return the wrapper's status; a
 non-zero one is an `Rcpp::stop` at the call site
 (`src/svd_triplet.h`: `const int st = pca_detail::gemm_nn(`). Every dimension is checked
-against the `int` range at kernel setup, so that error is not expected to be reachable. `V` is sized once (`set_size`
-with unchanged dimensions does not reallocate) and its fixed rows stay unwritten
-until postprocessing fills them from the same `Vn` (Layer 4). `split_eigvec_block()`
-writes the plain and `d_inv`-scaled copies in a single pass.
+against the `int` range at kernel setup, so that error is not expected to be reachable.
+`SVD_triplet()` takes raw buffers and reads every dimension from `GramWorkspace` and the
+eigenpair range; `src/armaSVD.cpp` sizes each buffer once, before the EM loop, with the sizes
+the header of `SVD_triplet()` lists (`src/armaSVD.cpp`: `every buffer SVD_triplet() reads or writes is sized here`).
+So `V`'s fixed rows stay unwritten until postprocessing fills them from the same `Vn`
+(Layer 4). `split_eigvec_block()` writes the plain and `d_inv`-scaled copies in a single
+pass.
 
 `form_weighted_gram()` (`src/gram_ops.h`: `inline int form_weighted_gram(`) has four branches,
 each entering BLAS through `si_la::syrk` and `si_la::gemm` with the arguments it passed to
@@ -368,7 +371,7 @@ expected to be reachable for the reason given above.
 
 Only the upper triangle is written, matching dsyevr's `uplo = 'U'`
 (`src/eig_sym_sel.h`: `PEIG_UPLO = 'U'`). The
-LOBPCG path mirrors it down first (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A.memptr()`).
+LOBPCG path mirrors it down first (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, a_rows)`).
 
 ## Layer 6: the eigensolver
 
@@ -389,18 +392,20 @@ call with a `steady_clock` measurement and feeds it to `record_auto_probe_time()
   it picks exact and drops the LOBPCG state so exact mode carries no seed-maintenance
   overhead (`src/hybrid_topk_eig.h`: `void choose_auto_exact()`).
 
-On LOBPCG success (`src/hybrid_topk_eig.h`: `if (lob_res.converged)`) the eigenvalues are
-moved out, `eigvecs` is copied from the
-committed state, and `refresh_momentum_P()` rebuilds the search direction from the two most
-recent eigenblocks. On failure `n_lobpcg_bad` increments and control falls through
+On LOBPCG success (`src/hybrid_topk_eig.h`: `if (lob_res.converged)`) the eigenvalues and
+the committed `X` are copied into the caller's buffers, after a check that the state still
+has the range's `n x topk` shape, which it keeps from its seed (an internal error
+otherwise, not expected to be reachable), and `refresh_momentum_P()` rebuilds the search
+direction from the two most recent eigenblocks. On failure `n_lobpcg_bad` increments and control falls through
 to `eig_sym_sel()`; after any exact solve, `seed_lobpcg_state()` re-seeds the warm
 start when `keep_lobpcg_seed_state()` allows.
 
 **Exact path** (`src/eig_sym_sel.h`). `eig_sym_sel()` takes raw buffers and calls
 `si_la::syevr_range`, which enters dsyevr with `range = 'I'` for eigenpairs `il..iu`, the
 top `k`, asks for the workspace on every call and floors it at the documented
-`26 * n` / `10 * n` minima ("What the wrappers reproduce"). The caller sizes `eigvals` and
-`eigvecs` first (`src/hybrid_topk_eig.h`: `eigvals.set_size(rng.topk);`). dsyevr returns
+`26 * n` / `10 * n` minima ("What the wrappers reproduce"). `eigvals` and `eigvecs` are
+`src/armaSVD.cpp`'s, sized there before the EM loop (`src/armaSVD.cpp`:
+`eigvecs.set_size(n_gram, k);`). dsyevr returns
 ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
 in place, then `canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`)
 applies the sklearn `svd_flip` convention. A non-zero status, from the wrapper or from an
@@ -447,12 +452,14 @@ Every product goes through `si_la::matmul` (`src/lobpcg_warm.h`: `inline void ma
 written the way Armadillo evaluated each one ("Products of two `arma::mat`" below): a
 product inside a sum or difference, or one whose target is among its operands, is formed
 first and added cell by cell; `-=` of a product whose operands do not include its target is
-one call with `beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). Armadillo is left
-at the boundary with `src/hybrid_topk_eig.h`, which holds `arma::mat` until its own step:
-`lobpcg_solve()` reads the Gram in place through `A.memptr()`, `LOBPCGState` holds `X` and `P`
-as `arma::mat`, `LOBPCGResult` holds the eigenvalues as an `arma::vec`, and
-`seed_lobpcg_state()` and `refresh_momentum_P()` take the two eigenvector blocks as
-`arma::mat`. Each is copied into a `Block` on the way in and out of one on the way out.
+one call with `beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). The boundary with
+`src/hybrid_topk_eig.h` holds no Armadillo either: `lobpcg_solve()` takes the Gram as a raw
+buffer and its two dimensions and reads it in place (`src/lobpcg_warm.h`:
+`inline LOBPCGResult lobpcg_solve(const double *a,`), `LOBPCGState` holds `X` and `P` as
+`Block`s, `LOBPCGResult` holds the eigenvalues as a `std::vector<double>`, and
+`seed_lobpcg_state()` and `refresh_momentum_P()` take the two eigenvector blocks as `Block`s.
+`hybrid_topk_eig_impl()` copies the eigenvectors of each solve into one `Block`, which seeds
+or refreshes the state and then becomes `X_prev`.
 
 **Where a factorization can fail on the LOBPCG path.** Three calls return a
 `si_la` status, and `la_failed()` (`src/lobpcg_warm.h`: `inline bool la_failed(`)
@@ -695,8 +702,8 @@ An in-place product with an empty inner dimension is passed on to dgemm with a l
 dimension of 0 (READ from the arguments `gemm::apply_blas_type()` builds; not run, since
 BLAS answers that through xerbla). The wrapper scales `C` by `beta` and calls nothing.
 
-**Calls no wrapper stands in for.** Four norms and a dot product, and the plain loops that
-replace them in `src/lobpcg_warm.h`:
+**Calls no wrapper stands in for.** Four norms, a dot product and a trace, and the plain
+loops that replace them in `src/lobpcg_warm.h` and `src/svd_triplet.h`:
 
 - `arma::norm(P, "fro")` in `build_momentum_P()` was dnrm2 over all cells, recomputed by a
   scaled loop when the result is 0 or not finite (READ: `fn_norm.hpp`,
@@ -726,9 +733,17 @@ replace them in `src/lobpcg_warm.h`:
   `op_dot::direct_dot()`; NOT READ: that the `head()` views of
   (`src/armaSVD.cpp`: `arma::dot(vs_top.head(ncp), vs_top.head(ncp))`) reach it).
 
+- `arma::trace(AA_NxN)` in `SVD_triplet()`, the tail energy's trace, was two partial sums,
+  one over the even and one over the odd diagonal cells, added at the end (READ:
+  `fn_trace.hpp`, `trace()` of a `Base`), no BLAS. Now `gram_trace()` (`src/svd_triplet.h`:
+  `static inline double gram_trace(`), which sums in that order, so it is bitwise equal. That
+  order is the multi-accumulator reduction `dev/CPP.md` bans, kept by the maintainer's ruling
+  because a plain sum moves results through the EM loop (`dev/eigen_conversion.md`, step 5);
+  Phase 4 revisits it.
+
 `find`, `fliplr` and `reverse`, which `src/lobpcg_warm.h` called and now writes as loops, move
 values and do no arithmetic (NOT READ); the captures of step 4 are bitwise across the change.
-`arma::trace`, `accu` and `cumsum` are NOT READ.
+`accu` and `cumsum` are NOT READ.
 
 ## Data structures and ownership
 
@@ -744,18 +759,18 @@ values and do no arithmetic (NOT READ); the captures of step 4 are bitwise acros
 - `AA_NxN` is destroyed by every eigen call: dsyevr overwrites it
   (`src/eig_sym_sel.h`: `destroys A: dsyevr overwrites`),
   and the LOBPCG path mirrors its upper triangle down first
-  (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A.memptr()`).
+  (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, a_rows)`).
 - `HybridEigContext` carries state across outer iterations: `lobpcg_state` (`X` and `P`),
   `X_prev`, `auto_choice`, the auto counters and timing sums,
   and `n_exact`/`n_lobpcg_ok`/`n_lobpcg_bad` (`src/hybrid_topk_eig.h`: `LOBPCGState lobpcg_state;`).
   When auto picks
   exact, only `lobpcg_state.X`, `lobpcg_state.P` and `X_prev` are reset.
-- `V` is sized once by `SVD_triplet()` (`src/svd_triplet.h`: `V.set_size(Xhat.n_cols, ncp);`).
+- `V` is sized once, before the EM loop (`src/armaSVD.cpp`: `V.set_size(n_elig, ncp);`).
   In the wide case its rows
   `0 .. n_fixed-1` hold whatever the allocation held until postprocessing writes them
   (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`); nothing reads them inside the
-  loop. `Vn` is written only by
-  `split_eigvec_block()` (`src/svd_triplet.h`: `Vn.set_size(n, ncp);`) and read only by the
+  loop. `Vn` is sized there too (`src/armaSVD.cpp`: `Vn.set_size(n_gram, ncp);`), written
+  only by `split_eigvec_block()` and read only by the
   factor-recovery
   `dgemm_` calls, which is what lets the post-loop fill reuse the last iteration's copy.
 - Return crosses as an `Rcpp::List`, copying the triplet matrix

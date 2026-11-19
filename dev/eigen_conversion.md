@@ -1296,6 +1296,116 @@ The gate, read 2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo
   `.claude/CLAUDE.md` names one file, `.github/workflows/pkgdown.yaml`,
   whose emoji came in with `0b1e87c` and which this step does not touch.
 
+Step 5, on the working tree over `99a8c5e`:
+
+- `src/hybrid_topk_eig.h` and `src/svd_triplet.h` include `<Rcpp.h>`, for
+  `Rcpp::stop`, and nothing of Armadillo; `src/lobpcg_warm.h` the same, so
+  the boundary step 4 left there is gone. `src/armaSVD.cpp`, which keeps its
+  `arma::mat` until step 6, now includes `RcppArmadillo.h` itself, ahead of
+  `src/svd_triplet.h`: it had it only through that header, and
+  RcppArmadillo stops the build when `Rcpp.h` came first (READ:
+  `RcppArmadillo.h`, the `#error` on `Rcpp_hpp`).
+- `lobpcg_detail::Block` moves ahead of `LOBPCGState`, which holds `X` and
+  `P` as `Block`s, and gains `is_empty()`, so `seeded()` and
+  `hybrid_topk_eig_impl()` read as they did. `LOBPCGResult` holds the
+  eigenvalues as a `std::vector<double>`. `lobpcg_solve()` takes the Gram
+  as a raw buffer and its two dimensions, which it checks as before.
+  `seed_lobpcg_state()` and `refresh_momentum_P()` take `Block`s.
+  `from_arma()` and `to_arma()` are gone, and with them the copies step 4
+  made at the boundary: `lobpcg_solve()` copies the state into its working
+  blocks and moves them back on success, and `hybrid_topk_eig_impl()` copies
+  each solve's eigenvectors into one `Block`, which seeds or refreshes the
+  state and then becomes `X_prev`.
+- `hybrid_topk_eig()` takes raw buffers: the Gram and its two dimensions,
+  and the `topk` eigenvalue and `n x topk` eigenvector cells of the range.
+  On a LOBPCG success it copies into them, after a check that the state
+  still has that shape (it keeps the shape of the block it was seeded from)
+  and stops with "internal error: the LOBPCG state does not match the
+  eigenpair range" otherwise; not expected to be reachable, and no test
+  raises it. Before, the result was resized to whatever the state held.
+- `SVD_triplet()` takes raw buffers and reads every dimension from
+  `GramWorkspace` and the eigenpair range. It no longer sizes its outputs:
+  `src/armaSVD.cpp` sizes `U`, `V`, `Vn`, `eigvecs`, `eigvals`, `vs_top` and
+  `d_inv` once, before the EM loop, with the dimensions `SVD_triplet()` gave
+  them on every call, so `V`'s fixed rows stay unwritten in the wide case as
+  before. `X_work`, `GramWorkspace` and `GramCache` are taken `const`: it
+  never wrote them.
+- No wrapper was added. The one Armadillo call, `arma::trace()`, is
+  `gram_trace()`. READ (`fn_trace.hpp`): two partial sums, over the even and
+  the odd diagonal cells, added at the end. That is the multi-accumulator
+  reduction `dev/CPP.md` bans, so it was measured both ways:
+  - In Armadillo's order (capture `p2s5a`, and the tree as it stands): every
+    compare below is bitwise.
+  - As a plain sum in order (capture `p2s5-plaintrace`, all else the same),
+    against `p2s5a` at tolerance 0: 28 of the 71 cases not bitwise, worst on
+    the imputed values 6.5e-10 absolute and 3.1e-8 relative
+    (`pca_x1_lobpcg`, over the 17733 of its cells that hold a nonzero
+    value), worst on `criterion_final` 9.8e-7 relative. Against `p2s4b` at
+    the defaults, 22 fail. The probe's 60 edge cases against `99a8c5e`: 52
+    not bitwise; worst on the imputed values 6.5e-8 absolute and 1.1e-6
+    relative (`big_xb_ncp25`, over its 119634 nonzero cells). The event
+    logs part: in 41 of the 55 cases that reach `lobpcg_solve()` some call
+    ends after another number of iterations, mostly one more or one fewer,
+    and in some with another status (`big_xb_ncp40` and `ctl_x1_tight`:
+    converged in one build, at `maxiter` in the other); in 6
+    (`big_xb_ncp16`, `25` and `40`, `ctl_x1_tight`, `inj_xb16_syevdnan_01`
+    and `02`) that changes which solver an outer iteration used, so
+    `n_exact`, `n_lobpcg_ok` and `n_lobpcg_bad` differ; and
+    `criterion_final` moves by 0.12 in `dup_xd_ncp12` and is NaN in one build
+    and finite in the other in `dup_xd_ncp07_em`, both inputs with copied
+    columns, where the criterion is a ratio of two objectives near zero.
+    The trace feeds the tail energy, so `sigma2`, the shrinkage and the
+    objective, each iteration. Not chased further: a move beyond the noise
+    floor is Fable's ("Who does which work").
+  - Ruled (maintainer, 2026-11-18): Armadillo's order stays, so the step is
+    bitwise. It is scaffolding against `dev/CPP.md`, listed for Phase 4.
+- `dev/probe_p2s4_run.sh` copied only `src/lobpcg_warm.h` into its "new"
+  clone; it now copies every file under `src/` the working tree changes
+  against HEAD. `dev/probe_p2s4_patch.R` finds the `lobpcg_solve()` call in
+  `src/hybrid_topk_eig.h` by its form, the Gram an `arma::mat` before this
+  step or a raw buffer from it, and writes the injected NaN into `A(0, 0)` or
+  `A[0]` to match; applied to the files of `eade032`, `99a8c5e` and this
+  tree, each patches cleanly.
+
+The gate, on the tree as it stands (the trace in Armadillo's order), read
+2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo 15.6.2-1, R's
+LAPACK 3.12.0:
+
+- The timer build and the diagnostics build compile, with 511
+  `-Wignored-attributes` lines each and no other compiler warning.
+- Capture `p2s5` against `p2s4b` at tolerance 0: 71 cases, none failed,
+  every one bitwise, and the same against `p2s5a`, which differs from this
+  tree only in a comment. Against `76d4c60` at the defaults: the same 7
+  deliberate failures as `p2s4b`, everything else bitwise. Capture
+  `p2s5-eigen5`, the same source against RcppEigen 0.4.9.9-5: 71 cases,
+  every one bitwise identical to `p2s5`.
+- `bash dev/probe_p2s4_run.sh <scratch> 99a8c5e`, `99a8c5e` as old and this
+  tree as new. Each instrumented clone's capture is bitwise identical to
+  `p2s3` and `p2s4`; the 60 edge cases at tolerance 0: none failed, every
+  one bitwise, and the 5 that end in an error raise the same class and
+  message in both. The two builds' event logs are identical byte for byte,
+  75097 lines for the edge cases and 9743 for the capture, with the counts
+  step 4 gives: the same 1207 `lobpcg_solve()` calls ending the same way,
+  and every failure branch of `src/lobpcg_warm.h` taken by injection. The
+  script exits 1 only because its last line tests for the `edges-fresh`
+  run, which `99a8c5e` has no hook for.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading this tree installed into a private library: 22
+  files, 276 tests, none failed, errored or skipped.
+- Timed: the timing driver, `99a8c5e` as a and this tree as b, both
+  installed by `dev/eigen_time_install.R` from clones outside the tree, the
+  four PCA workloads, 5 repetitions. b/a ratios of medians:
+  `chr21_pca_exact` 0.978, `chr21_pca_lobpcg` 0.990, `sim_pca_exact` 0.994,
+  `sim_pca_lobpcg` 1.003. The first is outside the driver's band of 0.988 to
+  1.008, on the fast side; the two chr21 workloads timed again, 11
+  repetitions: 0.996 and 0.990, both inside. No cost and no gain shows; in
+  particular the boundary copies this step removes do not account for the
+  cost step 4 measured on `sim_pca_lobpcg` (Phase 4, "To investigate").
+- `uv run dev/check_map_anchors.py`: 82 problems, the known ones in
+  `dev/r_manual/R-exts.md` and `dev/review_eigen_wrappers.md`. The ASCII
+  check of `.claude/CLAUDE.md` names only `.github/workflows/pkgdown.yaml`,
+  as in step 4.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.
@@ -1356,6 +1466,11 @@ Scaffolding to remove, in `src/si_lapack.cpp` unless said otherwise:
   file. It changes results wherever the fallback fires today; how often real
   data reaches it is not measured, and is measured before this is decided.
 - `syevd`, if no call site is left on it after Phase 2.
+- In `src/svd_triplet.h`, `gram_trace()` in Armadillo's order, two partial
+  sums, which `dev/CPP.md` bans; kept through Phases 2 and 3 by ruling
+  (step 5 of Phase 2). A plain sum in order moves results by the amounts
+  step 5 measured, which put 22 of the capture's cases past its default
+  tolerance, most on `criterion_final` alone.
 - The oracle (`dev/oracle_pairs.cpp`, `dev/oracle_run.R`,
   `dev/oracle_selftest.R`, `dev/oracle_install_armadillo.R`), their `!`
   lines, and `dev/lib/`, once the last item above is gone and nothing is
@@ -1413,7 +1528,10 @@ guide:
   `from_arma()`/`to_arma()`, the gathered sub-blocks, and the transposes
   written out around the triangular solve. Deferred by the maintainer on
   2026-11-18 to this phase, with the hygiene pass and any `/simplify`
-  calls; profile before changing anything.
+  calls; profile before changing anything. Step 5 removed the copies
+  through `from_arma()`/`to_arma()`, and `sim_pca_lobpcg` timed 1.003
+  against step 4, so they do not account for it, to the driver's
+  resolution of about half a percent.
 - Go through *Writing R Extensions* once more against the finished `src/`,
   not only the sections the wrapper layer needed: registration, visibility,
   interrupts, allocation, the portability list. Record each rule and where

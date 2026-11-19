@@ -25,14 +25,12 @@
 //  Rayleigh-Ritz.
 //
 // Storage: the iteration holds its matrices in lobpcg_detail::Block and
-// enters BLAS and LAPACK only through src/si_lapack.h. Armadillo is left at
-// the boundary with src/hybrid_topk_eig.h, which holds arma::mat until its
-// own step: the Gram comes in as a const arma::mat and is read in place,
-// LOBPCGState holds arma::mat, and LOBPCGResult's eigenvalues are an
-// arma::vec. Each is copied into a Block on the way in and out of one on the
-// way out.
+// enters BLAS and LAPACK only through src/si_lapack.h. The Gram comes in as
+// a raw n x n buffer and is read in place, never copied; LOBPCGState holds
+// its two blocks as Blocks, and LOBPCGResult's eigenvalues are a
+// std::vector<double>.
 //
-#include <RcppArmadillo.h>
+#include <Rcpp.h>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -64,9 +62,57 @@ enum LOBPCGStatus
   LOBPCG_BAD_SEED = 7
 };
 
+namespace lobpcg_detail
+{
+
+  // A column-major matrix of doubles, unpadded, zero-filled when sized; a
+  // vector is one column. The members are named as Armadillo's, so the calls
+  // into si_la read as they did when these were arma::mat.
+  struct Block
+  {
+    std::size_t n_rows = 0;
+    std::size_t n_cols = 0;
+    std::vector<double> mem;
+
+    Block() = default;
+    Block(const std::size_t rows, const std::size_t cols)
+        : n_rows(rows), n_cols(cols), mem(rows * cols, 0.0)
+    {
+    }
+
+    double *memptr() { return mem.data(); }
+    const double *memptr() const { return mem.data(); }
+    double &operator()(const std::size_t i, const std::size_t j)
+    {
+      return mem[i + j * n_rows];
+    }
+    double operator()(const std::size_t i, const std::size_t j) const
+    {
+      return mem[i + j * n_rows];
+    }
+    bool is_empty() const { return mem.empty(); }
+    void reset()
+    {
+      n_rows = 0;
+      n_cols = 0;
+      mem.clear();
+    }
+  };
+
+  // A copy of the rows x cols buffer at src, as a new block.
+  inline Block copy_of(const double *src, const std::size_t rows,
+                       const std::size_t cols)
+  {
+    Block B(rows, cols);
+    std::copy(src, src + rows * cols, B.memptr());
+    return B;
+  }
+
+} // namespace lobpcg_detail
+
 struct LOBPCGResult
 {
-  arma::vec eigvals;
+  std::vector<double> eigvals;
   int iterations = 0;
   bool converged = false;
   double max_rel_res = 0.0;
@@ -76,12 +122,12 @@ struct LOBPCGResult
 
 struct LOBPCGState
 {
-  arma::mat X;
-  arma::mat P;
+  lobpcg_detail::Block X;
+  lobpcg_detail::Block P;
 
   bool seeded() const
   {
-    return X.n_elem != 0 && P.n_elem != 0 &&
+    return !X.is_empty() && !P.is_empty() &&
            X.n_rows == P.n_rows && X.n_cols == P.n_cols;
   }
 };
@@ -111,59 +157,6 @@ namespace lobpcg_detail
                  routine);
     }
     Rcpp::stop("internal error: %s refused its arguments", routine);
-  }
-
-  // A column-major matrix of doubles, unpadded, zero-filled when sized; a
-  // vector is one column. The members are named as Armadillo's, so the calls
-  // into si_la read as they did when these were arma::mat.
-  struct Block
-  {
-    std::size_t n_rows = 0;
-    std::size_t n_cols = 0;
-    std::vector<double> mem;
-
-    Block() = default;
-    Block(const std::size_t rows, const std::size_t cols)
-        : n_rows(rows), n_cols(cols), mem(rows * cols, 0.0)
-    {
-    }
-
-    double *memptr() { return mem.data(); }
-    const double *memptr() const { return mem.data(); }
-    double &operator()(const std::size_t i, const std::size_t j)
-    {
-      return mem[i + j * n_rows];
-    }
-    double operator()(const std::size_t i, const std::size_t j) const
-    {
-      return mem[i + j * n_rows];
-    }
-    void reset()
-    {
-      n_rows = 0;
-      n_cols = 0;
-      mem.clear();
-    }
-  };
-
-  // The boundary with src/hybrid_topk_eig.h: a copy in, and a copy out.
-  inline Block from_arma(const arma::mat &M)
-  {
-    Block B(M.n_rows, M.n_cols);
-    std::copy(M.memptr(), M.memptr() + M.n_elem, B.memptr());
-    return B;
-  }
-
-  inline void to_arma(const Block &B, arma::mat &M)
-  {
-    M.set_size(B.n_rows, B.n_cols);
-    std::copy(B.mem.begin(), B.mem.end(), M.memptr());
-  }
-
-  inline void to_arma(const Block &B, arma::vec &v)
-  {
-    v.set_size(B.mem.size());
-    std::copy(B.mem.begin(), B.mem.end(), v.memptr());
   }
 
   // C = alpha * op(A) * B + beta * C, where op(A) is A' when trans_a and A
@@ -652,8 +645,8 @@ namespace lobpcg_detail
 // blocks.
 // ---------------------------------------------------------------------------
 inline void seed_lobpcg_state(LOBPCGState &state,
-                              const arma::mat &X_curr,
-                              const arma::mat &X_prev,
+                              const lobpcg_detail::Block &X_curr,
+                              const lobpcg_detail::Block &X_prev,
                               const LOBPCGOptions &opt = LOBPCGOptions())
 {
   state.X = X_curr;
@@ -662,15 +655,14 @@ inline void seed_lobpcg_state(LOBPCGState &state,
 
   const double no_min_temporal_norm = -1.0;
 
-  if (!lobpcg_detail::build_momentum_P(
-          P, lobpcg_detail::from_arma(X_curr), lobpcg_detail::from_arma(X_prev),
-          opt, no_min_temporal_norm))
+  if (!lobpcg_detail::build_momentum_P(P, X_curr, X_prev, opt,
+                                       no_min_temporal_norm))
   {
     state.P.reset();
     return;
   }
 
-  lobpcg_detail::to_arma(P, state.P);
+  state.P = std::move(P);
 }
 
 // ---------------------------------------------------------------------------
@@ -680,19 +672,18 @@ inline void seed_lobpcg_state(LOBPCGState &state,
 // post-RR P is kept instead.
 // ---------------------------------------------------------------------------
 inline void refresh_momentum_P(LOBPCGState &state,
-                               const arma::mat &X_curr,
-                               const arma::mat &X_prev,
+                               const lobpcg_detail::Block &X_curr,
+                               const lobpcg_detail::Block &X_prev,
                                const LOBPCGOptions &opt = LOBPCGOptions())
 {
   const double min_temporal_norm =
       1e-10 * std::sqrt(static_cast<double>(X_curr.n_cols));
 
   lobpcg_detail::Block P;
-  if (lobpcg_detail::build_momentum_P(P, lobpcg_detail::from_arma(X_curr),
-                                      lobpcg_detail::from_arma(X_prev), opt,
+  if (lobpcg_detail::build_momentum_P(P, X_curr, X_prev, opt,
                                       min_temporal_norm))
   {
-    lobpcg_detail::to_arma(P, state.P);
+    state.P = std::move(P);
   }
 }
 
@@ -701,8 +692,12 @@ inline void refresh_momentum_P(LOBPCGState &state,
 //
 // requires a seeded state: an unseeded or mis-shaped (X, P) hard-errors via
 // Rcpp::stop instead of falling back, so callers must check seeded() first.
+// a is the a_rows x a_cols Gram, column-major, both triangles valid; it is
+// read in place, never copied or written.
 // ---------------------------------------------------------------------------
-inline LOBPCGResult lobpcg_solve(const arma::mat &A,
+inline LOBPCGResult lobpcg_solve(const double *a,
+                                 const std::size_t a_rows,
+                                 const std::size_t a_cols,
                                  LOBPCGState &state,
                                  const LOBPCGOptions &opt = LOBPCGOptions())
 {
@@ -712,16 +707,14 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
 
   if (!state.seeded())
     Rcpp::stop("lobpcg_solve: state not seeded with (X, P)");
-  const std::size_t n = A.n_rows;
+  const std::size_t n = a_rows;
   const std::size_t k = state.X.n_cols;
-  if (A.n_cols != n || state.X.n_rows != n)
+  if (a_cols != n || state.X.n_rows != n)
     Rcpp::stop("lobpcg_solve: dimension mismatch");
-  // the Gram is read in place, never copied.
-  const double *a = A.memptr();
 
   // work on local copies; state is committed only on success.
-  Block X = from_arma(state.X);
-  Block P = from_arma(state.P);
+  Block X = state.X;
+  Block P = state.P;
 
   // re-clean P at entry
   // the committed P from the previous solve is NOT orthonormal nor orth X
@@ -983,14 +976,14 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   }
 
   out.iterations = it;
-  to_arma(lam, out.eigvals);
+  out.eigvals = std::move(lam.mem);
 
   if (out.converged)
   {
     out.status = LOBPCG_CONVERGED;
     pca_detail::canonicalize_signs(X.memptr(), X.n_rows, X.n_cols);
-    to_arma(X, state.X);
-    to_arma(P, state.P);
+    state.X = std::move(X);
+    state.P = std::move(P);
   }
 
   return out;

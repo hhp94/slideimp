@@ -3,11 +3,18 @@
 //
 // Hybrid top-k symmetric eigensolver.
 //
+// Takes raw buffers: the n x n Gram, and the topk eigenvalue cells and
+// n x topk eigenvector cells the caller sized, n and topk being those of
+// ctx.eig_range. The LOBPCG state and the previous eigenvector block are
+// lobpcg_detail::Block.
+//
 
-#include <RcppArmadillo.h>
+#include <Rcpp.h>
 #include <chrono>
+#include <cstddef>
 #include <limits>
 #include <algorithm>
+#include <utility>
 #include "eig_sym_sel.h"
 #include "lobpcg_warm.h"
 
@@ -65,7 +72,7 @@ struct HybridEigContext
   LOBPCGState lobpcg_state;
   LOBPCGOptions lobpcg_opt;
 
-  arma::mat X_prev;
+  lobpcg_detail::Block X_prev;
   int warmup_iters = 10;
 
   HybridSolverMode solver_mode = HybridSolverMode::Lobpcg;
@@ -262,12 +269,16 @@ struct HybridEigContext
   }
 };
 
-inline bool hybrid_topk_eig_impl(arma::vec &eigvals,
-                                 arma::mat &eigvecs,
-                                 arma::mat &A,
+inline bool hybrid_topk_eig_impl(double *eigvals,
+                                 double *eigvecs,
+                                 double *A,
+                                 const std::size_t a_rows,
+                                 const std::size_t a_cols,
                                  HybridEigContext &ctx,
                                  int outer_iter)
 {
+  const EigSymRange &rng = *ctx.eig_range;
+
   auto log_at = [&](int path, int reason, const LOBPCGResult *res = nullptr)
   {
     if (outer_iter < 0 ||
@@ -379,24 +390,35 @@ inline bool hybrid_topk_eig_impl(arma::vec &eigvals,
   {
     attempted_lobpcg = true;
 
-    pca_detail::mirror_upper_to_lower(A.memptr(), A.n_rows);
+    pca_detail::mirror_upper_to_lower(A, a_rows);
 
-    lob_res = lobpcg_solve(A, ctx.lobpcg_state, ctx.lobpcg_opt);
+    lob_res = lobpcg_solve(A, a_rows, a_cols, ctx.lobpcg_state,
+                           ctx.lobpcg_opt);
 
     if (lob_res.converged)
     {
       ctx.n_lobpcg_ok++;
 
-      eigvals = std::move(lob_res.eigvals);
-      eigvecs = ctx.lobpcg_state.X;
+      // the state was seeded from an n x topk block and keeps its shape, so
+      // the caller's buffers fit; not expected to fail.
+      const lobpcg_detail::Block &X_state = ctx.lobpcg_state.X;
+      if (X_state.n_rows != rng.n || X_state.n_cols != rng.topk ||
+          lob_res.eigvals.size() != rng.topk)
+      {
+        Rcpp::stop("internal error: the LOBPCG state does not match the "
+                   "eigenpair range");
+      }
+      std::copy(lob_res.eigvals.begin(), lob_res.eigvals.end(), eigvals);
+      lobpcg_detail::Block X_curr = X_state;
+      std::copy(X_curr.mem.begin(), X_curr.mem.end(), eigvecs);
 
       if (!ctx.X_prev.is_empty())
       {
-        refresh_momentum_P(ctx.lobpcg_state, eigvecs, ctx.X_prev,
+        refresh_momentum_P(ctx.lobpcg_state, X_curr, ctx.X_prev,
                            ctx.lobpcg_opt);
       }
 
-      ctx.X_prev = eigvecs;
+      ctx.X_prev = std::move(X_curr);
 
       log_at(HYB_LOBPCG_OK, lob_res.status, &lob_res);
       return true;
@@ -405,11 +427,7 @@ inline bool hybrid_topk_eig_impl(arma::vec &eigvals,
     ++ctx.n_lobpcg_bad;
   }
 
-  const EigSymRange &rng = *ctx.eig_range;
-  eigvals.set_size(rng.topk);
-  eigvecs.set_size(rng.n, rng.topk);
-  if (eig_sym_sel(eigvals.memptr(), eigvecs.memptr(), A.memptr(), A.n_rows,
-                  A.n_cols, rng) != si_la::ok)
+  if (eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng) != si_la::ok)
   {
     return false;
   }
@@ -427,34 +445,42 @@ inline bool hybrid_topk_eig_impl(arma::vec &eigvals,
 
   if (ctx.keep_lobpcg_seed_state())
   {
+    lobpcg_detail::Block X_curr =
+        lobpcg_detail::copy_of(eigvecs, rng.n, rng.topk);
     if (!ctx.X_prev.is_empty())
     {
-      seed_lobpcg_state(ctx.lobpcg_state, eigvecs, ctx.X_prev, ctx.lobpcg_opt);
+      seed_lobpcg_state(ctx.lobpcg_state, X_curr, ctx.X_prev, ctx.lobpcg_opt);
     }
 
-    ctx.X_prev = eigvecs;
+    ctx.X_prev = std::move(X_curr);
   }
 
   return true;
 }
 
-// top-k eigenpairs of the symmetric A. Only A's upper triangle need be valid
-// on entry (matching dsyevr's uplo='U'); A is mutated in place. While the
-// auto probe is undecided, each call is timed and recorded so the context
-// can pick a solver.
-inline bool hybrid_topk_eig(arma::vec &eigvals,
-                            arma::mat &eigvecs,
-                            arma::mat &A,
+// top-k eigenpairs of the symmetric a_rows x a_cols A. Only A's upper
+// triangle need be valid on entry (matching dsyevr's uplo='U'); A is mutated
+// in place. eigvals has ctx.eig_range->topk cells and eigvecs is
+// ctx.eig_range->n x topk, sized by the caller. While the auto probe is
+// undecided, each call is timed and recorded so the context can pick a
+// solver.
+inline bool hybrid_topk_eig(double *eigvals,
+                            double *eigvecs,
+                            double *A,
+                            const std::size_t a_rows,
+                            const std::size_t a_cols,
                             HybridEigContext &ctx,
                             int outer_iter)
 {
   if (!ctx.auto_timing_active())
   {
-    return hybrid_topk_eig_impl(eigvals, eigvecs, A, ctx, outer_iter);
+    return hybrid_topk_eig_impl(eigvals, eigvecs, A, a_rows, a_cols, ctx,
+                                outer_iter);
   }
 
   const auto t0 = std::chrono::steady_clock::now();
-  const bool ok = hybrid_topk_eig_impl(eigvals, eigvecs, A, ctx, outer_iter);
+  const bool ok = hybrid_topk_eig_impl(eigvals, eigvecs, A, a_rows, a_cols,
+                                       ctx, outer_iter);
   const auto t1 = std::chrono::steady_clock::now();
 
   ctx.record_auto_probe_time(std::chrono::duration<double>(t1 - t0).count());

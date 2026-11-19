@@ -1,7 +1,9 @@
 #ifndef SVD_TRIPLET_H
 #define SVD_TRIPLET_H
 
-#include <RcppArmadillo.h>
+#include <Rcpp.h>
+#include <cmath>
+#include <cstddef>
 #include "gram_ops.h"
 #include "eig_sym_sel.h"
 #include "hybrid_topk_eig.h"
@@ -9,32 +11,27 @@
 #include "loc_timer.h"
 
 // ---------------------------------------------------------------------------
-// copy the leading ncp eigenvector columns into dst while writing the
-// d_inv-scaled (and, when row_scale is non-null, row-scaled) copy into Vn.
+// copy the leading ncp columns of the n-row eigvecs into dst while writing
+// the d_inv-scaled (and, when row_scale is non-null, row-scaled) copy into
+// Vn. dst and Vn are n x ncp.
 // ---------------------------------------------------------------------------
-static inline void split_eigvec_block(const arma::mat &eigvecs,
-                                      arma::mat &dst,
-                                      arma::mat &Vn,
-                                      const arma::vec &d_inv,
+static inline void split_eigvec_block(const double *eigvecs,
+                                      const std::size_t n,
+                                      double *dst,
+                                      double *Vn,
+                                      const double *d_inv,
                                       const double *row_scale,
-                                      const arma::uword ncp)
+                                      const std::size_t ncp)
 {
-  const arma::uword n = eigvecs.n_rows;
-  dst.set_size(n, ncp);
-  Vn.set_size(n, ncp);
-  const double *EV = eigvecs.memptr();
-  double *Dp = dst.memptr();
-  double *Vnp = Vn.memptr();
-  const double *dp = d_inv.memptr();
-  for (arma::uword j = 0; j < ncp; ++j)
+  for (std::size_t j = 0; j < ncp; ++j)
   {
-    const double dj = dp[j];
-    const double *ecol = EV + j * n;
-    double *dcol = Dp + j * n;
-    double *ncol = Vnp + j * n;
+    const double dj = d_inv[j];
+    const double *ecol = eigvecs + j * n;
+    double *dcol = dst + j * n;
+    double *ncol = Vn + j * n;
     if (row_scale)
     {
-      for (arma::uword i = 0; i < n; ++i)
+      for (std::size_t i = 0; i < n; ++i)
       {
         const double e = ecol[i];
         dcol[i] = e;
@@ -43,7 +40,7 @@ static inline void split_eigvec_block(const arma::mat &eigvecs,
     }
     else
     {
-      for (arma::uword i = 0; i < n; ++i)
+      for (std::size_t i = 0; i < n; ++i)
       {
         const double e = ecol[i];
         dcol[i] = e;
@@ -51,6 +48,32 @@ static inline void split_eigvec_block(const arma::mat &eigvecs,
       }
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// the sum of the diagonal of the n x n A, as arma::trace() took it
+// (fn_trace.hpp): two partial sums, over the even and the odd cells, added
+// at the end. dev/CPP.md bans such a reduction; this one is kept by the
+// maintainer's ruling, because a plain sum moves results through the EM
+// loop (dev/eigen_conversion.md, step 5 of Phase 2), and Phase 4 revisits
+// it with the rest of Armadillo's choices.
+// ---------------------------------------------------------------------------
+static inline double gram_trace(const double *A, const std::size_t n)
+{
+  double val1 = 0.0;
+  double val2 = 0.0;
+  std::size_t i = 0;
+  std::size_t j = 1;
+  for (; j < n; i += 2, j += 2)
+  {
+    val1 += A[i + i * n];
+    val2 += A[j + j * n];
+  }
+  if (i < n)
+  {
+    val1 += A[i + i * n];
+  }
+  return val1 + val2;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,31 +85,40 @@ static inline void split_eigvec_block(const arma::mat &eigvecs,
 // In the wide case V is written only for the changing columns, rows
 // n_fixed .. n_elig-1; the caller fills the fixed rows once after the EM
 // loop from the same Vn. In the tall case V is complete.
+//
+// Every buffer is the caller's and sized by it, with nr, nc and n those of
+// gram_ws and topk that of hyb_ctx.eig_range: Xhat nr x nc; X_work nr x nc
+// in the tall case, unread in the wide case; AA_NxN n x n; U nr x ncp; V
+// nc x ncp; Vn n x ncp; eigvecs n x topk; eigvals and vs_top topk; d_inv
+// ncp.
 // ---------------------------------------------------------------------------
-inline void SVD_triplet(const arma::mat &Xhat,
+inline void SVD_triplet(const double *Xhat,
                         const double *sw,
-                        const arma::uword ncp,
+                        const std::size_t ncp,
                         const bool tall,
-                        arma::vec &vs_top,
+                        double *vs_top,
                         double &trace_val,
-                        arma::mat &U,
-                        arma::mat &V,
-                        arma::mat &X_work,
-                        arma::mat &AA_NxN,
-                        arma::vec &d_inv,
-                        arma::mat &Vn,
-                        arma::vec &eigvals,
-                        arma::mat &eigvecs,
-                        GramWorkspace &gram_ws,
-                        GramCache &gram_cache,
+                        double *U,
+                        double *V,
+                        const double *X_work,
+                        double *AA_NxN,
+                        double *d_inv,
+                        double *Vn,
+                        double *eigvals,
+                        double *eigvecs,
+                        const GramWorkspace &gram_ws,
+                        const GramCache &gram_cache,
                         HybridEigContext &hyb_ctx,
                         int outer_iter
                             LOC_TIMER_PARAM(timer))
 {
+  const std::size_t nr = gram_ws.nr;
+  const std::size_t nc = gram_ws.nc;
+  const std::size_t n = gram_ws.n;
+
   LOC_TIC(timer, "form_gram");
-  const int gram_st =
-      form_weighted_gram(Xhat.memptr(), sw, tall, X_work.memptr(),
-                         AA_NxN.memptr(), gram_ws, gram_cache);
+  const int gram_st = form_weighted_gram(Xhat, sw, tall, X_work, AA_NxN,
+                                         gram_ws, gram_cache);
   LOC_TOC(timer, "form_gram");
   if (gram_st != si_la::ok)
   {
@@ -95,41 +127,31 @@ inline void SVD_triplet(const arma::mat &Xhat,
                gram_st);
   }
 
-  trace_val = arma::trace(AA_NxN);
+  trace_val = gram_trace(AA_NxN, n);
 
   LOC_TIC(timer, "eig");
-  if (!hybrid_topk_eig(eigvals, eigvecs, AA_NxN, hyb_ctx, outer_iter))
+  if (!hybrid_topk_eig(eigvals, eigvecs, AA_NxN, n, n, hyb_ctx, outer_iter))
   {
     Rcpp::stop("top-k symmetric eigensolver failed to converge");
   }
   LOC_TOC(timer, "eig");
 
-  const arma::uword ke = eigvals.n_elem;
-  vs_top.set_size(ke);
-  d_inv.set_size(ncp);
+  const std::size_t ke = hyb_ctx.eig_range->topk;
+  for (std::size_t i = 0; i < ke; ++i)
   {
-    const double *ep = eigvals.memptr();
-    double *vp = vs_top.memptr();
-    double *dp = d_inv.memptr();
-    for (arma::uword i = 0; i < ke; ++i)
-    {
-      const double e = ep[i];
-      vp[i] = (e > 0.0) ? std::sqrt(e) : 0.0;
-    }
-    for (arma::uword i = 0; i < ncp; ++i)
-    {
-      dp[i] = (vp[i] > PCA_TOL) ? (1.0 / vp[i]) : 0.0;
-    }
+    const double e = eigvals[i];
+    vs_top[i] = (e > 0.0) ? std::sqrt(e) : 0.0;
+  }
+  for (std::size_t i = 0; i < ncp; ++i)
+  {
+    d_inv[i] = (vs_top[i] > PCA_TOL) ? (1.0 / vs_top[i]) : 0.0;
   }
 
   LOC_TIC(timer, "recover_factors");
   if (tall)
   {
-    split_eigvec_block(eigvecs, V, Vn, d_inv, nullptr, ncp);
-    U.set_size(X_work.n_rows, Vn.n_cols);
-    const int st = pca_detail::gemm_nn(X_work.memptr(), X_work.n_rows,
-                                       X_work.n_cols, Vn.memptr(), Vn.n_rows,
-                                       Vn.n_cols, U.memptr());
+    split_eigvec_block(eigvecs, n, V, Vn, d_inv, nullptr, ncp);
+    const int st = pca_detail::gemm_nn(X_work, nr, nc, Vn, n, ncp, U);
     if (st != si_la::ok)
     {
       Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
@@ -137,17 +159,15 @@ inline void SVD_triplet(const arma::mat &Xhat,
   }
   else
   {
-    split_eigvec_block(eigvecs, U, Vn, d_inv, sw, ncp);
+    split_eigvec_block(eigvecs, n, U, Vn, d_inv, sw, ncp);
     // inside the EM loop only the changing columns' rows of V are read, and
     // the permutation keeps those columns in the tail block of Xhat, so one
-    // dgemm over that block fills rows n_fixed .. n_elig-1 in place. V is
-    // sized here once; set_size with the same dimensions does not
-    // reallocate, so the rows written earlier stay where they are.
-    const arma::uword n_fixed = gram_cache.n_fixed;
-    V.set_size(Xhat.n_cols, ncp);
-    const int st = pca_detail::gemm_tn_block(
-        Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, n_fixed,
-        Xhat.n_cols - n_fixed, Vn.memptr(), Vn.n_rows, Vn.n_cols, V.memptr());
+    // dgemm over that block fills rows n_fixed .. n_elig-1 in place. The
+    // caller sized V once, before the EM loop, so the rows written earlier
+    // stay where they are.
+    const std::size_t n_fixed = gram_cache.n_fixed;
+    const int st = pca_detail::gemm_tn_block(Xhat, nr, nc, n_fixed,
+                                             nc - n_fixed, Vn, n, ncp, V);
     if (st != si_la::ok)
     {
       Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);

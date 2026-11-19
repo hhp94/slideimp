@@ -8,9 +8,10 @@
 # last commit whose src/lobpcg_warm.h calls Armadillo for its QR, triangular
 # solve and dsyevd (eade032 is the one measured); for the second half, which
 # replaces the containers and products, it is ff0e394, the first half
-# committed. The "new" clone is HEAD with the working tree's
-# src/lobpcg_warm.h copied over it. dev/probe_p2s4_patch.R tells the
-# versions apart by their text.
+# committed; for step 5, which changes the files around it, it is the
+# commit of step 4. The "new" clone is HEAD with every file under src/ that
+# the working tree changes against HEAD copied over it.
+# dev/probe_p2s4_patch.R tells the versions apart by their text.
 # Under Git Bash, set R_LIBS_USER before calling this if R's library sits
 # under another HOME.
 #
@@ -45,7 +46,10 @@ for mode in old new; do
   if [ "$mode" = old ]; then
     git -C "$clone" checkout --quiet "$old_commit"
   else
-    cp "$repo/src/lobpcg_warm.h" "$clone/src/"
+    git -C "$repo" diff --name-only --diff-filter=d HEAD -- src |
+      while read -r f; do
+        cp "$repo/$f" "$clone/$f"
+      done
   fi
   cp "$repo/dev/probe_p2s4_patch.R" "$repo/dev/eigen_p2s4_edges.R" "$clone/dev/"
   cd "$clone"
