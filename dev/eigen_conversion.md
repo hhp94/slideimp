@@ -884,6 +884,46 @@ Step 1, on the working tree over `59920f4`:
   mirai daemons loading the step installed into a private library: 22
   files, 276 tests, none failed, errored or skipped.
 
+Step 2, on the working tree over `17e6415`:
+
+- `src/gram_ops.h` includes `src/si_lapack.h`, `src/pca_linalg_utils.h`,
+  `<cstddef>`, `<cstring>` and `<vector>`, nothing of Armadillo or R.
+  `GramWorkspace` holds its dimensions as `std::size_t`, where
+  `arma::blas_int` narrowed them silently. `GramCache` holds the fixed Gram
+  and the wide case's scaled changing columns in `std::vector<double>`,
+  zero-filled; `set_size` left the second uninitialized, and
+  `impute_restandardize()` writes every cell of it before a Gram reads it.
+  The helpers take raw buffers; `src/armaSVD.cpp` and `src/svd_triplet.h`
+  pass `memptr()` of the `arma::mat` they keep until their own step.
+  `copy_upper_cols()` takes the two leading dimensions it read from its two
+  matrices, and `gram_changing_block()` takes the row count it read from
+  `X_work`. `form_weighted_gram()` takes the cache `const`: it never wrote
+  it.
+- Every dsyrk and dgemm goes through `si_la::syrk` and `si_la::gemm` with
+  the arguments it passed to `arma::dsyrk_` and `arma::dgemm_`.
+  `syrk_upper()`, `gram_cache_init()` and `form_weighted_gram()` return the
+  wrapper's status, `[[nodiscard]]`, and a non-zero one is an
+  `Rcpp::stop()` at the two call sites: "internal error: dsyrk refused its
+  arguments" after `gram_cache_init()`, "internal error: dsyrk or dgemm
+  refused its arguments" after `form_weighted_gram()`. Not expected to be
+  reachable, for the reason step 1 gives, and no test raises it.
+- The timer build and the diagnostics build compile, with no warning from
+  the chain's own files.
+- Phase 0's inputs are built to take all four branches of
+  `form_weighted_gram()`: `x1` wide and `xt2` tall with complete columns
+  (`dev/ref_capture.R`: `xt2: tall, with complete columns, for LOBPCG.`),
+  `xw` wide and `xt` tall with a hole in every column, which the script
+  asserts. Capture `p2s2` against `p2s1` at tolerance 0: 71 cases, none
+  failed, every one bitwise. Against `76d4c60` at the defaults: the same 7
+  deliberate failures as `p2s1`, everything else bitwise. Read 2026-11-18
+  on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo 15.6.2-1.
+- Capture `p2s2-eigen5`, the same source against RcppEigen 0.4.9.9-5: 71
+  cases, every one bitwise identical to `p2s2`. The step adds no Eigen; run
+  anyway, as for step 1.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading the step installed into a private library: 22
+  files, 276 tests, none failed, errored or skipped.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.

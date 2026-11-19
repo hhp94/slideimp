@@ -84,8 +84,16 @@ inline void SVD_triplet(const arma::mat &Xhat,
                             LOC_TIMER_PARAM(timer))
 {
   LOC_TIC(timer, "form_gram");
-  form_weighted_gram(Xhat, sw, tall, X_work, AA_NxN, gram_ws, gram_cache);
+  const int gram_st =
+      form_weighted_gram(Xhat.memptr(), sw, tall, X_work.memptr(),
+                         AA_NxN.memptr(), gram_ws, gram_cache);
   LOC_TOC(timer, "form_gram");
+  if (gram_st != si_la::ok)
+  {
+    Rcpp::stop("internal error: dsyrk or dgemm refused its arguments "
+               "(status %d)",
+               gram_st);
+  }
 
   trace_val = arma::trace(AA_NxN);
 

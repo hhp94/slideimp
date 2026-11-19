@@ -29,11 +29,11 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |              +- pass 1: per-column NA counts
   |              +- pass 2: centered moments + Xhat fill
   |              +- initialize_missing_start()         src/armaSVD.cpp
-  |              +- gram_cache_init()                  src/gram_ops.h -> dsyrk_
+  |              +- gram_cache_init()                  src/gram_ops.h -> si_la::syrk
   |              +- EM outer loop
   |                   +- impute_restandardize<>()      src/armaSVD.cpp
   |                   +- SVD_triplet()                 src/svd_triplet.h
-  |                   |    +- form_weighted_gram()     src/gram_ops.h -> dsyrk_/dgemm_
+  |                   |    +- form_weighted_gram()     src/gram_ops.h -> si_la::syrk/gemm
   |                   |    +- hybrid_topk_eig()        src/hybrid_topk_eig.h
   |                   |    |    +- lobpcg_solve()      src/lobpcg_warm.h -> dsyevd_
   |                   |    |    +- eig_sym_sel()       src/eig_sym_sel.h -> dsyevr_
@@ -65,8 +65,8 @@ C++ files in the chain: 4 translation units (`src/armaSVD.cpp`, `src/RcppExports
 `src/mat_stats.cpp`, `src/si_lapack.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`,
 `eig_sym_sel.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `si_lapack.h`,
 `matrix_checks.h`, `loc_timer.h`). `si_lapack.cpp/.h` is the wrapper layer ("What the
-wrappers reproduce"); `pca_linalg_utils.h` is so far the only file of the chain that includes
-it. Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
+wrappers reproduce"); `pca_linalg_utils.h` and `gram_ops.h` are so far the only files of the
+chain that include it. Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
 `impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
 
 ## Layer 1: R entry point (`R/pca_imp.R`)
@@ -347,14 +347,23 @@ with unchanged dimensions does not reallocate) and its fixed rows stay unwritten
 until postprocessing fills them from the same `Vn` (Layer 4). `split_eigvec_block()`
 writes the plain and `d_inv`-scaled copies in a single pass.
 
-`form_weighted_gram()` (`src/gram_ops.h`: `inline void form_weighted_gram(`) has four branches:
+`form_weighted_gram()` (`src/gram_ops.h`: `inline int form_weighted_gram(`) has four branches,
+each entering BLAS through `si_la::syrk` and `si_la::gemm` with the arguments it passed to
+`arma::dsyrk_` and `arma::dgemm_`:
 
 | case | how the Gram is built |
 | --- | --- |
-| tall, cache active | copy cached fixed block, `dgemm_` cross block, `dsyrk_` changing-changing block |
-| tall, no cache | one `dsyrk_` over all of `X_work` |
-| wide, cache active | copy cached fixed Gram, `dsyrk_` with `beta = 1` adding the changing columns |
-| wide, no cache | `dsyrk_` on `Xhat`, then scale entries by `sw[i] * sw[j]` |
+| tall, cache active | copy cached fixed block, dgemm cross block, dsyrk changing-changing block |
+| tall, no cache | one dsyrk over all of `X_work` |
+| wide, cache active | copy cached fixed Gram, dsyrk with `beta = 1` adding the changing columns |
+| wide, no cache | dsyrk on `Xhat`, then scale entries by `sw[i] * sw[j]` |
+
+`src/gram_ops.h` takes raw buffers and the dimensions `GramWorkspace` holds, as `std::size_t`,
+and `GramCache` keeps the fixed Gram and the wide case's scaled changing columns in
+`std::vector<double>`. `gram_cache_init()` and `form_weighted_gram()` return the wrapper's
+status; a non-zero one is an `Rcpp::stop` at the call site (`src/armaSVD.cpp`:
+`if (gram_init_st != si_la::ok)`; `src/svd_triplet.h`: `if (gram_st != si_la::ok)`), not
+expected to be reachable for the reason given above.
 
 Only the upper triangle is written, matching dsyevr's `uplo = 'U'`
 (`src/eig_sym_sel.h`: `PEIG_UPLO = 'U'`). The
@@ -432,8 +441,8 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 
 | symbol | site | purpose |
 | --- | --- | --- |
-| `dsyrk_` | `syrk_upper()`, `form_weighted_gram()` (`src/gram_ops.h`) | Gram formation |
-| `dgemm_` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
+| dsyrk, through `si_la::syrk` | `syrk_upper()`, `form_weighted_gram()` (`src/gram_ops.h`) | Gram formation |
+| dgemm, through `si_la::gemm` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
 | dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`) |
 | `dgemm_` | `reconstruct_cols()` (`src/armaSVD.cpp`) | `reconstruct_cols`, strided column block |
 | `dsyevr_` | `EigSymWorkspace::init()`, `eig_sym_sel()` (`src/eig_sym_sel.h`) | workspace query, exact top-k eigen |
@@ -447,8 +456,8 @@ QRs plus a `3k x 3k` dsyevd.
 ## What the wrappers reproduce
 
 `src/si_lapack.h` declares, and `src/si_lapack.cpp` defines, R's BLAS and LAPACK as plain
-functions over `double*`, dimensions and an int status. So far only `src/pca_linalg_utils.h`
-calls one, `si_la::gemm`; the table above says how each site enters BLAS and LAPACK. Each
+functions over `double*`, dimensions and an int status. So far `src/pca_linalg_utils.h` calls
+`si_la::gemm`, and `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`; the table above says how each site enters BLAS and LAPACK. Each
 wrapper stands in for one
 call the chain makes today, and this section records what that call does, so that a call
 site can be moved to its wrapper without reading Armadillo again.

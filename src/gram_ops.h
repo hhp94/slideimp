@@ -1,30 +1,41 @@
 #ifndef GRAM_OPS_H
 #define GRAM_OPS_H
 
-#include <RcppArmadillo.h>
-#include <cstring>
+// The weighted Gram of the PCA chain, formed with R's BLAS through
+// src/si_lapack.h. Matrices are raw column-major buffers with std::size_t
+// dimensions; nothing here uses an Armadillo, Eigen or R type. A function
+// that calls BLAS returns the wrapper's status, si_la::ok on success, and
+// raising the R error is the caller's.
+
+#include "si_lapack.h"
 #include "pca_linalg_utils.h"
+#include <cstddef>
+#include <cstring>
+#include <vector>
 
 inline constexpr double SYRK_ALPHA = 1.0;
 inline constexpr double SYRK_BETA = 0.0;
 
 // ---------------------------------------------------------------------------
-// shared sizing/syrk workspace.
+// shared sizing/syrk workspace: A is nr x nc with leading dimension lda, and
+// the Gram is n x n with leading dimension ldc, n = nc (tall, A'A) or nr
+// (wide, AA').
 // ---------------------------------------------------------------------------
 struct GramWorkspace
 {
   char trans = 'N';
-  arma::blas_int nr = 0;
-  arma::blas_int nc = 0;
-  arma::blas_int n = 0;
-  arma::blas_int k = 0;
-  arma::blas_int lda = 0;
-  arma::blas_int ldc = 0;
+  std::size_t nr = 0;
+  std::size_t nc = 0;
+  std::size_t n = 0;
+  std::size_t k = 0;
+  std::size_t lda = 0;
+  std::size_t ldc = 0;
 
-  void init(arma::uword nrows_A, arma::uword ncols_A, bool tall)
+  void init(const std::size_t nrows_A, const std::size_t ncols_A,
+            const bool tall)
   {
-    nr = static_cast<arma::blas_int>(nrows_A);
-    nc = static_cast<arma::blas_int>(ncols_A);
+    nr = nrows_A;
+    nc = ncols_A;
     trans = tall ? 'T' : 'N';
     n = tall ? nc : nr;
     k = tall ? nr : nc;
@@ -35,45 +46,50 @@ struct GramWorkspace
 
 // ---------------------------------------------------------------------------
 // cached fixed-column contribution to the Gram.
+//   Gram_fixed:   the fixed columns' Gram, upper triangle written, lower
+//                 zero; n_fixed x n_fixed (tall) or nr x nr (wide)
+//   X_chg_scaled: nr x n_mc, the sw-scaled changing columns; wide and
+//                 cached only, empty otherwise
+// Both are empty while the cache is inactive.
 // ---------------------------------------------------------------------------
 struct GramCache
 {
-  arma::uword n_fixed = 0;
+  std::size_t n_fixed = 0;
   bool active = false;
-  arma::mat Gram_fixed;
-  arma::mat X_chg_scaled;
+  std::vector<double> Gram_fixed;
+  std::vector<double> X_chg_scaled;
 };
 
 // ---------------------------------------------------------------------------
-// LAPACK syrk_upper wrapper.
+// dsyrk into the upper triangle of C: C = A'A (tall) or AA' (wide), with the
+// dimensions of ws.
 // ---------------------------------------------------------------------------
-inline void syrk_upper(const arma::mat &A, arma::mat &C,
-                       const GramWorkspace &ws)
+[[nodiscard]] inline int syrk_upper(const double *A, double *C,
+                                    const GramWorkspace &ws)
 {
-  const char uplo = 'U';
-  arma::dsyrk_(&uplo, &ws.trans, &ws.n, &ws.k,
-               &SYRK_ALPHA, A.memptr(), &ws.lda,
-               &SYRK_BETA, C.memptr(), &ws.ldc,
-               1, 1);
+  return si_la::syrk('U', ws.trans, ws.n, ws.k, SYRK_ALPHA, A, ws.lda,
+                     SYRK_BETA, C, ws.ldc);
 }
 
 // ---------------------------------------------------------------------------
-// initialize the fixed-block cache.
+// initialize the fixed-block cache. Xhat_perm is nrX x (n_fixed + n_mc),
+// fixed columns first. In the tall case X_work (nrX x (n_fixed + n_mc))
+// receives the sw-scaled fixed columns; the wide case does not touch it.
 // ---------------------------------------------------------------------------
-inline void gram_cache_init(GramCache &cache,
-                            const arma::mat &Xhat_perm,
-                            const double *sw,
-                            const arma::uword nrX,
-                            const arma::uword n_fixed,
-                            const arma::uword n_mc,
-                            const bool tall,
-                            arma::mat &X_work)
+[[nodiscard]] inline int gram_cache_init(GramCache &cache,
+                                         const double *Xhat_perm,
+                                         const double *sw,
+                                         const std::size_t nrX,
+                                         const std::size_t n_fixed,
+                                         const std::size_t n_mc,
+                                         const bool tall,
+                                         double *X_work)
 {
   cache.n_fixed = n_fixed;
   cache.active = (n_fixed > 0);
   if (n_fixed == 0)
   {
-    return;
+    return si_la::ok;
   }
 
   GramWorkspace fixed_ws;
@@ -81,38 +97,39 @@ inline void gram_cache_init(GramCache &cache,
 
   if (tall)
   {
-    pca_detail::copy_scale_rows(X_work.memptr(), Xhat_perm.memptr(), sw, nrX, n_fixed);
+    pca_detail::copy_scale_rows(X_work, Xhat_perm, sw, nrX, n_fixed);
 
     // zero-fill so the lower triangle is well-defined. dsyrk only writes the
     // upper triangle
-    cache.Gram_fixed.zeros(n_fixed, n_fixed);
-    syrk_upper(X_work, cache.Gram_fixed, fixed_ws);
+    cache.Gram_fixed.assign(n_fixed * n_fixed, 0.0);
+    return syrk_upper(X_work, cache.Gram_fixed.data(), fixed_ws);
   }
-  else
-  {
-    arma::mat X_fixed_scaled(nrX, n_fixed);
-    pca_detail::copy_scale_rows(X_fixed_scaled.memptr(), Xhat_perm.memptr(), sw,
-                                nrX, n_fixed);
 
-    // zero-fill so the lower triangle is well-defined.
-    cache.Gram_fixed.zeros(nrX, nrX);
-    syrk_upper(X_fixed_scaled, cache.Gram_fixed, fixed_ws);
+  std::vector<double> X_fixed_scaled(nrX * n_fixed);
+  pca_detail::copy_scale_rows(X_fixed_scaled.data(), Xhat_perm, sw, nrX,
+                              n_fixed);
 
-    cache.X_chg_scaled.set_size(nrX, n_mc);
-  }
+  // zero-fill so the lower triangle is well-defined.
+  cache.Gram_fixed.assign(nrX * nrX, 0.0);
+  const int st =
+      syrk_upper(X_fixed_scaled.data(), cache.Gram_fixed.data(), fixed_ws);
+
+  cache.X_chg_scaled.assign(nrX * n_mc, 0.0);
+  return st;
 }
 
 // ---------------------------------------------------------------------------
 // where the sw-scaled changing-column block lives, if anywhere. The caller
 // must keep that block scaled by sw between form_weighted_gram() calls.
-//   tall:            the tail columns of X_work
+//   tall:            the tail columns of X_work (nrX rows)
 //   wide, cached:    the compact GramCache::X_chg_scaled block
 //   wide, non-cached: nowhere (form_weighted_gram scales the Gram instead)
 // ---------------------------------------------------------------------------
 inline double *gram_changing_block(GramCache &cache,
-                                   arma::mat &X_work,
-                                   const arma::uword n_fixed,
-                                   const arma::uword n_mc,
+                                   double *X_work,
+                                   const std::size_t nrX,
+                                   const std::size_t n_fixed,
+                                   const std::size_t n_mc,
                                    const bool tall)
 {
   if (n_mc == 0)
@@ -121,29 +138,32 @@ inline double *gram_changing_block(GramCache &cache,
   }
   if (tall)
   {
-    return X_work.colptr(n_fixed);
+    return X_work + n_fixed * nrX;
   }
   if (cache.active)
   {
-    return cache.X_chg_scaled.memptr();
+    return cache.X_chg_scaled.data();
   }
   return nullptr;
 }
 
 // ---------------------------------------------------------------------------
-// copy the upper-triangular part (rows 0..j) of the leading ncols columns.
+// copy the upper-triangular part (rows 0..j) of the leading ncols columns of
+// src, leading dimension ld_src, into dst, leading dimension ld_dst.
 // ---------------------------------------------------------------------------
-inline void copy_upper_cols(arma::mat &dst, const arma::mat &src,
-                            const arma::uword ncols)
+inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
+                            const double *src, const std::size_t ld_src,
+                            const std::size_t ncols)
 {
-  for (arma::uword j = 0; j < ncols; ++j)
+  for (std::size_t j = 0; j < ncols; ++j)
   {
-    std::memcpy(dst.colptr(j), src.colptr(j), (j + 1) * sizeof(double));
+    std::memcpy(dst + j * ld_dst, src + j * ld_src, (j + 1) * sizeof(double));
   }
 }
 
 // ---------------------------------------------------------------------------
-// form the (upper-triangular) weighted Gram matrix into AA_NxN.
+// form the (upper-triangular) weighted Gram matrix into AA_NxN, which is
+// gram_ws.n x gram_ws.n.
 //
 // tall (n = ncols): AA = Xhat^T diag(sw^2) Xhat
 //  - X_work[:, n_fixed:] is filled with sw-scaled changing cols.
@@ -152,116 +172,96 @@ inline void copy_upper_cols(arma::mat &dst, const arma::mat &src,
 // wide (n = nrows): AA = Xhat diag(sw^2) Xhat^T
 //  - When cache.active, Gram_fixed is the base and dsyrk(beta=1) adds the
 //  contribution of the changing columns. cache.X_chg_scaled is filled.
+//
+// Xhat and X_work are gram_ws.nr x gram_ws.nc; X_work is read in the tall
+// case only, Xhat in the wide non-cached case only.
 // ---------------------------------------------------------------------------
-inline void form_weighted_gram(const arma::mat &Xhat,
-                               const double *sw,
-                               const bool tall,
-                               arma::mat &X_work,
-                               arma::mat &AA_NxN,
-                               const GramWorkspace &gram_ws,
-                               GramCache &gram_cache)
+[[nodiscard]] inline int form_weighted_gram(const double *Xhat,
+                                            const double *sw,
+                                            const bool tall,
+                                            const double *X_work,
+                                            double *AA_NxN,
+                                            const GramWorkspace &gram_ws,
+                                            const GramCache &gram_cache)
 {
-  const arma::uword nr = static_cast<arma::uword>(gram_ws.nr);
-  const arma::uword nc = static_cast<arma::uword>(gram_ws.nc);
-  const arma::uword n_fixed = gram_cache.n_fixed;
-  const arma::uword n_mc = nc - n_fixed;
+  const std::size_t nr = gram_ws.nr;
+  const std::size_t nc = gram_ws.nc;
+  const std::size_t n_fixed = gram_cache.n_fixed;
+  const std::size_t n_mc = nc - n_fixed;
   const bool use_cache = gram_cache.active;
   if (tall)
   {
     // X_work already contains sw * Xhat.
     // fixed columns initialized in cache init.
     // changing columns maintained by impute_restandardize().
-    if (use_cache)
+    if (!use_cache)
     {
-      const arma::blas_int ldAA = gram_ws.ldc;
-      const arma::blas_int lda = gram_ws.lda;
-
-      copy_upper_cols(AA_NxN, gram_cache.Gram_fixed, n_fixed);
-
-      if (n_mc > 0)
-      {
-        // fixed-changing cross block
-        {
-          const arma::blas_int m = static_cast<arma::blas_int>(n_fixed);
-          const arma::blas_int n_rhs = static_cast<arma::blas_int>(n_mc);
-          const arma::blas_int kk = static_cast<arma::blas_int>(nr);
-          const char trA = 'T';
-          const char trB = 'N';
-
-          arma::dgemm_(&trA, &trB, &m, &n_rhs, &kk,
-                       &SYRK_ALPHA,
-                       X_work.memptr(), &lda,
-                       X_work.colptr(n_fixed), &lda,
-                       &SYRK_BETA,
-                       AA_NxN.colptr(n_fixed), &ldAA,
-                       1, 1);
-        }
-        // changing-changing block
-        {
-          const arma::blas_int nn = static_cast<arma::blas_int>(n_mc);
-          const arma::blas_int kk = static_cast<arma::blas_int>(nr);
-          const char uplo = 'U';
-          const char trans = 'T';
-          double *C_sub = AA_NxN.colptr(n_fixed) + n_fixed;
-
-          arma::dsyrk_(&uplo, &trans, &nn, &kk,
-                       &SYRK_ALPHA,
-                       X_work.colptr(n_fixed), &lda,
-                       &SYRK_BETA,
-                       C_sub, &ldAA,
-                       1, 1);
-        }
-      }
+      return syrk_upper(X_work, AA_NxN, gram_ws);
     }
-    else
+
+    const std::size_t ldAA = gram_ws.ldc;
+    const std::size_t lda = gram_ws.lda;
+
+    copy_upper_cols(AA_NxN, ldAA, gram_cache.Gram_fixed.data(), n_fixed,
+                    n_fixed);
+
+    if (n_mc == 0)
     {
-      syrk_upper(X_work, AA_NxN, gram_ws);
+      return si_la::ok;
     }
+
+    const double *X_chg = X_work + n_fixed * lda;
+    double *AA_chg_cols = AA_NxN + n_fixed * ldAA;
+
+    // fixed-changing cross block
+    const int st = si_la::gemm('T', 'N', n_fixed, n_mc, nr, SYRK_ALPHA,
+                               X_work, lda, X_chg, lda, SYRK_BETA,
+                               AA_chg_cols, ldAA);
+    if (st != si_la::ok)
+    {
+      return st;
+    }
+
+    // changing-changing block
+    return si_la::syrk('U', 'T', n_mc, nr, SYRK_ALPHA, X_chg, lda, SYRK_BETA,
+                       AA_chg_cols + n_fixed, ldAA);
   }
-  else
+
+  if (use_cache)
   {
-    if (use_cache)
+    // gram_cache.X_chg_scaled already contains sw * X_changing.
+    copy_upper_cols(AA_NxN, gram_ws.ldc, gram_cache.Gram_fixed.data(), nr, nr);
+
+    if (n_mc == 0)
     {
-      // gram_cache.X_chg_scaled already contains sw * X_changing.
-      copy_upper_cols(AA_NxN, gram_cache.Gram_fixed, nr);
-
-      if (n_mc > 0)
-      {
-        const arma::blas_int nn = gram_ws.n;
-        const arma::blas_int kk = static_cast<arma::blas_int>(n_mc);
-        const arma::blas_int lda = static_cast<arma::blas_int>(nr);
-        const arma::blas_int ldc = gram_ws.ldc;
-        const char uplo = 'U';
-        const char trans = 'N';
-        const double beta_one = 1.0;
-
-        arma::dsyrk_(&uplo, &trans, &nn, &kk,
-                     &SYRK_ALPHA,
-                     gram_cache.X_chg_scaled.memptr(), &lda,
-                     &beta_one,
-                     AA_NxN.memptr(), &ldc,
-                     1, 1);
-      }
+      return si_la::ok;
     }
-    else
+
+    const double beta_one = 1.0;
+    return si_la::syrk('U', 'N', gram_ws.n, n_mc, SYRK_ALPHA,
+                       gram_cache.X_chg_scaled.data(), nr, beta_one, AA_NxN,
+                       gram_ws.ldc);
+  }
+
+  const int st = syrk_upper(Xhat, AA_NxN, gram_ws);
+  if (st != si_la::ok)
+  {
+    return st;
+  }
+
+  const std::size_t ng = gram_ws.n;
+
+  for (std::size_t j = 0; j < ng; ++j)
+  {
+    const double sj = sw[j];
+    double *col = AA_NxN + j * gram_ws.ldc;
+
+    for (std::size_t i = 0; i <= j; ++i)
     {
-      syrk_upper(Xhat, AA_NxN, gram_ws);
-
-      double *M = AA_NxN.memptr();
-      const arma::uword ng = AA_NxN.n_rows;
-
-      for (arma::uword j = 0; j < ng; ++j)
-      {
-        const double sj = sw[j];
-        double *col = M + j * ng;
-
-        for (arma::uword i = 0; i <= j; ++i)
-        {
-          col[i] *= sw[i] * sj;
-        }
-      }
+      col[i] *= sw[i] * sj;
     }
   }
+  return si_la::ok;
 }
 
 #endif // GRAM_OPS_H

@@ -668,10 +668,17 @@ Rcpp::List pca_imp_internal_cpp(
 
   LOC_TIC(pca_imp_gram, "gram_cache_init");
   GramCache gram_cache;
-  gram_cache_init(gram_cache, Xhat, sptr, nrX, n_fixed, n_mc, tall, X_work);
+  const int gram_init_st =
+      gram_cache_init(gram_cache, Xhat.memptr(), sptr, nrX, n_fixed, n_mc,
+                      tall, X_work.memptr());
   LOC_TOC(pca_imp_gram, "gram_cache_init");
-  double *weighted_chg_ptr =
-      gram_changing_block(gram_cache, X_work, n_fixed, n_mc, tall);
+  if (gram_init_st != si_la::ok)
+  {
+    Rcpp::stop("internal error: dsyrk refused its arguments (status %d)",
+               gram_init_st);
+  }
+  double *weighted_chg_ptr = gram_changing_block(
+      gram_cache, X_work.memptr(), nrX, n_fixed, n_mc, tall);
 
   HybridEigContext hyb_ctx;
   hyb_ctx.eig_ws = &eig_ws;
