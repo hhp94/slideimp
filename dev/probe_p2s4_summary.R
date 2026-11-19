@@ -149,8 +149,14 @@ summarize <- function(log, is_old) {
 
 old <- read_log(args[[1]])
 new <- read_log(args[[2]])
-runs_old <- summarize(old, is_old = TRUE)
-runs_new <- summarize(new, is_old = FALSE)
+## A file that calls Armadillo for its dsyevd logs the workspace it held and
+## its query; one that calls si_la logs the order alone. Each log is read by
+## its own format, so either build may be on either side.
+arma_log <- function(log) {
+  any(log$event == "syevd" & lengths(log$parts) >= 7L)
+}
+runs_old <- summarize(old, is_old = arma_log(old))
+runs_new <- summarize(new, is_old = arma_log(new))
 
 ## Per case, how each build's lobpcg_solve() calls ended, in order.
 key <- function(runs) {

@@ -417,7 +417,7 @@ direction). The header's "P invariant" note states that the committed `P` is
 deliberately *not* orthonormal and not orthogonal to `X`; entry-time cleanup
 (`src/lobpcg_warm.h`: `bool have_P = qr_project_out_qr(`)
 re-projects and re-orthonormalizes it. Both matvecs are recomputed fresh at entry
-(`src/lobpcg_warm.h`: `arma::mat AX = A * X;`) because `A` changes between outer calls. The
+(`src/lobpcg_warm.h`: `Block AX = mul(a, n, n, X);`) because `A` changes between outer calls. The
 initial Rayleigh-Ritz is over the
 joint basis `[X, P]` (`rr_two_block()`), falling back to `X` alone when `P` is
 unusable (`src/lobpcg_warm.h`: `fall back to X-only initial RR`).
@@ -439,6 +439,20 @@ points over one helper, `build_momentum_P()`, which forms
 `P = X_prev - X_curr (X_curr' X_prev)`: `seed_lobpcg_state()` after an exact
 solve, with no norm floor; `refresh_momentum_P()` after a LOBPCG success, with
 a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
+
+**Storage on the LOBPCG path.** The iteration holds its matrices in `lobpcg_detail::Block`
+(`src/lobpcg_warm.h`: `struct Block`), a column-major buffer whose members carry
+Armadillo's names, so the three calls into `si_la` read as they did on `arma::mat`.
+Every product goes through `si_la::matmul` (`src/lobpcg_warm.h`: `inline void matmul_into(`),
+written the way Armadillo evaluated each one ("Products of two `arma::mat`" below): a
+product inside a sum or difference, or one whose target is among its operands, is formed
+first and added cell by cell; `-=` of a product whose operands do not include its target is
+one call with `beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). Armadillo is left
+at the boundary with `src/hybrid_topk_eig.h`, which holds `arma::mat` until its own step:
+`lobpcg_solve()` reads the Gram in place through `A.memptr()`, `LOBPCGState` holds `X` and `P`
+as `arma::mat`, `LOBPCGResult` holds the eigenvalues as an `arma::vec`, and
+`seed_lobpcg_state()` and `refresh_momentum_P()` take the two eigenvector blocks as
+`arma::mat`. Each is copied into a `Block` on the way in and out of one on the way out.
 
 **Where a factorization can fail on the LOBPCG path.** Three calls return a
 `si_la` status, and `la_failed()` (`src/lobpcg_warm.h`: `inline bool la_failed(`)
@@ -471,7 +485,7 @@ wrapper, and what was measured.
 | dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
 | dgeqrf and dorgqr, through `si_la::qr_econ` | `qr_orthonormalize()` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization |
 | dtrtrs and dtrcon, and dgelsd as the fallback, through `si_la::solve_tri` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
-| Armadillo | `A * X` and the other products (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
+| dgemm or dgemv, through `si_la::matmul` | `matmul_into()` (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
 
 The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` problem. The
 LOBPCG path never touches `n_gram`-sized LAPACK: its dense work is `n_gram x k` matvecs and
@@ -483,7 +497,7 @@ QRs plus a `3k x 3k` dsyevd.
 functions over `double*`, dimensions and an int status. So far `src/pca_linalg_utils.h` calls
 `si_la::gemm`, `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, `src/eig_sym_sel.h`
 calls `si_la::syevr_range`, and `src/lobpcg_warm.h` calls `si_la::qr_econ`,
-`si_la::solve_tri` and `si_la::syevd`; the table above says how each site enters BLAS and
+`si_la::solve_tri`, `si_la::syevd` and `si_la::matmul`; the table above says how each site enters BLAS and
 LAPACK. Each wrapper stands in for one
 call the chain makes, or made until its file was converted, and this section records what
 that call does, so that a call
@@ -553,7 +567,7 @@ first two are on purpose; the third was found when the dsyevd call moved:
   it returned `info = 0` and the NaN went on, to end either in the error of a failed
   triangular solve or, when the Gram itself held the NaN, in `lobpcg_solve()` reporting
   convergence, because the largest residual norm is taken with a `>` that NaN never
-  passes (`src/lobpcg_warm.h`: `const double max_res = rn.max();`).
+  passes, as it still is (`src/lobpcg_warm.h`: `const double max_res = max_skip_nan(rn.data(), rn.size());`).
 - *The workspace of dsyevd.* Until it moved to the wrapper, `small_eig_desc()` kept its
   dsyevd workspace on the `LOBPCGState` and only ever lengthened it, so a Rayleigh-Ritz
   problem that followed a larger one was solved with the larger one's workspace.
@@ -656,12 +670,15 @@ in this order, and `si_la::matmul` keeps the order:
 
 `C += A * B` and `C -= A * B` do not form the product and then add it: when `C` is not one
 of the operands they are one call of the same routine with `beta = 1` and `alpha = 1` or
-`-1` (`glue_times::apply_inplace_plus()`). When `C` is an operand, as in
-(`src/lobpcg_warm.h`: `V -= X * (X.t() * V);`), the product is formed first and
-subtracted cell by cell. A product inside a sum or difference, as in
-(`src/lobpcg_warm.h`: `P = X_prev - X_curr * (X_curr.t() * X_prev);`), is formed first
-too (NOT READ: that no rewrite of a sum of products into one BLAS call exists; the oracle
-does not cover those forms). Three operands written `A * (B * C)` are two products, the
+`-1` (`glue_times::apply_inplace_plus()`). When `C` is an operand, nested products
+included (READ: `Glue::is_alias()` and `Op::is_alias()` ask their operands in turn), the
+product is formed first and subtracted cell by cell: `V -= X * (X.t() * V)` was that form,
+and is written so now (`src/lobpcg_warm.h`: `sub_cells(V, mul(X, tmul(X, V)));`). A product
+inside a sum or difference is formed first too, as `P = X_prev - X_curr * (X_curr.t() * X_prev)`
+was and is written now (`src/lobpcg_warm.h`: `sub_cells(P, mul(X_curr, tmul(X_curr, X_prev)));`):
+READ, no overload in `operator_plus.hpp` or `operator_minus.hpp` names `glue_times`, so the
+product is an operand of the sum (NOT READ: the proxy that then evaluates it). The oracle
+does not cover those forms; the capture runs them. Three operands written `A * (B * C)` are two products, the
 inner one first: `depth_lhs` counts only operands nested on the left (READ), so the
 parenthesised product is one operand (NOT READ: `partial_unwrap`, which evaluates it).
 
@@ -678,15 +695,40 @@ An in-place product with an empty inner dimension is passed on to dgemm with a l
 dimension of 0 (READ from the arguments `gemm::apply_blas_type()` builds; not run, since
 BLAS answers that through xerbla). The wrapper scales `C` by `beta` and calls nothing.
 
-**Calls no wrapper stands in for.** `arma::norm(P, "fro")`
-(`src/lobpcg_warm.h`: `!(arma::norm(P, "fro") > min_projected_fro_norm))`) is dnrm2 over
-all cells, recomputed by a scaled loop when the result is 0 or not finite (READ:
-`fn_norm.hpp`, `op_norm::vec_norm_2_direct_std()`; NOT READ: the scaled loop).
-`arma::norm(A, "inf")` is `max(sum(abs(A), 1))` with no BLAS (READ: `op_norm::mat_norm_inf()`;
-NOT READ: the order `sum()` adds in). `arma::dot()` is Armadillo's own loop up to 32 elements
-and ddot above (READ: `op_dot::direct_dot()`; NOT READ: that the `head()` views of
-(`src/armaSVD.cpp`: `arma::dot(vs_top.head(ncp), vs_top.head(ncp))`) reach it).
-`arma::trace`, `accu`, `sum`, `cumsum`, `find`, `fliplr` and `reverse` are NOT READ.
+**Calls no wrapper stands in for.** Four norms and a dot product, and the plain loops that
+replace them in `src/lobpcg_warm.h`:
+
+- `arma::norm(P, "fro")` in `build_momentum_P()` was dnrm2 over all cells, recomputed by a
+  scaled loop when the result is 0 or not finite (READ: `fn_norm.hpp`,
+  `op_norm::vec_norm_2_direct_std()`; NOT READ: the scaled loop). Now a plain sum of
+  squares (`src/lobpcg_warm.h`: `!(frobenius_norm(P) > min_projected_fro_norm))`), as ruled
+  (`dev/eigen_conversion.md`, "Not wrapped"): not bitwise equal to dnrm2, and only a
+  threshold reads it.
+- `arma::norm(A, "inf")` was `as_scalar(max(sum(abs(A), 1), 0))` with no BLAS (READ:
+  `op_norm::mat_norm_inf()`). `sum(, 1)` starts each row's sum from its first column and adds
+  the others in column order, whichever of its two paths it takes (READ:
+  `op_sum::apply_mat_noalias()`, `op_sum::apply_proxy_noalias()`), and `max()` starts from
+  `-Inf` and keeps a value only when it is `>` the best so far, so NaN is skipped (READ:
+  `op_max::direct_max()`, which keeps two running maxima and returns the larger; the maximum
+  of values that are not NaN does not depend on that order). `norm_inf()` does the same, from
+  a zero sum, which adds nothing to a value that is not negative (`src/lobpcg_warm.h`:
+  `row_sum[i] += std::abs(col[i]);`), so it is bitwise equal.
+- The residual norms, `arma::sqrt(arma::sum(arma::square(R), 0))`, which no note named before
+  the second half of step 4: `sum()` of `square()` of a matrix takes each column's sum with
+  `op_dot::direct_dot()` (READ: `op_sum::apply()` for `eOp<T1, eop_square>`,
+  `op_sum::apply_mat_square_noalias()`), so two partial sums up to 32 rows and ddot above.
+  Now a plain sum of squares (`src/lobpcg_warm.h`: `inline std::vector<double> column_norms(`),
+  not bitwise equal to either, on the same footing as the Frobenius norm: the norms feed the
+  tests of the iteration and `max_rel_res`, which only the diagnostics build reports
+  (`src/armaSVD.cpp`: `Rcpp::Named("eig_lobpcg_max_rel_res")`). `rn.max()` reached
+  `op_max::direct_max()` (READ: `Mat::max()`), which `max_skip_nan()` reproduces.
+- `arma::dot()` is Armadillo's own loop up to 32 elements and ddot above (READ:
+  `op_dot::direct_dot()`; NOT READ: that the `head()` views of
+  (`src/armaSVD.cpp`: `arma::dot(vs_top.head(ncp), vs_top.head(ncp))`) reach it).
+
+`find`, `fliplr` and `reverse`, which `src/lobpcg_warm.h` called and now writes as loops, move
+values and do no arithmetic (NOT READ); the captures of step 4 are bitwise across the change.
+`arma::trace`, `accu` and `cumsum` are NOT READ.
 
 ## Data structures and ownership
 

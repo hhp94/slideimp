@@ -979,9 +979,10 @@ Step 3, on the working tree over `905e1ac`:
   1.000 for LOBPCG, 1.007 for exact, both inside. No cost shows at these
   sizes (Gram of order 200 for `sim_mat()`); larger orders not timed.
 
-Step 4, the calls that can fail, on the working tree over `eade032`. The
-containers, products and norms of `src/lobpcg_warm.h` are still Armadillo's:
-that half of the step is not done.
+Step 4, the calls that can fail, on the working tree over `eade032`,
+committed as `ff0e394`. The containers, products and norms of
+`src/lobpcg_warm.h` stayed Armadillo's in that half; the second half, after
+"Found on the way" below, replaced them.
 
 - `src/lobpcg_warm.h` includes `src/si_lapack.h`. Its QR, its triangular
   solve and its dsyevd go through `si_la::qr_econ`, `si_la::solve_tri` and
@@ -1164,6 +1165,137 @@ Found on the way, and not changed:
   triggers it. In the 4 cases that force it, every solve that took the
   fallback then stalled.
 
+Step 4, the containers and products, on the working tree over `ff0e394`:
+
+- `src/lobpcg_warm.h` holds its matrices in `lobpcg_detail::Block`: a
+  `std::vector<double>`, column-major and unpadded, with `std::size_t`
+  dimensions, zero-filled when sized. Its members carry Armadillo's names
+  (`n_rows`, `n_cols`, `memptr()`, `(i, j)`), so `la_failed()`, the three
+  `si_la` call sites and every failure branch of the first half read as
+  they did, unchanged to the character. Every product goes through
+  `si_la::matmul`, from one function, `matmul_into()`; a non-zero status
+  stops with "internal error: dgemm or dgemv refused its arguments", not
+  expected to be reachable, as in steps 1 to 3. No wrapper was added.
+- Each Armadillo expression is written the way Armadillo evaluated it
+  (`dev/pca_imp_structure.md`, "Products of two `arma::mat`", has what was
+  READ). `-=` of a product whose operands do not include its target is one
+  call with `alpha = -1` and `beta = 1` (`sub_mul()`): the four updates of
+  `Pact` and `APact` between their two QRs. When the target is inside the
+  product, as in `V -= X * (X.t() * V)` at the three projections onto the
+  complement of `X`, the product is formed and subtracted cell by cell
+  (READ: `Glue::is_alias()` asks the nested product too). A product inside
+  a sum or difference is formed first and added cell by cell, left to right:
+  `build_momentum_P()`, the projections of `P` and `AP`, `pp`, `app`, and
+  `X * VX + pp`. `M = 0.5 * (M + M.t())` reads every cell of `M` as it was
+  (READ: the transpose's proxy has `has_subview`, so the assignment goes
+  through a temporary). `find`, `cols()` of an index vector, `fliplr`,
+  `reverse`, `head` and the sub-block copies are loops that move values.
+- The norms (`dev/pca_imp_structure.md`, "Calls no wrapper stands in for").
+  The infinity norm of `A` is bitwise Armadillo's: row sums in column
+  order, then the largest taken with `>` from `-Inf`, as READ in `op_sum`
+  and `op_max`. The Frobenius norm is the plain sum of squares the ruling
+  above asked for. The ruling named three sites; this is a fourth: the
+  residual norms, `sqrt(sum(square(R), 0))`, which Armadillo took through
+  `op_dot::direct_dot()`, two partial sums up to 32 rows and ddot above
+  (READ). Treated as the Frobenius norm, a plain sum of squares and no
+  wrapper, so its last bits are not ddot's. The norms decide convergence,
+  the active columns, the stall count and the divergence guard, and are
+  `max_rel_res`, which only the diagnostics build returns
+  (`eig_lobpcg_max_rel_res`). A last-bit change moves a decision only when
+  a norm lies within rounding of the tolerance or of the best so far; in
+  the capture and the 60 edge cases none did (below). `rn.max()` reached
+  `op_max::direct_max()` (READ: `Mat::max()`, which the first half left NOT
+  READ), and `max_skip_nan()` does what it did, so a residual of NaN still
+  passes the convergence test as "Found on the way" above says.
+- What changes, none of it reachable from `pca_imp()`. A block with more
+  columns than rows stops in `qr_orthonormalize()` with "internal error: a
+  LOBPCG block has more columns than rows", where the loop over the
+  diagonal of `R` read past the cells `R` has (NOT READ: whether
+  Armadillo's bounds check was on); every block has at most `k` columns and
+  `n` rows, and `k <= n` holds since the state comes from `eig_sym_sel()`.
+  Blocks of different sizes added, or a sub-block out of range, stop with an
+  internal error where Armadillo's conformance check threw. The QR's `Q` and
+  `R` are zero-filled where `arma::fill::none` left them; the wrapper writes
+  every cell before anything reads one.
+- Armadillo left in the file, all of it at the boundary with
+  `src/hybrid_topk_eig.h`, which step 5 converts: `#include
+  <RcppArmadillo.h>`; `LOBPCGState`'s `X` and `P` as `arma::mat`, which
+  `hybrid_topk_eig_impl()` copies into `eigvecs`, resets in
+  `choose_auto_exact()` and tests with `seeded()`; `LOBPCGResult::eigvals`
+  as an `arma::vec`, which it moves into its own; the Gram as a
+  `const arma::mat &`, read in place through `memptr()`; `X_curr` and
+  `X_prev` of `seed_lobpcg_state()` and `refresh_momentum_P()` as
+  `arma::mat`, which is how the caller holds them; and `from_arma()` and
+  `to_arma()`, which copy each of them into a `Block` on the way in and out
+  of one on the way out. Step 5 changes those types and removes the copies.
+  `dev/probe_p2s4_patch.R` writes `ctx.lobpcg_state.X.n_cols` into
+  `src/hybrid_topk_eig.h`, which step 5 keeps or updates.
+- The probe, to compare this half with `ff0e394`. `dev/probe_p2s4_patch.R`
+  chose its patch by mode, and its "old" patch was for the file of
+  `eade032`. It now chooses by what the file holds: the calls through
+  Armadillo, or the calls through `si_la` with either container, the two
+  anchors that differ (the recomputed `A * Q` and the transpose of `R`)
+  taken from whichever is present. Applied to the file of `eade032`,
+  `ff0e394` and this tree, each patches cleanly. `dev/probe_p2s4_run.sh`
+  makes the `edges-fresh` run only when the old file has the hook for it,
+  and `dev/probe_p2s4_summary.R` reads each log by its own format, so
+  either build may be on either side.
+
+The gate, read 2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo
+15.6.2-1, R's LAPACK 3.12.0:
+
+- The timer build and the diagnostics build compile, with 511
+  `-Wignored-attributes` lines each and no other compiler warning. R
+  notes the incomplete final line of `~/.R/Makevars.win`, a file of the
+  machine's, not of the package.
+- Capture `p2s4b` against `p2s4` at tolerance 0: 71 cases, none failed,
+  every one bitwise. Against `76d4c60` at the defaults: the same 7
+  deliberate failures as `p2s4` (`col_vars_x2_cores2`, `int_col_miss`,
+  `int_col_vars`, `int_mean_imp_col`, `int_mean_imp_col_cores2`,
+  `int_mean_imp_col_inf_error`, `int_row_miss`), everything else bitwise.
+  Capture `p2s4b-eigen5`, the same source against RcppEigen 0.4.9.9-5: 71
+  cases, every one bitwise identical to `p2s4b`.
+- `bash dev/probe_p2s4_run.sh <scratch> ff0e394`, `ff0e394` as old and this
+  tree as new. Each instrumented clone's capture is bitwise identical to
+  `p2s3` and `p2s4`. The 60 edge cases at tolerance 0: none failed, every
+  one bitwise, and the 5 that end in an error raise the same class and
+  message in both, 3 "top-k symmetric eigensolver failed to converge" and 2
+  "lobpcg_solve: triangular solve failed". The two builds' event logs are
+  identical byte for byte, 75097 lines for the edge cases and 9743 for the
+  capture. So in the edge cases both make the same 1207 `lobpcg_solve()`
+  calls, asking for 1 to 41 eigenpairs, and end each alike: 1074 converged,
+  37 stalled, 35 at `maxiter`, 34 on the divergence guard, 11
+  `LOBPCG_RR_FAILED`, 6 `LOBPCG_INITIAL_RR_FAILED`, 6
+  `LOBPCG_RESIDUAL_COLLAPSED` and 4 `LOBPCG_P_COLLAPSED`. They make 43966
+  QRs, 17 failed by injection and 36 dropping columns; 19031 triangular
+  solves, 4 by the dgelsd fallback, all injected; and 10743 dsyevd calls of
+  order 2 to 123, 17 failed: 9 by an injected `info` and 8 refused for an
+  injected NaN.
+  2 first Rayleigh-Ritz problems were over `X` alone. Every failure branch
+  of the file is taken and comes out as in `ff0e394`, and one eigenpair
+  takes the dgemv routes.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading this tree installed into a private library: 22
+  files, 276 tests, none failed, errored or skipped.
+- Timed, since every block is now allocated, zero-filled and, at the
+  boundary, copied: the timing driver, `ff0e394` as a and this tree as b,
+  both installed by `dev/eigen_time_install.R` from clones outside the
+  tree, the four PCA workloads, 5 repetitions. b/a ratios of medians:
+  `chr21_pca_exact` 1.006, `chr21_pca_lobpcg` 1.023, `sim_pca_exact` 1.005,
+  `sim_pca_lobpcg` 1.013. The two LOBPCG workloads are outside the driver's
+  band of 0.988 to 1.008, so they were timed again, 11 repetitions:
+  `chr21_pca_lobpcg` 1.004, inside, and `sim_pca_lobpcg` 1.015, with the
+  ranges of its runs all but apart (a 0.483 to 0.491 s, b 0.490 to
+  0.501 s). So the LOBPCG path costs about 1.5% more on `sim_mat()` input
+  (Gram of order 200) and nothing measurable on chr21. Where it goes is not
+  profiled; the new work is the zero-fill, the copies of the state and the
+  sub-blocks and transposes written out.
+- `uv run dev/check_map_anchors.py`: the problems left are the ones in
+  `dev/r_manual/R-exts.md` and the two stale citations of
+  `dev/review_eigen_wrappers.md`, 82 in all. The ASCII check of
+  `.claude/CLAUDE.md` names one file, `.github/workflows/pkgdown.yaml`,
+  whose emoji came in with `0b1e87c` and which this step does not touch.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.
@@ -1272,6 +1404,16 @@ guide:
   symmetric by construction should be dsyrk, whether the workspace of
   `syevr_range` is kept across calls, as `src/eig_sym_sel.h` kept it before
   step 3 of Phase 2.
+- The cost of the second half of step 4 of Phase 2. Against `ff0e394`,
+  `sim_pca_lobpcg` took about 1.5% longer over 11 repetitions of
+  the step 4 timing (a 0.483-0.491 s, b 0.490-0.501 s); chr21 showed
+  nothing measurable. Not profiled. Suspected, an assumption until
+  profiled: the zero-fill of every new `Block` in `src/lobpcg_warm.h`, the
+  copies of the state and the Gram's eigenvectors in and out through
+  `from_arma()`/`to_arma()`, the gathered sub-blocks, and the transposes
+  written out around the triangular solve. Deferred by the maintainer on
+  2026-11-18 to this phase, with the hygiene pass and any `/simplify`
+  calls; profile before changing anything.
 - Go through *Writing R Extensions* once more against the finished `src/`,
   not only the sections the wrapper layer needed: registration, visibility,
   interrupts, allocation, the portability list. Record each rule and where

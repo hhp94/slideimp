@@ -16,7 +16,7 @@
 //  sign-canonicalized; P is left as the post-RR search direction (not
 //  orthonormal, not orth X), entry-time cleanup handles it.
 //  - On converged == false, state is left untouched; caller must fall back
-//  to the exact solver (dsyevr_) and re-seed.
+//  to the exact solver (dsyevr) and re-seed.
 //
 // P invariant (committed state):
 //  X is orthonormal and sign-canonical. P has the right shape (n x k);
@@ -24,11 +24,20 @@
 //  + QR re-orthonormalization rebuilds the clean basis we need for the
 //  Rayleigh-Ritz.
 //
+// Storage: the iteration holds its matrices in lobpcg_detail::Block and
+// enters BLAS and LAPACK only through src/si_lapack.h. Armadillo is left at
+// the boundary with src/hybrid_topk_eig.h, which holds arma::mat until its
+// own step: the Gram comes in as a const arma::mat and is read in place,
+// LOBPCGState holds arma::mat, and LOBPCGResult's eigenvalues are an
+// arma::vec. Each is copied into a Block on the way in and out of one on the
+// way out.
+//
 #include <RcppArmadillo.h>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <utility>
 #include <vector>
 
 #include "pca_linalg_utils.h"
@@ -104,20 +113,292 @@ namespace lobpcg_detail
     Rcpp::stop("internal error: %s refused its arguments", routine);
   }
 
-  inline arma::uword qr_orthonormalize(arma::mat &V, double rel_tol,
-                                       arma::mat *R_out = nullptr)
+  // A column-major matrix of doubles, unpadded, zero-filled when sized; a
+  // vector is one column. The members are named as Armadillo's, so the calls
+  // into si_la read as they did when these were arma::mat.
+  struct Block
+  {
+    std::size_t n_rows = 0;
+    std::size_t n_cols = 0;
+    std::vector<double> mem;
+
+    Block() = default;
+    Block(const std::size_t rows, const std::size_t cols)
+        : n_rows(rows), n_cols(cols), mem(rows * cols, 0.0)
+    {
+    }
+
+    double *memptr() { return mem.data(); }
+    const double *memptr() const { return mem.data(); }
+    double &operator()(const std::size_t i, const std::size_t j)
+    {
+      return mem[i + j * n_rows];
+    }
+    double operator()(const std::size_t i, const std::size_t j) const
+    {
+      return mem[i + j * n_rows];
+    }
+    void reset()
+    {
+      n_rows = 0;
+      n_cols = 0;
+      mem.clear();
+    }
+  };
+
+  // The boundary with src/hybrid_topk_eig.h: a copy in, and a copy out.
+  inline Block from_arma(const arma::mat &M)
+  {
+    Block B(M.n_rows, M.n_cols);
+    std::copy(M.memptr(), M.memptr() + M.n_elem, B.memptr());
+    return B;
+  }
+
+  inline void to_arma(const Block &B, arma::mat &M)
+  {
+    M.set_size(B.n_rows, B.n_cols);
+    std::copy(B.mem.begin(), B.mem.end(), M.memptr());
+  }
+
+  inline void to_arma(const Block &B, arma::vec &v)
+  {
+    v.set_size(B.mem.size());
+    std::copy(B.mem.begin(), B.mem.end(), v.memptr());
+  }
+
+  // C = alpha * op(A) * B + beta * C, where op(A) is A' when trans_a and A
+  // is the a_rows x a_cols buffer at a. si_la::matmul sends it to the BLAS
+  // routine Armadillo's * sent it to, dgemv or dgemm. A status other than 0
+  // is operands that do not conform, which no call here passes.
+  inline void matmul_into(const bool trans_a, const double alpha,
+                          const double *a, const std::size_t a_rows,
+                          const std::size_t a_cols, const Block &B,
+                          const double beta, Block &C)
+  {
+    const std::size_t c_rows = trans_a ? a_cols : a_rows;
+    if (C.n_rows != c_rows || C.n_cols != B.n_cols ||
+        si_la::matmul(trans_a, alpha, a, a_rows, a_cols, B.memptr(),
+                      B.n_rows, B.n_cols, beta, C.memptr()) != si_la::ok)
+    {
+      Rcpp::stop("internal error: dgemm or dgemv refused its arguments");
+    }
+  }
+
+  // A * B into a new block, A the a_rows x a_cols buffer at a: the Gram,
+  // read in place.
+  inline Block mul(const double *a, const std::size_t a_rows,
+                   const std::size_t a_cols, const Block &B)
+  {
+    Block C(a_rows, B.n_cols);
+    matmul_into(false, 1.0, a, a_rows, a_cols, B, 0.0, C);
+    return C;
+  }
+
+  inline Block mul(const Block &A, const Block &B)
+  {
+    return mul(A.memptr(), A.n_rows, A.n_cols, B);
+  }
+
+  // A' * B into a new block.
+  inline Block tmul(const Block &A, const Block &B)
+  {
+    Block C(A.n_cols, B.n_cols);
+    matmul_into(true, 1.0, A.memptr(), A.n_rows, A.n_cols, B, 0.0, C);
+    return C;
+  }
+
+  // C -= A * B as one BLAS call with alpha = -1 and beta = 1, which is what
+  // Armadillo's -= of a product does when C is not inside the product
+  // (glue_times::apply_inplace_plus()). When it is, as in V -= X * (X' V),
+  // Armadillo forms the product first and subtracts it cell by cell, and
+  // the caller writes sub_cells(V, mul(X, tmul(X, V))) instead.
+  inline void sub_mul(Block &C, const Block &A, const Block &B)
+  {
+    matmul_into(false, -1.0, A.memptr(), A.n_rows, A.n_cols, B, 1.0, C);
+  }
+
+  // C -= D and C += D, cell by cell: how Armadillo adds a product inside a
+  // sum or difference, which it forms first.
+  inline void sub_cells(Block &C, const Block &D)
+  {
+    if (C.n_rows != D.n_rows || C.n_cols != D.n_cols)
+    {
+      Rcpp::stop("internal error: LOBPCG blocks differ in size");
+    }
+    for (std::size_t i = 0; i < C.mem.size(); ++i)
+    {
+      C.mem[i] -= D.mem[i];
+    }
+  }
+
+  inline void add_cells(Block &C, const Block &D)
+  {
+    if (C.n_rows != D.n_rows || C.n_cols != D.n_cols)
+    {
+      Rcpp::stop("internal error: LOBPCG blocks differ in size");
+    }
+    for (std::size_t i = 0; i < C.mem.size(); ++i)
+    {
+      C.mem[i] += D.mem[i];
+    }
+  }
+
+  // A * B + C, the product formed first.
+  inline Block mul_plus(const Block &A, const Block &B, const Block &C)
+  {
+    Block D = mul(A, B);
+    add_cells(D, C);
+    return D;
+  }
+
+  inline Block transpose(const Block &A)
+  {
+    Block T(A.n_cols, A.n_rows);
+    for (std::size_t j = 0; j < A.n_cols; ++j)
+    {
+      for (std::size_t i = 0; i < A.n_rows; ++i)
+      {
+        T(j, i) = A(i, j);
+      }
+    }
+    return T;
+  }
+
+  // Rows r0 .. r0 + nr - 1 of the first nc columns of A, as a new block.
+  inline Block block_rows(const Block &A, const std::size_t r0,
+                          const std::size_t nr, const std::size_t nc)
+  {
+    if (r0 > A.n_rows || nr > A.n_rows - r0 || nc > A.n_cols)
+    {
+      Rcpp::stop("internal error: LOBPCG block out of range");
+    }
+    Block B(nr, nc);
+    for (std::size_t j = 0; j < nc; ++j)
+    {
+      for (std::size_t i = 0; i < nr; ++i)
+      {
+        B(i, j) = A(r0 + i, j);
+      }
+    }
+    return B;
+  }
+
+  // Write A, or with put_block_t its transpose, into C with its first cell
+  // at (r0, c0).
+  inline void put_block(Block &C, const std::size_t r0, const std::size_t c0,
+                        const Block &A)
+  {
+    if (r0 > C.n_rows || A.n_rows > C.n_rows - r0 || c0 > C.n_cols ||
+        A.n_cols > C.n_cols - c0)
+    {
+      Rcpp::stop("internal error: LOBPCG block out of range");
+    }
+    for (std::size_t j = 0; j < A.n_cols; ++j)
+    {
+      for (std::size_t i = 0; i < A.n_rows; ++i)
+      {
+        C(r0 + i, c0 + j) = A(i, j);
+      }
+    }
+  }
+
+  inline void put_block_t(Block &C, const std::size_t r0,
+                          const std::size_t c0, const Block &A)
+  {
+    put_block(C, r0, c0, transpose(A));
+  }
+
+  // The Frobenius norm as a plain sum of squares. arma::norm(, "fro") was
+  // dnrm2, which scales as it sums, so the last bits can differ; the value
+  // only feeds a threshold test, and the block is a projection of
+  // orthonormal columns, so the sum cannot overflow (dev/eigen_conversion.md,
+  // "The wrapper layer and the oracle, as written", "Not wrapped").
+  inline double frobenius_norm(const Block &A)
+  {
+    double ss = 0.0;
+    for (const double v : A.mem)
+    {
+      ss += v * v;
+    }
+    return std::sqrt(ss);
+  }
+
+  // The largest of n values, taken as Armadillo's max() takes it
+  // (op_max::direct_max()): from -Inf with a > that NaN never passes, so NaN
+  // is skipped and n values of NaN give -Inf.
+  inline double max_skip_nan(const double *x, const std::size_t n)
+  {
+    double best = -std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i < n; ++i)
+    {
+      if (x[i] > best)
+      {
+        best = x[i];
+      }
+    }
+    return best;
+  }
+
+  // ||A||_inf of the a_rows x a_cols buffer at a, as arma::norm(A, "inf"):
+  // max(sum(abs(A), 1)), each row sum added in column order (op_sum,
+  // dim = 1), and the largest taken by max_skip_nan(). No BLAS.
+  inline double norm_inf(const double *a, const std::size_t a_rows,
+                         const std::size_t a_cols)
+  {
+    std::vector<double> row_sum(a_rows, 0.0);
+    for (std::size_t j = 0; j < a_cols; ++j)
+    {
+      const double *col = a + j * a_rows;
+      for (std::size_t i = 0; i < a_rows; ++i)
+      {
+        row_sum[i] += std::abs(col[i]);
+      }
+    }
+    return max_skip_nan(row_sum.data(), a_rows);
+  }
+
+  // The 2-norm of each column of R, as a plain sum of squares. Armadillo's
+  // sqrt(sum(square(R), 0)) took each sum with op_dot::direct_dot(), which
+  // is two partial sums up to 32 rows and ddot above, so the last bits can
+  // differ, as for frobenius_norm(); the norms only feed the tests of the
+  // iteration and max_rel_res.
+  inline std::vector<double> column_norms(const Block &R)
+  {
+    std::vector<double> rn(R.n_cols);
+    for (std::size_t j = 0; j < R.n_cols; ++j)
+    {
+      const double *col = R.memptr() + j * R.n_rows;
+      double ss = 0.0;
+      for (std::size_t i = 0; i < R.n_rows; ++i)
+      {
+        ss += col[i] * col[i];
+      }
+      rn[j] = std::sqrt(ss);
+    }
+    return rn;
+  }
+
+  inline std::size_t qr_orthonormalize(Block &V, double rel_tol,
+                                       Block *R_out = nullptr)
   {
     if (V.n_cols == 0)
     {
       return 0;
+    }
+    // Every block here has at most k columns and n rows, k <= n. With more
+    // columns than rows R would have fewer diagonal cells than the loop
+    // below reads.
+    if (V.n_cols > V.n_rows)
+    {
+      Rcpp::stop("internal error: a LOBPCG block has more columns than rows");
     }
     // si_la::qr_econ takes Q as v_rows x p and R as p x v_cols, and writes
     // every cell of both.
     const std::size_t v_rows = V.n_rows;
     const std::size_t v_cols = V.n_cols;
     const std::size_t p = std::min(v_rows, v_cols);
-    arma::mat Q(v_rows, p, arma::fill::none);
-    arma::mat R(p, v_cols, arma::fill::none);
+    Block Q(v_rows, p);
+    Block R(p, v_cols);
     if (la_failed(si_la::qr_econ(v_rows, v_cols, V.memptr(), Q.memptr(),
                                  R.memptr()),
                   "dgeqrf or dorgqr"))
@@ -125,15 +406,15 @@ namespace lobpcg_detail
       V.reset();
       return 0;
     }
-    const arma::uword m = R.n_cols;
-    arma::uword r = m;
+    const std::size_t m = R.n_cols;
+    std::size_t r = m;
     const double r00 = std::abs(R(0, 0));
     if (r00 == 0.0)
     {
       V.reset();
       return 0;
     }
-    for (arma::uword i = 0; i < m; ++i)
+    for (std::size_t i = 0; i < m; ++i)
     {
       if (std::abs(R(i, i)) < rel_tol * r00)
       {
@@ -141,12 +422,15 @@ namespace lobpcg_detail
         break;
       }
     }
-    V = (r < m) ? Q.cols(0, r - 1) : Q;
+    // p == m here, so Q is v_rows x m and R is m x m: keep the first r
+    // columns of Q, which lead its buffer, and the leading r x r of R.
     if (R_out)
     {
-      *R_out = (r < m) ? R.submat(0, 0, r - 1, r - 1)
-                       : R;
+      *R_out = (r < m) ? block_rows(R, 0, r, r) : std::move(R);
     }
+    Q.mem.resize(v_rows * r);
+    Q.n_cols = r;
+    V = std::move(Q);
     return r;
   }
 
@@ -154,8 +438,8 @@ namespace lobpcg_detail
   // orthogonality. required_cols > 0 additionally demands V keep that many
   // columns through both passes. On failure V may hold a partial result;
   // callers reset it as needed.
-  inline bool qr_project_out_qr(arma::mat &V, const arma::mat &X,
-                                double rel_tol, arma::uword required_cols)
+  inline bool qr_project_out_qr(Block &V, const Block &X,
+                                double rel_tol, std::size_t required_cols)
   {
     if (qr_orthonormalize(V, rel_tol) == 0 ||
         (required_cols > 0 && V.n_cols != required_cols))
@@ -163,7 +447,8 @@ namespace lobpcg_detail
       return false;
     }
 
-    V -= X * (X.t() * V);
+    // V -= X * (X' V): V is inside the product (sub_mul()).
+    sub_cells(V, mul(X, tmul(X, V)));
 
     if (qr_orthonormalize(V, rel_tol) == 0 ||
         (required_cols > 0 && V.n_cols != required_cols))
@@ -174,9 +459,9 @@ namespace lobpcg_detail
     return true;
   }
 
-  inline bool build_momentum_P(arma::mat &P,
-                               const arma::mat &X_curr,
-                               const arma::mat &X_prev,
+  inline bool build_momentum_P(Block &P,
+                               const Block &X_curr,
+                               const Block &X_prev,
                                const LOBPCGOptions &opt,
                                double min_projected_fro_norm = -1.0)
   {
@@ -187,10 +472,12 @@ namespace lobpcg_detail
       return false;
     }
 
-    P = X_prev - X_curr * (X_curr.t() * X_prev);
+    // P = X_prev - X_curr * (X_curr' X_prev)
+    P = X_prev;
+    sub_cells(P, mul(X_curr, tmul(X_curr, X_prev)));
 
     if (min_projected_fro_norm >= 0.0 &&
-        !(arma::norm(P, "fro") > min_projected_fro_norm))
+        !(frobenius_norm(P) > min_projected_fro_norm))
     {
       P.reset();
       return false;
@@ -205,15 +492,17 @@ namespace lobpcg_detail
     return true;
   }
 
-  inline bool qr_orthonormalize_update_matvec(arma::mat &Q,
-                                              arma::mat &AQ,
-                                              const arma::mat &A,
+  // A is the n x n Gram, read in place.
+  inline bool qr_orthonormalize_update_matvec(Block &Q,
+                                              Block &AQ,
+                                              const double *A,
+                                              const std::size_t n,
                                               double rel_tol)
   {
-    const arma::uword old_cols = Q.n_cols;
+    const std::size_t old_cols = Q.n_cols;
 
-    arma::mat R;
-    const arma::uword r = qr_orthonormalize(Q, rel_tol, &R);
+    Block R;
+    const std::size_t r = qr_orthonormalize(Q, rel_tol, &R);
 
     if (r == 0)
       return false;
@@ -226,8 +515,8 @@ namespace lobpcg_detail
       {
         Rcpp::stop("internal error: A*Q and Q differ in columns");
       }
-      const arma::mat Rt = R.t();
-      arma::mat Y = AQ.t();
+      const Block Rt = transpose(R);
+      Block Y = transpose(AQ);
       // When R is singular to working precision si_la::solve_tri returns the
       // minimum-norm least-squares solution and sets `approx`; the iteration
       // goes on with it. dev/eigen_conversion.md, Phase 4, decides whether
@@ -241,12 +530,12 @@ namespace lobpcg_detail
         // The least-squares fallback failed too, or met NaN or Inf.
         Rcpp::stop("lobpcg_solve: triangular solve failed");
       }
-      AQ = Y.t();
+      AQ = transpose(Y);
     }
     else
     {
       // QR dropped columns, so the old AQ cannot be transformed dimensionally.
-      AQ = A * Q;
+      AQ = mul(A, n, n, Q);
     }
 
     return true;
@@ -256,7 +545,7 @@ namespace lobpcg_detail
   // si_la::syevd. M is symmetrized and then destroyed. false when dsyevd
   // fails or M holds NaN or Inf, which the wrapper refuses before LAPACK;
   // the caller then reports a failed Rayleigh-Ritz.
-  inline bool small_eig_desc(arma::mat &M, arma::vec &w, arma::mat &Z)
+  inline bool small_eig_desc(Block &M, Block &w, Block &Z)
   {
     const std::size_t n = M.n_rows;
     if (n == 0)
@@ -265,31 +554,53 @@ namespace lobpcg_detail
       Z.reset();
       return true;
     }
-    M = 0.5 * (M + M.t());
-    w.set_size(n);
+    if (M.n_cols != n)
+    {
+      Rcpp::stop("internal error: a Rayleigh-Ritz Gram is not square");
+    }
+    // M = 0.5 * (M + M'), every cell from M as it was.
+    Block S(n, n);
+    for (std::size_t j = 0; j < n; ++j)
+    {
+      for (std::size_t i = 0; i < n; ++i)
+      {
+        S(i, j) = (M(i, j) + M(j, i)) * 0.5;
+      }
+    }
+    M = std::move(S);
+    w = Block(n, 1);
     if (la_failed(si_la::syevd('U', n, M.memptr(), w.memptr()), "dsyevd"))
     {
       return false;
     }
 
-    Z = arma::fliplr(M);
-    w = arma::reverse(w);
+    // dsyevd's order is ascending: reverse the columns and the values.
+    Z = Block(n, n);
+    for (std::size_t j = 0; j < n; ++j)
+    {
+      std::copy(M.memptr() + (n - 1 - j) * n, M.memptr() + (n - j) * n,
+                Z.memptr() + j * n);
+    }
+    std::reverse(w.mem.begin(), w.mem.end());
     return true;
   }
 
-  inline void residual(const arma::mat &AX, const arma::mat &X,
-                       const arma::vec &lam, arma::mat &R)
+  inline void residual(const Block &AX, const Block &X,
+                       const Block &lam, Block &R)
   {
-    R.set_size(AX.n_rows, AX.n_cols);
-    const arma::uword n = AX.n_rows, k = AX.n_cols;
+    if (R.n_rows != AX.n_rows || R.n_cols != AX.n_cols)
+    {
+      R = Block(AX.n_rows, AX.n_cols);
+    }
+    const std::size_t n = AX.n_rows, k = AX.n_cols;
     const double *ax = AX.memptr();
     const double *x = X.memptr();
     const double *l = lam.memptr();
     double *r = R.memptr();
-    for (arma::uword j = 0; j < k; ++j)
+    for (std::size_t j = 0; j < k; ++j)
     {
       const double lj = l[j];
-      for (arma::uword i = 0; i < n; ++i)
+      for (std::size_t i = 0; i < n; ++i)
       {
         r[i + j * n] = ax[i + j * n] - lj * x[i + j * n];
       }
@@ -300,38 +611,37 @@ namespace lobpcg_detail
   // the assembled Gram, so the diagonal blocks need no pre-symmetrization.
   // On success X/AX are updated in place and (pp, app) hold the B-part of
   // the update (B*VB, AB*VB) for callers that commit it as the next P.
-  inline bool rr_two_block(arma::mat &X, arma::mat &AX,
-                           const arma::mat &B, const arma::mat &AB,
-                           const arma::uword k, arma::vec &lam,
-                           arma::mat &pp, arma::mat &app)
+  inline bool rr_two_block(Block &X, Block &AX,
+                           const Block &B, const Block &AB,
+                           const std::size_t k, Block &lam,
+                           Block &pp, Block &app)
   {
-    arma::mat XAX = X.t() * AX;
-    arma::mat XAB = X.t() * AB;
-    arma::mat BAB = B.t() * AB;
+    const Block XAX = tmul(X, AX);
+    const Block XAB = tmul(X, AB);
+    const Block BAB = tmul(B, AB);
 
-    const arma::uword sX = X.n_cols, sB = B.n_cols;
-    const arma::uword sT = sX + sB;
-    arma::mat gramA(sT, sT);
-    gramA.submat(0, 0, sX - 1, sX - 1) = XAX;
-    gramA.submat(0, sX, sX - 1, sT - 1) = XAB;
-    gramA.submat(sX, 0, sT - 1, sX - 1) = XAB.t();
-    gramA.submat(sX, sX, sT - 1, sT - 1) = BAB;
+    const std::size_t sX = X.n_cols, sB = B.n_cols;
+    const std::size_t sT = sX + sB;
+    Block gramA(sT, sT);
+    put_block(gramA, 0, 0, XAX);
+    put_block(gramA, 0, sX, XAB);
+    put_block_t(gramA, sX, 0, XAB);
+    put_block(gramA, sX, sX, BAB);
 
-    arma::vec lam_s;
-    arma::mat V_s;
+    Block lam_s;
+    Block V_s;
     if (!small_eig_desc(gramA, lam_s, V_s))
     {
       return false;
     }
-    lam = lam_s.head(k);
-    const arma::mat Vtop = V_s.head_cols(k);
-    const arma::mat VX = Vtop.rows(0, sX - 1);
-    const arma::mat VB = Vtop.rows(sX, sT - 1);
+    lam = block_rows(lam_s, 0, k, 1);
+    const Block VX = block_rows(V_s, 0, sX, k);
+    const Block VB = block_rows(V_s, sX, sB, k);
 
-    pp = B * VB;
-    app = AB * VB;
-    X = X * VX + pp;
-    AX = AX * VX + app;
+    pp = mul(B, VB);
+    app = mul(AB, VB);
+    X = mul_plus(X, VX, pp);
+    AX = mul_plus(AX, VX, app);
     return true;
   }
 
@@ -348,18 +658,19 @@ inline void seed_lobpcg_state(LOBPCGState &state,
 {
   state.X = X_curr;
 
-  arma::mat P;
+  lobpcg_detail::Block P;
 
   const double no_min_temporal_norm = -1.0;
 
   if (!lobpcg_detail::build_momentum_P(
-          P, X_curr, X_prev, opt, no_min_temporal_norm))
+          P, lobpcg_detail::from_arma(X_curr), lobpcg_detail::from_arma(X_prev),
+          opt, no_min_temporal_norm))
   {
     state.P.reset();
     return;
   }
 
-  state.P = std::move(P);
+  lobpcg_detail::to_arma(P, state.P);
 }
 
 // ---------------------------------------------------------------------------
@@ -376,11 +687,12 @@ inline void refresh_momentum_P(LOBPCGState &state,
   const double min_temporal_norm =
       1e-10 * std::sqrt(static_cast<double>(X_curr.n_cols));
 
-  arma::mat P;
-  if (lobpcg_detail::build_momentum_P(P, X_curr, X_prev, opt,
+  lobpcg_detail::Block P;
+  if (lobpcg_detail::build_momentum_P(P, lobpcg_detail::from_arma(X_curr),
+                                      lobpcg_detail::from_arma(X_prev), opt,
                                       min_temporal_norm))
   {
-    state.P = std::move(P);
+    lobpcg_detail::to_arma(P, state.P);
   }
 }
 
@@ -400,31 +712,33 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
 
   if (!state.seeded())
     Rcpp::stop("lobpcg_solve: state not seeded with (X, P)");
-  const arma::uword n = A.n_rows;
-  const arma::uword k = state.X.n_cols;
+  const std::size_t n = A.n_rows;
+  const std::size_t k = state.X.n_cols;
   if (A.n_cols != n || state.X.n_rows != n)
     Rcpp::stop("lobpcg_solve: dimension mismatch");
+  // the Gram is read in place, never copied.
+  const double *a = A.memptr();
 
   // work on local copies; state is committed only on success.
-  arma::mat X = state.X;
-  arma::mat P = state.P;
+  Block X = from_arma(state.X);
+  Block P = from_arma(state.P);
 
   // re-clean P at entry
   // the committed P from the previous solve is NOT orthonormal nor orth X
   // (it is the post-RR search direction pp = Ract*VR + Pact*VP). Project
-  // out X, then orthonormalize.
-  P -= X * (X.t() * P);
+  // out X, then orthonormalize: P -= X * (X' P), P inside the product.
+  sub_cells(P, mul(X, tmul(X, P)));
   bool have_P = qr_project_out_qr(P, X, opt.qr_rel_tol, k);
   if (!have_P)
   {
     P.reset();
   }
   // fresh matvecs: A has changed since the last call.
-  arma::mat AX = A * X;
-  arma::mat AP;
+  Block AX = mul(a, n, n, X);
+  Block AP;
   if (have_P)
   {
-    AP = A * P;
+    AP = mul(a, n, n, P);
   }
 
   // ||A||_inf scales both the convergence test below and the divergence
@@ -437,13 +751,13 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   // A's diagonal is a weighted column variance - and would leave the
   // divergence guard unreachable, since max_rel_res would be under-reported
   // by the same factor.
-  const double normA_inf = arma::norm(A, "inf");
+  const double normA_inf = norm_inf(a, n, n);
   const double normA =
       (normA_inf > 0.0 && std::isfinite(normA_inf)) ? normA_inf : 1.0;
   const double rel_tol_abs = opt.tol * normA;
 
-  arma::vec lam;
-  arma::mat rr_pp, rr_app; // B-part outputs of rr_two_block
+  Block lam;
+  Block rr_pp, rr_app; // B-part outputs of rr_two_block
   // initial RR over the JOINT basis [X, P] (not span(X) alone)
   if (have_P)
   {
@@ -459,8 +773,8 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   else
   {
     // no usable P this call; fall back to X-only initial RR.
-    arma::mat XAX = X.t() * AX;
-    arma::mat V;
+    Block XAX = tmul(X, AX);
+    Block V;
     if (!small_eig_desc(XAX, lam, V))
     {
       out.converged = false;
@@ -468,15 +782,15 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
       out.fail_iter = 0;
       return out;
     }
-    X = X * V;
-    AX = AX * V;
+    X = mul(X, V);
+    AX = mul(AX, V);
   }
 
   // periodically recompute AX/AP from scratch to shed accumulated
   // linear-update rounding error.
   constexpr int MATVEC_REFRESH = 20;
 
-  arma::mat R;
+  Block R;
   double smallest_res = std::numeric_limits<double>::infinity();
   int stall = 0;
   int it = 0;
@@ -485,8 +799,8 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   {
 
     residual(AX, X, lam, R);
-    const arma::vec rn = arma::sqrt(arma::sum(arma::square(R), 0)).t();
-    const double max_res = rn.max();
+    const std::vector<double> rn = column_norms(R);
+    const double max_res = max_skip_nan(rn.data(), rn.size());
     out.max_rel_res = max_res / normA;
 
     if (max_res <= rel_tol_abs)
@@ -520,16 +834,32 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
       break;
     }
 
-    const arma::uvec act_idx = arma::find(rn > rel_tol_abs);
-    if (act_idx.is_empty())
+    // the active residuals: the columns whose norm is above the tolerance,
+    // in order.
+    std::vector<std::size_t> act_idx;
+    for (std::size_t j = 0; j < rn.size(); ++j)
+    {
+      if (rn[j] > rel_tol_abs)
+      {
+        act_idx.push_back(j);
+      }
+    }
+    if (act_idx.empty())
     {
       out.converged = true;
       ++it;
       break;
     }
-    arma::mat Ract = R.cols(act_idx);
+    Block Ract(R.n_rows, act_idx.size());
+    for (std::size_t c = 0; c < act_idx.size(); ++c)
+    {
+      std::copy(R.memptr() + act_idx[c] * R.n_rows,
+                R.memptr() + (act_idx[c] + 1) * R.n_rows,
+                Ract.memptr() + c * R.n_rows);
+    }
 
-    Ract -= X * (X.t() * Ract);
+    // Ract -= X * (X' Ract), Ract inside the product.
+    sub_cells(Ract, mul(X, tmul(X, Ract)));
     if (!qr_project_out_qr(Ract, X, opt.qr_rel_tol, 0))
     {
       out.status = LOBPCG_RESIDUAL_COLLAPSED;
@@ -537,7 +867,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
       break;
     }
 
-    arma::mat ARact = A * Ract;
+    Block ARact = mul(a, n, n, Ract);
     // if we have no P this iteration, do RR on [X, Ract] only.
     if (!have_P)
     {
@@ -552,38 +882,44 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
       have_P = (P.n_cols > 0);
       if (((it + 1) % MATVEC_REFRESH) == 0)
       {
-        AX = A * X;
-        AP = A * P;
+        AX = mul(a, n, n, X);
+        AP = mul(a, n, n, P);
       }
       continue;
     }
 
     // standard 3-block path: project [X, Ract] out of P (linearity gives APact).
     // core of the algorithm
-    arma::mat Pact, APact;
+    Block Pact, APact;
     {
-      const arma::mat XtP = X.t() * P;
-      const arma::mat RtP = Ract.t() * P;
+      const Block XtP = tmul(X, P);
+      const Block RtP = tmul(Ract, P);
 
-      Pact = P - X * XtP - Ract * RtP;
-      APact = AP - AX * XtP - ARact * RtP; // = A * Pact
+      // Pact = P - X * XtP - Ract * RtP, and APact = A * Pact by linearity,
+      // each product formed first.
+      Pact = P;
+      sub_cells(Pact, mul(X, XtP));
+      sub_cells(Pact, mul(Ract, RtP));
+      APact = AP;
+      sub_cells(APact, mul(AX, XtP));
+      sub_cells(APact, mul(ARact, RtP));
 
-      if (!qr_orthonormalize_update_matvec(Pact, APact, A, opt.qr_rel_tol))
+      if (!qr_orthonormalize_update_matvec(Pact, APact, a, n, opt.qr_rel_tol))
       {
         out.status = LOBPCG_P_COLLAPSED;
         out.fail_iter = it;
         break;
       }
 
-      const arma::mat XtP2 = X.t() * Pact;
-      Pact -= X * XtP2;
-      APact -= AX * XtP2;
+      const Block XtP2 = tmul(X, Pact);
+      sub_mul(Pact, X, XtP2);
+      sub_mul(APact, AX, XtP2);
 
-      const arma::mat RtP2 = Ract.t() * Pact;
-      Pact -= Ract * RtP2;
-      APact -= ARact * RtP2;
+      const Block RtP2 = tmul(Ract, Pact);
+      sub_mul(Pact, Ract, RtP2);
+      sub_mul(APact, ARact, RtP2);
 
-      if (!qr_orthonormalize_update_matvec(Pact, APact, A, opt.qr_rel_tol))
+      if (!qr_orthonormalize_update_matvec(Pact, APact, a, n, opt.qr_rel_tol))
       {
         out.status = LOBPCG_P_COLLAPSED;
         out.fail_iter = it;
@@ -593,29 +929,29 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
 
     // diagonal blocks need no pre-symmetrization; small_eig_desc
     // symmetrizes the assembled Gram.
-    arma::mat XAX_s = X.t() * AX;
-    arma::mat XAR = X.t() * ARact;
-    arma::mat XAP = X.t() * APact;
-    arma::mat RAR = Ract.t() * ARact;
-    arma::mat RAP = Ract.t() * APact;
-    arma::mat PAP = Pact.t() * APact;
+    const Block XAX_s = tmul(X, AX);
+    const Block XAR = tmul(X, ARact);
+    const Block XAP = tmul(X, APact);
+    const Block RAR = tmul(Ract, ARact);
+    const Block RAP = tmul(Ract, APact);
+    const Block PAP = tmul(Pact, APact);
 
-    const arma::uword sX = X.n_cols, sR = Ract.n_cols, sP = Pact.n_cols;
-    const arma::uword sT = sX + sR + sP;
+    const std::size_t sX = X.n_cols, sR = Ract.n_cols, sP = Pact.n_cols;
+    const std::size_t sT = sX + sR + sP;
 
-    arma::mat gramA(sT, sT);
-    gramA.submat(0, 0, sX - 1, sX - 1) = XAX_s;
-    gramA.submat(0, sX, sX - 1, sX + sR - 1) = XAR;
-    gramA.submat(0, sX + sR, sX - 1, sT - 1) = XAP;
-    gramA.submat(sX, 0, sX + sR - 1, sX - 1) = XAR.t();
-    gramA.submat(sX, sX, sX + sR - 1, sX + sR - 1) = RAR;
-    gramA.submat(sX, sX + sR, sX + sR - 1, sT - 1) = RAP;
-    gramA.submat(sX + sR, 0, sT - 1, sX - 1) = XAP.t();
-    gramA.submat(sX + sR, sX, sT - 1, sX + sR - 1) = RAP.t();
-    gramA.submat(sX + sR, sX + sR, sT - 1, sT - 1) = PAP;
+    Block gramA(sT, sT);
+    put_block(gramA, 0, 0, XAX_s);
+    put_block(gramA, 0, sX, XAR);
+    put_block(gramA, 0, sX + sR, XAP);
+    put_block_t(gramA, sX, 0, XAR);
+    put_block(gramA, sX, sX, RAR);
+    put_block(gramA, sX, sX + sR, RAP);
+    put_block_t(gramA, sX + sR, 0, XAP);
+    put_block_t(gramA, sX + sR, sX, RAP);
+    put_block(gramA, sX + sR, sX + sR, PAP);
 
-    arma::vec lam_s;
-    arma::mat V_s;
+    Block lam_s;
+    Block V_s;
     if (!small_eig_desc(gramA, lam_s, V_s))
     {
       out.status = LOBPCG_RR_FAILED;
@@ -623,35 +959,38 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
       break;
     }
 
-    lam = lam_s.head(k);
-    const arma::mat Vtop = V_s.head_cols(k);
-    const arma::mat VX = Vtop.rows(0, sX - 1);
-    const arma::mat VR = Vtop.rows(sX, sX + sR - 1);
-    const arma::mat VP = Vtop.rows(sX + sR, sT - 1);
+    lam = block_rows(lam_s, 0, k, 1);
+    const Block VX = block_rows(V_s, 0, sX, k);
+    const Block VR = block_rows(V_s, sX, sR, k);
+    const Block VP = block_rows(V_s, sX + sR, sP, k);
 
-    const arma::mat pp = Ract * VR + Pact * VP;
-    const arma::mat app = ARact * VR + APact * VP;
+    // pp = Ract * VR + Pact * VP, and app likewise, each product formed
+    // first.
+    Block pp = mul(Ract, VR);
+    add_cells(pp, mul(Pact, VP));
+    Block app = mul(ARact, VR);
+    add_cells(app, mul(APact, VP));
 
-    X = X * VX + pp;
-    AX = AX * VX + app;
-    P = pp;
-    AP = app;
+    X = mul_plus(X, VX, pp);
+    AX = mul_plus(AX, VX, app);
+    P = std::move(pp);
+    AP = std::move(app);
     if (((it + 1) % MATVEC_REFRESH) == 0)
     {
-      AX = A * X;
-      AP = A * P;
+      AX = mul(a, n, n, X);
+      AP = mul(a, n, n, P);
     }
   }
 
   out.iterations = it;
-  out.eigvals = lam;
+  to_arma(lam, out.eigvals);
 
   if (out.converged)
   {
     out.status = LOBPCG_CONVERGED;
     pca_detail::canonicalize_signs(X.memptr(), X.n_rows, X.n_cols);
-    state.X = std::move(X);
-    state.P = std::move(P);
+    to_arma(X, state.X);
+    to_arma(P, state.P);
   }
 
   return out;

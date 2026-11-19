@@ -3,10 +3,15 @@
 # this into a clone and runs it from the clone's root:
 #   Rscript dev/probe_p2s4_patch.R --in-scratch-clone old
 #   Rscript dev/probe_p2s4_patch.R --in-scratch-clone new
-# "old" is src/lobpcg_warm.h as step 3 left it (arma::qr_econ, arma::solve,
-# arma::dsyevd_); "new" is the file as step 4 leaves it (si_la::qr_econ,
-# si_la::solve_tri, si_la::syevd). Both get the same three things, driven by
-# environment variables read at run time, so one build serves every run:
+# The patch is chosen by what src/lobpcg_warm.h holds, not by the mode, which
+# only names the clone: the file as step 3 left it (arma::qr_econ,
+# arma::solve, arma::dsyevd_, as at eade032), or a file whose three calls go
+# through si_la (si_la::qr_econ, si_la::solve_tri, si_la::syevd): ff0e394,
+# whose containers are still arma::mat, or the second half of step 4, whose
+# are lobpcg_detail::Block. Two anchors differ between those two and are
+# taken from whichever the file holds. Every version gets the same three
+# things, driven by environment variables read at run time, so one build
+# serves every run:
 #
 # - SLIDEIMP_P2S4_LOG names a file that gets one line per event: every QR,
 #   triangular solve and dsyevd the path makes, each failure, and the status
@@ -20,8 +25,9 @@
 #     gramnan   a NaN is written into the Gram handed to lobpcg_solve()
 #     singular  the last pivot of the triangle handed to the solve is set
 #               to 0, so the solve takes its least-squares fallback
-# - SLIDEIMP_P2S4_FRESH, "old" only: dsyevd gets the workspace length of its
-#   own query on every call, where step 3 kept the longest one so far.
+# - SLIDEIMP_P2S4_FRESH, the file of step 3 only: dsyevd gets the workspace
+#   length of its own query on every call, where step 3 kept the longest one
+#   so far. si_la::syevd always does.
 #
 # None of it changes a result unless SLIDEIMP_P2S4_FAIL or
 # SLIDEIMP_P2S4_FRESH is set. It also makes dev/ref_capture.R name each case
@@ -39,6 +45,18 @@ if (
   )
 }
 mode <- args[[2]]
+lobpcg_txt <- paste(readLines("src/lobpcg_warm.h"), collapse = "\n")
+holds <- function(s) grepl(s, lobpcg_txt, fixed = TRUE)
+## The first of the candidate lines that the file holds.
+anchor <- function(...) {
+  cand <- c(...)
+  hit <- cand[vapply(cand, holds, TRUE)]
+  if (!length(hit)) {
+    stop("src/lobpcg_warm.h holds none of: ", paste(cand, collapse = " | "))
+  }
+  hit[[1]]
+}
+arma_calls <- holds("arma::qr_econ(Q, R, V)")
 
 patch_file <- function(f, edits) {
   txt <- paste(readLines(f), collapse = "\n")
@@ -180,13 +198,24 @@ log_qr <- lines(
   "    p2s4::log(\"qr %llu %llu\\n\", p2s4::ull(V.n_rows),",
   "              p2s4::ull(V.n_cols));"
 )
+## The matvec recomputed when the QR dropped columns, and the transpose of R
+## the solve is handed: arma::mat until ff0e394, lobpcg_detail::Block after.
+aq_line <- anchor("      AQ = A * Q;", "      AQ = mul(A, n, n, Q);")
+rt_line <- if (arma_calls) {
+  NULL
+} else {
+  anchor(
+    "      const arma::mat Rt = R.t();",
+    "      const Block Rt = transpose(R);"
+  )
+}
 log_dropped <- lines(
   "      p2s4::log(\"qr_dropped %llu of %llu\\n\", p2s4::ull(r),",
   "                p2s4::ull(old_cols));",
-  "      AQ = A * Q;"
+  aq_line
 )
 
-if (mode == "old") {
+if (arma_calls) {
   patch_file(
     "src/lobpcg_warm.h",
     list(
@@ -217,7 +246,7 @@ if (mode == "old") {
           "      AQ = arma::solve(arma::trimatl(R.t()), AQ.t()).t();"
         )
       ),
-      ed("      AQ = A * Q;", log_dropped),
+      ed(aq_line, log_dropped),
       ed(
         "    w.set_size(n);\n    arma::blas_int info = 0, lwork = -1, liwork = -1;",
         lines(
@@ -268,10 +297,7 @@ if (mode == "old") {
         lines("#include \"si_lapack.h\"", harness)
       ),
       xonly,
-      ed(
-        "      const arma::mat Rt = R.t();",
-        lines(singular, "      const arma::mat Rt = R.t();")
-      ),
+      ed(rt_line, lines(singular, rt_line)),
       ed(
         "    if (status == si_la::ok)\n    {\n      return false;\n    }",
         lines(
@@ -308,7 +334,7 @@ if (mode == "old") {
           "      if (la_failed(p2s4_st, \"dtrtrs or dgelsd\"))"
         )
       ),
-      ed("      AQ = A * Q;", log_dropped),
+      ed(aq_line, log_dropped),
       ed(
         "    if (la_failed(si_la::syevd('U', n, M.memptr(), w.memptr()), \"dsyevd\"))\n    {",
         lines(
@@ -328,4 +354,10 @@ if (mode == "old") {
     )
   )
 }
-cat("patched for mode:", mode, "\n")
+cat(
+  "patched the",
+  mode,
+  "clone:",
+  if (arma_calls) "calls through Armadillo" else "calls through si_la",
+  "\n"
+)
