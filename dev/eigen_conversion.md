@@ -1925,6 +1925,42 @@ guide:
   before it is made. Nothing here licenses a hand-rolled kernel
   (`dev/CPP.md`) or a call R's headers do not declare.
 
+### Phase 4, as carried out
+
+Each entry is one commit, ruled by the maintainer before it was made. The
+gate is `dev/eigen_p4_gate.sh`: a clone of HEAD and a clone with the change,
+captured in one run on one machine, so tolerance 0 is asked where an item
+is expected to be bitwise.
+
+**Workspace queries and the shape of `qr_econ`** (ruled 2026-11-19).
+
+- `si_la::svd_values` asks dgesdd for its workspace at every size, and is
+  compiled only when `PCA_IMP_DIAGNOSTICS` is set: its one caller is in that
+  build. The installed DLL imports 10 BLAS and LAPACK routines where it
+  imported 11, dgesdd gone (objdump of the DLL the suite stage installed).
+- `si_la::qr_econ` asks dgeqrf and dorgqr each for its own workspace, with
+  `max(1, n)` as the floor of both, and keeps one form: `m >= n`, factored
+  in `q`. `m < n` is `err_arg`. Its one call site stops before the call on
+  a block with more columns than rows
+  (`src/lobpcg_warm.h`: `internal error: a LOBPCG block has more columns than rows`).
+  A square block took Armadillo's full-QR branch before and takes the one
+  form now.
+- `-DUSE_FC_LEN_T` in `PKG_CPPFLAGS`: not made. The manual says the macro is
+  the default from R 4.3.0, which is what `DESCRIPTION` requires, so the
+  flag would do nothing on a supported R.
+- Measured on R 4.6.1, `0c76579` against the change: the Phase 0 capture is
+  bitwise on all 71 cases under RcppEigen 0.3.4.0.2 and under 0.4.9.9.5,
+  and the 49 cases of `dev/eigen_p2s6_diag.R`, the diagnostics build, are
+  bitwise (worst absolute and relative difference 0 in all three). The
+  suite with manual tests passes under both: 278 tests, 0 failed, 0
+  skipped. Not measured: whether any case passes a square block to
+  `qr_econ`; no timing, since the change adds one workspace query per QR
+  and removes none of the work.
+- The oracle and `dev/review_eigen_wrappers_probe.cpp` call `svd_values`
+  and `qr_econ` on wide input; neither was rerun, and both now need
+  `-DPCA_IMP_DIAGNOSTICS=1` to compile. No user-visible change, so no NEWS
+  reminder.
+
 ## Not settled yet
 
 - Whether the noise floor measured on one machine holds on the BLAS of the

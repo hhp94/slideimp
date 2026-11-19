@@ -640,7 +640,10 @@ in an `m x n` `R`, the first `m` columns copied into an `m x m` `Q`, `R` zeroed 
 diagonal, dorgqr with `k = m`. Both are dgeqrf on the `m x n` matrix and dorgqr on its first
 `min(m, n)` columns, which is how the wrapper writes it. One workspace serves both
 routines: dgeqrf is asked for its optimum, the answer is raised to `max(1, m, n)`, and
-dorgqr is not asked. An empty `X` succeeds without LAPACK. Nothing checks for NaN or Inf.
+dorgqr is not asked. The wrapper has left Armadillo on two of these since Phase 4 of
+`dev/eigen_conversion.md`: it asks each routine for its own workspace, with `max(1, n)`
+as the floor of both, and it keeps the `m >= n` form alone, factoring in `Q`, and returns
+`err_arg` for `m < n`, a shape no call site passes. An empty `X` succeeds without LAPACK. Nothing checks for NaN or Inf.
 On `info != 0` from either routine `auxlib` returns false; `qr_econ()` then resets `Q` and
 `R`, warns at level 3, which is dropped, and returns false. The caller tested that flag,
 and now tests the wrapper's status the same way (Layer 6, "Where a factorization can fail
@@ -692,7 +695,9 @@ second on. READ: `fn_svd.hpp`, `auxlib::svd_dc()`. dgesdd with
 refused before LAPACK. The workspace is the larger of
 `3 min(m, n) + max(max(m, n), 7 min(m, n))` and dgesdd's own optimum, which is asked for
 only when `X` has 1024 cells or more. A refusal or `info != 0` makes `svd()` throw
-`std::runtime_error`, "svd(): decomposition failed".
+`std::runtime_error`, "svd(): decomposition failed". The wrapper asks dgesdd for its
+optimum at every size since Phase 4 of `dev/eigen_conversion.md`, and is compiled only
+when `PCA_IMP_DIAGNOSTICS` is set, so the package as shipped does not reference dgesdd.
 
 The call site now forms the product with `si_la::matmul`, which sends it where `*` did
 (dgemv for one component, dgemm otherwise), and hands it to `si_la::svd_values`

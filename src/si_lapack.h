@@ -31,6 +31,10 @@
 
 #include <cstddef>
 
+#ifndef PCA_IMP_DIAGNOSTICS
+#define PCA_IMP_DIAGNOSTICS 0
+#endif
+
 namespace si_la
 {
 
@@ -118,11 +122,10 @@ namespace si_la
   // entered; the other triangle is not read and may hold anything.
   int syevd(char uplo, std::size_t n, double *a, double *w);
 
-  // dgeqrf then dorgqr: the economical QR of the m x n matrix x, as
-  // arma::qr_econ() returns it. With p = min(m, n), q is m x p with
-  // orthonormal columns and r is p x n, upper triangular or trapezoidal, and
-  // x = q * r. p = 0 succeeds and writes nothing. The sign of each column is
-  // LAPACK's: the diagonal of r is not made positive.
+  // dgeqrf then dorgqr: the economical QR of the m x n matrix x, m >= n. q
+  // is m x n with orthonormal columns, r is n x n and upper triangular, and
+  // x = q * r. err_arg when m < n. n = 0 succeeds and writes nothing. The
+  // sign of each column is LAPACK's: the diagonal of r is not made positive.
   int qr_econ(std::size_t m, std::size_t n, const double *x,
               double *q, double *r);
 
@@ -146,8 +149,12 @@ namespace si_la
 
   // dgesdd, jobz 'N': the min(m, n) singular values of the m x n matrix a,
   // descending, into s. a is destroyed. An empty matrix succeeds and writes
-  // nothing. err_nonfinite when a holds NaN or Inf.
+  // nothing. err_nonfinite when a holds NaN or Inf. Only the diagnostics
+  // build calls it, so only that build compiles it, and the package as
+  // shipped does not reference dgesdd.
+#if PCA_IMP_DIAGNOSTICS
   int svd_values(std::size_t m, std::size_t n, double *a, double *s);
+#endif
 
 } // namespace si_la
 

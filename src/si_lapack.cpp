@@ -506,81 +506,82 @@ namespace si_la
   int qr_econ(const std::size_t m, const std::size_t n, const double *x,
               double *q, double *r)
   {
-    const std::size_t p = std::min(m, n);
-    if (p == 0)
+    if (m < n)
+    {
+      return err_arg;
+    }
+    if (n == 0)
     {
       return ok;
     }
-    int m_i, n_i, p_i;
-    if (!to_int(m, m_i) || !to_int(n, n_i) || !to_int(p, p_i))
+    int m_i, n_i;
+    if (!to_int(m, m_i) || !to_int(n, n_i))
     {
       return err_size;
     }
 
-    // dgeqrf works in the output that already has x's shape: q when x is
-    // tall, r otherwise.
-    const bool tall = (m > n);
-    double *fac = tall ? q : r;
-    std::copy(x, x + m * n, fac);
+    // dgeqrf and dorgqr both work in q, which has x's shape.
+    std::copy(x, x + m * n, q);
 
     std::vector<double> tau;
-    if (!alloc(tau, p))
+    if (!alloc(tau, n))
     {
       return err_alloc;
     }
 
+    // Each routine is asked for its own workspace. Both document max(1, n)
+    // as the least they accept.
+    const double lwork_min = static_cast<double>(n);
+    const int lwork_query = -1;
     int info = 0;
     double work_q = 0.0;
-    const int lwork_query = -1;
-    F77_CALL(dgeqrf)(&m_i, &n_i, fac, &m_i, tau.data(), &work_q,
+    int lwork;
+    std::vector<double> work;
+
+    F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), &work_q,
                      &lwork_query, &info);
     if (info != 0)
     {
       return info;
     }
-
-    // One length serves both routines, as Armadillo sizes it: dgeqrf's
-    // optimum, and at least max(m, n), which is no less than dorgqr's
-    // minimum. dorgqr is not queried on its own.
-    int lwork;
-    if (!work_len(work_q, static_cast<double>(std::max(m, n)), lwork))
+    if (!work_len(work_q, lwork_min, lwork))
     {
       return err_size;
     }
-    std::vector<double> work;
     if (!alloc(work, static_cast<std::size_t>(lwork)))
     {
       return err_alloc;
     }
-
-    F77_CALL(dgeqrf)(&m_i, &n_i, fac, &m_i, tau.data(), work.data(), &lwork,
+    F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), work.data(), &lwork,
                      &info);
     if (info != 0)
     {
       return info;
     }
 
-    if (tall)
+    // r is n x n: the upper triangle dgeqrf left in q, zero below it.
+    for (std::size_t j = 0; j < n; ++j)
     {
-      // r is n x n: the upper triangle dgeqrf left in q, zero below it.
-      for (std::size_t j = 0; j < n; ++j)
-      {
-        std::copy(q + j * m, q + j * m + j + 1, r + j * n);
-        std::fill(r + j * n + j + 1, r + j * n + n, 0.0);
-      }
-    }
-    else
-    {
-      // q is m x m: the first m columns dgeqrf left in r, which hold the
-      // reflectors; then r keeps its upper trapezoid.
-      std::copy(r, r + m * m, q);
-      for (std::size_t j = 0; j + 1 < m; ++j)
-      {
-        std::fill(r + j * m + j + 1, r + j * m + m, 0.0);
-      }
+      std::copy(q + j * m, q + j * m + j + 1, r + j * n);
+      std::fill(r + j * n + j + 1, r + j * n + n, 0.0);
     }
 
-    F77_CALL(dorgqr)(&m_i, &p_i, &p_i, q, &m_i, tau.data(), work.data(),
+    work_q = 0.0;
+    F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), &work_q,
+                     &lwork_query, &info);
+    if (info != 0)
+    {
+      return info;
+    }
+    if (!work_len(work_q, lwork_min, lwork))
+    {
+      return err_size;
+    }
+    if (!alloc(work, static_cast<std::size_t>(lwork)))
+    {
+      return err_alloc;
+    }
+    F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), work.data(),
                      &lwork, &info);
     return info;
   }
@@ -722,6 +723,7 @@ namespace si_la
     return ok;
   }
 
+#if PCA_IMP_DIAGNOSTICS
   int svd_values(const std::size_t m, const std::size_t n, double *a, double *s)
   {
     const std::size_t p = std::min(m, n);
@@ -761,19 +763,14 @@ namespace si_la
     const int ld_one = 1;
     int info = 0;
 
-    // Below 1024 cells Armadillo does not ask dgesdd for its optimum and
-    // passes the minimum; the same rule here keeps LAPACK on the same path.
     double work_q = 0.0;
-    if (m * n >= 1024)
+    const int lwork_query = -1;
+    F77_CALL(dgesdd)(&jobz, &m_i, &n_i, a, &m_i, s, &u, &ld_one, &vt,
+                     &ld_one, &work_q, &lwork_query, iwork.data(),
+                     &info FCONE);
+    if (info != 0)
     {
-      const int lwork_query = -1;
-      F77_CALL(dgesdd)(&jobz, &m_i, &n_i, a, &m_i, s, &u, &ld_one, &vt,
-                       &ld_one, &work_q, &lwork_query, iwork.data(),
-                       &info FCONE);
-      if (info != 0)
-      {
-        return info;
-      }
+      return info;
     }
     int lwork;
     if (!work_len(work_q, lwork_min, lwork))
@@ -790,5 +787,6 @@ namespace si_la
                      &ld_one, work.data(), &lwork, iwork.data(), &info FCONE);
     return info;
   }
+#endif // PCA_IMP_DIAGNOSTICS
 
 } // namespace si_la
