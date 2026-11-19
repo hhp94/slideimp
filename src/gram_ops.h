@@ -9,6 +9,7 @@
 
 #include "si_lapack.h"
 #include "pca_linalg_utils.h"
+#include <cmath>
 #include <cstddef>
 #include <cstring>
 #include <vector>
@@ -262,6 +263,28 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
     }
   }
   return si_la::ok;
+}
+
+// ---------------------------------------------------------------------------
+// whether the upper triangle of the n x n Gram, diagonal included, holds only
+// finite values: the triangle form_weighted_gram() writes. The input is
+// finite, so a NaN or Inf here is a cross-product that overflowed.
+// ---------------------------------------------------------------------------
+[[nodiscard]] inline bool gram_upper_finite(const double *A,
+                                            const std::size_t n)
+{
+  for (std::size_t j = 0; j < n; ++j)
+  {
+    const double *col = A + j * n;
+    for (std::size_t i = 0; i <= j; ++i)
+    {
+      if (!std::isfinite(col[i]))
+      {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 #endif // GRAM_OPS_H

@@ -19,6 +19,8 @@
 #            the event log: LOBPCG past what the capture asks of it, and
 #            each of its factorizations made to fail. Compared the same way,
 #            then dev/probe_p2s4_summary.R on the two logs
+#   time     the timing driver on installs of `base` and `p4`, PCA workloads
+#            only; P4_TIME_REPS sets the repetitions (default 5)
 #   suite    dev/review_p2_suite.R on `p4`, the whole suite with manual
 #            tests, once per RcppEigen, each with its own private library
 #            for the mirai daemons
@@ -126,6 +128,24 @@ edges)
     "$(w "$scratch/edge-base/dev/ref/edges")" "$(w "$scratch/edge-p4/dev/ref/edges")" \
     > "$scratch/summary-edges.out" 2>&1
   echo "== summary edges: exit $?"
+  ;;
+time)
+  # for an item that adds work: both clones installed by
+  # dev/eigen_time_install.R, and the four PCA workloads of the timing
+  # driver, `base` as a and `p4` as b
+  for clone in base p4; do
+    rm -rf "$scratch/time-lib-$clone"
+    Rscript dev/eigen_time_install.R "$(w "$scratch/$clone")" \
+      "$(w "$scratch/time-lib-$clone")" > "$scratch/time-install-$clone.log" 2>&1
+    echo "== install $clone: exit $?"
+  done
+  Rscript dev/eigen_time_builds.R \
+    --lib-a="$(w "$scratch/time-lib-base")" --lib-b="$(w "$scratch/time-lib-p4")" \
+    --reps="${P4_TIME_REPS:-5}" \
+    --workloads=chr21_pca_exact,chr21_pca_lobpcg,sim_pca_exact,sim_pca_lobpcg \
+    --out="$(w "$scratch/time.csv")" > "$scratch/time.out" 2>&1
+  echo "== time: exit $?"
+  tail -9 "$scratch/time.out"
   ;;
 suite)
   # dev/review_p2_suite.R takes R_LIBS as one library, so the candidate is

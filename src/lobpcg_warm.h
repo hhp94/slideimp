@@ -316,6 +316,18 @@ namespace lobpcg_detail
     return std::sqrt(ss);
   }
 
+  inline bool all_finite(const std::vector<double> &x)
+  {
+    for (const double v : x)
+    {
+      if (!std::isfinite(v))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
   // The largest of n values, taken as Armadillo's max() takes it
   // (op_max::direct_max()): from -Inf with a > that NaN never passes, so NaN
   // is skipped and n values of NaN give -Inf.
@@ -790,6 +802,16 @@ inline LOBPCGResult lobpcg_solve(const double *a,
     const std::vector<double> rn = column_norms(R);
     const double max_res = max_skip_nan(rn.data(), rn.size());
     out.max_rel_res = max_res / normA;
+
+    // A residual norm that is NaN or Inf is the iterate diverging, whatever
+    // the largest finite norm says: max_skip_nan() passes over NaN, so
+    // without this a block of NaN would pass the convergence test below.
+    if (!lobpcg_detail::all_finite(rn))
+    {
+      out.status = LOBPCG_BAD_SEED;
+      out.fail_iter = it;
+      break;
+    }
 
     if (max_res <= rel_tol_abs)
     {

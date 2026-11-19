@@ -349,9 +349,11 @@ collapses 1 and 4 to "lobpcg" and everything else to "exact"; the string is set 
 
 `SVD_triplet()` (`src/svd_triplet.h`: `inline void SVD_triplet(`) never forms an SVD directly.
 It builds the
-weighted Gram into `AA_NxN` via `form_weighted_gram()`, takes
+weighted Gram into `AA_NxN` via `form_weighted_gram()`, stops if its upper triangle
+holds NaN or Inf (`src/svd_triplet.h`: `if (!gram_upper_finite(AA_NxN, n))`), the one
+such test in the chain and the stop that finite input whose squares overflow gets, takes
 the trace of `AA_NxN` for the tail energy (`gram_trace()`), calls `hybrid_topk_eig()`
-(failure being an `Rcpp::stop`), converts eigenvalues to singular values and
+(a status other than 0 being an `Rcpp::stop`), converts eigenvalues to singular values and
 inverses with a `PCA_TOL` floor, and recovers the other factor with one dgemm
 through `si_la::gemm` (`src/svd_triplet.h`: `LOC_TIC(timer, "recover_factors")`): tall gives
 eigenvectors as `V` and `U = X_work * Vn` (`gemm_nn`, dgemm whatever the shape, never dgemv);
@@ -429,8 +431,11 @@ top `k`, asks for the workspace on every call and floors it at the documented
 ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
 in place, then `canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`)
 applies the sklearn `svd_flip` convention. A non-zero status, from the wrapper or from an
-`A` that is not `n_gram` square, makes `hybrid_topk_eig()` return false, and
-`SVD_triplet()` stops (`src/svd_triplet.h`: `top-k symmetric eigensolver failed`).
+`A` that is not `n_gram` square, is what `hybrid_topk_eig()` returns, and
+`SVD_triplet()` stops with a text chosen by it: LAPACK's own `info`
+(`src/svd_triplet.h`: `Rcpp::stop("the symmetric eigensolver failed (LAPACK dsyevr, info = %d)",`),
+a failed allocation, a non-finite Gram, which says the same as the test before the
+solve, or an internal error for the rest. All are plain errors with no class of their own.
 `A` is destroyed by the call, which is safe because the Gram is rebuilt every
 outer iteration.
 
@@ -590,12 +595,14 @@ first two are on purpose; the third was found when the dsyevd call moved:
   the routine is entered, and return `err_nonfinite`. `pca_imp()` refuses NaN and Inf in
   its input (`R/pca_imp.R`: `check_finite(obj)`), so only arithmetic inside the fit could
   put one in a Gram. Finite input whose squares overflow does: unscaled values near 1e160,
-  or near 1e200 with `scale = TRUE`, end in the stop below under either solver, the same
-  before and after the wrappers, and near 1e150 the fit returns (measured,
-  `dev/review_p2.md`, finding 3). A test pins that stop
-  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops in the eigensolver", {`).
-  Which status the wrapper returned there is not measured. On the exact path such a Gram
-  is now the stop of a failed eigensolve (Layer 6, "Exact path"), where the chain's own
+  or near 1e200 with `scale = TRUE`, ended in the stop of a failed eigensolve under either
+  solver, the same before and after the wrappers, and near 1e150 the fit returns (measured,
+  `dev/review_p2.md`, finding 3). Since Phase 4 of `dev/eigen_conversion.md` the Gram is
+  tested where it is formed (Layer 5), before either solver, and such input gets a stop
+  that names the cause. A test pins it
+  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops before the eigensolver", {`).
+  The wrappers keep their own test, so a non-finite Gram that reached the exact path would
+  still be refused there, where the chain's own
   call either reported a wrong count, the same stop, or did not return. On the LOBPCG
   path a small Gram holding NaN or Inf is a failed Rayleigh-Ritz, so that outer iteration
   goes to the exact solver. The chain's own dsyevd call did one of three things with it,
@@ -604,7 +611,10 @@ first two are on purpose; the third was found when the dsyevd call moved:
   it returned `info = 0` and the NaN went on, to end either in the error of a failed
   triangular solve or, when the Gram itself held the NaN, in `lobpcg_solve()` reporting
   convergence, because the largest residual norm is taken with a `>` that NaN never
-  passes, as it still is (`src/lobpcg_warm.h`: `const double max_res = max_skip_nan(rn.data(), rn.size());`).
+  passes (`src/lobpcg_warm.h`: `const double max_res = max_skip_nan(rn.data(), rn.size());`).
+  Since Phase 4 a residual norm that is NaN or Inf ends the solve as `LOBPCG_BAD_SEED`
+  before the convergence test (`src/lobpcg_warm.h`: `if (!lobpcg_detail::all_finite(rn))`),
+  so that outer iteration goes to the exact solver.
 - *The workspace of dsyevd.* Until it moved to the wrapper, `small_eig_desc()` kept its
   dsyevd workspace on the `LOBPCGState` and only ever lengthened it, so a Rayleigh-Ritz
   problem that followed a larger one was solved with the larger one's workspace.

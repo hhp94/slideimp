@@ -76,6 +76,10 @@ static inline double gram_trace(const double *A, const std::size_t n)
   return val1 + val2;
 }
 
+inline constexpr char GRAM_NOT_FINITE_MSG[] =
+    "the cross-product of the data is not finite; values this large overflow "
+    "when squared, rescale the input";
+
 // ---------------------------------------------------------------------------
 // SVD_triplet
 //
@@ -127,14 +131,39 @@ inline void SVD_triplet(const double *Xhat,
                gram_st);
   }
 
+  // The one test for NaN and Inf in the chain's linear algebra, before
+  // either solver sees the Gram.
+  if (!gram_upper_finite(AA_NxN, n))
+  {
+    Rcpp::stop(GRAM_NOT_FINITE_MSG);
+  }
+
   trace_val = gram_trace(AA_NxN, n);
 
   LOC_TIC(timer, "eig");
-  if (!hybrid_topk_eig(eigvals, eigvecs, AA_NxN, n, n, hyb_ctx, outer_iter))
-  {
-    Rcpp::stop("top-k symmetric eigensolver failed to converge");
-  }
+  const int eig_st =
+      hybrid_topk_eig(eigvals, eigvecs, AA_NxN, n, n, hyb_ctx, outer_iter);
   LOC_TOC(timer, "eig");
+  if (eig_st > 0)
+  {
+    Rcpp::stop("the symmetric eigensolver failed (LAPACK dsyevr, info = %d)",
+               eig_st);
+  }
+  if (eig_st == si_la::err_nonfinite)
+  {
+    // The Gram passed the test above, so this is a value that became NaN or
+    // Inf between it and dsyevr.
+    Rcpp::stop(GRAM_NOT_FINITE_MSG);
+  }
+  if (eig_st == si_la::err_alloc)
+  {
+    Rcpp::stop("could not allocate the workspace of dsyevr");
+  }
+  if (eig_st != si_la::ok)
+  {
+    Rcpp::stop("internal error: the symmetric eigensolver returned status %d",
+               eig_st);
+  }
 
   const std::size_t ke = hyb_ctx.eig_range->topk;
   for (std::size_t i = 0; i < ke; ++i)

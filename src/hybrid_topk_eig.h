@@ -269,13 +269,13 @@ struct HybridEigContext
   }
 };
 
-inline bool hybrid_topk_eig_impl(double *eigvals,
-                                 double *eigvecs,
-                                 double *A,
-                                 const std::size_t a_rows,
-                                 const std::size_t a_cols,
-                                 HybridEigContext &ctx,
-                                 int outer_iter)
+inline int hybrid_topk_eig_impl(double *eigvals,
+                                double *eigvecs,
+                                double *A,
+                                const std::size_t a_rows,
+                                const std::size_t a_cols,
+                                HybridEigContext &ctx,
+                                int outer_iter)
 {
   const EigSymRange &rng = *ctx.eig_range;
 
@@ -421,15 +421,16 @@ inline bool hybrid_topk_eig_impl(double *eigvals,
       ctx.X_prev = std::move(X_curr);
 
       log_at(HYB_LOBPCG_OK, lob_res.status, &lob_res);
-      return true;
+      return si_la::ok;
     }
 
     ++ctx.n_lobpcg_bad;
   }
 
-  if (eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng) != si_la::ok)
+  const int exact_st = eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng);
+  if (exact_st != si_la::ok)
   {
-    return false;
+    return exact_st;
   }
 
   ++ctx.n_exact;
@@ -455,7 +456,7 @@ inline bool hybrid_topk_eig_impl(double *eigvals,
     ctx.X_prev = std::move(X_curr);
   }
 
-  return true;
+  return si_la::ok;
 }
 
 // top-k eigenpairs of the symmetric a_rows x a_cols A. Only A's upper
@@ -463,14 +464,16 @@ inline bool hybrid_topk_eig_impl(double *eigvals,
 // in place. eigvals has ctx.eig_range->topk cells and eigvecs is
 // ctx.eig_range->n x topk, sized by the caller. While the auto probe is
 // undecided, each call is timed and recorded so the context can pick a
-// solver.
-inline bool hybrid_topk_eig(double *eigvals,
-                            double *eigvecs,
-                            double *A,
-                            const std::size_t a_rows,
-                            const std::size_t a_cols,
-                            HybridEigContext &ctx,
-                            int outer_iter)
+// solver. The status is si_la's: si_la::ok, or what the exact solver
+// returned when it failed. A LOBPCG solve that fails is not a failure here:
+// the exact solver takes that call.
+[[nodiscard]] inline int hybrid_topk_eig(double *eigvals,
+                                         double *eigvecs,
+                                         double *A,
+                                         const std::size_t a_rows,
+                                         const std::size_t a_cols,
+                                         HybridEigContext &ctx,
+                                         int outer_iter)
 {
   if (!ctx.auto_timing_active())
   {
@@ -479,12 +482,12 @@ inline bool hybrid_topk_eig(double *eigvals,
   }
 
   const auto t0 = std::chrono::steady_clock::now();
-  const bool ok = hybrid_topk_eig_impl(eigvals, eigvecs, A, a_rows, a_cols,
-                                       ctx, outer_iter);
+  const int st = hybrid_topk_eig_impl(eigvals, eigvecs, A, a_rows, a_cols,
+                                      ctx, outer_iter);
   const auto t1 = std::chrono::steady_clock::now();
 
   ctx.record_auto_probe_time(std::chrono::duration<double>(t1 - t0).count());
-  return ok;
+  return st;
 }
 
 #endif // HYBRID_TOPK_EIG_H

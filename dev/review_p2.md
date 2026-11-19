@@ -323,7 +323,8 @@ then hold them to the bit.
 ### 3. A Gram that is not finite is reachable from finite input
 
 The stop is one line
-(`src/svd_triplet.h`: `Rcpp::stop("top-k symmetric eigensolver failed to converge");`).
+("top-k symmetric eigensolver failed to converge" in `src/svd_triplet.h`, at
+the commit reviewed; Phase 4 has since replaced it with two texts).
 Step 3 put a new way into it, the wrapper's refusal of NaN and Inf, and
 says of the input that could take it, in `dev/eigen_conversion.md` as of
 `597d28e`: "put one there, not measured, and no test does."; the map said

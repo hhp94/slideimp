@@ -1054,11 +1054,11 @@ test_that("pca_imp returns on replicate samples with ncp above their rank", {
   }
 })
 
-test_that("finite input whose squares overflow stops in the eigensolver", {
+test_that("finite input whose squares overflow stops before the eigensolver", {
   # Values near 1e200 are finite, so check_finite() passes them, and their
-  # cross-products are not: the Gram handed to the eigensolver holds Inf.
-  # si_la::syevr_range refuses it before LAPACK is entered, and the kernel
-  # stops. This pins the stop a user with such data sees, class and wording.
+  # cross-products are not: the Gram holds Inf. The kernel tests the Gram
+  # where it is formed and stops before either solver is entered. This pins
+  # the stop a user with such data sees, class and wording.
   set.seed(1234)
   x0 <- sim_mat(30, 10, perc_total_na = 0.1, perc_col_na = 1)$input
   x <- x0 * 1e200
@@ -1071,7 +1071,10 @@ test_that("finite input whose squares overflow stops in the eigensolver", {
   for (solver in c("exact", "lobpcg")) {
     expect_error(
       pca_imp(x, ncp = 2, scale = FALSE, solver = solver),
-      "top-k symmetric eigensolver failed to converge",
+      paste0(
+        "the cross-product of the data is not finite; values this large ",
+        "overflow when squared, rescale the input"
+      ),
       fixed = TRUE,
       class = "Rcpp::exception",
       label = solver

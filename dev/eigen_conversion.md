@@ -1690,7 +1690,8 @@ What the notes had wrong, and is fixed:
   symmetric eigensolver failed to converge" under either solver, the same
   at both ends of the phase. Step 3 and the map called it unmeasured. A
   test now pins the class and the wording
-  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops in the eigensolver", {`).
+  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops before the eigensolver", {`,
+  as Phase 4 renamed it when the text changed).
   Run the same way it passes on the four builds of this branch and fails
   on `v1.2.0` on the wording alone, which read "`eig_sym_sel` failed to
   converge" until `c7a253b`; `dev/to-do.md` has a line for that. By reading
@@ -1993,6 +1994,47 @@ is expected to be bitwise.
 - NaN or Inf in the triangle or the right-hand side is no longer refused
   here; the Gram scan and the residual test of the next items are what
   stand in front of it.
+
+**One test for NaN and Inf, two plain errors, a NaN residual fails**
+(ruled 2026-11-19).
+
+- `SVD_triplet()` tests the upper triangle of the Gram where it is formed
+  (`src/gram_ops.h`: `[[nodiscard]] inline bool gram_upper_finite(`) and
+  stops before either solver. No scan was added to `qr_econ` or
+  `solve_tri`. The wrappers `syevr_range` and `syevd` keep theirs, so the
+  exact path scans the Gram twice.
+- `hybrid_topk_eig()` returns the status of the exact solver in place of a
+  flag, and `SVD_triplet()` picks the text. "top-k symmetric eigensolver
+  failed to converge" is gone. Finite input whose squares overflow gets
+  "the cross-product of the data is not finite; values this large overflow
+  when squared, rescale the input"; LAPACK's own failure gets "the
+  symmetric eigensolver failed (LAPACK dsyevr, info = <n>)". Both are plain
+  `Rcpp::stop()` errors with no class of their own, raised on the main
+  thread: nothing in the PCA chain starts a thread (READ: RcppThread is
+  included by the K-NN kernel alone). The maintainer plans to take cli out
+  of the package (`dev/to-do.md`), so nothing here goes through it.
+- In `lobpcg_solve()` a residual norm that is NaN or Inf ends the solve as
+  `LOBPCG_BAD_SEED`, the status of the divergence guard, before the
+  convergence test.
+- Measured on R 4.6.1, `6b25996` against the change: the capture is bitwise
+  on 71 cases under both RcppEigen versions, the diagnostics build on 49,
+  and 57 of 60 edge cases. The other three are the cases that write a NaN
+  into the Gram inside `lobpcg_solve()`; they raised the old text and raise
+  the overflow text, by way of the wrapper's `err_nonfinite`. No
+  `lobpcg_solve()` call ends differently in any of the 57 logged cases. The
+  suite with manual tests passes under both versions, with the overflow
+  test pinned to the new text.
+- Timing, changed over base, 5 calls per run. The first two runs were
+  taken on a busy machine (one run of 11.8 s against a median of 0.97) and
+  settle nothing: over 5 repetitions chr21 exact 1.164, chr21 lobpcg 0.985,
+  sim exact 1.066, sim lobpcg 0.945; over 11, chr21 exact 1.016 and sim
+  exact 1.203. A third, over 11 repetitions: chr21 exact 1.013
+  (a 0.329-0.445 s, b 0.326-0.368 s), sim exact 0.998 (a 0.902-1.711 s,
+  b 0.900-2.352 s). The scan is not visible at the driver's resolution.
+- Not exercised by any case: the LAPACK-failure text, which needs dsyevr to
+  return `info > 0`, and the residual test. The Gram-NaN injections end at
+  the first Rayleigh-Ritz, where `si_la::syevd` refuses the small Gram, and
+  never reach a residual. Neither has a test that can fail.
 
 ## Not settled yet
 

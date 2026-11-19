@@ -96,11 +96,14 @@ Easy to miss in the diff, noted so the draft does not:
   reachable"). The default solver takes the exact path at that size and
   returns what it did; `group_imp()` passing `solver = "lobpcg"` to groups
   of two to four features is the likely way in, not measured.
-- The error of a failed eigensolve reads "top-k symmetric eigensolver
-  failed to converge", where 1.2.0 reads "`eig_sym_sel` failed to
-  converge" (changed in `c7a253b`). Finite input whose squares overflow
-  raises it in both, unscaled values near 1e160 for one, and a test now
-  pins its class and wording (`dev/review_p2.md`, finding 3).
+- 1.2.0's error "`eig_sym_sel` failed to converge" is gone, replaced by
+  two plain errors (`dev/eigen_conversion.md`, "Phase 4, as carried out").
+  Finite input whose squares overflow, unscaled values near 1e160 for one,
+  which raised it in 1.2.0, now stops with "the cross-product of the data
+  is not finite; values this large overflow when squared, rescale the
+  input", before either solver; a test pins its class and wording. A
+  failure of LAPACK itself reads "the symmetric eigensolver failed (LAPACK
+  dsyevr, info = <n>)"; no input is known to raise it.
 - A failed triangular solve inside LOBPCG is no longer an error: that
   outer iteration goes to the exact solver, where 1.2.0 raised Armadillo's
   `std::runtime_error`, "solve(): solution not found". Armadillo's "system
