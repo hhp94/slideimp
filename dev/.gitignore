@@ -24,6 +24,8 @@
 !eigen_p1_edges.R
 !eigen_p2s4_edges.R
 !eigen_p2s6_diag.R
+!eigen_p3_check.R
+!eigen_p3_gate.sh
 !eigen_time_builds.R
 !eigen_time_install.R
 !eigen_time_worker.R

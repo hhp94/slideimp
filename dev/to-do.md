@@ -111,6 +111,10 @@ Easy to miss in the diff, noted so the draft does not:
   hold more than `.Machine$integer.max` missing values
   (`dev/eigen_conversion.md`, Phase 2, step 6). No test or measurement
   raises it: it needs a matrix of more than that many cells.
+- RcppArmadillo has left `LinkingTo` and `-DARMA_64BIT_WORD=1` has left
+  `src/Makevars` (`dev/eigen_conversion.md`, Phase 3), so the line already
+  in `NEWS.md` saying the package is compiled with 64-bit Armadillo indices
+  is no longer true. Building from source no longer needs RcppArmadillo.
 
 ## Parts for the other imputers
 

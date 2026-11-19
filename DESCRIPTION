@@ -69,7 +69,6 @@ LinkingTo:
     BH,
     dqrng (>= 0.4.1),
     Rcpp,
-    RcppArmadillo,
     RcppEigen,
     RcppThread,
     sitmo

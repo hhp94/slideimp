@@ -66,8 +66,9 @@ C++ files in the chain: 4 translation units (`src/armaSVD.cpp`, `src/RcppExports
 `eig_sym_sel.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `si_lapack.h`,
 `matrix_checks.h`, `loc_timer.h`). `si_lapack.cpp/.h` is the wrapper layer ("What the
 wrappers reproduce"), and every BLAS and LAPACK call of the chain goes through it. No file
-of the chain uses Armadillo; `src/RcppExports.cpp`, which is generated, includes
-`RcppArmadillo.h` until Phase 3 of `dev/eigen_conversion.md` takes it out of `LinkingTo`.
+of the chain uses Armadillo, and since Phase 3 of `dev/eigen_conversion.md` the package
+does not link to it: RcppArmadillo is not in `LinkingTo`, so the generated
+`src/RcppExports.cpp` does not include `RcppArmadillo.h`.
 Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
 `impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
 
@@ -866,10 +867,9 @@ values and do no arithmetic (NOT READ); the captures of step 4 are bitwise acros
 
 ## Compile-time switches
 
-**`-DARMA_64BIT_WORD=1`** -- still set in `src/Makevars` and `src/Makevars.win`, and read
-by nothing: it made `arma::uword` 64 bits, and no file under `src/` uses Armadillo since
-step 6 of Phase 2 of `dev/eigen_conversion.md`. `arma_uword_bytes()` and the test that
-pinned the flag went with that step; the flag itself goes in Phase 3.
+`src/Makevars` and `src/Makevars.win` set no macro: `-DARMA_64BIT_WORD=1`, which made
+`arma::uword` 64 bits, left them in Phase 3 of `dev/eigen_conversion.md`. The two below are
+added by `load_all1()` (`dev/dev-utils.R`) through the user Makevars.
 
 **`-DLOC_TIMER`** (`src/loc_timer.h`) -- when defined the header pulls in
 `rcpptimer.h` and the `LOC_TIMER_*` macros become real: `LOC_TIMER_OBJ` declares an

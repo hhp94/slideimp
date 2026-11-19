@@ -188,11 +188,12 @@ reports in the same change.
 
 ## Layout
 
-- `R/`, `src/` - package source. `src/` is Rcpp with RcppArmadillo, and
-  RcppThread for parallelism; the multiple-imputation sampler in
-  `src/mipca.cpp` adds RcppEigen and the Spectra headers vendored in
-  `src/Spectra/`. `R/RcppExports.R` and
-  `src/RcppExports.cpp` are generated.
+- `R/`, `src/` - package source. `src/` is plain Rcpp over R's own types,
+  and RcppThread for parallelism; the PCA chain reaches R's BLAS and LAPACK
+  through the wrapper layer in `src/si_lapack.h`. The multiple-imputation
+  sampler in `src/mipca.cpp` adds RcppEigen and the Spectra headers vendored
+  in `src/Spectra/`. `R/RcppExports.R` and `src/RcppExports.cpp` are
+  generated.
 - `tests/testthat/` - testthat edition 3, run against `load_all()` so
   internals are visible. Nothing under `tests/` may call a package that
   `DESCRIPTION` does not declare, even behind `skip_if_not_installed()`: R CMD

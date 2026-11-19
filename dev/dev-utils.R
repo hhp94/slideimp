@@ -48,10 +48,10 @@ load_all1 <- function(timer = TRUE, debug = FALSE) {
   flags <- c(flags, sprintf("-DPCA_IMP_DIAGNOSTICS=%d", as.integer(debug)))
 
   devtools::clean_dll()
-  # src/Makevars assigns PKG_CPPFLAGS, and a makefile assignment overrides an
-  # environment variable of the same name, so the macros cannot go in through
-  # the environment. They go in through the user Makevars instead, which R
-  # reads after the package's, as an append on top of -DARMA_64BIT_WORD=1.
+  # The macros go in through the user Makevars, which R reads after the
+  # package's, as an append: should src/Makevars assign PKG_CPPFLAGS again,
+  # that assignment would override an environment variable of the same name,
+  # but not this append.
   withr::with_makevars(
     c(PKG_CPPFLAGS = paste(flags, collapse = " ")),
     devtools::load_all(),

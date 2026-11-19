@@ -3,7 +3,8 @@
 The plan for taking RcppArmadillo out of the package's own C++. Work happens
 on the `si-mi` branch, beside the work of `dev/si_mi_conversion.md`
 (maintainer, 2026-11-18); there is no separate branch for it. Delete this
-file when Phase 3 lands; git history keeps it.
+file when Phase 4 lands, not Phase 3 (maintainer, 2026-11-19); git history
+keeps it.
 
 "The start commit" below is the head of `si-mi` when Phase 0 takes its
 reference capture. It is not `e5b3cf7`, where the capture scripts were first
@@ -1743,6 +1744,45 @@ bitwise gate again.
   candidate current on that day, looked up again and not taken from this
   file. Record both versions in the commit body. Local CI on the Linux
   images is the maintainer's call.
+
+As carried out, 2026-11-19, on `f999310`. Every build ran on scratch clones
+by `bash dev/eigen_p3_gate.sh <scratch> <stage>`, which says what each
+stage does; `dev/eigen_p3_check.R` runs `document()` and `check()` there.
+
+- `DESCRIPTION`, `src/Makevars` and `src/Makevars.win` as listed above. With
+  the macro gone neither Makevars assigns `PKG_CPPFLAGS`; `load_all1()`
+  still appends its macros through the user Makevars, and a
+  `load_all1(timer = TRUE, debug = TRUE)` build shows `-DLOC_TIMER` and
+  `-DPCA_IMP_DIAGNOSTICS=1` on all 12 compile lines and no `ARMA` on any.
+- `devtools::document()` took the `#include <RcppArmadillo.h>` line out of
+  `src/RcppExports.cpp` and changed nothing else: not `man/`, not
+  `NAMESPACE`, not `R/RcppExports.R`. `RcppEigen.h` stays included, since
+  RcppEigen stays in `LinkingTo`. The build gives 511
+  `-Wignored-attributes` lines, as step 6 of Phase 2 did, and no other
+  compiler warning.
+- Versions, looked up that day: CRAN RcppEigen 0.3.4.0.2 (Eigen 3.4); the
+  candidate 0.4.9.9-5 (Eigen 5.0.1), still the newest on the r-universe.
+- Capture: `f999310` and the Phase 3 tree, each on both RcppEigen versions,
+  71 cases each. The Phase 3 tree against `f999310` at tolerance 0: no case
+  failed and every one bitwise, on both versions. Against `76d4c60` at the
+  defaults: 31 of 75 failed, the 24 `n_iter` cases of step 6 of Phase 2 and
+  the 7 deliberate failures of Phase 1, every compared value bitwise.
+- Suite, manual tests included, `load_all1(timer = FALSE)`, the mirai
+  daemons loading the clone installed into a private library: 22 files,
+  278 tests, 2844 expectations, none failed, errored, skipped or warned, on
+  both versions.
+- `devtools::check()` on both versions, `00install.out` confirming which
+  RcppEigen include folder each used: 0 errors, 1 warning, 1 note, the same
+  on both. The warning is "Undocumented code objects", 18 exports of the
+  vendored sampler (`mipca()` and its helpers); the note is `rlang` in
+  `Imports` and not imported from, kept on purpose because cli needs it
+  (maintainer, 2026-11-19). Phase 3 changes no R code, `NAMESPACE`
+  or `Imports`, so neither comes from it; not measured on `f999310`.
+- `.claude/CLAUDE.md`, Layout, says what `src/` is built on now, and
+  `dev/pca_imp_structure.md` and the comment in `load_all1()` no longer
+  name the macro. `NEWS.md` still says the package is compiled with 64-bit
+  Armadillo indices; `dev/to-do.md` has the reminder for the draft.
+- This file stays until Phase 4 lands (maintainer, 2026-11-19).
 
 ## Phase 4: off Armadillo's choices, before the release
 
