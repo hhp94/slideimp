@@ -466,8 +466,8 @@ one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
 | `si_la::gemv` | no direct call; `*` reaches it (below) | dgemv, unit strides | BLAS has no status |
 | `si_la::syrk` | `arma::dsyrk_`, called directly | dsyrk, every argument passed through | BLAS has no status |
 | `si_la::matmul` | `*`, `+=` and `-=` of a product of two `arma::mat` | dgemv or dgemm (below) | Armadillo throws on dimensions that do not conform |
-| `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declares itself | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or fewer eigenpairs than asked |
-| `si_la::syevd` | `arma::dsyevd_`, called directly | dsyevd, `jobz = 'V'` | `info != 0` |
+| `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declares itself | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or another number of eigenpairs than asked; no test for NaN or Inf (the wrapper has one, below) |
+| `si_la::syevd` | `arma::dsyevd_`, called directly | dsyevd, `jobz = 'V'` | `info != 0`; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::qr_econ` | `arma::qr_econ()` | dgeqrf, then dorgqr | returns false, `Q` and `R` reset |
 | `si_la::solve_tri` | `arma::solve()` on `trimatl()` or `trimatu()` | dtrtrs, dtrcon, and dgelsd as the fallback | throws `std::runtime_error` |
 | `si_la::svd_values` | `arma::svd()` returning the values alone | dgesdd, `jobz = 'N'` | throws `std::runtime_error` |
@@ -475,8 +475,36 @@ one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
 The three direct calls are Armadillo's own declarations of the Fortran symbols (READ:
 `def_blas.hpp`, `def_lapack.hpp`), with nothing between the call site and BLAS. Armadillo
 declares no dsyevr and calls it nowhere, so `si_la::syevr_range` has no Armadillo
-counterpart; the oracle compares it with `arma::eig_sym()`, which is dsyevd (READ:
-`auxlib::eig_sym_dc()` calls `lapack::syevd`; the rest of it is NOT READ).
+counterpart. The oracle compares it with dsyevr called as `src/eig_sym_sel.h` calls it,
+to the bit, and with `arma::eig_sym()`, which is dsyevd, to a tolerance (READ:
+`auxlib::eig_sym_dc()` returns false, before LAPACK, when the upper triangle holds NaN or
+Inf; it asks dsyevd for its workspace only from order 32 up, uses the larger of the answer
+and `1 + 6 n + 2 n^2` and `3 + 5 n` computed in `blas_int`, and returns `info == 0`).
+
+**The two eigen wrappers against the chain's calls.** Each enters the same routine with
+the same options as the call it stands in for, and differs from it in two places, both on
+purpose:
+
+- *The eigenvalue buffer of dsyevr.* LAPACK documents `W` as `n` cells whatever the range.
+  For a proper subset dsyevr goes through dstebz, which stores every eigenvalue its search
+  interval holds and then drops those outside `il..iu`; when the range cuts a group of
+  equal eigenvalues that is more than `iu - il + 1` of them. The chain gives `W` exactly
+  `topk` cells (`src/eig_sym_sel.h`: `eigvals.set_size(ws.topk);`), so such a call
+  writes past the end of `eigvals`. `pca_imp()` reaches it when the completed data is rank
+  deficient and `ncp`, plus one when regularized, exceeds its rank: samples that are exact
+  copies of each other, holes included, or columns that are. `si_la::syevr_range` holds the
+  `n` cells itself and copies `iu - il + 1` out, so its caller's buffer needs no more.
+- *NaN and Inf.* Neither call of the chain tests its matrix, and LAPACK does not refuse
+  such input. Measured on one machine with R's own LAPACK: dsyevr asked for every eigenpair
+  of a matrix holding NaN does not return, a proper subset comes back with `info = 0` and
+  another number of eigenpairs than asked, and dsyevd can return `info = 0` with NaN
+  eigenvalues. Both wrappers test the triangle LAPACK reads, and only that one, before
+  the routine is entered, and return `err_nonfinite`. `pca_imp()` refuses NaN and Inf in
+  its input (`R/pca_imp.R`: `check_finite(obj)`), so only arithmetic inside the fit could
+  put one in a Gram; whether any input does is NOT MEASURED.
+
+`dev/eigen_conversion.md`, "The review of the wrapper layer", has the measurements behind
+both.
 
 **`arma::qr_econ(Q, R, X)`** (`src/lobpcg_warm.h`: `if (!arma::qr_econ(Q, R, V))`). READ:
 `fn_qr.hpp`, `auxlib::qr_econ()`, `auxlib::qr()`. For `m > n` it copies `X` into `Q`, runs

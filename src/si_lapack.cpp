@@ -108,6 +108,23 @@ namespace
     return true;
   }
 
+  // Whether the uplo triangle of the n x n matrix a, diagonal included, holds
+  // only finite values. The other triangle is not looked at: LAPACK does not
+  // read it, and a caller may leave it unset.
+  bool tri_finite(const char uplo, const std::size_t n, const double *a)
+  {
+    for (std::size_t j = 0; j < n; ++j)
+    {
+      const std::size_t first = (uplo == 'U') ? 0 : j;
+      const std::size_t len = (uplo == 'U') ? j + 1 : n - j;
+      if (!all_finite(a + j * n + first, len))
+      {
+        return false;
+      }
+    }
+    return true;
+  }
+
   bool is_nt(const char c)
   {
     return c == 'N' || c == 'T';
@@ -350,8 +367,21 @@ namespace si_la
       return err_size;
     }
 
+    // dsyevr does not refuse NaN or Inf: asked for every eigenpair it may not
+    // return, and otherwise it may report success with NaN in the result.
+    if (!tri_finite(uplo, n, a))
+    {
+      return err_nonfinite;
+    }
+
+    // dsyevr documents W as n cells whatever the range. For a proper subset
+    // it first stores every eigenvalue its search interval holds and then
+    // drops those outside il..iu, so a range that cuts a group of equal
+    // eigenvalues writes more than count of them. The caller's w has count
+    // cells; the n cells are held here.
     std::vector<int> isuppz;
-    if (!alloc(isuppz, 2 * count))
+    std::vector<double> w_all;
+    if (!alloc(isuppz, 2 * count) || !alloc(w_all, n))
     {
       return err_alloc;
     }
@@ -369,7 +399,7 @@ namespace si_la
     const int lwork_query = -1;
     const int liwork_query = -1;
     F77_CALL(dsyevr)(&jobz, &range, &uplo, &n_i, a, &n_i, &vl, &vu,
-                     &il_i, &iu_i, &abstol, &m_out, w, z, &n_i,
+                     &il_i, &iu_i, &abstol, &m_out, w_all.data(), z, &n_i,
                      isuppz.data(), &work_q, &lwork_query,
                      &iwork_q, &liwork_query, &info FCONE FCONE FCONE);
     if (info != 0)
@@ -392,7 +422,7 @@ namespace si_la
     }
 
     F77_CALL(dsyevr)(&jobz, &range, &uplo, &n_i, a, &n_i, &vl, &vu,
-                     &il_i, &iu_i, &abstol, &m_out, w, z, &n_i,
+                     &il_i, &iu_i, &abstol, &m_out, w_all.data(), z, &n_i,
                      isuppz.data(), work.data(), &lwork,
                      iwork.data(), &liwork, &info FCONE FCONE FCONE);
     if (info != 0)
@@ -403,6 +433,7 @@ namespace si_la
     {
       return err_count;
     }
+    std::copy(w_all.begin(), w_all.begin() + count, w);
     return ok;
   }
 
@@ -430,6 +461,13 @@ namespace si_la
     if (!fits_int(lwork_min))
     {
       return err_size;
+    }
+
+    // dsyevd does not refuse NaN or Inf: it may report success with NaN in
+    // the result.
+    if (!tri_finite(uplo, n, a))
+    {
+      return err_nonfinite;
     }
 
     const char jobz = 'V';

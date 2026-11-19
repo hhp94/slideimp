@@ -232,9 +232,11 @@ replaced.
 
 ## The wrapper layer and the oracle, as written
 
-On the working tree over `7d0c176`, 2026-11-18; not reviewed yet, and no
-file of the PCA chain calls a wrapper. Every figure is a reading on one
-machine with one BLAS.
+As committed in `79cce0f`, 2026-11-18, before its review; no file of the
+PCA chain calls a wrapper. Every figure is a reading on one machine with
+one BLAS. The review changed the two eigen wrappers and the oracle, and
+the oracle's and the self-test's counts below are the ones of that commit:
+"The review of the wrapper layer" has what changed and the counts since.
 
 - `src/si_lapack.h` declares nine functions in namespace `si_la`: `gemm`,
   `gemv`, `syrk`, `matmul`, `syevr_range`, `syevd`, `qr_econ`, `solve_tri`
@@ -271,6 +273,10 @@ machine with one BLAS.
   flag. Against the chain's own dsyevr call, which is not Armadillo's:
   `syevr_range` asks for the workspace and allocates it on every call,
   where `src/eig_sym_sel.h` asks once and keeps the buffers. Not timed.
+  Since the review, two more against the chain's calls: `syevr_range`
+  holds the `n` eigenvalue cells dsyevr documents, where the chain gives
+  it `topk`, and `syevr_range` and `syevd` refuse NaN and Inf in the
+  triangle LAPACK reads, where the chain tests nothing.
 - Where it is not this plan's wording: `svd_values` asks dgesdd for its
   workspace only from 1024 cells up, and `qr_econ` sizes dorgqr from
   dgeqrf's answer, because Armadillo does and a different length can put
@@ -314,6 +320,112 @@ machine with one BLAS.
   an upstream item in `dev/to-do.md`. `uv run dev/check_map_anchors.py`
   fails on `dev/r_manual/R-exts.md`, which cites paths of R's own source
   tree, and passes on every other note.
+
+## The review of the wrapper layer
+
+The second checkpoint of "Review checkpoints", on `79cce0f`, 2026-11-18. A
+fresh session wrote `dev/review_eigen_wrappers.md` with its probe scripts
+(`dev/review_eigen_wrappers_mutants.R`, `dev/review_eigen_wrappers_probe.R`
+and its `.cpp`, `dev/review_eigen_wrappers_run.R`,
+`dev/review_eigen_wrappers_procs.R`). The author's session audited it: every measured claim was rerun and
+came back as the note gives it, and all eight findings were upheld. Fixed
+the same day on the maintainer's word, on the working tree over `79cce0f`.
+Every figure is a reading on one machine: R 4.6.1, R's LAPACK 3.12.0.
+
+What was wrong in the wrappers, and is fixed:
+
+- `syevr_range` passed the caller's `w`, documented as `iu - il + 1`
+  cells, to dsyevr, which documents `W` as `n` cells. For a proper subset
+  dsyevr stores every eigenvalue of its search interval there before it
+  drops the surplus, so a range that cuts a group of equal eigenvalues
+  writes past `iu - il + 1`: 34 cells over the reviewer's cases, 17 of
+  them in one call. The wrapper now holds the `n` cells and copies the
+  count out.
+- The chain has the same sizing today, and 1.2.0 has it too (READ at the
+  tag). Measured through `pca_imp()` by
+  `dev/audit_eigen_wrappers_chain.sh`, on a clone of `79cce0f` whose
+  `src/eig_sym_sel.h` hands dsyevr an `n`-cell buffer and counts what is
+  written past `topk`: on 30 samples of which 6 are distinct, holes
+  included, `ncp = 5` wrote 1 cell past in 1 of 5 calls, `ncp = 7` up to 4,
+  `ncp = 12` up to 16, `ncp = 20` up to 9, and `method = "EM"` with
+  `ncp = 7` up to 6; on 10 columns of which 3 are identical, `ncp = 8`
+  wrote 1. Nothing was written on random data, on the duplicated data
+  while `ncp + 1` stayed within its rank, or on the chr21 file at `ncp` 2,
+  10 and 40. Every run returned normally; where the cells land was not
+  looked at. `dev/to-do.md` carries it until step 3 of Phase 2.
+- Neither eigen wrapper tested for NaN or Inf, as the chain's calls do
+  not. dsyevr asked for every eigenpair of a matrix holding NaN did not
+  return within 60 s, 4 of 4 cases at orders 6 and 60; a proper subset
+  came back as `err_count`; `syevd` returned 0 with NaN eigenvalues in 12
+  of 20 cases. Both now refuse NaN and Inf in the triangle LAPACK reads,
+  before the routine is entered, and accept anything in the other
+  triangle. `pca_imp()` asks for every eigenpair when there are fewer
+  eligible columns than rows, `ncp` is that column count less one, and the
+  method is the regularized one (measured: 41 calls for 6 of 6 on a 40 x 6
+  input). Its input is tested for NaN and Inf, so only the
+  arithmetic of the fit could put one in a Gram: not measured.
+
+What was wrong in the oracle, and is fixed:
+
+- Class "same" compared at a tolerance and only reported bitwise identity,
+  so a wrapper that sent a product to another BLAS routine passed. A case
+  of that class that is not bitwise identical now fails;
+  `--same-by-tolerance` is the way out on a BLAS that does not repeat
+  itself.
+- `syevr_range` was compared only with `eig_sym()`, another algorithm, at
+  1e-11 and 1e-7. It is now also compared, as `syevr_chain`, with dsyevr
+  called as `src/eig_sym_sel.h` calls it, to the bit, vectors included.
+- No input lay near a rule copied from Armadillo, and several failure
+  paths had no case. Added: ranges that cut a group of equal eigenvalues,
+  with guard cells after `w` and `z`; NaN and Inf in either triangle;
+  a row times a column of 1000 terms, where the two dgemv routes differ
+  in 184 of 200 random products; triangles whose condition estimate lies
+  within 1000 of `DBL_EPSILON` on either side, checked on what Armadillo
+  reports; a singular value between `DBL_EPSILON` and `n * DBL_EPSILON`;
+  the dgelsd fallback at orders 30 and 130; Inf inside a triangle; the
+  leading dimension of a transposed operand; an allocation that cannot
+  succeed; and the status code a refusal carries.
+- `dev/pca_imp_structure.md` left `auxlib::eig_sym_dc()` NOT READ. It is
+  read: it refuses NaN and Inf in the upper triangle before LAPACK.
+
+Counts since. The oracle: 748 cases, all passing, every class "same" case
+bitwise identical: `gemm` 154, `gemv` 46, `syrk` 119, `matmul` 95 and one
+that both sides refuse, `syevr_chain` 48 and 8 that both sides refuse,
+`syevd` 48, `qr_econ` 17, `solve_tri` 52 (18 solved exactly, 24 by
+Armadillo's fallback, 6 failed on both sides, 4 empty), 4 in the form
+`src/lobpcg_warm.h` writes, `svd_values` 14 and 2 failed on both sides.
+The 42 products Armadillo runs in its own loops: at most 8.9e-16 absolute
+and 7.9e-15 relative, 15 bitwise. `syevr_range` against `eig_sym()`: at
+most 5.7e-13 absolute and 4.0e-10 relative over the cells above 1e-6 of
+the largest, 48 cases. dsyevr wrote past the count in 10 cases, 55 cells,
+and the wrapper left every guard cell alone. 42 refusals return the code
+expected. The build outside the tree has the same 511
+`-Wignored-attributes` and nothing else; capture `wrapfix` is 71 cases
+bitwise identical to `p1r`.
+
+What the oracle does not catch. The reviewer's sixteen wrong wrappers: 14
+passed the oracle of `79cce0f`, 3 pass this one.
+
+- `svd_values` asking dgesdd for its optimum below 1024 cells too, and
+  `qr_econ` giving dorgqr `max(m, n)` cells: no case shows either rule
+  changing a result, so the oracle cannot say they are needed. That is
+  evidence for Phase 4, which drops both.
+- `syevr_range` without its eigenpair count check. With NaN and Inf now
+  refused first, no input known reaches `err_count`; the check stays as a
+  guard with no case.
+- The workspace is not such a rule for dsyevr: a wrapper that ignores
+  LAPACK's answer and passes `26 n` changes the eigenvectors at orders 60
+  and 300, which `syevr_chain` catches.
+
+`dev/oracle_selftest.R` now breaks one wrapper at a time 28 ways, the
+twelve of `79cce0f` and sixteen for the checks above: the oracle named the
+routine aimed at each time and passed on the unbroken source. Thirteen of
+the reviewer's sixteen are among what it catches.
+
+Not done, and why. The scan for NaN and Inf is not timed. The Armadillo
+version of `src/eig_sym_sel.h` is not patched: a patch for CRAN is a
+separate thread (maintainer, 2026-11-18), and the conversion does not wait
+for it (`dev/to-do.md`). R 4.3.0 is not checked, as before.
 
 ## Who does which work
 
@@ -715,6 +827,13 @@ declares no LAPACK symbol, so the PCA translation unit never includes
 `R_ext/Lapack.h`; that self-declaration goes in step 3, and step 6 drops
 `RcppArmadillo.h` with the last Armadillo type.
 
+Step 3 also ends a defect the review of the wrapper layer found in the
+chain as it stands: dsyevr is given `topk` eigenvalue cells where it
+documents `n`, and writes past them when the range cuts a group of equal
+eigenvalues (`dev/to-do.md`, "The eigenvalue buffer of the chain's dsyevr
+call"). The wrapper holds the `n` cells, so for finite input the step
+changes no result and stops the overrun.
+
 If the separate source file turns out not to keep the warnings away, the
 fallback is the order this plan had before: steps 1 to 5 replace the
 containers while the calls keep Armadillo's declarations, and step 6 moves
@@ -770,7 +889,10 @@ Scaffolding to remove, in `src/si_lapack.cpp` unless said otherwise:
 - `svd_values` asking dgesdd for its workspace only from 1024 cells up, and
   `qr_econ` sizing dorgqr from dgeqrf's answer. Every routine is asked for
   its own workspace, and the length used is the larger of the answer and
-  the documented minimum.
+  the documented minimum. The review of the wrapper layer found no case in
+  which either rule changes a result ("The review of the wrapper layer",
+  what the oracle does not catch); the length does matter to dsyevr, whose
+  vectors change at orders 60 and 300 when its answer is ignored.
 - `qr_econ` taking the full-QR branch for square and wide input, if no call
   site passes that shape. Count the shapes the chain passes first.
 - The dgelsd fallback in `solve_tri`, with dtrcon and the `approx` flag.
@@ -794,7 +916,10 @@ Choices to make in the same phase:
 - Refuse NaN and Inf before every LAPACK call, not only where Armadillo
   does (the SVD and the fallback). The scan is O(n^2) against a
   factorization that is O(n^3); what a LAPACK build does with non-finite
-  input is not something to depend on.
+  input is not something to depend on. Ruled for `syevr_range` and `syevd`
+  on 2026-11-18, after the review measured a call that does not return,
+  and done there; `qr_econ` and the exact path of `solve_tri` are still
+  open, and the scan is not timed.
 - Nothing compiled writes to the console. Armadillo printed its warnings to
   the error stream; with it gone, a failure is a status, raised as one cli
   error on the R side, on the main thread, never from a worker.

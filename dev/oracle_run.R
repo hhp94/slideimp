@@ -3,6 +3,7 @@
 # for, and fail when a pair disagrees. Dev only, run by hand, from the
 # package root:
 #   Rscript dev/oracle_run.R <lib> [--src=<dir>] [--build=<dir>] [--verbose]
+#     [--same-by-tolerance]
 # <lib>     the private library dev/oracle_install_armadillo.R installed
 #           RcppArmadillo into. It is put first on the library path here, and
 #           the run stops unless RcppArmadillo then resolves inside it.
@@ -12,6 +13,8 @@
 # --build   where the sources are staged and compiled (default: a folder
 #           under tempdir()). Nothing is built in the working tree.
 # --verbose print every case, not only the worst per routine.
+# --same-by-tolerance
+#           do not require class "same" to be bitwise identical; see below.
 # Rcpp comes from the usual library, so R_LIBS_USER stays as it is.
 #
 # dev/oracle_pairs.cpp holds the pairs. This script builds the inputs, calls
@@ -24,27 +27,35 @@
 #   tol_rel, where m is max(abs(w), abs(a)) of the cell. The relative figure
 #   is taken over the cells with m > rel_floor * s; with rel_floor = 0 that is
 #   every cell either side holds as nonzero. The report says how many cells.
+# - a case that says which status the wrapper must return gets that status.
 # Per routine it prints the worst absolute and the worst relative difference
 # over its cases, with the case each came from, and how many cases were
-# bitwise identical. Bitwise identity is reported, never asserted.
+# bitwise identical.
 #
 # Three tolerance classes. The readings are from 2026-11-18, RcppArmadillo
 # 15.6.2-1, on one machine with one BLAS.
 # - "same": the pair enters the same BLAS or LAPACK routine with the same
-#   arguments, so any difference is a finding in itself. Reading: every case
-#   bitwise identical. The tolerance is a few hundred units in the last
-#   place of a cell near 1, far below any wrong answer, so a BLAS that does
-#   not repeat itself to the bit shows as "not bitwise" without failing.
-# The other two are set about a hundredfold above their readings.
+#   arguments, so any difference is a finding in itself, and a case that is
+#   not bitwise identical fails. Both sides are built in one process, so
+#   this pins no compiler. The tolerance alone cannot do it: a wrapper that
+#   sends a product to another BLAS routine differs by a few units in the
+#   last place and stays inside any tolerance a BLAS could need. Reading:
+#   every case bitwise identical. On a machine whose BLAS does not repeat
+#   itself to the bit, --same-by-tolerance falls back to the tolerance, a
+#   few hundred units in the last place of a cell near 1; the run then says
+#   so, and no longer shows that a wrapper enters the routine it should.
+# The other two are set about a hundredfold above their readings, and
+# bitwise identity is reported for them, not asserted.
 # - "tiny": matmul_tiny, the products Armadillo runs through its own loops
 #   (square operands up to 4 x 4) where the wrapper calls BLAS. Reading:
-#   worst abs 8.9e-16, worst rel 3.8e-15, 18 of 42 cases bitwise.
+#   worst abs 8.9e-16, worst rel 7.9e-15, 15 of 42 cases bitwise.
 # - "eig": syevr_range. Armadillo calls dsyevr nowhere, so the pair is
 #   against eig_sym(), which is dsyevd: another algorithm on the same matrix.
-#   Reading: worst abs 1.7e-13, in the case scaled by 100; worst rel
-#   7.6e-10. The relative figure is that large by construction: an absolute
+#   Reading: worst abs 5.7e-13, on eigenvalues in the hundreds; worst rel
+#   4.0e-10. The relative figure is that large by construction: an absolute
 #   error near machine epsilon times the scale, divided by a cell as small
-#   as 1e-6 of the scale.
+#   as 1e-6 of the scale. The same cases are also compared, as syevr_chain
+#   in class "same", with dsyevr called as the chain calls it today.
 # The last line is "ORACLE PASSED" or "ORACLE FAILED: <routines>", and the
 # exit status is 1 on failure.
 
@@ -60,7 +71,7 @@ pos <- setdiff(args, opts)
 if (length(pos) != 1L) {
   stop(
     "usage: Rscript dev/oracle_run.R <lib> [--src=<dir>] [--build=<dir>] ",
-    "[--verbose]",
+    "[--verbose] [--same-by-tolerance]",
     call. = FALSE
   )
 }
@@ -69,6 +80,7 @@ opt_value <- function(name, default) {
   if (length(hit)) sub(paste0("^--", name, "="), "", hit[[1]]) else default
 }
 verbose <- "--verbose" %in% opts
+same_bitwise <- !("--same-by-tolerance" %in% opts)
 lib <- normalizePath(pos[[1]], winslash = "/", mustWork = TRUE)
 src <- normalizePath(opt_value("src", "src"), winslash = "/", mustWork = TRUE)
 build <- opt_value("build", file.path(tempdir(), "oracle-build"))
@@ -241,6 +253,9 @@ record <- function(
           sprintf("%s: rel %.3g over %d cells", nm, d$max_rel, d$n_rel)
         )
       }
+      if (class == "same" && same_bitwise && !d$bitwise) {
+        problems <- c(problems, sprintf("%s: not bitwise identical", nm))
+      }
     }
   }
   for (nm in names(extra)) {
@@ -279,7 +294,21 @@ run_pair <- function(routine, case, expr, handle) {
   handle(out)
 }
 
-simple <- function(routine, case, class = "same") {
+## A requirement on the status itself, for record()'s `extra`: the wrapper
+## returned the code named `expect`.
+status_is <- function(status, expect) {
+  structure(
+    isTRUE(status == codes[[expect]]),
+    names = sprintf(
+      "status %s, expected %s (%s)",
+      status,
+      codes[[expect]],
+      expect
+    )
+  )
+}
+
+simple <- function(routine, case, class = "same", expect = "ok") {
   function(out) {
     record(
       routine,
@@ -288,7 +317,8 @@ simple <- function(routine, case, class = "same") {
       out$arma$failed,
       w = list(value = out$wrapper$value),
       a = list(value = out$arma$value),
-      class = class
+      class = class,
+      extra = status_is(out$wrapper$status, expect)
     )
   }
 }
@@ -631,13 +661,36 @@ for (trans_a in c(FALSE, TRUE)) {
   matmul_case(trans_a, "set", dup, rmat(inner, 4), " rank-deficient A")
   matmul_case(trans_a, "minus", dup * 0, rmat(inner, 4), " zero A")
   matmul_case(trans_a, "set", holed, rmat(inner, 4), " NaN in A")
+  ## A row times a column, long enough that the two dgemv calls a 1 x 1
+  ## result could go to give different bits: Armadillo tests for one row
+  ## before one column. At 1000 terms the two differ in about nine of ten
+  ## random products, so six cases pin the order.
+  for (i in 1:6) {
+    if (trans_a) {
+      matmul_case(
+        trans_a,
+        "set",
+        rmat(1000, 1),
+        rmat(1000, 1),
+        " row by column"
+      )
+    } else {
+      matmul_case(
+        trans_a,
+        "set",
+        rmat(1, 1000),
+        rmat(1000, 1),
+        " row by column"
+      )
+    }
+  }
 }
 ## Dimensions that do not conform: both sides must refuse.
 run_pair(
   "matmul",
   "AB set A 4x3 B 2x2, not conformable",
   pair_env$pair_matmul(FALSE, "set", rmat(4, 3), rmat(2, 2), rmat(4, 2)),
-  simple("matmul", "AB set A 4x3 B 2x2, not conformable")
+  simple("matmul", "AB set A 4x3 B 2x2, not conformable", expect = "err_arg")
 )
 count_set("matmul", 1L)
 
@@ -645,10 +698,34 @@ count_set("matmul", 1L)
 ## unrelated finite values, so reading it changes the answer. The eigenvalues
 ## are compared, and Z diag(w) Z', which does not depend on the basis chosen
 ## inside a repeated eigenvalue as long as the range does not cut one.
-syevr_case <- function(ul, S, il, iu, tag) {
+##
+## `cut` says the range cuts a group of equal eigenvalues. The vectors inside
+## the group are then any orthonormal set of its eigenspace, so against
+## eig_sym() only the eigenvalues are compared, and the wrapper's vectors are
+## required to be orthonormal eigenvectors of S instead. `expect` is the
+## status the wrapper must return; `junk_nan` puts NaN in the triangle that
+## is not named, which neither side may read.
+##
+## Every case is recorded twice: as syevr_range against eig_sym(), and as
+## syevr_chain against dsyevr called as the chain calls it, which must agree
+## to the bit, vectors included, cut or not.
+syevr_past <- integer()
+syevr_case <- function(
+  ul,
+  S,
+  il,
+  iu,
+  tag,
+  cut = FALSE,
+  expect = "ok",
+  junk_nan = FALSE
+) {
   n <- nrow(S)
   A <- S
   junk <- rmat(n, n)
+  if (junk_nan) {
+    junk[] <- NaN
+  }
   other <- if (ul == "U") lower.tri(A) else upper.tri(A)
   A[other] <- junk[other]
   case <- sprintf("%s n %d pairs %d..%d %s", ul, n, il, iu, tag)
@@ -659,6 +736,31 @@ syevr_case <- function(ul, S, il, iu, tag) {
     function(out) {
       recon <- function(z, w) z %*% (w * t(z))
       failed_w <- out$wrapper$status != codes[["ok"]]
+      side <- function(values, vectors) {
+        values <- as.vector(values)
+        if (cut) {
+          list(values = values)
+        } else {
+          list(values = values, rebuilt = recon(vectors, values))
+        }
+      }
+      extra <- c(
+        "the reference was built from the named triangle alone" = identical(
+          out$arma$sym,
+          S
+        ),
+        "the cells after w and z were left alone" = isTRUE(out$wrapper$guard),
+        status_is(out$wrapper$status, expect)
+      )
+      if (cut && !failed_w) {
+        z <- out$wrapper$vectors
+        w <- as.vector(out$wrapper$values)
+        scale <- max(1, abs(S))
+        extra[["the vectors are eigenvectors of S (residual 1e-10)"]] <-
+          max(abs(S %*% z - z %*% diag(w, length(w)))) <= 1e-10 * scale
+        extra[["the vectors are orthonormal (1e-10)"]] <-
+          max(abs(crossprod(z) - diag(length(w)))) <= 1e-10
+      }
       record(
         "syevr_range",
         case,
@@ -667,30 +769,41 @@ syevr_case <- function(ul, S, il, iu, tag) {
         w = if (failed_w) {
           list()
         } else {
-          list(
-            values = as.vector(out$wrapper$values),
-            rebuilt = recon(out$wrapper$vectors, as.vector(out$wrapper$values))
-          )
+          side(out$wrapper$values, out$wrapper$vectors)
         },
         a = if (out$arma$failed) {
           list()
         } else {
-          list(
-            values = as.vector(out$arma$values),
-            rebuilt = recon(out$arma$vectors, as.vector(out$arma$values))
-          )
+          side(out$arma$values, out$arma$vectors)
         },
         class = "eig",
+        extra = extra
+      )
+      record(
+        "syevr_chain",
+        case,
+        failed_w,
+        out$chain$failed,
+        w = list(
+          values = as.vector(out$wrapper$values),
+          vectors = out$wrapper$vectors
+        ),
+        a = list(
+          values = as.vector(out$chain$values),
+          vectors = out$chain$vectors
+        ),
         extra = c(
-          "the reference was built from the named triangle alone" = identical(
-            out$arma$sym,
-            S
+          "dsyevr was called unless the triangle holds NaN or Inf" = identical(
+            out$chain$called,
+            expect != "err_nonfinite"
           )
         )
       )
+      syevr_past[[length(syevr_past) + 1L]] <<- out$chain$past
     }
   )
   count_set("syevr_range", 1L)
+  count_set("syevr_chain", 1L)
 }
 gram <- function(m, n) crossprod(rmat(m, n)) / m
 for (ul in c("U", "L")) {
@@ -713,14 +826,74 @@ for (ul in c("U", "L")) {
   indef <- rmat(12, 12)
   syevr_case(ul, (indef + t(indef)) / 2, 10, 12, "indefinite, top 3")
   syevr_case(ul, 100 * gram(30, 8), 6, 8, "scale 100, top 3")
+  syevr_case(
+    ul,
+    gram(40, 10),
+    8,
+    10,
+    "top 3, NaN in the other triangle",
+    junk_nan = TRUE
+  )
+
+  ## Ranges that cut a group of equal eigenvalues. dsyevr then stores more
+  ## than iu - il + 1 eigenvalues in W before it drops the surplus, so these
+  ## are the cases the guard cells after w are for.
+  d6 <- diag(c(1, 1, 2, 2, 5, 5))
+  g4 <- gram(4, 10)
+  syevr_case(ul, diag(6), 5, 6, "identity, top 2", cut = TRUE)
+  syevr_case(ul, d6, 6, 6, "repeated, top 1 of a pair", cut = TRUE)
+  syevr_case(ul, d6, 4, 6, "repeated, top 3", cut = TRUE)
+  syevr_case(ul, g4, 5, 10, "rank 4 of 10, top 6", cut = TRUE)
+  syevr_case(ul, g4, 6, 10, "rank 4 of 10, top 5", cut = TRUE)
+  ## What pca_imp() hands it when asked for more components than the data
+  ## has rank: 30 samples of which 6 are distinct, columns centred, so the
+  ## 30 x 30 Gram has rank 5.
+  few <- rmat(6, 100)[rep(1:6, each = 5), ]
+  few <- sweep(few, 2, colMeans(few))
+  syevr_case(
+    ul,
+    tcrossprod(few),
+    23,
+    30,
+    "6 distinct rows of 30, top 8",
+    cut = TRUE
+  )
+
+  ## NaN and Inf in the named triangle: the wrapper refuses before LAPACK,
+  ## eig_sym() refuses too, and dsyevr itself is not called. NaN is tried on
+  ## a proper subset only: with the wrapper's test taken out, dsyevr asked
+  ## for every eigenpair of such a matrix does not return, and a self-test
+  ## that hangs proves nothing.
+  bad <- gram(20, 6)
+  bad[2, 2] <- NaN
+  syevr_case(ul, bad, 5, 6, "NaN on the diagonal", expect = "err_nonfinite")
+  bad <- gram(20, 6)
+  bad[1, 3] <- bad[3, 1] <- NaN
+  syevr_case(ul, bad, 5, 6, "NaN off the diagonal", expect = "err_nonfinite")
+  bad <- gram(20, 6)
+  bad[1, 3] <- bad[3, 1] <- -Inf
+  syevr_case(ul, bad, 5, 6, "-Inf off the diagonal", expect = "err_nonfinite")
+  bad <- gram(20, 6)
+  bad[2, 2] <- Inf
+  syevr_case(
+    ul,
+    bad,
+    1,
+    6,
+    "Inf on the diagonal, all",
+    expect = "err_nonfinite"
+  )
 }
 
 ## syevd against arma::dsyevd_, with the other triangle holding unrelated
 ## values as above.
-syevd_case <- function(ul, S, extra, tag) {
+syevd_case <- function(ul, S, extra, tag, junk_nan = FALSE) {
   n <- nrow(S)
   A <- S
   junk <- rmat(n, n)
+  if (junk_nan) {
+    junk[] <- NaN
+  }
   other <- if (ul == "U") lower.tri(A) else upper.tri(A)
   A[other] <- junk[other]
   case <- sprintf("%s n %d workspace +%d %s", ul, n, extra, tag)
@@ -737,7 +910,8 @@ syevd_case <- function(ul, S, extra, tag) {
       a = list(
         values = as.vector(out$arma$values),
         vectors = out$arma$vectors
-      )
+      ),
+      extra = status_is(out$wrapper$status, "ok")
     )
   })
   count_set("syevd", 1L)
@@ -754,6 +928,14 @@ for (ul in c("U", "L")) {
     syevd_case(ul, diag(c(1, 1, 2, 2, 5, 5)), extra, "repeated")
   }
   syevd_case(ul, matrix(0, 0, 0), 0L, "empty")
+  sym <- rmat(30, 30)
+  syevd_case(
+    ul,
+    (sym + t(sym)) / 2,
+    0L,
+    "symmetric, NaN in the other triangle",
+    junk_nan = TRUE
+  )
 }
 
 ## qr_econ against arma::qr_econ().
@@ -804,8 +986,11 @@ qr_case(holed, "NaN")
 ## unrelated finite values. `path` is what the case was built to make
 ## Armadillo do, and the case fails if it did something else: "exact",
 ## "approx" (its warning, then the least-squares answer), "failed", or
-## "empty" (no rows, or no right-hand side).
-tri_case <- function(ul, Tm, B, tag, path) {
+## "empty" (no rows, or no right-hand side). `band`, when given, is an open
+## interval Armadillo's condition estimate must fall in: the case was built
+## to sit close to the threshold, and proves nothing if it does not. `also`
+## holds further requirements on how the case was built.
+tri_case <- function(ul, Tm, B, tag, path, band = NULL, also = logical()) {
   n <- nrow(Tm)
   A <- Tm
   if (n > 0) {
@@ -843,6 +1028,24 @@ tri_case <- function(ul, Tm, B, tag, path) {
       }
       w$rcond <- out$wrapper$rcond
       a$rcond <- out$arma$rcond
+    }
+    ## The wrapper fails here only by refusing NaN or Inf in its fallback.
+    extra <- c(
+      extra,
+      also,
+      status_is(
+        out$wrapper$status,
+        if (path == "failed") "err_nonfinite" else "ok"
+      )
+    )
+    if (!is.null(band)) {
+      extra[[sprintf(
+        "Armadillo's estimate %.3g lies in (%.3g, %.3g), the band the case was built for",
+        out$arma$rcond,
+        band[[1]],
+        band[[2]]
+      )]] <-
+        isTRUE(out$arma$rcond > band[[1]] && out$arma$rcond < band[[2]])
     }
     record("solve_tri", case, failed_w, out$arma$failed, w, a, extra = extra)
     tri_paths[[length(tri_paths) + 1L]] <<- took
@@ -921,6 +1124,87 @@ for (ul in c("U", "L")) {
   tri_case(ul, make_tri(ul, n, d), holed, "singular A, Inf in B", "failed")
   tri_case(ul, matrix(0, 0, 0), matrix(0, 0, 3), "no rows", "empty")
   tri_case(ul, make_tri(ul, 3), matrix(0, 3, 0), "no right-hand side", "empty")
+
+  ## Close to the rule that decides the fallback, on both sides of it: the
+  ## estimate below DBL_EPSILON takes the fallback, at or above it does not.
+  ## The last diagonal entry is scaled until R's own dtrcon, the routine both
+  ## sides call, puts the estimate at the target; the band is then checked
+  ## on what Armadillo reports.
+  eps <- .Machine$double.eps
+  near <- function(target) {
+    r <- qr.R(qr(rmat(n + 3, n)))
+    norm <- if (ul == "U") "1" else "I"
+    s <- 1
+    for (i in 1:8) {
+      x <- r
+      x[n, n] <- r[n, n] * s
+      s <- s * target / rcond(x, norm = norm, triangular = TRUE)
+    }
+    x <- r
+    x[n, n] <- r[n, n] * s
+    if (ul == "U") x else t(x)
+  }
+  tri_case(
+    ul,
+    near(30 * eps),
+    rmat(n, 3),
+    "estimate just above eps",
+    "exact",
+    band = c(eps, 1000 * eps)
+  )
+  tri_case(
+    ul,
+    near(eps / 30),
+    rmat(n, 3),
+    "estimate just below eps",
+    "approx",
+    band = c(eps / 1000, eps)
+  )
+  ## The fallback treats singular values under n * DBL_EPSILON of the largest
+  ## as zero. A diagonal triangle has its diagonal as singular values: one
+  ## exact zero to enter the fallback, and one between DBL_EPSILON and
+  ## n * DBL_EPSILON, which the rule drops and a smaller cut would keep.
+  sv <- c(rep(1, n - 2), 3 * eps, 0)
+  tri_case(
+    ul,
+    diag(sv),
+    rmat(n, 3),
+    "singular value between eps and n eps",
+    "approx",
+    also = c(
+      "a singular value lies between eps and n eps of the largest" = any(
+        sv / max(sv) > eps & sv / max(sv) < n * eps
+      )
+    )
+  )
+  ## The fallback above dgelsd's divide-and-conquer size.
+  for (big in c(30, 130)) {
+    d <- rep(1, big)
+    d[[big %/% 2]] <- 0
+    tri_case(
+      ul,
+      make_tri(ul, big, d),
+      rmat(big, 3),
+      "zero on the diagonal, larger",
+      "approx"
+    )
+    half <- qr.R(qr(rmat(big + 3, big)))
+    half[(big %/% 2 + 1):big, ] <- 0
+    tri_case(
+      ul,
+      if (ul == "U") half else t(half),
+      rmat(big, 3),
+      "half the rows zero, larger",
+      "approx"
+    )
+  }
+  holed <- make_tri(ul, n)
+  if (ul == "U") {
+    holed[1, 3] <- Inf
+  } else {
+    holed[3, 1] <- Inf
+  }
+  tri_case(ul, holed, rmat(n, 3), "Inf off the diagonal", "failed")
 }
 
 ## The solve as src/lobpcg_warm.h writes it: R is k x k upper triangular, AQ
@@ -977,6 +1261,10 @@ svd_case <- function(X, tag, expect_failed = FALSE) {
         "the path the case was built for (failure)" = identical(
           out$arma$failed,
           expect_failed
+        ),
+        status_is(
+          out$wrapper$status,
+          if (expect_failed) "err_nonfinite" else "ok"
         )
       )
     )
@@ -1010,7 +1298,8 @@ svd_case(holed, "Inf", expect_failed = TRUE)
 svd_case(matrix(0, 0, 3), "no rows")
 svd_case(matrix(0, 3, 0), "no columns")
 
-## What the wrappers refuse on their own, before any Fortran routine.
+## What the wrappers refuse on their own, before any Fortran routine, and
+## three calls beside those that they must accept ("ok").
 expected_refusals <- c(
   gemm_trans = "err_arg",
   gemm_conj = "err_arg",
@@ -1040,9 +1329,28 @@ expected_refusals <- c(
   qr_size = "err_size",
   solve_uplo = "err_arg",
   solve_size = "err_size",
-  svd_size = "err_size"
+  svd_size = "err_size",
+  gemm_trans_lda = "err_arg",
+  gemm_trans_ldb = "err_arg",
+  gemv_trans_lda = "err_arg",
+  syrk_trans_lda = "err_arg",
+  gemm_empty_inner_ld0 = "ok",
+  solve_alloc = "err_alloc",
+  syevr_nan_diag = "err_nonfinite",
+  syevr_inf_off = "err_nonfinite",
+  syevr_nan_unread = "ok",
+  syevd_nan_diag = "err_nonfinite",
+  syevd_inf_diag = "err_nonfinite",
+  syevd_inf_off = "err_nonfinite",
+  syevd_nan_unread = "ok"
 )
-got <- pair_env$wrapper_refusals()
+## A wrapper that lets an illegal argument through reaches xerbla. Where the
+## BLAS raises an R error for that, every refusal counts as failed; where it
+## prints a line and returns, the wrapper's status is not the one expected.
+got <- tryCatch(pair_env$wrapper_refusals(), error = function(e) {
+  cat("wrapper_refusals() raised:", conditionMessage(e), "\n")
+  integer()
+})
 for (nm in union(names(expected_refusals), names(got))) {
   want <- unname(codes[expected_refusals[nm]])
   have <- unname(got[nm])
@@ -1105,7 +1413,14 @@ for (cl in names(tol)) {
   ))
 }
 cat(
-  "abs is asserted against the tolerance times max(1, largest magnitude).\n\n"
+  "abs is asserted against the tolerance times max(1, largest magnitude).\n"
+)
+cat(
+  if (same_bitwise) {
+    "class same must also be bitwise identical.\n\n"
+  } else {
+    "--same-by-tolerance: class same is NOT required to be bitwise identical.\n\n"
+  }
 )
 failed_routines <- character()
 for (rt in routines) {
@@ -1182,6 +1497,7 @@ for (nm in c(
   "matmul",
   "matmul_tiny",
   "syevr_range",
+  "syevr_chain",
   "syevd",
   "qr_econ",
   "solve_tri",
@@ -1210,6 +1526,19 @@ need("svd_values cases that fail", sum(unlist(svd_failed)))
 need(
   "matmul cases both sides refuse",
   sum(tab$routine == "matmul" & tab$both_failed)
+)
+cat(sprintf(
+  "  syevr_range: dsyevr wrote past the first iu - il + 1 cells of W in %d cases, %d cells in all\n",
+  sum(syevr_past > 0),
+  sum(syevr_past)
+))
+need(
+  "syevr_range cases where dsyevr writes past the count",
+  sum(syevr_past > 0)
+)
+need(
+  "syevr_range cases both sides refuse",
+  sum(tab$routine == "syevr_range" & tab$both_failed)
 )
 
 cat("\n")

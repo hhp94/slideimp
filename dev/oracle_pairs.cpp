@@ -38,8 +38,30 @@ namespace oracle
 #include <limits>
 #include <vector>
 
+// dsyevr, declared as src/eig_sym_sel.h declares it for the chain's own
+// call: Armadillo declares no dsyevr, and this unit cannot include
+// R_ext/Lapack.h beside Armadillo.
+extern "C"
+{
+  void dsyevr_(const char *jobz, const char *range, const char *uplo,
+               const arma::blas_int *n, double *a, const arma::blas_int *lda,
+               const double *vl, const double *vu,
+               const arma::blas_int *il, const arma::blas_int *iu,
+               const double *abstol, arma::blas_int *m,
+               double *w, double *z, const arma::blas_int *ldz,
+               arma::blas_int *isuppz,
+               double *work, arma::blas_int *lwork,
+               arma::blas_int *iwork, arma::blas_int *liwork,
+               arma::blas_int *info,
+               arma::blas_len jobz_len, arma::blas_len range_len,
+               arma::blas_len uplo_len);
+}
+
 namespace
 {
+
+  // Fills guard cells: a value no result of these inputs takes.
+  constexpr double sentinel = -777.25;
 
   std::string take_arma_log()
   {
@@ -339,10 +361,23 @@ Rcpp::List pair_matmul(bool trans_a, std::string mode, arma::mat A,
           Rcpp::Named("log") = log));
 }
 
-// si_la::syevr_range against arma::eig_sym(). Armadillo has no dsyevr call:
-// eig_sym() is dsyevd, a different algorithm, so this pair agrees to a
-// tolerance and not to the bit. Only the uplo triangle of A is meaningful;
-// the reference is built from that triangle alone.
+// si_la::syevr_range against two references. Only the uplo triangle of A is
+// meaningful; both references are built from that triangle alone.
+//
+// "arma" is arma::eig_sym(): Armadillo has no dsyevr call, and eig_sym() is
+// dsyevd, a different algorithm, so that side agrees to a tolerance and not
+// to the bit. It refuses NaN and Inf in the triangle.
+//
+// "chain" is dsyevr called as the chain calls it today (src/eig_sym_sel.h):
+// jobz 'V', range 'I', abstol 0, isuppz of 2 * count, workspace the larger
+// of the query and 26 n and 10 n. That is the same routine with the same
+// arguments, so that side agrees to the bit. One departure from the chain:
+// W is given the n cells LAPACK documents, where the chain gives count.
+// `past` is how many of the cells after the first count dsyevr changed. The
+// call is not made when the triangle holds NaN or Inf: dsyevr may not return.
+//
+// The wrapper's w and z are followed by guard cells, n of them after w and
+// one column after z; `guard` is whether the call left them alone.
 // [[Rcpp::export]]
 Rcpp::List pair_syevr(std::string uplo, arma::mat A, int il, int iu)
 {
@@ -351,12 +386,25 @@ Rcpp::List pair_syevr(std::string uplo, arma::mat A, int il, int iu)
   const arma::uword count = static_cast<arma::uword>(iu - il + 1);
 
   arma::mat Aw = A;
-  arma::vec w(count);
-  arma::mat Z(n, count);
+  arma::vec w(count + n);
+  arma::mat Z(n, count + 1);
+  w.fill(sentinel);
+  Z.fill(sentinel);
   const int status =
       si_la::syevr_range(ul, n, static_cast<std::size_t>(il),
                          static_cast<std::size_t>(iu), Aw.memptr(),
                          w.memptr(), Z.memptr());
+  bool guard = true;
+  for (arma::uword i = count; i < count + n; ++i)
+  {
+    guard = guard && (w[i] == sentinel);
+  }
+  for (arma::uword i = 0; i < n; ++i)
+  {
+    guard = guard && (Z(i, count) == sentinel);
+  }
+  const arma::vec ww = w.head(count);
+  const arma::mat Zw = Z.head_cols(count);
 
   const arma::mat S = (ul == 'U') ? arma::mat(arma::symmatu(A))
                                   : arma::mat(arma::symmatl(A));
@@ -375,14 +423,75 @@ Rcpp::List pair_syevr(std::string uplo, arma::mat A, int il, int iu)
                     static_cast<arma::uword>(iu - 1));
   }
 
+  bool chain_called = false;
+  bool chain_failed = true;
+  int past = 0;
+  arma::vec wc;
+  arma::mat Zc;
+  if (S.is_finite())
+  {
+    chain_called = true;
+    arma::mat Ac = A;
+    arma::vec w_all(n);
+    w_all.fill(sentinel);
+    Zc.set_size(n, count);
+    std::vector<arma::blas_int> isuppz(2 * static_cast<std::size_t>(count));
+    const char jobz = 'V';
+    const char range = 'I';
+    const double vl = 0.0;
+    const double vu = 0.0;
+    const double abstol = 0.0;
+    const arma::blas_int ni = static_cast<arma::blas_int>(n);
+    const arma::blas_int ili = static_cast<arma::blas_int>(il);
+    const arma::blas_int iui = static_cast<arma::blas_int>(iu);
+    arma::blas_int m_out = 0;
+    arma::blas_int info = 0;
+    arma::blas_int lwork = -1;
+    arma::blas_int liwork = -1;
+    double work_q = 0.0;
+    arma::blas_int iwork_q = 0;
+    dsyevr_(&jobz, &range, &ul, &ni, Ac.memptr(), &ni, &vl, &vu, &ili, &iui,
+            &abstol, &m_out, w_all.memptr(), Zc.memptr(), &ni, isuppz.data(),
+            &work_q, &lwork, &iwork_q, &liwork, &info, 1, 1, 1);
+    if (info == 0)
+    {
+      lwork = std::max(static_cast<arma::blas_int>(work_q), 26 * ni);
+      liwork = std::max(iwork_q, 10 * ni);
+      std::vector<double> work(static_cast<std::size_t>(lwork));
+      std::vector<arma::blas_int> iwork(static_cast<std::size_t>(liwork));
+      w_all.fill(sentinel);
+      dsyevr_(&jobz, &range, &ul, &ni, Ac.memptr(), &ni, &vl, &vu, &ili,
+              &iui, &abstol, &m_out, w_all.memptr(), Zc.memptr(), &ni,
+              isuppz.data(), work.data(), &lwork, iwork.data(), &liwork,
+              &info, 1, 1, 1);
+      chain_failed =
+          (info != 0 || m_out != static_cast<arma::blas_int>(count));
+      for (arma::uword i = count; i < n; ++i)
+      {
+        if (!(w_all[i] == sentinel))
+        {
+          ++past;
+        }
+      }
+      if (!chain_failed)
+      {
+        wc = w_all.head(count);
+      }
+    }
+  }
+
   return Rcpp::List::create(
       Rcpp::Named("wrapper") = Rcpp::List::create(
-          Rcpp::Named("status") = status, Rcpp::Named("values") = w,
-          Rcpp::Named("vectors") = Z),
+          Rcpp::Named("status") = status, Rcpp::Named("values") = ww,
+          Rcpp::Named("vectors") = Zw, Rcpp::Named("guard") = guard),
       Rcpp::Named("arma") = Rcpp::List::create(
           Rcpp::Named("failed") = !ok, Rcpp::Named("values") = wa,
           Rcpp::Named("vectors") = Za, Rcpp::Named("sym") = S,
-          Rcpp::Named("log") = log));
+          Rcpp::Named("log") = log),
+      Rcpp::Named("chain") = Rcpp::List::create(
+          Rcpp::Named("called") = chain_called,
+          Rcpp::Named("failed") = chain_failed, Rcpp::Named("values") = wc,
+          Rcpp::Named("vectors") = Zc, Rcpp::Named("past") = past));
 }
 
 // si_la::syevd against arma::dsyevd_, the declaration the LOBPCG
@@ -579,9 +688,10 @@ Rcpp::List pair_svd(arma::mat X)
 }
 
 // What each wrapper returns for a call it must refuse before any Fortran
-// routine is entered. No Armadillo side: Armadillo would raise, or let BLAS
-// reach xerbla. The oversized calls pass dimensions past int with one-cell
-// buffers, which is safe only because the wrapper returns before using them.
+// routine is entered, and for three calls beside those that it must accept.
+// No Armadillo side: Armadillo would raise, or let BLAS reach xerbla. The
+// oversized calls pass dimensions past int with one-cell buffers, which is
+// safe only because the wrapper returns before using them.
 // [[Rcpp::export]]
 Rcpp::IntegerVector wrapper_refusals()
 {
@@ -648,19 +758,94 @@ Rcpp::IntegerVector wrapper_refusals()
           si_la::solve_tri('U', huge, 1, a, b, &rc, &approx),
       Rcpp::Named("svd_size") = si_la::svd_values(huge, 1, a, w));
 
-  Rcpp::IntegerVector all(out.size() + more.size());
-  Rcpp::CharacterVector names(out.size() + more.size());
-  const Rcpp::CharacterVector out_names = out.names();
-  const Rcpp::CharacterVector more_names = more.names();
-  for (R_xlen_t i = 0; i < out.size(); ++i)
+  // The leading dimension of a transposed operand, an empty inner dimension
+  // beside a leading dimension of 0 (not refused: the product is empty), and
+  // an allocation that cannot succeed.
+  const std::size_t int_max =
+      static_cast<std::size_t>(std::numeric_limits<int>::max());
+  double a9[9] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+  double b9[9] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
+  double c9[9] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+
+  // NaN and Inf handed to the two eigen wrappers, which refuse them before
+  // LAPACK, and NaN in the triangle LAPACK does not read, which they must
+  // accept. Each is a 6 x 6 symmetric matrix; the range 5..6 is a proper
+  // subset, which dsyevr returns from even without the test.
+  const std::size_t n6 = 6;
+  auto sym6 = [&](const std::size_t i, const std::size_t j, const double v,
+                  const bool both) {
+    std::vector<double> s(n6 * n6, 0.0);
+    for (std::size_t d = 0; d < n6; ++d)
+    {
+      s[d + d * n6] = 1.0 + static_cast<double>(d);
+    }
+    s[i + j * n6] = v;
+    if (both)
+    {
+      s[j + i * n6] = v;
+    }
+    return s;
+  };
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  std::vector<double> w6(n6);
+  std::vector<double> z6(n6 * n6);
+  // (0, 2) is in the upper triangle, (2, 0) in the lower.
+  std::vector<double> r_nan_diag = sym6(1, 1, nan, true);
+  std::vector<double> r_inf_off = sym6(0, 2, inf, true);
+  std::vector<double> r_nan_lower = sym6(2, 0, nan, false);
+  std::vector<double> d_nan_diag = sym6(1, 1, nan, true);
+  std::vector<double> d_inf_diag = sym6(1, 1, inf, true);
+  std::vector<double> d_inf_off_l = sym6(0, 2, -inf, true);
+  std::vector<double> d_nan_upper = sym6(0, 2, nan, false);
+
+  Rcpp::IntegerVector last = Rcpp::IntegerVector::create(
+      // op(A) = A' with A 3 x 2: lda must be at least 3.
+      Rcpp::Named("gemm_trans_lda") =
+          si_la::gemm('T', 'N', 2, 2, 3, 1.0, a9, 2, b9, 3, 0.0, c9, 2),
+      // op(B) = B' with B 3 x 2: ldb must be at least 3.
+      Rcpp::Named("gemm_trans_ldb") =
+          si_la::gemm('N', 'T', 2, 3, 2, 1.0, a9, 2, b9, 2, 0.0, c9, 2),
+      Rcpp::Named("gemv_trans_lda") =
+          si_la::gemv('T', 3, 2, 1.0, a9, 2, b9, 0.0, c9),
+      // A' A with A 3 x 2: lda must be at least 3.
+      Rcpp::Named("syrk_trans_lda") =
+          si_la::syrk('U', 'T', 2, 3, 1.0, a9, 2, 0.0, c9, 2),
+      Rcpp::Named("gemm_empty_inner_ld0") =
+          si_la::gemm('N', 'N', 2, 2, 0, 1.0, a9, 2, b9, 0, 0.5, c9, 2),
+      Rcpp::Named("solve_alloc") =
+          si_la::solve_tri('U', int_max, int_max, a9, b9, &rc, &approx),
+      Rcpp::Named("syevr_nan_diag") =
+          si_la::syevr_range('U', n6, 5, 6, r_nan_diag.data(), w6.data(),
+                             z6.data()),
+      Rcpp::Named("syevr_inf_off") =
+          si_la::syevr_range('U', n6, 5, 6, r_inf_off.data(), w6.data(),
+                             z6.data()),
+      Rcpp::Named("syevr_nan_unread") =
+          si_la::syevr_range('U', n6, 5, 6, r_nan_lower.data(), w6.data(),
+                             z6.data()),
+      Rcpp::Named("syevd_nan_diag") =
+          si_la::syevd('U', n6, d_nan_diag.data(), w6.data()),
+      Rcpp::Named("syevd_inf_diag") =
+          si_la::syevd('L', n6, d_inf_diag.data(), w6.data()),
+      Rcpp::Named("syevd_inf_off") =
+          si_la::syevd('L', n6, d_inf_off_l.data(), w6.data()),
+      Rcpp::Named("syevd_nan_unread") =
+          si_la::syevd('L', n6, d_nan_upper.data(), w6.data()));
+
+  const R_xlen_t total = out.size() + more.size() + last.size();
+  Rcpp::IntegerVector all(total);
+  Rcpp::CharacterVector names(total);
+  R_xlen_t at = 0;
+  for (const Rcpp::IntegerVector &part : {out, more, last})
   {
-    all[i] = out[i];
-    names[i] = out_names[i];
-  }
-  for (R_xlen_t i = 0; i < more.size(); ++i)
-  {
-    all[out.size() + i] = more[i];
-    names[out.size() + i] = more_names[i];
+    const Rcpp::CharacterVector part_names = part.names();
+    for (R_xlen_t i = 0; i < part.size(); ++i)
+    {
+      all[at] = part[i];
+      names[at] = part_names[i];
+      ++at;
+    }
   }
   all.names() = names;
   return all;

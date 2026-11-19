@@ -40,9 +40,10 @@ namespace si_la
   // An option character, a leading dimension or a pair of dimensions the
   // routine would refuse.
   inline constexpr int err_arg = -1002;
-  // The input holds NaN or Inf, where the Armadillo call refused it.
+  // The input holds NaN or Inf, in a function that says it refuses them.
   inline constexpr int err_nonfinite = -1003;
-  // LAPACK returned without error but with fewer eigenpairs than asked for.
+  // LAPACK returned without error but with another number of eigenpairs than
+  // asked for.
   inline constexpr int err_count = -1004;
   // Workspace could not be allocated.
   inline constexpr int err_alloc = -1005;
@@ -102,14 +103,19 @@ namespace si_la
   // n x n matrix whose uplo triangle is in a, counted from 1 in ascending
   // order, so il = n - k + 1 and iu = n are the k largest. a is destroyed.
   // w receives iu - il + 1 eigenvalues, ascending; z is n x (iu - il + 1) and
-  // receives the eigenvectors in the same order. err_arg unless
-  // 1 <= il <= iu <= n.
+  // receives the eigenvectors in the same order. Neither needs more cells
+  // than that: the n cells dsyevr documents for its eigenvalues are held
+  // inside. err_arg unless 1 <= il <= iu <= n. err_nonfinite when the uplo
+  // triangle of a holds NaN or Inf, tested before dsyevr is entered; the
+  // other triangle is not read and may hold anything.
   int syevr_range(char uplo, std::size_t n, std::size_t il, std::size_t iu,
                   double *a, double *w, double *z);
 
   // dsyevd, jobz 'V': all eigenpairs of the symmetric n x n matrix whose uplo
   // triangle is in a. On success a holds the eigenvectors and w the n
-  // eigenvalues, ascending. n = 0 succeeds and writes nothing.
+  // eigenvalues, ascending. n = 0 succeeds and writes nothing. err_nonfinite
+  // when the uplo triangle of a holds NaN or Inf, tested before dsyevd is
+  // entered; the other triangle is not read and may hold anything.
   int syevd(char uplo, std::size_t n, double *a, double *w);
 
   // dgeqrf then dorgqr: the economical QR of the m x n matrix x, as

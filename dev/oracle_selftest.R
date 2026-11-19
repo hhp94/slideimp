@@ -20,7 +20,16 @@
 # mutation is reported as not applied: a self-test that silently broke
 # nothing would pass for the wrong reason. Each mutation leaves a call that
 # is still valid for BLAS and LAPACK, so the wrong answer comes back as a
-# value and not as a crash.
+# value and not as a crash; the two that drop a leading-dimension check are
+# the exception: BLAS refuses the call through xerbla. Under one BLAS that
+# is a printed line and a wrapper status of 0, under another an R error,
+# which the oracle turns into every refusal failing; it fails either way.
+#
+# Wrong wrappers the oracle is known not to catch, and so not listed: one
+# that asks dgesdd for its optimum below 1024 cells, one that gives dorgqr
+# max(m, n) cells, and one without the eigenpair count check.
+# dev/eigen_conversion.md, "The review of the wrapper layer", has the
+# measurement.
 #
 # The last line is "SELFTEST PASSED" or "SELFTEST FAILED", and the exit
 # status is 1 on failure.
@@ -128,6 +137,154 @@ mutations <- list(
       "} // namespace si_la",
       sep = "\n"
     ),
+    times = 1L
+  ),
+  list(
+    name = "syevr_w_past",
+    what = "syevr_range writes n eigenvalues into the caller's w",
+    expect = "syevr_range",
+    old = "std::copy(w_all.begin(), w_all.begin() + count, w);",
+    new = "std::copy(w_all.begin(), w_all.end(), w);",
+    times = 1L
+  ),
+  list(
+    name = "syevr_abstol",
+    what = "syevr_range passes abstol = 1e-12, not 0",
+    expect = "syevr_chain",
+    old = "const double abstol = 0.0;",
+    new = "const double abstol = 1e-12;",
+    times = 1L
+  ),
+  list(
+    name = "work_query_ignored",
+    what = "every workspace is the documented minimum, whatever LAPACK asked for",
+    expect = "syevr_chain",
+    old = "if (queried > len)",
+    new = "if (false && queried > len)",
+    times = 1L
+  ),
+  list(
+    name = "syevr_no_finite",
+    what = "syevr_range does not refuse NaN or Inf",
+    expect = c("syevr_range", "refusals"),
+    old = "NaN in the result.\n    if (!tri_finite(uplo, n, a))",
+    new = "NaN in the result.\n    if (false)",
+    times = 1L
+  ),
+  list(
+    name = "syevd_no_finite",
+    what = "syevd does not refuse NaN or Inf",
+    expect = "refusals",
+    old = "// the result.\n    if (!tri_finite(uplo, n, a))",
+    new = "// the result.\n    if (false)",
+    times = 1L
+  ),
+  list(
+    name = "finite_whole",
+    what = "the eigen wrappers refuse NaN in the triangle LAPACK does not read",
+    expect = c("syevr_range", "syevd", "refusals"),
+    old = "if (!all_finite(a + j * n + first, len))",
+    new = "if (!all_finite(a + j * n, n))",
+    times = 1L
+  ),
+  list(
+    name = "matmul_order",
+    what = "matmul tests one column before one row",
+    expect = "matmul",
+    old = "if (c_rows == 1)",
+    new = "if (c_rows == 1 && b_cols != 1)",
+    times = 1L
+  ),
+  list(
+    name = "matmul_column_gemm",
+    what = "matmul sends a product with one column to dgemm",
+    expect = "matmul",
+    old = "if (b_cols == 1)",
+    new = "if (false && b_cols == 1)",
+    times = 1L
+  ),
+  list(
+    name = "solve_threshold_up",
+    what = "solve_tri falls back below 1000 * DBL_EPSILON",
+    expect = "solve_tri",
+    old = "solved = !(*rcond < eps) && !std::isnan(*rcond);",
+    new = "solved = !(*rcond < 1000.0 * eps) && !std::isnan(*rcond);",
+    times = 1L
+  ),
+  list(
+    name = "solve_threshold_down",
+    what = "solve_tri falls back below DBL_EPSILON / 1000",
+    expect = "solve_tri",
+    old = "solved = !(*rcond < eps) && !std::isnan(*rcond);",
+    new = "solved = !(*rcond < eps / 1000.0) && !std::isnan(*rcond);",
+    times = 1L
+  ),
+  list(
+    name = "solve_no_nan_test",
+    what = "solve_tri does not test the condition estimate for NaN",
+    expect = "solve_tri",
+    old = "solved = !(*rcond < eps) && !std::isnan(*rcond);",
+    new = "solved = !(*rcond < eps);",
+    times = 1L
+  ),
+  list(
+    name = "solve_sv_cut",
+    what = "solve_tri's fallback cuts singular values at DBL_EPSILON",
+    expect = "solve_tri",
+    old = "double rcond_sv = nd * eps;",
+    new = "double rcond_sv = eps;",
+    times = 1L
+  ),
+  list(
+    name = "solve_code",
+    what = "solve_tri returns err_arg where it refuses NaN or Inf",
+    expect = "solve_tri",
+    old = paste(
+      "!all_finite(rhs.data(), n * nrhs))",
+      "    {",
+      "      return err_nonfinite;",
+      sep = "\n"
+    ),
+    new = paste(
+      "!all_finite(rhs.data(), n * nrhs))",
+      "    {",
+      "      return err_arg;",
+      sep = "\n"
+    ),
+    times = 1L
+  ),
+  list(
+    name = "svd_code",
+    what = "svd_values returns err_arg where it refuses NaN or Inf",
+    expect = "svd_values",
+    old = paste(
+      "if (!all_finite(a, m * n))",
+      "    {",
+      "      return err_nonfinite;",
+      sep = "\n"
+    ),
+    new = paste(
+      "if (!all_finite(a, m * n))",
+      "    {",
+      "      return err_arg;",
+      sep = "\n"
+    ),
+    times = 1L
+  ),
+  list(
+    name = "gemm_lda_trans",
+    what = "gemm does not check lda for a transposed operand",
+    expect = "refusals",
+    old = "const std::size_t a_rows = (trans_a == 'N') ? m : k;",
+    new = "const std::size_t a_rows = (trans_a == 'N') ? m : 1;",
+    times = 1L
+  ),
+  list(
+    name = "syrk_lda_trans",
+    what = "syrk does not check lda for trans 'T'",
+    expect = "refusals",
+    old = "const std::size_t a_rows = (trans == 'N') ? n : k;",
+    new = "const std::size_t a_rows = (trans == 'N') ? n : 1;",
     times = 1L
   ),
   list(

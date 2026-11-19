@@ -11,6 +11,9 @@
 !ad45ec5..5412876.md
 !CPP.md
 !WRITING.md
+!audit_eigen_wrappers_chain.R
+!audit_eigen_wrappers_chain.sh
+!audit_eigen_wrappers_patch.R
 !audit_pca_imp_cr.R
 !check_impute_knn.R
 !check_map_anchors.py
@@ -38,6 +41,12 @@
 !ref_capture.R
 !ref_compare.R
 !ref_compare_selftest.R
+!review_eigen_wrappers.md
+!review_eigen_wrappers_mutants.R
+!review_eigen_wrappers_probe.R
+!review_eigen_wrappers_probe.cpp
+!review_eigen_wrappers_procs.R
+!review_eigen_wrappers_run.R
 !si_mi_conversion.md
 !test_mirai_with_dev_install.R
 !to-do.md
