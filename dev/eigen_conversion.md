@@ -979,6 +979,191 @@ Step 3, on the working tree over `905e1ac`:
   1.000 for LOBPCG, 1.007 for exact, both inside. No cost shows at these
   sizes (Gram of order 200 for `sim_mat()`); larger orders not timed.
 
+Step 4, the calls that can fail, on the working tree over `eade032`. The
+containers, products and norms of `src/lobpcg_warm.h` are still Armadillo's:
+that half of the step is not done.
+
+- `src/lobpcg_warm.h` includes `src/si_lapack.h`. Its QR, its triangular
+  solve and its dsyevd go through `si_la::qr_econ`, `si_la::solve_tri` and
+  `si_la::syevd`. `LOBPCGState` loses the `work` and `iwork` buffers it kept
+  for dsyevd, and `small_eig_desc()` and `rr_two_block()` the arguments that
+  carried them.
+- One function, `la_failed()`, sorts a status for the three sites. A
+  positive status, which is LAPACK's `info`, and `err_nonfinite` are a
+  numerical failure, and take the path the Armadillo call's failure took.
+  `err_alloc` stops with "could not allocate the workspace", where a failed
+  allocation was `std::bad_alloc` from Armadillo or from the buffers.
+  `err_arg` and `err_size` stop with "internal error: ... refused its
+  arguments", as in steps 1 to 3. No test raises either stop.
+  `dev/pca_imp_structure.md` has the table of what each site does next
+  (Layer 6) and what was READ ("What the wrappers reproduce").
+- QR: a failure resets the block and returns rank 0, as `arma::qr_econ()`
+  returning false did, and the caller's branch is the one it was.
+- Triangular solve: written as the oracle's `pair_solve_chain` writes it,
+  the two transposes formed and then `si_la::solve_tri('L', ...)`. A
+  triangle singular to working precision is still solved by the dgelsd
+  fallback and the iteration still goes on with that answer; the `approx`
+  flag is not acted on. Armadillo's line on the console, "warning: solve():
+  system is singular; attempting approx solution", is gone and nothing
+  replaces it. A non-zero status is an R error, as Armadillo's throw was:
+  "lobpcg_solve: triangular solve failed", an `Rcpp::exception`, where it
+  was "solve(): solution not found", a `std::runtime_error`. The call site
+  also stops if `A*Q` and `Q` differ in columns, which Armadillo's
+  conformance check covered and a raw pointer does not.
+- dsyevd: a non-zero status is `false`, so `LOBPCG_INITIAL_RR_FAILED` or
+  `LOBPCG_RR_FAILED`, as `info != 0` was.
+
+The gate, read 2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo
+15.6.2-1, R's LAPACK 3.12.0:
+
+- The timer build and the diagnostics build compile, with no warning from
+  the chain's own files (511 `-Wignored-attributes` each, nothing else).
+- Capture `p2s4` against `p2s3` at tolerance 0: 71 cases, none failed, every
+  one bitwise. Against `76d4c60` at the defaults: the same 7 deliberate
+  failures as `p2s3`, everything else bitwise. Capture `p2s4-eigen5`, the
+  same source against RcppEigen 0.4.9.9-5: 71 cases, every one bitwise
+  identical to `p2s4`.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading the step installed into a private library: 22
+  files, 276 tests, none failed, errored or skipped.
+- Timed, since the three wrappers allocate on every call and `solve_tri`
+  copies its right-hand side: the timing driver, `eade032` as a and this
+  step as b, both installed by `dev/eigen_time_install.R` from clones
+  outside the tree, the four PCA workloads, 5 repetitions. b/a ratios of
+  medians: `chr21_pca_exact` 1.008, `chr21_pca_lobpcg` 1.003,
+  `sim_pca_exact` 1.000, `sim_pca_lobpcg` 1.003, all inside the driver's
+  band. No cost shows at these sizes; the workloads ask LOBPCG for few
+  eigenpairs, and more were not timed.
+- `uv run dev/check_map_anchors.py`: the problems left are the ones in
+  `dev/r_manual/R-exts.md` and the two stale citations of
+  `dev/review_eigen_wrappers.md`.
+
+What the capture does not reach. `dev/probe_p2s4_run.sh` clones the commit
+before the step and the step outside the tree, has `dev/probe_p2s4_patch.R`
+write one line per QR, solve, dsyevd and `lobpcg_solve()` call into each,
+and runs the Phase 0 capture and `dev/eigen_p2s4_edges.R` on both;
+`dev/probe_p2s4_summary.R` reads the lines. The instrumented clones'
+captures are bitwise identical to `p2s3` and `p2s4`.
+
+- In the capture, 7 of the 71 cases reach `lobpcg_solve()`: 197 calls, 185
+  converged and 12 stopped at `maxiter`, asking for 3, 4 or 6 eigenpairs,
+  with 5734 QRs, 2410 triangular solves and 1402 dsyevd of order 6 to 18.
+  None of the three calls failed in either build, no QR dropped a column,
+  no solve took the dgelsd fallback (smallest condition estimate 2.0e-9),
+  and no first Rayleigh-Ritz was over `X` alone. So the capture takes none
+  of the failure branches this step touched, and its bitwise result says
+  nothing about them.
+- `dev/eigen_p2s4_edges.R` adds 60 cases, compared between the two clones
+  at tolerance 0. 20 of them inject nothing: LOBPCG with 12 to 41
+  eigenpairs on `xb` and chr21, samples and columns that are copies of each
+  other with more components than rank, and settings that stall LOBPCG or
+  stop it early. 17 of the 20 reach `lobpcg_solve()` (the exact control
+  does not, one fit converges inside the warm-up, and one input never
+  yields a seed): 628 calls in each build, which in the new one end
+  converged 530 times, at `maxiter` 31, stalled 33 and on the divergence
+  guard 34, with 18658 QRs, 7908 solves and 4600 dsyevd of order 2 to 123.
+  A QR dropped columns 36 times, all on chr21 at `ncp` 30, which takes the
+  branch that recomputes `A * Q`. None of the three calls failed, no solve
+  took the fallback, and no first Rayleigh-Ritz was over `X` alone; the
+  copies converge in every LOBPCG call they reach. So real input took none
+  of the failure branches either.
+- The other 40 make a call fail on its k-th use, through an environment
+  variable the instrumented clones read. A failed QR, 17 cases: while
+  seeding, the state is left unseeded and the next iteration is exact; at
+  the entry of `lobpcg_solve()`, the first Rayleigh-Ritz is over `X` alone
+  and that call runs to `maxiter`; on the residuals,
+  `LOBPCG_RESIDUAL_COLLAPSED`; on `P`, `LOBPCG_P_COLLAPSED`. A failed
+  dsyevd, 9 cases: `LOBPCG_INITIAL_RR_FAILED`
+  on the first, `LOBPCG_RR_FAILED` after. A triangle whose last pivot is set
+  to 0, 4 cases: the old build prints Armadillo's warning 4 times, the new
+  one reports `approx` 4 times, and all 4 solves then end `LOBPCG_STALLED`
+  and go to the exact solver. In all 30 the two builds end every
+  `lobpcg_solve()` call alike and return bitwise identical results. A
+  failed solve, 2 cases: both builds raise an R error, with the two
+  messages above.
+- NaN, which `si_la::syevd` refuses and the old call did not, 8 cases. In a
+  small Gram of order 8 to 12 the old dsyevd returned `info` of 7, 10 or 11,
+  so both builds fail that Rayleigh-Ritz and agree: 3 cases bitwise, and 2
+  with the NaN in the Gram itself, which the exact solver then refuses in
+  both with "top-k symmetric eigensolver failed to converge". At order 34
+  the old dsyevd returned `info = 0` and the builds part. With the NaN in
+  the small Gram only (2 cases), the old build ends in "solve(): solution
+  not found"; the new one fails that Rayleigh-Ritz, takes the exact solver
+  for the iteration and returns a finite result. With the NaN in the Gram
+  (1 case), the old `lobpcg_solve()` reports convergence after one
+  iteration, since `rn.max()` skips NaN, and `pca_imp()` stops later with
+  "the fit's mse is not finite"; the new one stops with "top-k symmetric
+  eigensolver failed to converge". No case without an injection puts NaN or
+  Inf in a Gram, in the capture or in the edges.
+
+What step 4 changes that the capture cannot see: the workspace dsyevd is
+given. `small_eig_desc()` kept the longest workspace so far on the state,
+and 1.2.0 does (READ at the tag); `si_la::syevd` gives each problem the
+length of its own query. `dev/pca_imp_structure.md`, "The two eigen
+wrappers against the chain's calls", has why the length matters: dsyevd's
+eigenvectors, not its eigenvalues, depend on it for orders 34 to 79
+(`dev/probe_p2s4_syevd_lwork.R`: 92 of 92 calls of those orders differ by
+up to 6.9e-16 when the workspace is that of a problem twice the order, 0 of
+186 at other orders, and the control with the same length is bitwise, 278
+of 278). The oracle's cases with a longer workspace are of order 30, 90 and
+200, on either side of that range, which is why it reports the pair as the
+same.
+
+- Through `pca_imp()` that is LOBPCG asked for 17 eigenpairs or more: `ncp`
+  16 when regularized, 17 with EM. Of the 9 edge cases with many
+  eigenpairs, 5 are not bitwise between the builds: `xb` at `ncp` 16 and 25,
+  `xb` with EM at 17, chr21 at 20 and 30. Every imputed cell of those
+  results differs and no other does. Worst over a result: 6.2e-8 absolute
+  and 1.0e-6 relative (`xb` at `ncp` 25, the relative figure over the
+  119634 of its 120000 cells that hold a nonzero value). The compare
+  script's own worst relative figure, 1.1e-4, is on the `criterion_final`
+  attribute. The fits take the same number of iterations in both builds,
+  while individual `lobpcg_solve()` calls end differently, so in 3 of the
+  5 the `n_exact`, `n_lobpcg_ok` and `n_lobpcg_bad` attributes differ. For
+  scale, on that input the exact solver and LOBPCG differ by 1.9e-7 and
+  3.4e-6 in the old build, and `threshold` is 1e-6. The 4 that stay
+  bitwise: `ncp` 11 on both inputs (12 eigenpairs: orders 34 to 36 occur,
+  but the longest workspace held is too short to change dormql's
+  blocking), `xb` at `ncp` 40, and the exact control.
+- It is the only difference between the builds. With
+  `SLIDEIMP_P2S4_FRESH` set, the old clone gives dsyevd the length of its
+  own query on every call and is otherwise the code of `eade032`: of its 60
+  edge cases against the new clone's, at tolerance 0, the 53 that return a
+  value in both builds are bitwise identical and 2 raise the same error in
+  both. The 5 that fail are the 2 failed solves and the 3 NaN cases at
+  order 34 above, which differ in the error raised and not in a value.
+  Without the variable 10 fail: those 5, and the 5 cases above.
+- Ruled (maintainer, 2026-11-18): the wrapper's length stays. The buffers
+  were kept to save an allocation, which the timing above does not show,
+  and their length was never chosen for its effect on the result; with the
+  length of each problem's own query the eigenvectors depend on the matrix
+  alone. So results for 17 eigenpairs or more move from step 3's, and from
+  1.2.0's, by the amounts above, and `dev/to-do.md` has a line for the NEWS
+  draft. Keeping step 3's bits would have taken a wrapper argument for the
+  workspace length and the largest order so far on the state, scaffolding
+  for Phase 4 to remove.
+
+Found on the way, and not changed:
+
+- The oracle never runs `si_la::syevd` against the old call at an order
+  between 34 and 79 with a longer workspace. With such a case its class
+  "same" would fail, by the measurement above. After the ruling, the cases
+  it does run with a longer workspace compare the wrapper with a call the
+  chain no longer makes.
+- `lobpcg_solve()` takes its largest residual norm with `rn.max()`, which
+  returns `-Inf` for a vector of NaN (READ: `op_max::direct_max()` compares
+  with `>` from the most negative value; NOT READ: that `Mat::max()`
+  reaches it, which the injected case measures), so a residual that is all
+  NaN passes the convergence test. Since this step no route to it is known: a
+  Gram or a small Gram holding NaN is refused at the Rayleigh-Ritz before
+  the loop.
+- For Phase 4, on the dgelsd fallback: no input here reached it without an
+  injection, in 2410 solves of the capture and 7908 of the edge cases
+  that inject nothing; the smallest condition estimate among them is
+  1.3e-14 (`xb` at `ncp` 40), against the `DBL_EPSILON` of 2.2e-16 that
+  triggers it. In the 4 cases that force it, every solve that took the
+  fallback then stalled.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.

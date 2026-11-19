@@ -62,6 +62,13 @@ Easy to miss in the diff, noted so the draft does not:
 - `pca_imp()` no longer writes past a buffer when asked for more components
   than the data has rank (1.2.0 does, in its dsyevr call:
   `dev/eigen_conversion.md`, "The review of the wrapper layer").
+- `pca_imp()` under LOBPCG with 17 or more eigenpairs (`ncp` of 16 or more
+  when regularized, 17 or more with `method = "EM"`) returns values that
+  differ from 1.2.0's by about 1e-8, inside what the fit's own `threshold`
+  resolves: dsyevd is given the workspace length of each problem, where
+  1.2.0 kept the longest so far (`dev/eigen_conversion.md`, Phase 2,
+  step 4). The `n_exact`, `n_lobpcg_ok` and `n_lobpcg_bad` attributes of
+  such a result can differ too.
 
 ## Parts for the other imputers
 

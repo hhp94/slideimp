@@ -27,10 +27,12 @@
 #include <RcppArmadillo.h>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <vector>
 
 #include "pca_linalg_utils.h"
+#include "si_lapack.h"
 
 struct LOBPCGOptions
 {
@@ -67,8 +69,6 @@ struct LOBPCGState
 {
   arma::mat X;
   arma::mat P;
-  std::vector<double> work;
-  std::vector<arma::blas_int> iwork;
 
   bool seeded() const
   {
@@ -80,6 +80,30 @@ struct LOBPCGState
 namespace lobpcg_detail
 {
 
+  // Whether a si_la status is a numerical failure of the factorization; false
+  // is success. A positive status is LAPACK's own info, and err_nonfinite is
+  // the wrapper refusing a matrix that holds NaN or Inf: each call site
+  // treats both as the factorization failing. The rest are not the matrix's
+  // doing, and stop: err_alloc is memory, and err_arg and err_size cannot
+  // come from a call here, since kernel setup refuses dimensions past int.
+  inline bool la_failed(const int status, const char *routine)
+  {
+    if (status == si_la::ok)
+    {
+      return false;
+    }
+    if (status > 0 || status == si_la::err_nonfinite)
+    {
+      return true;
+    }
+    if (status == si_la::err_alloc)
+    {
+      Rcpp::stop("lobpcg_solve: could not allocate the workspace of %s",
+                 routine);
+    }
+    Rcpp::stop("internal error: %s refused its arguments", routine);
+  }
+
   inline arma::uword qr_orthonormalize(arma::mat &V, double rel_tol,
                                        arma::mat *R_out = nullptr)
   {
@@ -87,8 +111,16 @@ namespace lobpcg_detail
     {
       return 0;
     }
-    arma::mat Q, R;
-    if (!arma::qr_econ(Q, R, V))
+    // si_la::qr_econ takes Q as v_rows x p and R as p x v_cols, and writes
+    // every cell of both.
+    const std::size_t v_rows = V.n_rows;
+    const std::size_t v_cols = V.n_cols;
+    const std::size_t p = std::min(v_rows, v_cols);
+    arma::mat Q(v_rows, p, arma::fill::none);
+    arma::mat R(p, v_cols, arma::fill::none);
+    if (la_failed(si_la::qr_econ(v_rows, v_cols, V.memptr(), Q.memptr(),
+                                 R.memptr()),
+                  "dgeqrf or dorgqr"))
     {
       V.reset();
       return 0;
@@ -188,8 +220,28 @@ namespace lobpcg_detail
 
     if (r == old_cols)
     {
-      // Q_old = Q_new * R, so A*Q_new = A*Q_old * inv(R).
-      AQ = arma::solve(arma::trimatl(R.t()), AQ.t()).t();
+      // Q_old = Q_new * R, so A*Q_new = A*Q_old * inv(R): solve R' Y = AQ'
+      // for Y = (A*Q_new)', with the two transposes written out.
+      if (AQ.n_cols != old_cols)
+      {
+        Rcpp::stop("internal error: A*Q and Q differ in columns");
+      }
+      const arma::mat Rt = R.t();
+      arma::mat Y = AQ.t();
+      // When R is singular to working precision si_la::solve_tri returns the
+      // minimum-norm least-squares solution and sets `approx`; the iteration
+      // goes on with it. dev/eigen_conversion.md, Phase 4, decides whether
+      // it should.
+      double rcond = 0.0;
+      bool approx = false;
+      if (la_failed(si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),
+                                     Y.memptr(), &rcond, &approx),
+                    "dtrtrs or dgelsd"))
+      {
+        // The least-squares fallback failed too, or met NaN or Inf.
+        Rcpp::stop("lobpcg_solve: triangular solve failed");
+      }
+      AQ = Y.t();
     }
     else
     {
@@ -200,11 +252,13 @@ namespace lobpcg_detail
     return true;
   }
 
-  inline bool small_eig_desc(arma::mat &M, arma::vec &w, arma::mat &Z,
-                             std::vector<double> &work_buf,
-                             std::vector<arma::blas_int> &iwork_buf)
+  // All eigenpairs of the small symmetric M, descending, by dsyevd through
+  // si_la::syevd. M is symmetrized and then destroyed. false when dsyevd
+  // fails or M holds NaN or Inf, which the wrapper refuses before LAPACK;
+  // the caller then reports a failed Rayleigh-Ritz.
+  inline bool small_eig_desc(arma::mat &M, arma::vec &w, arma::mat &Z)
   {
-    const arma::blas_int n = static_cast<arma::blas_int>(M.n_rows);
+    const std::size_t n = M.n_rows;
     if (n == 0)
     {
       w.reset();
@@ -213,33 +267,7 @@ namespace lobpcg_detail
     }
     M = 0.5 * (M + M.t());
     w.set_size(n);
-    arma::blas_int info = 0, lwork = -1, liwork = -1;
-    const char jobz = 'V', uplo = 'U';
-    double work_q = 0.0;
-    arma::blas_int iwork_q = 0;
-
-    arma::dsyevd_(&jobz, &uplo, &n, M.memptr(), &n, w.memptr(),
-                  &work_q, &lwork, &iwork_q, &liwork, &info, 1, 1);
-    if (info != 0)
-    {
-      return false;
-    }
-
-    if (work_buf.size() < static_cast<size_t>(work_q))
-    {
-      work_buf.resize(static_cast<size_t>(work_q));
-    }
-    if (iwork_buf.size() < static_cast<size_t>(iwork_q))
-    {
-      iwork_buf.resize(static_cast<size_t>(iwork_q));
-    }
-    lwork = static_cast<arma::blas_int>(work_buf.size());
-    liwork = static_cast<arma::blas_int>(iwork_buf.size());
-
-    arma::dsyevd_(&jobz, &uplo, &n, M.memptr(), &n, w.memptr(),
-                  work_buf.data(), &lwork, iwork_buf.data(), &liwork, &info,
-                  1, 1);
-    if (info != 0)
+    if (la_failed(si_la::syevd('U', n, M.memptr(), w.memptr()), "dsyevd"))
     {
       return false;
     }
@@ -275,9 +303,7 @@ namespace lobpcg_detail
   inline bool rr_two_block(arma::mat &X, arma::mat &AX,
                            const arma::mat &B, const arma::mat &AB,
                            const arma::uword k, arma::vec &lam,
-                           arma::mat &pp, arma::mat &app,
-                           std::vector<double> &work_buf,
-                           std::vector<arma::blas_int> &iwork_buf)
+                           arma::mat &pp, arma::mat &app)
   {
     arma::mat XAX = X.t() * AX;
     arma::mat XAB = X.t() * AB;
@@ -293,7 +319,7 @@ namespace lobpcg_detail
 
     arma::vec lam_s;
     arma::mat V_s;
-    if (!small_eig_desc(gramA, lam_s, V_s, work_buf, iwork_buf))
+    if (!small_eig_desc(gramA, lam_s, V_s))
     {
       return false;
     }
@@ -421,8 +447,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   // initial RR over the JOINT basis [X, P] (not span(X) alone)
   if (have_P)
   {
-    if (!rr_two_block(X, AX, P, AP, k, lam, rr_pp, rr_app,
-                      state.work, state.iwork))
+    if (!rr_two_block(X, AX, P, AP, k, lam, rr_pp, rr_app))
     {
       out.converged = false;
       out.status = LOBPCG_INITIAL_RR_FAILED;
@@ -436,7 +461,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     // no usable P this call; fall back to X-only initial RR.
     arma::mat XAX = X.t() * AX;
     arma::mat V;
-    if (!small_eig_desc(XAX, lam, V, state.work, state.iwork))
+    if (!small_eig_desc(XAX, lam, V))
     {
       out.converged = false;
       out.status = LOBPCG_INITIAL_RR_FAILED;
@@ -516,8 +541,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
     // if we have no P this iteration, do RR on [X, Ract] only.
     if (!have_P)
     {
-      if (!rr_two_block(X, AX, Ract, ARact, k, lam, rr_pp, rr_app,
-                        state.work, state.iwork))
+      if (!rr_two_block(X, AX, Ract, ARact, k, lam, rr_pp, rr_app))
       {
         out.status = LOBPCG_RR_FAILED;
         out.fail_iter = it;
@@ -592,7 +616,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
 
     arma::vec lam_s;
     arma::mat V_s;
-    if (!small_eig_desc(gramA, lam_s, V_s, state.work, state.iwork))
+    if (!small_eig_desc(gramA, lam_s, V_s))
     {
       out.status = LOBPCG_RR_FAILED;
       out.fail_iter = it;

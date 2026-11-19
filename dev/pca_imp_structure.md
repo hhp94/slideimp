@@ -431,12 +431,33 @@ after QR, `P` collapse, and `LOBPCG_RR_FAILED` when
 periodically recomputes `AX`/`AP` from scratch to shed accumulated
 rounding. State is committed only on success (`src/lobpcg_warm.h`: `if (out.converged)`).
 Small Rayleigh-Ritz problems go
-through `small_eig_desc()`, which calls `dsyevd_` twice (query, then solve)
-with buffers cached on the `LOBPCGState`. Warm-start construction is two entry
+through `small_eig_desc()`, which symmetrizes the projected Gram and calls
+`si_la::syevd`; the wrapper asks dsyevd for its workspace and allocates it on
+every call, so the `LOBPCGState` holds `X` and `P` and nothing else.
+Warm-start construction is two entry
 points over one helper, `build_momentum_P()`, which forms
 `P = X_prev - X_curr (X_curr' X_prev)`: `seed_lobpcg_state()` after an exact
 solve, with no norm floor; `refresh_momentum_P()` after a LOBPCG success, with
 a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
+
+**Where a factorization can fail on the LOBPCG path.** Three calls return a
+`si_la` status, and `la_failed()` (`src/lobpcg_warm.h`: `inline bool la_failed(`)
+sorts it for all three. A positive status, which is LAPACK's `info`, and
+`err_nonfinite` are numerical failures and take the path below. `err_alloc`
+stops with "could not allocate the workspace", and `err_arg` and `err_size`,
+which no call here can produce once kernel setup has refused dimensions past
+`int`, stop with "internal error". Per site:
+
+| site | call | a numerical failure leads to |
+| --- | --- | --- |
+| `qr_orthonormalize()` | `si_la::qr_econ` | `V` reset and a rank of 0, the same as a block whose first pivot is 0. The caller decides: at entry, `have_P` is false and the first Rayleigh-Ritz is over `X` alone; on the active residuals, `LOBPCG_RESIDUAL_COLLAPSED`; on `P_active`, `LOBPCG_P_COLLAPSED`; in `build_momentum_P()`, no `P`, so the state is left unseeded after an exact solve, or the post-RR `P` is kept after a LOBPCG success |
+| `qr_orthonormalize_update_matvec()` | `si_la::solve_tri` | an R error (`src/lobpcg_warm.h`: `Rcpp::stop("lobpcg_solve: triangular solve failed");`), which ends `pca_imp()`. A triangle that is singular to working precision is not a failure: the wrapper returns the least-squares solution with `approx` set, and the iteration goes on with it |
+| `small_eig_desc()` | `si_la::syevd` | false. From `rr_two_block()` or the `X`-only form before the loop, `LOBPCG_INITIAL_RR_FAILED`; inside the loop, `LOBPCG_RR_FAILED` |
+
+Every `LOBPCG_*` status but `LOBPCG_CONVERGED` leaves the state untouched and
+sends `hybrid_topk_eig_impl()` to the exact solver on the same Gram, as above.
+"What the wrappers reproduce" has what each call did before it moved to its
+wrapper, and what was measured.
 
 **Where BLAS/LAPACK is entered.**
 
@@ -447,8 +468,10 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 | dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`) |
 | `dgemm_` | `reconstruct_cols()` (`src/armaSVD.cpp`) | `reconstruct_cols`, strided column block |
 | dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
-| `dsyevd_` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz |
-| Armadillo | `qr_econ`, `solve`, `A * X` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization and matvecs |
+| dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
+| dgeqrf and dorgqr, through `si_la::qr_econ` | `qr_orthonormalize()` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization |
+| dtrtrs and dtrcon, and dgelsd as the fallback, through `si_la::solve_tri` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
+| Armadillo | `A * X` and the other products (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
 
 The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` problem. The
 LOBPCG path never touches `n_gram`-sized LAPACK: its dense work is `n_gram x k` matvecs and
@@ -458,10 +481,12 @@ QRs plus a `3k x 3k` dsyevd.
 
 `src/si_lapack.h` declares, and `src/si_lapack.cpp` defines, R's BLAS and LAPACK as plain
 functions over `double*`, dimensions and an int status. So far `src/pca_linalg_utils.h` calls
-`si_la::gemm`, `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, and `src/eig_sym_sel.h`
-calls `si_la::syevr_range`; the table above says how each site enters BLAS and LAPACK. Each
-wrapper stands in for one
-call the chain makes today, and this section records what that call does, so that a call
+`si_la::gemm`, `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, `src/eig_sym_sel.h`
+calls `si_la::syevr_range`, and `src/lobpcg_warm.h` calls `si_la::qr_econ`,
+`si_la::solve_tri` and `si_la::syevd`; the table above says how each site enters BLAS and
+LAPACK. Each wrapper stands in for one
+call the chain makes, or made until its file was converted, and this section records what
+that call does, so that a call
 site can be moved to its wrapper without reading Armadillo again.
 
 READ means read in `armadillo_bits` of the installed RcppArmadillo, version 15.6.2-1
@@ -483,7 +508,7 @@ one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
 | `si_la::syrk` | `arma::dsyrk_`, called directly | dsyrk, every argument passed through | BLAS has no status |
 | `si_la::matmul` | `*`, `+=` and `-=` of a product of two `arma::mat` | dgemv or dgemm (below) | Armadillo throws on dimensions that do not conform |
 | `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declared itself until it moved to this wrapper | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or another number of eigenpairs than asked; no test for NaN or Inf (the wrapper has one, below) |
-| `si_la::syevd` | `arma::dsyevd_`, called directly | dsyevd, `jobz = 'V'` | `info != 0`; no test for NaN or Inf (the wrapper has one, below) |
+| `si_la::syevd` | `arma::dsyevd_`, which `small_eig_desc()` called directly until it moved to this wrapper | dsyevd, `jobz = 'V'` | `info != 0`; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::qr_econ` | `arma::qr_econ()` | dgeqrf, then dorgqr | returns false, `Q` and `R` reset |
 | `si_la::solve_tri` | `arma::solve()` on `trimatl()` or `trimatu()` | dtrtrs, dtrcon, and dgelsd as the fallback | throws `std::runtime_error` |
 | `si_la::svd_values` | `arma::svd()` returning the values alone | dgesdd, `jobz = 'N'` | throws `std::runtime_error` |
@@ -498,8 +523,8 @@ Inf; it asks dsyevd for its workspace only from order 32 up, uses the larger of 
 and `1 + 6 n + 2 n^2` and `3 + 5 n` computed in `blas_int`, and returns `info == 0`).
 
 **The two eigen wrappers against the chain's calls.** Each enters the same routine with
-the same options as the call it stands in for, and differs from it in two places, both on
-purpose:
+the same options as the call it stands in for, and differs from it in three places. The
+first two are on purpose; the third was found when the dsyevd call moved:
 
 - *The eigenvalue buffer of dsyevr.* LAPACK documents `W` as `n` cells whatever the range.
   For a proper subset dsyevr goes through dstebz, which stores every eigenvalue its search
@@ -511,8 +536,8 @@ purpose:
   copies of each other, holes included, or columns that are. `si_la::syevr_range` holds the
   `n` cells itself and copies `iu - il + 1` out, so its caller's buffer needs no more, and
   `eig_sym_sel()` now calls it.
-- *NaN and Inf.* Neither of the chain's own calls tested its matrix (the dsyevd call in
-  `src/lobpcg_warm.h` still does not), and LAPACK does not refuse such input. Measured on one machine with R's own LAPACK: dsyevr asked for every eigenpair
+- *NaN and Inf.* Neither of the chain's own calls tested its matrix, and LAPACK does not
+  refuse such input. Measured on one machine with R's own LAPACK: dsyevr asked for every eigenpair
   of a matrix holding NaN does not return, a proper subset comes back with `info = 0` and
   another number of eigenpairs than asked, and dsyevd can return `info = 0` with NaN
   eigenvalues. Both wrappers test the triangle LAPACK reads, and only that one, before
@@ -520,12 +545,43 @@ purpose:
   its input (`R/pca_imp.R`: `check_finite(obj)`), so only arithmetic inside the fit could
   put one in a Gram; whether any input does is NOT MEASURED. On the exact path such a Gram
   is now the stop of a failed eigensolve (Layer 6, "Exact path"), where the chain's own
-  call either reported a wrong count, the same stop, or did not return.
+  call either reported a wrong count, the same stop, or did not return. On the LOBPCG
+  path a small Gram holding NaN or Inf is a failed Rayleigh-Ritz, so that outer iteration
+  goes to the exact solver. The chain's own dsyevd call did one of three things with it,
+  measured by writing a NaN into the matrix (`dev/eigen_conversion.md`, Phase 2, step 4):
+  at orders 8 to 12 dsyevd returned `info > 0`, the same failed Rayleigh-Ritz; at order 34
+  it returned `info = 0` and the NaN went on, to end either in the error of a failed
+  triangular solve or, when the Gram itself held the NaN, in `lobpcg_solve()` reporting
+  convergence, because the largest residual norm is taken with a `>` that NaN never
+  passes (`src/lobpcg_warm.h`: `const double max_res = rn.max();`).
+- *The workspace of dsyevd.* Until it moved to the wrapper, `small_eig_desc()` kept its
+  dsyevd workspace on the `LOBPCGState` and only ever lengthened it, so a Rayleigh-Ritz
+  problem that followed a larger one was solved with the larger one's workspace.
+  `si_la::syevd` gives dsyevd the length of its own query on every call. The length is
+  not neutral. READ, in LAPACK 3.12.0 (`dsyevd.f`, `dormql.f`, fetched from the reference
+  repository, not from R's sources): dsyevd keeps `1 + 2 n + n^2` cells and hands the
+  rest to dormtr, which is dormql for `uplo = 'U'`; dormql applies the reflectors in
+  blocks only when its block size is below `n - 1` and that remainder holds its `T`
+  array of 4160 cells and at least two columns a block, and otherwise one at a time. At
+  the queried length, `1 + 6 n + 2 n^2`, the remainder is `n^2 + 4 n + 1`. With a block
+  size of 32 (NOT READ: ilaenv; it is the value the measured boundaries give) that makes
+  the eigenvectors depend on the length for orders 34 to 79 and for no other. Measured,
+  `dev/probe_p2s4_syevd_lwork.R`, orders 2 to 140: with the workspace of a problem 1.5,
+  2 or 3 times the order, every call of order 34 to 79 differs from the wrapper's and no
+  other does; with that of the order plus one, orders 62 to 79; the eigenvalues never
+  differ, and the eigenvectors by at most 6.9e-16. The oracle runs the pair with a
+  longer workspace only at orders 30, 90 and 200, on either side of that range, and so
+  reports them the same. In `pca_imp()` the first Rayleigh-Ritz of every `lobpcg_solve()`
+  call after a state's first is of order `2 k` with the workspace of order `3 k` held, so
+  the two differ from 17 eigenpairs up, which is `ncp` 16 when regularized
+  (`14 k^2 + 10 k >= 4159`). LOBPCG iterates on the difference: step 4 has what it does
+  to the result.
 
 `dev/eigen_conversion.md`, "The review of the wrapper layer", has the measurements behind
-both.
+the first two, and Phase 2, step 4, those behind the third.
 
-**`arma::qr_econ(Q, R, X)`** (`src/lobpcg_warm.h`: `if (!arma::qr_econ(Q, R, V))`). READ:
+**`arma::qr_econ(Q, R, X)`**, which `qr_orthonormalize()` called until it moved to the
+wrapper (`src/lobpcg_warm.h`: `if (la_failed(si_la::qr_econ(v_rows, v_cols, V.memptr(), Q.memptr(),`). READ:
 `fn_qr.hpp`, `auxlib::qr_econ()`, `auxlib::qr()`. For `m > n` it copies `X` into `Q`, runs
 dgeqrf there, copies the upper triangle into an `n x n` `R`, zero below, and runs dorgqr on
 `Q` with `k = n`. For `m <= n`, square included, it hands over to the full `qr()`: dgeqrf
@@ -535,10 +591,18 @@ diagonal, dorgqr with `k = m`. Both are dgeqrf on the `m x n` matrix and dorgqr 
 routines: dgeqrf is asked for its optimum, the answer is raised to `max(1, m, n)`, and
 dorgqr is not asked. An empty `X` succeeds without LAPACK. Nothing checks for NaN or Inf.
 On `info != 0` from either routine `auxlib` returns false; `qr_econ()` then resets `Q` and
-`R`, warns at level 3, which is dropped, and returns false. The caller tests that flag.
+`R`, warns at level 3, which is dropped, and returns false. The caller tested that flag,
+and now tests the wrapper's status the same way (Layer 6, "Where a factorization can fail
+on the LOBPCG path"). A dimension past `blas_int` was an exception from Armadillo, so an
+R error and not the flag (READ: `arma_assert_blas_size()`, called in `auxlib::qr_econ()`
+before LAPACK, throws `std::runtime_error`), and so was a failed allocation (READ:
+`arma_stop_bad_alloc()` throws `std::bad_alloc`; NOT READ: that every allocation of the
+call reaches it). The wrapper returns them as `err_size` and `err_alloc`, and the call
+site stops on both.
 
-**`arma::solve(arma::trimatl(A), B)`**
-(`src/lobpcg_warm.h`: `AQ = arma::solve(arma::trimatl(R.t()), AQ.t()).t();`). READ:
+**`arma::solve(arma::trimatl(A), B)`**, which `qr_orthonormalize_update_matvec()` called as
+`AQ = arma::solve(arma::trimatl(R.t()), AQ.t()).t()` until it moved to the wrapper
+(`src/lobpcg_warm.h`: `if (la_failed(si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),`). READ:
 `fn_solve.hpp`, `glue_solve_tri_default::apply()`, `auxlib::solve_trimat_rcond()`,
 `auxlib::rcond_trimat()`, `auxlib::solve_approx_svd()`. It is not a plain triangular
 solve:
@@ -556,11 +620,19 @@ solve:
 4. If the fallback fails too, `solve()` throws `std::runtime_error`, "solve(): solution not
    found", which Rcpp turns into an R error.
 
-So this call site goes on with an approximate `AQ` whenever `R` is singular to working
+So this call site went on with an approximate `AQ` whenever `R` was singular to working
 precision, having printed a line and raised nothing. `si_la::solve_tri` does the same
 arithmetic and returns the estimate and a flag in place of the print. For an empty system
 Armadillo's estimate stays 0, so it prints the warning and returns the empty result; the
 wrapper returns the empty result with the flag unset.
+
+The call site now writes the two transposes out, as the oracle's `pair_solve_chain` does
+(READ: `glue_solve_tri_default::apply()` evaluates the triangle's expression into a matrix
+with `quasi_unwrap` before dtrtrs, so `R.t()` was formed there too), ignores the flag, and
+so goes on with the approximate `AQ` as before, without the printed line. A non-zero
+status, which is the fallback failing or meeting NaN or Inf, is an R error, as Armadillo's
+throw in item 4 was, in the chain's own words and as an `Rcpp::exception` where
+Armadillo's was a `std::runtime_error`.
 
 **`arma::svd(X)`** (`src/armaSVD.cpp`: `arma::vec s = arma::svd(V_prev.t() * V_new);`),
 in the `PCA_IMP_DIAGNOSTICS` build only. READ: `fn_svd.hpp`, `auxlib::svd_dc()`. dgesdd with
@@ -631,8 +703,8 @@ and ddot above (READ: `op_dot::direct_dot()`; NOT READ: that the `head()` views 
   (`src/eig_sym_sel.h`: `destroys A: dsyevr overwrites`),
   and the LOBPCG path mirrors its upper triangle down first
   (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A.memptr()`).
-- `HybridEigContext` carries state across outer iterations: `lobpcg_state` (including its
-  dsyevd `work`/`iwork` buffers), `X_prev`, `auto_choice`, the auto counters and timing sums,
+- `HybridEigContext` carries state across outer iterations: `lobpcg_state` (`X` and `P`),
+  `X_prev`, `auto_choice`, the auto counters and timing sums,
   and `n_exact`/`n_lobpcg_ok`/`n_lobpcg_bad` (`src/hybrid_topk_eig.h`: `LOBPCGState lobpcg_state;`).
   When auto picks
   exact, only `lobpcg_state.X`, `lobpcg_state.P` and `X_prev` are reset.
