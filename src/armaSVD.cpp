@@ -913,7 +913,13 @@ Rcpp::List pca_imp_internal_cpp(
   // has written since pass2_scan. The tall case returns V complete.
   if (!tall)
   {
-    pca_detail::gemm_tn_block(Xhat, 0, n_fixed, Vn, V);
+    const int st = pca_detail::gemm_tn_block(
+        Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed, Vn.memptr(),
+        Vn.n_rows, Vn.n_cols, V.memptr());
+    if (st != si_la::ok)
+    {
+      Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
+    }
   }
   reconstruct_cols(U, V, fittedX, 0, n_fixed);
   const double *fxp = fittedX.memptr();

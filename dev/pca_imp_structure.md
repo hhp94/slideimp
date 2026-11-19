@@ -37,7 +37,7 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |                   |    +- hybrid_topk_eig()        src/hybrid_topk_eig.h
   |                   |    |    +- lobpcg_solve()      src/lobpcg_warm.h -> dsyevd_
   |                   |    |    +- eig_sym_sel()       src/eig_sym_sel.h -> dsyevr_
-  |                   |    +- gemm_nn/gemm_tn_block()  src/pca_linalg_utils.h -> dgemm_
+  |                   |    +- gemm_nn/gemm_tn_block()  src/pca_linalg_utils.h -> si_la::gemm
   |                   +- reconstruct_cols()            src/armaSVD.cpp -> dgemm_
   |                   +- missing_weighted_residual_ss()  src/armaSVD.cpp
   |                   +- convergence test
@@ -61,13 +61,13 @@ R/pca_imp.R                pca_imp()                       user-facing entry
             +- R/mi_pca_s3.R   .si_mi_chunk(), .si_mi_new(), .si_mi_join()
 ```
 
-C++ files in the chain: 3 translation units (`src/armaSVD.cpp`, `src/RcppExports.cpp`,
-`src/mat_stats.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`, `eig_sym_sel.h`,
-`hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `matrix_checks.h`,
-`loc_timer.h`). Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
-`impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`, and
-`si_lapack.cpp/.h`, the wrapper layer no file of the chain includes yet ("What the
-wrappers reproduce").
+C++ files in the chain: 4 translation units (`src/armaSVD.cpp`, `src/RcppExports.cpp`,
+`src/mat_stats.cpp`, `src/si_lapack.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`,
+`eig_sym_sel.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `si_lapack.h`,
+`matrix_checks.h`, `loc_timer.h`). `si_lapack.cpp/.h` is the wrapper layer ("What the
+wrappers reproduce"); `pca_linalg_utils.h` is so far the only file of the chain that includes
+it. Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
+`impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
 
 ## Layer 1: R entry point (`R/pca_imp.R`)
 
@@ -302,7 +302,7 @@ iteration 1, every `trace_iter` iterations, and on the last; print precision is
 restored by the `PrecGuard` RAII struct.
 
 **Postprocessing** (`src/armaSVD.cpp`: `LOC_TIC(pca_imp_gram, "postprocessing")`): in the wide
-case `gemm_tn_block(Xhat, 0, n_fixed, Vn, V)` first fills the fixed rows of `V` that
+case `gemm_tn_block()` over columns `0 .. n_fixed-1` of `Xhat` first fills the fixed rows of `V` that
 `SVD_triplet()` leaves unwritten, from the
 last iteration's `Vn` and the fixed columns of `Xhat`, which nothing writes after
 `pass2_scan`; the tall case returns `V` complete. `reconstruct_cols(U, V, fittedX, 0, n_fixed)`
@@ -331,14 +331,18 @@ It builds the
 weighted Gram into `AA_NxN` via `form_weighted_gram()`, takes
 `trace_val = arma::trace(AA_NxN)` for the tail energy, calls `hybrid_topk_eig()`
 (failure being an `Rcpp::stop`), converts eigenvalues to singular values and
-inverses with a `PCA_TOL` floor, and recovers the other factor with one `dgemm_`
-(`src/svd_triplet.h`: `LOC_TIC(timer, "recover_factors")`): tall gives eigenvectors as `V`
-and `U = X_work * Vn` (`gemm_nn`); wide
-gives them as `U` and forms only the changing rows of `V`,
-`V[n_fixed.., ] = Xhat[, n_fixed..]' * Vn`, as one strided-block `dgemm_` in
-`gemm_tn_block()` (`src/pca_linalg_utils.h`: `inline void gemm_tn_block(`), reading `n_fixed`
+inverses with a `PCA_TOL` floor, and recovers the other factor with one dgemm
+through `si_la::gemm` (`src/svd_triplet.h`: `LOC_TIC(timer, "recover_factors")`): tall gives
+eigenvectors as `V` and `U = X_work * Vn` (`gemm_nn`, dgemm whatever the shape, never dgemv);
+wide gives them as `U` and forms only the changing rows of `V`,
+`V[n_fixed.., ] = Xhat[, n_fixed..]' * Vn`, as one strided-block dgemm in
+`gemm_tn_block()` (`src/pca_linalg_utils.h`: `inline int gemm_tn_block(`), reading `n_fixed`
 from the
-Gram cache the way `form_weighted_gram()` does. `V` is sized once (`set_size`
+Gram cache the way `form_weighted_gram()` does. Both helpers take raw buffers and their
+dimensions, refuse operands whose dimensions do not fit, and return the wrapper's status; a
+non-zero one is an `Rcpp::stop` at the call site
+(`src/svd_triplet.h`: `const int st = pca_detail::gemm_nn(`). Every dimension is checked
+against the `int` range at kernel setup, so that error is not expected to be reachable. `V` is sized once (`set_size`
 with unchanged dimensions does not reallocate) and its fixed rows stay unwritten
 until postprocessing fills them from the same `Vn` (Layer 4). `split_eigvec_block()`
 writes the plain and `d_inv`-scaled copies in a single pass.
@@ -354,7 +358,7 @@ writes the plain and `d_inv`-scaled copies in a single pass.
 
 Only the upper triangle is written, matching dsyevr's `uplo = 'U'`
 (`src/eig_sym_sel.h`: `PEIG_UPLO = 'U'`). The
-LOBPCG path mirrors it down first (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A)`).
+LOBPCG path mirrors it down first (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A.memptr()`).
 
 ## Layer 6: the eigensolver
 
@@ -430,7 +434,7 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 | --- | --- | --- |
 | `dsyrk_` | `syrk_upper()`, `form_weighted_gram()` (`src/gram_ops.h`) | Gram formation |
 | `dgemm_` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
-| `dgemm_` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `gemm_tn_block(Xhat, 0, n_fixed, Vn, V)`) |
+| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`) |
 | `dgemm_` | `reconstruct_cols()` (`src/armaSVD.cpp`) | `reconstruct_cols`, strided column block |
 | `dsyevr_` | `EigSymWorkspace::init()`, `eig_sym_sel()` (`src/eig_sym_sel.h`) | workspace query, exact top-k eigen |
 | `dsyevd_` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz |
@@ -443,8 +447,9 @@ QRs plus a `3k x 3k` dsyevd.
 ## What the wrappers reproduce
 
 `src/si_lapack.h` declares, and `src/si_lapack.cpp` defines, R's BLAS and LAPACK as plain
-functions over `double*`, dimensions and an int status. No file of the chain calls one yet;
-the table above is still how BLAS and LAPACK are entered. Each wrapper stands in for one
+functions over `double*`, dimensions and an int status. So far only `src/pca_linalg_utils.h`
+calls one, `si_la::gemm`; the table above says how each site enters BLAS and LAPACK. Each
+wrapper stands in for one
 call the chain makes today, and this section records what that call does, so that a call
 site can be moved to its wrapper without reading Armadillo again.
 
@@ -611,7 +616,7 @@ and ddot above (READ: `op_dot::direct_dot()`; NOT READ: that the `head()` views 
 - `AA_NxN` is destroyed by every eigen call: dsyevr overwrites it
   (`src/eig_sym_sel.h`: `destroys A: dsyevr overwrites`),
   and the LOBPCG path mirrors its upper triangle down first
-  (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A)`).
+  (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A.memptr()`).
 - `HybridEigContext` carries state across outer iterations: `lobpcg_state` (including its
   dsyevd `work`/`iwork` buffers), `X_prev`, `auto_choice`, the auto counters and timing sums,
   and `n_exact`/`n_lobpcg_ok`/`n_lobpcg_bad` (`src/hybrid_topk_eig.h`: `LOBPCGState lobpcg_state;`).
@@ -620,7 +625,7 @@ and ddot above (READ: `op_dot::direct_dot()`; NOT READ: that the `head()` views 
 - `V` is sized once by `SVD_triplet()` (`src/svd_triplet.h`: `V.set_size(Xhat.n_cols, ncp);`).
   In the wide case its rows
   `0 .. n_fixed-1` hold whatever the allocation held until postprocessing writes them
-  (`src/armaSVD.cpp`: `gemm_tn_block(Xhat, 0, n_fixed, Vn, V)`); nothing reads them inside the
+  (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`); nothing reads them inside the
   loop. `Vn` is written only by
   `split_eigvec_block()` (`src/svd_triplet.h`: `Vn.set_size(n, ncp);`) and read only by the
   factor-recovery

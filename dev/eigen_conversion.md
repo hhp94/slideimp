@@ -844,6 +844,46 @@ iterates, so a last-bit difference early can move the converged answer by
 more than one ulp; if a step moves results by more than the noise floor,
 find out which call did it before going on.
 
+Step 1, on the working tree over `59920f4`:
+
+- `src/pca_linalg_utils.h` includes `src/si_lapack.h`, `<cmath>` and
+  `<cstddef>`, nothing of Armadillo or R. Every helper takes raw buffers and
+  `std::size_t` dimensions; the callers in `src/svd_triplet.h`,
+  `src/armaSVD.cpp`, `src/hybrid_topk_eig.h`, `src/eig_sym_sel.h` and
+  `src/lobpcg_warm.h` pass `memptr()` and the dimensions of their
+  `arma::mat`, which they keep until their own step.
+- `gemm_nn()` and `gemm_tn_block()` call `si_la::gemm` with the arguments
+  they passed to `arma::dgemm_`: the same routine, transposes, leading
+  dimensions and offsets. Not `si_la::matmul`, which would send the
+  one-column product of `ncp = 1` to dgemv. `gemm_nn()` no longer sizes its
+  output: `src/svd_triplet.h` calls `U.set_size()` with the dimensions it
+  had. `gemm_tn_block()` takes C as `a_cols x b_cols`, so its leading
+  dimension is `a_cols` where it was `C.n_rows`; both callers size `V` as
+  `Xhat.n_cols x ncp`, so the two are equal.
+- Both return the wrapper's status, `[[nodiscard]]`, and refuse operands
+  whose dimensions do not fit (`err_arg`); a non-zero status is an
+  `Rcpp::stop()` at each of the three call sites, "internal error: dgemm
+  refused its arguments". `arma::blas_int` narrowed a dimension silently.
+  Kernel setup refuses dimensions past the `int` range first, so the error
+  is not expected to be reachable, and no test raises it.
+- `canonicalize_signs()` returns at once on zero rows, where it read
+  `col[0]` of an empty column. Not reachable: `ncp + 1 <= min(n_rows,
+  n_eligible_cols)` is checked at setup.
+- Captures, each with the capture script of its own commit except
+  `76d4c60`, retaken here with the script as of `ad45ec5` as Phase 0 took
+  it: `76d4c60` (75 cases) and `59920f4` (71), in worktrees of those commits,
+  and `p2s1` on this step. `p2s1` against `59920f4` at tolerance 0: 71
+  cases, none failed, every one bitwise. Against `76d4c60` at the defaults:
+  the 7 deliberate failures of Phase 1, everything else bitwise. Read
+  2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo 15.6.2-1.
+- The step adds no Eigen, so the plan does not ask for the candidate; it
+  was run anyway, being cheap. Capture `p2s1-eigen5`, the same source built
+  against RcppEigen 0.4.9.9-5 (Eigen 5.0.1) in a private library: 71 cases,
+  every one bitwise identical to `p2s1`.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading the step installed into a private library: 22
+  files, 276 tests, none failed, errored or skipped.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.

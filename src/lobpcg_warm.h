@@ -625,7 +625,7 @@ inline LOBPCGResult lobpcg_solve(const arma::mat &A,
   if (out.converged)
   {
     out.status = LOBPCG_CONVERGED;
-    pca_detail::canonicalize_signs(X);
+    pca_detail::canonicalize_signs(X.memptr(), X.n_rows, X.n_cols);
     state.X = std::move(X);
     state.P = std::move(P);
   }

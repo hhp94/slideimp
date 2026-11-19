@@ -379,7 +379,7 @@ inline bool hybrid_topk_eig_impl(arma::vec &eigvals,
   {
     attempted_lobpcg = true;
 
-    pca_detail::mirror_upper_to_lower(A);
+    pca_detail::mirror_upper_to_lower(A.memptr(), A.n_rows);
 
     lob_res = lobpcg_solve(A, ctx.lobpcg_state, ctx.lobpcg_opt);
 

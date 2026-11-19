@@ -172,7 +172,8 @@ inline bool eig_sym_sel(arma::vec &eigvals,
     }
   }
 
-  pca_detail::canonicalize_signs(eigvecs);
+  pca_detail::canonicalize_signs(eigvecs.memptr(), eigvecs.n_rows,
+                                 eigvecs.n_cols);
   return true;
 }
 

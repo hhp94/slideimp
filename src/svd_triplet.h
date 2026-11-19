@@ -118,7 +118,14 @@ inline void SVD_triplet(const arma::mat &Xhat,
   if (tall)
   {
     split_eigvec_block(eigvecs, V, Vn, d_inv, nullptr, ncp);
-    pca_detail::gemm_nn(X_work, Vn, U);
+    U.set_size(X_work.n_rows, Vn.n_cols);
+    const int st = pca_detail::gemm_nn(X_work.memptr(), X_work.n_rows,
+                                       X_work.n_cols, Vn.memptr(), Vn.n_rows,
+                                       Vn.n_cols, U.memptr());
+    if (st != si_la::ok)
+    {
+      Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
+    }
   }
   else
   {
@@ -130,7 +137,13 @@ inline void SVD_triplet(const arma::mat &Xhat,
     // reallocate, so the rows written earlier stay where they are.
     const arma::uword n_fixed = gram_cache.n_fixed;
     V.set_size(Xhat.n_cols, ncp);
-    pca_detail::gemm_tn_block(Xhat, n_fixed, Xhat.n_cols - n_fixed, Vn, V);
+    const int st = pca_detail::gemm_tn_block(
+        Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, n_fixed,
+        Xhat.n_cols - n_fixed, Vn.memptr(), Vn.n_rows, Vn.n_cols, V.memptr());
+    if (st != si_la::ok)
+    {
+      Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
+    }
   }
   LOC_TOC(timer, "recover_factors");
 }
