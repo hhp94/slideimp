@@ -214,7 +214,7 @@ dsyevr solves by another routine, hangs in four and returns success with
 NaN in one. A hang inside LAPACK cannot be interrupted from R.
 
 The chain can ask for the full range: `k` is `ncp + 1` when regularized
-(`src/armaSVD.cpp`: `const arma::uword k = regularized ? ncp + 1 : ncp;`)
+(`src/armaSVD.cpp`: `const std::size_t k = regularized ? n_cp + 1 : n_cp;`)
 and `ncp` may be as large as the eligible column count less one
 (`R/pca_imp.R`: `max_ncp_cols <- n_elig - 1L`), so `k` can equal the order
 of the Gram. READ, not run. Whether a NaN can reach the Gram in

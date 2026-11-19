@@ -262,7 +262,10 @@ the oracle's and the self-test's counts below are the ones of that commit:
   as it sums; the block is a projection of orthonormal vectors, so a plain
   sum of squares cannot overflow, and the value only feeds a threshold
   test. Armadillo's infinity norm calls no BLAS (READ). A difference shows
-  in the reference capture at its tolerance.
+  in the reference capture at its tolerance. For the dot of the top
+  singular values a plain loop did show there, so step 6 of Phase 2 keeps
+  the order of Armadillo's own loop, by a later ruling recorded with that
+  step; no wrapper, as ruled here.
 - Where a wrapper is not Armadillo's call, each recorded in
   `dev/pca_imp_structure.md`: products of square operands up to 4 x 4 go
   to BLAS, where Armadillo runs loops of its own; `A.t() * A` on one object
@@ -1406,15 +1409,211 @@ LAPACK 3.12.0:
   check of `.claude/CLAUDE.md` names only `.github/workflows/pkgdown.yaml`,
   as in step 4.
 
+Step 6, on the working tree over `8c15416`. One session did both shares of
+"Who does which work": the file's one call that can fail is in its
+diagnostics build, and the rest is the substitution around it.
+
+- `src/armaSVD.cpp` includes `Rcpp.h`, `src/svd_triplet.h`,
+  `src/matrix_checks.h` and the standard library, nothing of Armadillo. No
+  file under `src/` uses Armadillo now; `src/RcppExports.cpp`, generated,
+  still includes `RcppArmadillo.h`, since `DESCRIPTION` links to it until
+  Phase 3. `arma_uword_bytes()`, its comment and the test in
+  `tests/testthat/test-mat_miss.R` that pinned `-DARMA_64BIT_WORD=1` are
+  deleted, as Phase 3 asked of whichever step came first.
+- The export, under the type rules. `pca_imp_internal_cpp()` takes `obj` as
+  a `const Rcpp::NumericMatrix &`, read in place; `eligible_idx` as an
+  integer vector of 0-based columns; `ncp`, `init`, `maxiter`, `miniter`,
+  `warmup_iters`, `lobpcg_maxiter` and `trace_iter` as `int`; `row_w` as a
+  `const Rcpp::NumericVector &`, copied once into the vector the kernel
+  normalizes. `pca_imp()` converts `ncp`, `maxiter` and `miniter` at the
+  call, since `checkmate::assert_int()` leaves their type alone and their
+  defaults are doubles; the others it already holds as integers. It
+  returns the imputed cells as `loc`, an integer matrix with columns `row`
+  and `col`, 1-based in `obj`, and `value`, a double vector, where it
+  returned `imputed_values`, an n x 3 double matrix holding the indices as
+  doubles: the form `impute_knn_brute()` took in Phase 1. `pca_imp()` hands
+  both to `new_part()` as they are; its `cbind()` and `as.integer()` of the
+  two index columns go, and `clamp` is applied to `value`. The diagnostics
+  build returns `obj_hist` and `subspace_cos_hist` as vectors, where
+  Armadillo's `vec` came back as an n x 1 matrix.
+- Ruled (maintainer, 2026-11-18, during the step): `n_iter` is an integer,
+  in the kernel and in what `pca_imp()` returns, and so is any other count
+  that should be one. The `n_iter` attribute of the matrix output, and
+  `info$n_iter` and `prov$iter` of the `mipca` output, were doubles holding
+  a whole number; `pca_imp_info()` defaults it to `0L`, and three tests that
+  pinned `0` pin `0L`. No other count crossed as a double: `n_exact`,
+  `n_lobpcg_ok`, `n_lobpcg_bad` and `solver_chosen` were `int` already.
+  `dev/to-do.md` has the line for the NEWS draft.
+- What the kernel refuses. A count below its range, `NA_integer_` included
+  (it is `INT_MIN`): `maxiter < 1`, `miniter < 0`, `ncp < 1`, `init < 0`,
+  `trace_iter < 0`, and under LOBPCG `lobpcg_maxiter < 1` and
+  `warmup_iters < 0`. As `arma::uword` a negative count wrapped to a huge
+  one, which was refused by another check or not at all (`init`,
+  `trace_iter`). A column index outside `obj`, by `stop_on_bad_col_index()`
+  of `src/matrix_checks.h`, in the wording the K-NN kernel and the sampler
+  share, where it read "eligible_idx contains out-of-bounds column
+  indices". More missing cells than `INT_MAX`, since `loc` has a row for
+  each (not reachable in a test). Gone, because an `int` cannot fail them:
+  the comparisons of `nrX`, `n_elig`, `ncp`, `k` and `n_gram` with the
+  `blas_int` range, and "LOBPCG iteration controls exceed int range". The
+  two workspace guards stay. `pca_imp()` validates every one of these
+  before the kernel sees it, so none changes an error a user gets; a new
+  test in `tests/testthat/test-pca_imp.R` calls the kernel directly, pins
+  the types of `loc`, `value` and `n_iter` against `which(is.na(x))`, and
+  raises each refusal but the one for `INT_MAX` cells.
+- Storage. Every matrix and vector is a `std::vector<double>`, column-major
+  and unpadded, zero-filled when sized, where `arma::mat` left `Xhat`,
+  `X_work`, `AA_NxN`, `U`, `V`, `Vn` and the eigenpair buffers as allocated
+  (`fittedX` was zero-filled before too). A count is held in `std::size_t`
+  once checked, so `j * nrX` is computed in `std::size_t`; row indices are
+  `int`, so `miss_rows_flat` takes 4 bytes a missing cell where it took 8;
+  offsets into it are `std::size_t`. `initialize_missing_start()` no longer
+  allocates `fittedX`. `find`, `elem`, `cumsum`, `head`, `tail`, the
+  element-wise expressions behind the column means and scales, and the
+  tests of `row_w` are loops; `dev/pca_imp_structure.md`, "Calls no wrapper
+  stands in for", says which were READ.
+- BLAS. `reconstruct_cols()` calls `si_la::gemm` with the arguments it
+  passed to `arma::dgemm_`, and a non-zero status stops with "internal
+  error: dgemm refused its arguments", as in steps 1 to 3.
+- The call that can fail: in the diagnostics build, `arma::svd(V_prev.t() *
+  V_new)`, once per iteration from the second on. The product is formed by
+  `si_la::matmul`, which sends it where `*` did, and its singular values
+  taken by `si_la::svd_values`. A positive status or `err_nonfinite` stops
+  with "pca_imp diagnostics: the SVD of the subspace product failed", an
+  `Rcpp::exception`, where `arma::svd()` threw `std::runtime_error`, "svd():
+  decomposition failed": an R error both ways. `err_alloc` stops with
+  "could not allocate the workspace of dgesdd", and a refusal of the
+  arguments with an internal error. No capture or test reaches the failure,
+  and no route to it is known: `si_la::syevr_range` refuses a Gram holding
+  NaN before the eigenvectors exist. `dev/probe_p2s6_run.sh` forces it
+  (below). No wrapper was added.
+- Two sums, kept in Armadillo's order. Both are the reduction `dev/CPP.md`
+  bans, two partial sums over the even and the odd positions added at the
+  end, and both were measured as a plain sum in order, in scratch clones
+  that differ from this tree in that one loop:
+  - `arma::accu(row_w)`, the sum the row weights are divided by, is
+    `sum_two_partial()`. As a plain sum the capture is bitwise identical,
+    all 71 cases, and so are the 20 edge cases of `dev/eigen_p2s4_edges.R`
+    that inject nothing: `pca_imp()` passes equal weights by default, which
+    sum exactly in either order, and the capture's two `row.w` cases happen
+    not to move. With unequal weights it moves: of the 5 such cases of
+    `dev/eigen_p2s6_diag.R`, 4 are not bitwise and 2 fail the default
+    tolerance. Worst on the imputed values 3.9e-12 absolute and 5.3e-11
+    relative (`xw_ncp2_roww_runif_lobpcg`, over its 720 cells); under the
+    exact solver 1.3e-15 and 2.2e-13 (the two `x1` cases, over 1800 cells
+    each).
+  - `arma::dot()` of the leading singular values with themselves, which the
+    tail energy subtracts from the trace, is `sum_squares_two_partial()`.
+    "Not wrapped" above ruled a plain loop here, before step 5 measured
+    the trace. As a plain sum in order, against `p2s6` at tolerance 0: 15 of
+    the 71 cases not bitwise, 10 failing the default tolerance, most on
+    `criterion_final` (worst 9.9e-8 relative); worst on the imputed values
+    1.7e-11 absolute and 1.1e-10 relative (`pca_x1_lobpcg`, over the 17733
+    of its cells that hold a nonzero value). On the 20 edge cases that
+    inject nothing: 14 not bitwise, worst on the imputed values 6.5e-8
+    absolute and 1.1e-6 relative (`big_xb_ncp25`, over its 119634 nonzero
+    cells); `n_exact`, `n_lobpcg_ok` and `n_lobpcg_bad` differ in 4, and
+    `criterion_final` is NaN in one build and finite in the other in 4 of
+    the cases with copied samples. The same picture as the trace, which
+    is the other term of the same difference. So the order of Armadillo's
+    own loop is kept, on the footing of `gram_trace()`, and listed with it
+    for Phase 4. Ruled (maintainer, 2026-11-18, with the figures above):
+    Armadillo's order stays, in place of the plain loop "Not wrapped"
+    names. The row-weight sum was put to the maintainer in the same report
+    and stays in Armadillo's order on the same footing.
+- What is not bitwise: more than 32 components. Armadillo's `dot()` ran its
+  own loop up to 32 values and gave a longer vector to ddot (READ:
+  `op_dot::direct_dot()`). "Not wrapped" rules ddot out, so
+  `sum_squares_two_partial()` sums every length the same way, and a fit
+  with `ncp` above 32 no longer matches step 5 to the bit. Of the edge
+  cases, `big_xb_ncp40` is the one with that many: imputed values differ by
+  8.1e-9 absolute and 2.8e-7 relative over its 119634 nonzero cells,
+  `criterion_final` by 6.6e-7 relative, and the three solver counts differ.
+  Of the diagnostics cases, the 4 with `ncp` of 33 and 40: under the exact
+  solver the imputed cells differ by at most 8.2e-15 absolute and 9.7e-14
+  relative, under LOBPCG at `ncp` 40 by 4.0e-8 and 3.7e-7. It is the only
+  cause: a scratch clone that calls ddot above 32 values, and is this tree
+  otherwise, is bitwise identical to step 5 on all 9 many-eigenpair edge
+  cases and on every diagnostics case that returns a value. For scale, the
+  dsyevd workspace of step 4 moved such fits by 6.2e-8. `dev/to-do.md` has
+  a line for the NEWS draft.
+
+The gate, read 2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo
+15.6.2-1 (still linked, used by no file), R's LAPACK 3.12.0:
+
+- The timer build and the diagnostics build compile, with 511
+  `-Wignored-attributes` lines each and no other compiler warning.
+- Capture `p2s6` against `p2s5` at tolerance 0: 71 cases, every one bitwise,
+  and 24 failed on purpose: each `pca_imp()` case, on the type of its
+  `n_iter` attribute and nothing else. `dev/probe_p2s6_niter.R` reads the
+  two captures: of the 69 cases with a value in both, 24 carry `n_iter`, a
+  double before and an integer after in all 24, the counts equal in all 24,
+  and the two results `identical()` in all 24 once the count is read as a
+  double on both sides. Against `76d4c60` at the defaults: those 24 and the
+  7 deliberate failures of Phase 1, everything else bitwise. Capture
+  `p2s6-eigen5`, the same source against RcppEigen 0.4.9.9-5: 71 cases,
+  none failed, every one bitwise identical to `p2s6`. The step adds no
+  Eigen; run anyway.
+- `bash dev/probe_p2s4_run.sh <scratch> 8c15416`, step 5 as old and this
+  tree as new; the script now copies the changed files under `R/` into its
+  new clone as well as those under `src/`. Each instrumented clone's
+  capture is bitwise identical to the capture of the build it stands for,
+  the new one's but for `n_iter`. The 60 edge cases at tolerance 0: the 5
+  that end in an error raise the same class and message in both; of the 55
+  that return a value, 54 are `identical()` once `n_iter` is read as a
+  double, and the one left is `big_xb_ncp40`, above. The two builds' event
+  logs are identical line for line outside that case, 69674 lines each, so
+  every failure branch of `src/lobpcg_warm.h` is still taken by injection
+  and comes out as in step 5; within it the old build logs 5423 events and
+  the new 5752.
+- `bash dev/probe_p2s6_run.sh <scratch> 8c15416`: the kernel called
+  directly in the diagnostics build, on a clone of each side instrumented
+  by `dev/probe_p2s6_patch.R`, 49 cases of `dev/eigen_p2s6_diag.R`, each
+  result reduced to a form both kernels give. Of the 44 that return a
+  value in both, 40 are bitwise identical at tolerance 0, histories and
+  solver logs included: wide and tall inputs, with and without complete
+  columns, 1 to 32 components (1 takes the dgemv route of the product),
+  both solvers, no scaling, the EM method, a random start, unequal row
+  weights. The 4 that are not are the ones with 33 and 40 components,
+  above. The SVD made to fail: with a NaN written into the product (3
+  cases), both builds stop, the old with "svd(): decomposition failed" and
+  the new with its own message; with the status of `si_la::svd_values` set
+  to 1 (2 cases), the new build stops the same way, and the old has no
+  such way in, so it runs on. A case whose injection names an SVD the call
+  never reaches is bitwise identical.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading this tree installed into a private library: 22
+  files, 276 tests, none failed, errored or skipped. One test left
+  (`arma_uword_bytes()`) and one came (the kernel's types and refusals).
+- Timed, since every buffer is now zero-filled and the return changed
+  shape: the timing driver, `8c15416` as a and this tree as b, both
+  installed by `dev/eigen_time_install.R` from clones outside the tree, the
+  four PCA workloads. b/a ratios of medians over 5 repetitions:
+  `chr21_pca_exact` 0.996, `chr21_pca_lobpcg` 0.981, `sim_pca_exact` 0.951,
+  `sim_pca_lobpcg` 0.951; over 11: 0.999, 0.992, 0.934 and 0.956. The two
+  chr21 workloads are inside the driver's band of 0.988 to 1.008 on the
+  second run. The two `sim_mat()` workloads are faster, with the ranges of
+  their runs apart (`sim_pca_exact`: a 0.385 to 0.391 s, b 0.358 to
+  0.372 s; `sim_pca_lobpcg`: a 0.506 to 0.515 s, b 0.482 to 0.496 s). Where
+  the gain comes from is not profiled. A guess, not measured: `pca_imp()`
+  no longer builds an integer map and a value vector out of an n x 3 double
+  matrix, three copies of the imputed cells, and those inputs have many
+  such cells for their size.
+- `uv run dev/check_map_anchors.py`: 82 problems, the known ones in
+  `dev/r_manual/R-exts.md` and `dev/review_eigen_wrappers.md`; a third
+  citation of that note, and one of `dev/si_mi_conversion.md`, named lines
+  this step rewrote and now name what replaced them. The ASCII check of
+  `.claude/CLAUDE.md` names only `.github/workflows/pkgdown.yaml`, as in
+  step 4.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.
 - In `src/Makevars` and `src/Makevars.win`, `-DARMA_64BIT_WORD=1` leaves
   `PKG_CPPFLAGS`. The OpenMP flags are left as the maintainer has them.
 - `arma_uword_bytes()` in `src/armaSVD.cpp`, its comment on the macro, and
-  the test in `tests/testthat/test-mat_miss.R` that pins it are deleted. If
-  a Phase 2 step takes Armadillo out of `src/armaSVD.cpp` first, they go in
-  that step.
+  the test in `tests/testthat/test-mat_miss.R` that pinned it went in step 6
+  of Phase 2, which took Armadillo out of that file.
 - `devtools::document()` regenerates `src/RcppExports.cpp` without
   `RcppArmadillo.h`.
 - `.claude/CLAUDE.md`, Layout, says `src/` is Rcpp with RcppArmadillo; it
@@ -1471,6 +1670,10 @@ Scaffolding to remove, in `src/si_lapack.cpp` unless said otherwise:
   (step 5 of Phase 2). A plain sum in order moves results by the amounts
   step 5 measured, which put 22 of the capture's cases past its default
   tolerance, most on `criterion_final` alone.
+- In `src/armaSVD.cpp`, `sum_squares_two_partial()`, the other term of the
+  tail energy, in the order of Armadillo's own `dot()` loop; kept on the
+  same footing (step 6 of Phase 2, which has what a plain sum moves). The
+  two go together: one commit, one measurement.
 - The oracle (`dev/oracle_pairs.cpp`, `dev/oracle_run.R`,
   `dev/oracle_selftest.R`, `dev/oracle_install_armadillo.R`), their `!`
   lines, and `dev/lib/`, once the last item above is gone and nothing is

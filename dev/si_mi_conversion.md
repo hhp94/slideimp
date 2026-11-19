@@ -365,10 +365,11 @@ Phase 3 removes it.
 
 ## Phase 3: `pca_imp()` on parts, matrix output
 
-- The kernel's `imputed_values` already is a map and its values: row, column
+- The kernel's `imputed_values` (its `loc` and `value`, since step 6 of Phase 2
+  of `dev/eigen_conversion.md`) already is a map and its values: row, column
   in the input's numbering, value. READ: the kernel visits the changing
-  columns in the order `arma::find()` gives, ascending, through
-  `eligible_idx_perm` (`src/armaSVD.cpp`: `arma::uvec eligible_idx_perm = eligible_idx.elem(perm);`).
+  columns in the order `eligible_idx` lists them, ascending, through
+  `eligible_idx_perm` (`src/armaSVD.cpp`: `eligible_idx_perm[jp] = elig[perm[jp]];`).
   NOT ASSERTED anywhere: the part's validator checks it, and a failure is an
   internal error. No kernel change.
 - `clamp` is applied to the values before the part is built.

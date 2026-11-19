@@ -152,7 +152,7 @@ test_that("a subset without holes returns its columns without a fit", {
   )
   expect_s3_class(out, "slideimp_results")
   expect_identical(bare_matrix(out), obj[, done, drop = FALSE])
-  expect_identical(attr(out, "n_iter"), 0)
+  expect_identical(attr(out, "n_iter"), 0L)
 
   expect_message(
     fit <- pca_imp(obj, ncp = 2, subset = done, output = "mipca"),

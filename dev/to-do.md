@@ -69,6 +69,16 @@ Easy to miss in the diff, noted so the draft does not:
   1.2.0 kept the longest so far (`dev/eigen_conversion.md`, Phase 2,
   step 4). The `n_exact`, `n_lobpcg_ok` and `n_lobpcg_bad` attributes of
   such a result can differ too.
+- The `n_iter` attribute of a `pca_imp()` result is an integer; it was a
+  double holding a whole number. The same for `info$n_iter` and `prov$iter`
+  in the chunks of its `mipca` output (`dev/eigen_conversion.md`, Phase 2,
+  step 6).
+- `pca_imp()` with `ncp` above 32 returns values that differ from 1.2.0's:
+  in the last digits under the exact solver (about 1e-14), by about 1e-8
+  under LOBPCG, where the solver counts can differ too. The sum of the
+  squared leading singular values is taken by one loop at every length,
+  where 1.2.0 gave more than 32 of them to ddot (`dev/eigen_conversion.md`,
+  Phase 2, step 6).
 
 ## Parts for the other imputers
 
@@ -143,7 +153,11 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
   `rows_to_impute` repeats, 0-based, the rows `loc` already holds;
   `obj_masked` and `nmiss_masked` are zero-filled by `std::vector` before
   every cell is written; and `initialize_result()` guards invariants its
-  one caller has just established.
+  one caller has just established. Seen in the PCA kernel
+  (`src/armaSVD.cpp`), none measured apart: `Xhat`, `X_work`, `AA_NxN`, `U`,
+  `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`
+  before every cell that is read is written, where only `fittedX` needs its
+  zeros; and `row_w` is copied before it is checked.
 
 ## Release condition: pass on the RcppEigen candidate
 

@@ -263,14 +263,14 @@ new_lobpcg_control <- function(
 # the result which one ran: the same fields with the same types. The defaults
 # describe a call that ran no solve. No solver was chosen or probed, no
 # iteration ran, and `converged` is NA because there was nothing to converge.
-# `n_iter` defaults to a double because the kernel returns its count as one.
+# `n_iter` is an integer on both paths: the kernel returns its count as one.
 pca_imp_info <- function(
   post_imp,
   solver,
   solver_chosen = NA_character_,
   solver_probed = FALSE,
   diag = list(
-    n_iter = 0,
+    n_iter = 0L,
     criterion_final = NA_real_,
     converged = NA,
     n_exact = 0L,
@@ -695,7 +695,8 @@ pca_imp <- function(
   }
 
   init_obj <- Inf
-  best_imputed <- NULL
+  best_loc <- NULL
+  best_value <- NULL
   best_diag <- NULL
 
   # solver_chosen codes:
@@ -733,13 +734,13 @@ pca_imp <- function(
     res.impute <- pca_imp_internal_cpp(
       obj = obj,
       eligible_idx = as.integer(eligible_idx - 1L),
-      ncp = ncp,
+      ncp = as.integer(ncp),
       scale = scale,
       regularized = (method == "regularized"),
       threshold = threshold,
       init = if (i == 1L) 0L else i,
-      maxiter = maxiter,
-      miniter = miniter,
+      maxiter = as.integer(maxiter),
+      miniter = as.integer(miniter),
       row_w = row.w,
       coeff_ridge = coeff.ridge,
       solver = solver_code_i,
@@ -775,7 +776,8 @@ pca_imp <- function(
       )
     }
     if (cur_obj < init_obj) {
-      best_imputed <- res.impute$imputed_values
+      best_loc <- res.impute$loc
+      best_value <- res.impute$value
       init_obj <- cur_obj
       best_diag <- list(
         n_iter = res.impute$n_iter,
@@ -789,7 +791,7 @@ pca_imp <- function(
   }
 
   # column/row indices returned by backend are already original-matrix indices.
-  if (is.null(best_imputed) || nrow(best_imputed) == 0L) {
+  if (is.null(best_value) || length(best_value) == 0L) {
     cli::cli_abort("Internal error: PCA imputation produced no imputed values.")
   }
 
@@ -808,36 +810,28 @@ pca_imp <- function(
   }
 
   if (!is.null(clamp)) {
-    best_imputed[, 3] <- pmin(
-      pmax(best_imputed[, 3], clamp[1L]),
-      clamp[2L]
-    )
+    best_value <- pmin(pmax(best_value, clamp[1L]), clamp[2L])
   }
 
   # three parts, which together cover every column the result holds. The PCA
-  # part is the kernel's triplets: the eligible columns and every hole in
-  # them, already in the input's 1-based numbering, in the column-major order
-  # the part's validator checks. With `subset`, the door cuts it to the kept
+  # part is the kernel's `loc` and `value`: the eligible columns and every
+  # hole in them, `loc` an integer matrix with columns `row` and `col` in the
+  # input's 1-based numbering, in the column-major order the part's validator
+  # checks. With `subset`, the door cuts it to the kept
   # columns. The other two are the ineligible columns the result holds: those
   # with a hole, under `post_imp` each hole set to its column mean and
   # otherwise left NA, and those without, a part with nothing to fill. No
   # ineligible column is all NA, since check_finite() refuses one, so each
   # has a mean. No part holds NA, as the mse check above guarantees for the
   # kernel's values.
-  map <- cbind(
-    row = as.integer(best_imputed[, 1]),
-    col = as.integer(best_imputed[, 2])
-  )
-  values <- best_imputed[, 3]
-  rm(best_imputed)
   # unname(): `eligible` carries the column names, and parts take indices
   pca_part <- new_part(
     cols = unname(eligible_idx),
-    map = map,
-    values = values,
+    map = best_loc,
+    values = best_value,
     kind = "pca"
   )
-  rm(map, values)
+  rm(best_loc, best_value)
 
   # the door writes into a copy of a double matrix, and the mean part reads
   # the same matrix; an integer input is coerced first, as the write into it

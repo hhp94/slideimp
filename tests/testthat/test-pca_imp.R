@@ -626,7 +626,7 @@ test_that("the no-missing-values return has the shape of the main path", {
   # and the solver attributes say that no solve ran
   expect_identical(attr(r_early, "solver_chosen"), NA_character_)
   expect_false(attr(r_early, "solver_probed"))
-  expect_identical(attr(r_early, "n_iter"), 0)
+  expect_identical(attr(r_early, "n_iter"), 0L)
   expect_identical(attr(r_early, "criterion_final"), NA_real_)
   expect_identical(attr(r_early, "converged"), NA)
   expect_identical(attr(r_early, "n_exact"), 0L)
@@ -1012,8 +1012,8 @@ test_that("pca_imp refuses a fit whose mse is not finite, as a defect", {
   # a NaN value under a finite mse cannot come from the kernel, but if it
   # did, the part's validator refuses it before it reaches the result
   plant <- function(res) {
-    expect_gt(nrow(res$imputed_values), 0L)
-    res$imputed_values[1L, 3L] <- NaN
+    expect_gt(length(res$value), 0L)
+    res$value[1L] <- NaN
     res
   }
   expect_error(run(), "slideimp internal, part: `values` holds NA")
@@ -1272,11 +1272,17 @@ test_that("wide recover_factors block agrees with the stored reference", {
     )
     want <- case$imputed_values
 
-    # structural: the same cells, in the same order
-    expect_identical(dim(got$imputed_values), dim(want), label = nm)
-    expect_identical(got$imputed_values[, 1:2], want[, 1:2], label = nm)
+    # structural: the same cells, in the same order. The reference holds
+    # each cell as a row of doubles (row, col, value), as the kernel returned
+    # them when it was recorded; the kernel now returns the two indices in
+    # the integer matrix `loc` and the values in `value`.
+    expect_identical(dim(got$loc), c(nrow(want), 2L), label = nm)
+    expect_identical(colnames(got$loc), c("row", "col"), label = nm)
+    expect_identical(length(got$value), nrow(want), label = nm)
+    expect_identical(unname(got$loc[, 1]), as.integer(want[, 1]), label = nm)
+    expect_identical(unname(got$loc[, 2]), as.integer(want[, 2]), label = nm)
 
-    a <- got$imputed_values[, 3]
+    a <- got$value
     b <- want[, 3]
     expect_gt(length(b), 0L)
     err <- abs(a - b)
@@ -1311,4 +1317,79 @@ test_that("wide recover_factors block agrees with the stored reference", {
     expect_lt(mse_abs, 1e-8, label = nm)
     expect_lt(mse_rel, 1e-8, label = nm)
   }
+})
+
+test_that("the PCA kernel returns integers and refuses what it cannot count with", {
+  set.seed(1234)
+  x <- sim_mat(20, 12, perc_total_na = 0.1, perc_col_na = 1)$input
+  holes <- which(is.na(x), arr.ind = TRUE)
+  expect_gt(nrow(holes), 0L)
+  args <- list(
+    obj = x,
+    eligible_idx = seq_len(ncol(x)) - 1L,
+    ncp = 2L,
+    scale = TRUE,
+    regularized = TRUE,
+    threshold = 1e-6,
+    init = 0L,
+    maxiter = 20L,
+    miniter = 5L,
+    row_w = rep(1, nrow(x)),
+    coeff_ridge = 1,
+    solver = 0L,
+    warmup_iters = 0L,
+    lobpcg_tol = 1e-8,
+    lobpcg_maxiter = 1L
+  )
+  got <- do.call(pca_imp_internal_cpp, args)
+
+  # `loc` has one row per hole, 1-based, in column-major order, which is the
+  # order which() lists them in
+  expect_true(is.integer(got$loc))
+  expect_identical(colnames(got$loc), c("row", "col"))
+  expect_identical(got$loc[, "row"], unname(holes[, 1]))
+  expect_identical(got$loc[, "col"], unname(holes[, 2]))
+  expect_true(is.double(got$value))
+  expect_null(dim(got$value))
+  expect_length(got$value, nrow(holes))
+  expect_false(anyNA(got$value))
+  expect_true(is.integer(got$n_iter))
+  expect_gte(got$n_iter, 5L)
+
+  # a count below its range, NA included; as an unsigned index each of
+  # these wrapped to a huge value
+  bad <- function(...) {
+    do.call(pca_imp_internal_cpp, utils::modifyList(args, list(...)))
+  }
+  expect_error(bad(maxiter = 0L), "maxiter must be >= 1")
+  expect_error(bad(maxiter = NA_integer_), "maxiter must be >= 1")
+  expect_error(bad(miniter = -1L), "miniter must be >= 0")
+  expect_error(bad(miniter = 21L), "miniter must be <= maxiter")
+  expect_error(bad(ncp = 0L), "ncp must be >= 1")
+  expect_error(bad(ncp = NA_integer_), "ncp must be >= 1")
+  expect_error(bad(init = -1L), "init must be >= 0")
+  expect_error(bad(trace_iter = -1L), "trace_iter must be >= 0")
+  expect_error(
+    bad(solver = 1L, lobpcg_maxiter = 0L),
+    "lobpcg_maxiter must be >= 1"
+  )
+  expect_error(
+    bad(solver = 1L, warmup_iters = -1L),
+    "warmup_iters must be >= 0"
+  )
+
+  # a column index outside the matrix, NA included
+  expect_error(
+    bad(eligible_idx = c(0L, ncol(x))),
+    "eligible_idx holds 12 at position 2"
+  )
+  expect_error(
+    bad(eligible_idx = c(0L, NA_integer_)),
+    "eligible_idx holds NA at position 2"
+  )
+  expect_error(
+    bad(eligible_idx = c(-1L, 0L)),
+    "eligible_idx holds -1 at position 1"
+  )
+  expect_error(bad(row_w = rep(1, nrow(x) - 1L)), "row_w length must equal")
 })

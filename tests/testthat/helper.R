@@ -98,11 +98,7 @@ run_pca_fixed_iters <- function(
     lobpcg_maxiter = ctrl$maxiter
   )
 
-  iv <- res$imputed_values
-
-  if (!is.null(iv) && nrow(iv) > 0L) {
-    x[cbind(as.integer(iv[, 1]), as.integer(iv[, 2]))] <- iv[, 3]
-  }
+  x[res$loc] <- res$value
 
   list(
     mat = x,

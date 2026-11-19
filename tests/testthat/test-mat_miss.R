@@ -54,12 +54,3 @@ test_that("mat_miss agrees with base R on sim_mat output", {
     unname(rowSums(is.na(s$input)))
   )
 })
-
-test_that("the package is built with 64-bit Armadillo indices", {
-  # -DARMA_64BIT_WORD=1 in src/Makevars. Without it arma indices are 32 bits,
-  # capping a matrix at 2^32-1 elements; the zero-copy constructor used for
-  # `const arma::mat&` does not check that bound, so n_elem and colptr()
-  # arithmetic wrap silently instead of erroring. At 850k columns the cap lands
-  # near 5,052 rows, which real data reaches.
-  expect_equal(arma_uword_bytes(), 8L)
-})

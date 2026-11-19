@@ -5,10 +5,6 @@ pca_imp_internal_cpp <- function(obj, eligible_idx, ncp, scale, regularized, thr
     .Call(`_slideimp_pca_imp_internal_cpp`, obj, eligible_idx, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge, solver, warmup_iters, lobpcg_tol, lobpcg_maxiter, trace_iter)
 }
 
-arma_uword_bytes <- function() {
-    .Call(`_slideimp_arma_uword_bytes`)
-}
-
 find_windows <- function(x, window, overlap = 0.0) {
     .Call(`_slideimp_find_windows`, x, window, overlap)
 }

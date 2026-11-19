@@ -38,15 +38,15 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |                   |    |    +- lobpcg_solve()      src/lobpcg_warm.h -> dsyevd_
   |                   |    |    +- eig_sym_sel()       src/eig_sym_sel.h -> si_la::syevr_range
   |                   |    +- gemm_nn/gemm_tn_block()  src/pca_linalg_utils.h -> si_la::gemm
-  |                   +- reconstruct_cols()            src/armaSVD.cpp -> dgemm_
+  |                   +- reconstruct_cols()            src/armaSVD.cpp -> si_la::gemm
   |                   +- missing_weighted_residual_ss()  src/armaSVD.cpp
   |                   +- convergence test
-  |              +- postprocessing, imputed_values triplets
+  |              +- postprocessing, loc and value of the imputed cells
   |              +- Rcpp::List back to R
   |
   +- R/pca_imp.R           mse guard, per restart
   +- R/pca_imp.R           clamp
-  +- R/pca_imp.R           PCA part from the triplets; over the ineligible
+  +- R/pca_imp.R           PCA part from loc and value; over the ineligible
   |                        kept columns, a mean part over those with a hole
   |                        (a left NA part without post_imp) and a part with
   |                        nothing to fill over the rest
@@ -65,8 +65,10 @@ C++ files in the chain: 4 translation units (`src/armaSVD.cpp`, `src/RcppExports
 `src/mat_stats.cpp`, `src/si_lapack.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`,
 `eig_sym_sel.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `si_lapack.h`,
 `matrix_checks.h`, `loc_timer.h`). `si_lapack.cpp/.h` is the wrapper layer ("What the
-wrappers reproduce"); `pca_linalg_utils.h`, `gram_ops.h` and `eig_sym_sel.h` are so far the
-only files of the chain that include it. Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
+wrappers reproduce"), and every BLAS and LAPACK call of the chain goes through it. No file
+of the chain uses Armadillo; `src/RcppExports.cpp`, which is generated, includes
+`RcppArmadillo.h` until Phase 3 of `dev/eigen_conversion.md` takes it out of `LinkingTo`.
+Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
 `impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
 
 ## Layer 1: R entry point (`R/pca_imp.R`)
@@ -143,12 +145,13 @@ the lowest `mse` wins. Each restart's `mse` must be finite or the call stops as 
 package defect (`R/pca_imp.R`: `if (!is.finite(cur_obj)) {`): the kernel's SSE sums
 the residual over every cell of each eligible column, holes included, before
 subtracting the holes' share (`src/armaSVD.cpp`: `sse -= s * ej2;`), so a NaN or
-Inf at any imputed cell surfaces there, and the triplet values themselves are
-never NA past this point. `clamp` is applied to the value column of the triplet
-matrix (imputed values only). The result is then built from three parts
+Inf at any imputed cell surfaces there, and the kernel's values themselves are
+never NA past this point. `clamp` is applied to the kernel's `value` (imputed
+values only). The result is then built from three parts
 (`R/parts.R`), which together cover every column: the PCA part
-(`R/pca_imp.R`: `pca_part <- new_part(`) is the triplets, the indices from C++
-already being 1-based original-matrix indices, over the eligible columns; the
+(`R/pca_imp.R`: `pca_part <- new_part(`) is the kernel's `loc` and `value` as they
+are, `loc` being an integer matrix with columns `row` and `col` of 1-based
+original-matrix indices, over the eligible columns; the
 ineligible columns with a hole are one part, filled through `fallback_part()`
 under `post_imp = TRUE` and a `left_na` part under `post_imp = FALSE`; and those
 without a hole are a mean part with an empty map. So `fallback_part()` copies
@@ -165,7 +168,8 @@ for both outputs: `imp_method`, `fallback`, `post_imp`, `mean_filled_cols`,
 `mean_filled_cells`, `solver_requested`, `solver_chosen`, `solver_probed`, `n_iter`,
 `criterion_final`, `converged`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`. On the
 no-missing-values exit its defaults stand in for the solve that never ran:
-`solver_chosen = NA`, `solver_probed = FALSE`, `n_iter = 0`, `converged = NA`.
+`solver_chosen = NA`, `solver_probed = FALSE`, `n_iter = 0L`, `converged = NA`.
+`n_iter` is an integer on both paths, as the kernel returns it.
 
 For `output = "matrix"`, `fill_parts()` (`R/parts.R`: `fill_parts <- function(obj, parts, keep = NULL) {`)
 copies `obj` once and writes the parts (`R/pca_imp.R`: `obj <- fill_parts(obj, parts, keep = keep)`),
@@ -213,31 +217,44 @@ with `R_init_slideimp` and `R_useDynamicSymbols(dll, FALSE)`. The C++ entry symb
 `pca_imp_internal_cpp` (`src/armaSVD.cpp`: `Rcpp::List pca_imp_internal_cpp(`), marked
 `// [[Rcpp::export]]`.
 
-`obj` arrives as `const arma::mat&`, so Rcpp constructs a read-only Armadillo view over the
-SEXP rather than copying. `row_w` is taken **by value** because the
-kernel normalizes it in place (`src/armaSVD.cpp`: `arma::rowvec row_w,`, `row_w /= row_w_sum;`).
+The kernel takes what R holds (`dev/eigen_conversion.md`, "Rules that apply to every
+step"): `obj` as a `const Rcpp::NumericMatrix &`, read in place through its pointer and
+never copied; `eligible_idx` as an integer vector of 0-based columns; every count and
+setting as `int`, which `pca_imp()` converts at the call where it holds a double
+(`R/pca_imp.R`: `maxiter = as.integer(maxiter),`); and `row_w` as a
+`const Rcpp::NumericVector &`, copied once into the kernel's own vector because the
+kernel normalizes it (`src/armaSVD.cpp`: `std::vector<double> w(row_w.begin(), row_w.end());`,
+`w[i] /= row_w_sum;`). Inside, a count is held in `std::size_t` once checked, so an offset
+such as `j * nrX` is computed in `std::size_t`; a row or column index of `obj` is `int`
+(`src/armaSVD.cpp`: `Types, for the whole file.`).
 
 ## Layer 3: kernel setup (`src/armaSVD.cpp`)
 
-- Argument sanity (`src/armaSVD.cpp`: `if (maxiter == 0)`): `maxiter >= 1`, `miniter <= maxiter`,
-  `ncp >= 1`, `solver` in 0..2, non-empty and in-bounds `eligible_idx`, `ncp < min(nrX, n_elig)`.
-  A further check (`src/armaSVD.cpp`: `if (n_elig != 0 && nrX >`) guards `nrX * n_elig`
-  overflow. The block (`src/armaSVD.cpp`: `BLAS/LAPACK integer range guard`) guards the
-  `blas_int` range: problem
-  dimensions, the `26 * n` dsyevr workspace minimum, and the `~3k` Rayleigh-Ritz
-  dsyevd workspace LOBPCG would need.
+- Argument sanity (`src/armaSVD.cpp`: `if (maxiter < 1)`): `maxiter >= 1`,
+  `0 <= miniter <= maxiter`, `ncp >= 1`, `init >= 0`, `trace_iter >= 0`, `solver` in 0..2,
+  and under LOBPCG `lobpcg_maxiter >= 1` and `warmup_iters >= 0`; a non-empty
+  `eligible_idx` whose every index is a column of `obj`, refused by
+  `stop_on_bad_col_index()` in the words the K-NN kernel uses (`src/matrix_checks.h`:
+  `static inline void stop_on_bad_col_index(`); `ncp < min(nrX, n_elig)`. `NA_integer_` is
+  `INT_MIN`, so each lower bound refuses it; as `arma::uword` a negative count wrapped to
+  a huge one. A further check (`src/armaSVD.cpp`: `prevent nrX * n_elig overflow later.`)
+  guards `nrX * n_elig`. The block (`src/armaSVD.cpp`: `LAPACK workspace guard`) guards
+  the `int` range of the `26 * n` dsyevr workspace minimum and of the `~3k` Rayleigh-Ritz
+  dsyevd workspace LOBPCG would need; the dimensions themselves fit an `int`, being R's.
+  More missing cells than an R matrix has rows is refused once they are counted
+  (`src/armaSVD.cpp`: `The eligible columns hold`), since `loc` has a row for each.
 - Orientation: `tall = (nrX >= n_elig)`; `k = regularized ? ncp + 1 : ncp`
   eigenpairs are requested; `n_gram = tall ? n_elig : nrX`, so the eigenproblem is always
   over the smaller dimension.
 - Pass 1 (`src/armaSVD.cpp`: `LOC_TIC(pca_imp_gram, "pass1_count_missing")`) counts NAs per
-  eligible column. The next block (`src/armaSVD.cpp`: `fixed_cols = arma::find(col_nmiss == 0)`)
+  eligible column. The next block (`src/armaSVD.cpp`: `perm lists the complete columns first`)
   splits eligible columns
   into fixed (no NA) and changing, building `perm` so that after permutation the changing
   columns are exactly positions `[n_fixed, n_elig)`. Every later loop derives its local
   index as `n_fixed + ci`, which is why no column-index vector is threaded through.
-- The block (`src/armaSVD.cpp`: `arma::uvec miss_rows_offsets(`) builds a CSR-style pair:
-  `miss_rows_offsets` (length `n_mc + 1`) and
-  `miss_rows_flat` (length `n_missing`). `for_each_missing_in_col()` is the only
+- The block (`src/armaSVD.cpp`: `std::vector<std::size_t> miss_rows_offsets(n_mc + 1, 0);`)
+  builds a CSR-style pair: `miss_rows_offsets` (length `n_mc + 1`, `std::size_t`) and
+  `miss_rows_flat` (length `n_missing`, `int` row indices). `for_each_missing_in_col()` is the only
   iterator over them.
 - Pass 2 (`src/armaSVD.cpp`: `LOC_TIC(pca_imp_gram, "pass2_scan")`) fills `Xhat` and
   accumulates per column the observed weight
@@ -247,7 +264,7 @@ kernel normalizes it in place (`src/armaSVD.cpp`: `arma::rowvec row_w,`, `row_w 
   any eligible column with
   zero observed weight. The kernel then computes `mean_p` and, when `scale`, the per-column
   scale `et` floored at `PCA_TOL`; it then centers (and scales) `Xhat` in place.
-  `initialize_missing_start()` allocates `fittedX` once and
+  `fittedX` is allocated once, zero-filled, and `initialize_missing_start()`
   writes starting values at missing positions only: zeros for `init == 0`, `Rcpp::rnorm`
   draws otherwise.
 
@@ -282,7 +299,7 @@ One iteration:
 5. Reconstruction (`src/armaSVD.cpp`: `LOC_TIC(pca_imp_gram, "reconstruct")`).
    `scale_rows_cols_inplace()` (`src/pca_linalg_utils.h`: `void scale_rows_cols_inplace(`)
    fuses the row de-weighting of `U` with the shrunk column scaling, mutating `U` in place;
-   `reconstruct_cols()` then does one `dgemm_` writing only the changing block
+   `reconstruct_cols()` then does one dgemm, through `si_la::gemm`, writing only the changing block
    of `fittedX`. The fixed block is never read inside the loop, and in the wide
    case the fixed rows of `V` it would need are not even computed there (Layer 5).
 6. Objective (`src/armaSVD.cpp`: `LOC_TIC(pca_imp_gram, "objective")`): `objective_full` minus
@@ -296,7 +313,7 @@ Hitting `maxiter` first sets `converged = false` and nothing else. The kernel st
 because a warning raised from C++ can longjmp past the frame's destructors, so `pca_imp()` warns
 once, through `cli::cli_warn()`, for the winning restart only
 (`R/pca_imp.R`: `if (!isTRUE(best_diag$converged)) {`). The loop
-is `for (arma::uword nb_iter = 1;; ++nb_iter)`, whose only exits are in the block
+is `for (std::size_t nb_iter = 1;; ++nb_iter)`, whose only exits are in the block
 (`src/armaSVD.cpp`: `if (stop_now)`).
 `trace_iter > 0` prints on
 iteration 1, every `trace_iter` iterations, and on the last; print precision is
@@ -306,17 +323,19 @@ restored by the `PrecGuard` RAII struct.
 case `gemm_tn_block()` over columns `0 .. n_fixed-1` of `Xhat` first fills the fixed rows of `V` that
 `SVD_triplet()` leaves unwritten, from the
 last iteration's `Vn` and the fixed columns of `Xhat`, which nothing writes after
-`pass2_scan`; the tall case returns `V` complete. `reconstruct_cols(U, V, fittedX, 0, n_fixed)`
-then completes the fixed block of `fittedX` the loop skipped, purely so the SSE
+`pass2_scan`; the tall case returns `V` complete. `reconstruct_cols()` over columns
+`0 .. n_fixed-1` then completes the fixed block of `fittedX` the loop skipped, purely so the SSE
 covers the whole matrix. Both calls no-op when `n_fixed == 0`. The fixed rows of `V` reach R
-only through `mse`; `imputed_values` never reads them. The
+only through `mse`; `value` never reads them. The
 SSE loop (`src/armaSVD.cpp`: `double sse = 0.0;`) computes the full residual in original
 units (times `et^2` per column)
 then subtracts the missing-cell contribution, giving an observed-cells-only `mse`,
-the `nb.init` selection statistic. `imputed_values` is an `n_missing x 3`
-matrix of `(row_1based, orig_col_1based, value)`, where the value comes from the final
-`Xhat` at the missing position, de-standardized -- not from `fittedX`. The
-ordinary-build return list carries `imputed_values`, `mse`, `n_iter`,
+the `nb.init` selection statistic. The imputed cells come back as `loc`, an
+`n_missing x 2` integer matrix with columns `row` and `col`, 1-based in `obj`, and
+`value`, a double vector (`src/armaSVD.cpp`: `Rcpp::IntegerMatrix loc(`), in column-major
+order; each value comes from the final `Xhat` at the missing position, de-standardized --
+not from `fittedX`. The
+ordinary-build return list carries `loc`, `value`, `mse`, `n_iter` (an integer),
 `criterion_final`, `converged`, `solver_chosen`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`.
 `solver_chosen` comes from `HybridEigContext::solver_chosen_code()`
 (`src/hybrid_topk_eig.h`: `int solver_chosen_code() const`): 0 forced exact, 1 forced lobpcg,
@@ -405,7 +424,7 @@ start when `keep_lobpcg_seed_state()` allows.
 top `k`, asks for the workspace on every call and floors it at the documented
 `26 * n` / `10 * n` minima ("What the wrappers reproduce"). `eigvals` and `eigvecs` are
 `src/armaSVD.cpp`'s, sized there before the EM loop (`src/armaSVD.cpp`:
-`eigvecs.set_size(n_gram, k);`). dsyevr returns
+`std::vector<double> eigvecs(n_gram * k);`). dsyevr returns
 ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
 in place, then `canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`)
 applies the sklearn `svd_flip` convention. A non-zero status, from the wrapper or from an
@@ -486,8 +505,8 @@ wrapper, and what was measured.
 | --- | --- | --- |
 | dsyrk, through `si_la::syrk` | `syrk_upper()`, `form_weighted_gram()` (`src/gram_ops.h`) | Gram formation |
 | dgemm, through `si_la::gemm` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
-| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`) |
-| `dgemm_` | `reconstruct_cols()` (`src/armaSVD.cpp`) | `reconstruct_cols`, strided column block |
+| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `Xhat.data(), nrX, n_elig, 0, n_fixed, Vn.data(),`) |
+| dgemm, through `si_la::gemm` | `reconstruct_cols()` (`src/armaSVD.cpp`) | `reconstruct_cols`, strided column block |
 | dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
 | dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
 | dgeqrf and dorgqr, through `si_la::qr_econ` | `qr_orthonormalize()` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization |
@@ -655,13 +674,26 @@ status, which is the fallback failing or meeting NaN or Inf, is an R error, as A
 throw in item 4 was, in the chain's own words and as an `Rcpp::exception` where
 Armadillo's was a `std::runtime_error`.
 
-**`arma::svd(X)`** (`src/armaSVD.cpp`: `arma::vec s = arma::svd(V_prev.t() * V_new);`),
-in the `PCA_IMP_DIAGNOSTICS` build only. READ: `fn_svd.hpp`, `auxlib::svd_dc()`. dgesdd with
+**`arma::svd(X)`**, which the `PCA_IMP_DIAGNOSTICS` build called as
+`arma::svd(V_prev.t() * V_new)` until step 6 of Phase 2, once per iteration from the
+second on. READ: `fn_svd.hpp`, `auxlib::svd_dc()`. dgesdd with
 `jobz = 'N'` on a copy of `X`. An empty `X` gives an empty result. NaN or Inf in `X` is
 refused before LAPACK. The workspace is the larger of
 `3 min(m, n) + max(max(m, n), 7 min(m, n))` and dgesdd's own optimum, which is asked for
 only when `X` has 1024 cells or more. A refusal or `info != 0` makes `svd()` throw
 `std::runtime_error`, "svd(): decomposition failed".
+
+The call site now forms the product with `si_la::matmul`, which sends it where `*` did
+(dgemv for one component, dgemm otherwise), and hands it to `si_la::svd_values`
+(`src/armaSVD.cpp`: `st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());`).
+A positive status or `err_nonfinite` is an R error, as the throw was, in the chain's own
+words and as an `Rcpp::exception` (`src/armaSVD.cpp`:
+`the SVD of the subspace product failed`); `err_alloc` and the wrapper's refusals of its
+arguments stop too, the second as an internal error. The smallest singular value is
+taken with `std::min_element`, where `s.min()` was (NOT READ: `Mat::min()`); singular
+values are not NaN on success. No route to the failure is known: a Gram holding NaN is
+refused before the eigenvectors exist. `dev/probe_p2s6_run.sh` forces it in both
+versions.
 
 **Products of two `arma::mat`** (READ: `glue_times_meat.hpp`, `mul_gemm.hpp`,
 `mul_gemv.hpp`, `mul_syrk.hpp`). `A * B` and `A.t() * B` choose their routine at run time,
@@ -729,9 +761,29 @@ loops that replace them in `src/lobpcg_warm.h` and `src/svd_triplet.h`:
   tests of the iteration and `max_rel_res`, which only the diagnostics build reports
   (`src/armaSVD.cpp`: `Rcpp::Named("eig_lobpcg_max_rel_res")`). `rn.max()` reached
   `op_max::direct_max()` (READ: `Mat::max()`), which `max_skip_nan()` reproduces.
-- `arma::dot()` is Armadillo's own loop up to 32 elements and ddot above (READ:
-  `op_dot::direct_dot()`; NOT READ: that the `head()` views of
-  (`src/armaSVD.cpp`: `arma::dot(vs_top.head(ncp), vs_top.head(ncp))`) reach it).
+- `arma::dot(vs_top.head(ncp), vs_top.head(ncp))`, the sum of the squared leading
+  singular values that the tail energy subtracts from the trace, was Armadillo's own
+  loop up to 32 values, two partial sums over the even and the odd positions added at
+  the end, and ddot above (READ: `op_dot::apply()`, where two `subview_col` take the
+  vector branch, `partial_unwrap` being fast for them; `op_dot::direct_dot()`;
+  `op_dot::direct_dot_generic()`). Now `sum_squares_two_partial()` (`src/armaSVD.cpp`:
+  `static inline double sum_squares_two_partial(`), which takes the two partial sums at
+  every length: bitwise equal up to 32 components, not above, where it stands in for
+  ddot. Kept in that order on the footing of `gram_trace()` below
+  (`dev/eigen_conversion.md`, step 6 of Phase 2, has the measurements).
+- `arma::accu(row_w)`, the sum the row weights are divided by, was two partial sums over
+  the even and the odd positions, added at the end (READ: `op_accu_mat::apply()`,
+  `arrayops::accumulate()`). Now `sum_two_partial()` (`src/armaSVD.cpp`:
+  `static inline double sum_two_partial(`), in that order, so it is bitwise equal. Equal
+  weights sum exactly in either order; with unequal ones a plain sum moves results
+  (`dev/eigen_conversion.md`, step 6), so it is kept on the same footing.
+- The rest of what `src/armaSVD.cpp` asked of Armadillo did no arithmetic that depends
+  on an order, and is written as loops: `row_w /= row_w_sum` divided each cell (READ:
+  `arrayops::inplace_div_base()`); `cumsum()` of a column kept one running sum (READ:
+  `op_cumsum::apply_noalias()`); `is_finite()` tested each cell (READ:
+  `arrayops::is_finite()`); the element-wise `/`, `%`, `-`, `+` and `sqrt()` behind the
+  column means and scales, `find()`, `elem()`, `any()` and `max()` of an index vector
+  (NOT READ; the captures are bitwise across the change).
 
 - `arma::trace(AA_NxN)` in `SVD_triplet()`, the tail energy's trace, was two partial sums,
   one over the even and one over the odd diagonal cells, added at the end (READ:
@@ -743,16 +795,15 @@ loops that replace them in `src/lobpcg_warm.h` and `src/svd_triplet.h`:
 
 `find`, `fliplr` and `reverse`, which `src/lobpcg_warm.h` called and now writes as loops, move
 values and do no arithmetic (NOT READ); the captures of step 4 are bitwise across the change.
-`accu` and `cumsum` are NOT READ.
 
 ## Data structures and ownership
 
-- `obj` crosses as `const arma::mat&` and is never mutated in C++; the write-back happens in
+- `obj` crosses as `const Rcpp::NumericMatrix &` and is never mutated in C++; the write-back happens in
   R, through the matrix door (`R/pca_imp.R`: `obj <- fill_parts(obj, parts, keep = keep)`), or not at
-  all through the `si_mi` door, whose chunks hold the holes and their values. `row_w` crosses by value and
-  is normalized in place (`src/armaSVD.cpp`: `arma::rowvec row_w,`, `row_w /= row_w_sum;`).
+  all through the `si_mi` door, whose chunks hold the holes and their values. `row_w` crosses by reference and
+  the kernel normalizes its own copy (`src/armaSVD.cpp`: `the kernel's own copy of the weights`).
 - `Xhat` is the working copy -- permuted column order, centered, scaled, mutated in
-  place every outer iteration. `fittedX` is allocated once (`src/armaSVD.cpp`: `fittedX.zeros(`);
+  place every outer iteration. `fittedX` is allocated once (`src/armaSVD.cpp`: `std::vector<double> fittedX(nrX * n_elig);`);
   dgemm overwrites only its changing block each iteration, and the fixed block is
   filled once, after the loop (Layer 5). `U` is mutated in place by `scale_rows_cols_inplace()`, so after
   the reconstruct step it no longer holds the orthonormal left factor.
@@ -765,16 +816,18 @@ values and do no arithmetic (NOT READ); the captures of step 4 are bitwise acros
   and `n_exact`/`n_lobpcg_ok`/`n_lobpcg_bad` (`src/hybrid_topk_eig.h`: `LOBPCGState lobpcg_state;`).
   When auto picks
   exact, only `lobpcg_state.X`, `lobpcg_state.P` and `X_prev` are reset.
-- `V` is sized once, before the EM loop (`src/armaSVD.cpp`: `V.set_size(n_elig, ncp);`).
+- Every matrix and vector of the kernel is a `std::vector<double>`, column-major and
+  unpadded, zero-filled when sized, where `arma::mat` left its cells as allocated.
+- `V` is sized once, before the EM loop (`src/armaSVD.cpp`: `std::vector<double> V(n_elig * n_cp);`).
   In the wide case its rows
-  `0 .. n_fixed-1` hold whatever the allocation held until postprocessing writes them
-  (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`); nothing reads them inside the
-  loop. `Vn` is sized there too (`src/armaSVD.cpp`: `Vn.set_size(n_gram, ncp);`), written
+  `0 .. n_fixed-1` stay zero until postprocessing writes them
+  (`src/armaSVD.cpp`: `n_gram, n_cp, V.data());`); nothing reads them inside the
+  loop. `Vn` is sized there too (`src/armaSVD.cpp`: `std::vector<double> Vn(n_gram * n_cp);`), written
   only by `split_eigvec_block()` and read only by the
   factor-recovery
-  `dgemm_` calls, which is what lets the post-loop fill reuse the last iteration's copy.
-- Return crosses as an `Rcpp::List`, copying the triplet matrix
-  into R. Only missing cells are transported, never the full imputed matrix.
+  dgemm calls, which is what lets the post-loop fill reuse the last iteration's copy.
+- Return crosses as an `Rcpp::List` holding `loc` and `value`, allocated as R objects
+  and written in place. Only missing cells are transported, never the full imputed matrix.
   `col_vars()` instead returns by value from `mat_stats.cpp`, a length-`p` vector
   written straight into a SEXP. `mean_imp_col()` reaches no kernel of its own: it builds a mean
   part in R and fills it through the matrix door (`R/parts.R`:
@@ -789,9 +842,10 @@ values and do no arithmetic (NOT READ); the captures of step 4 are bitwise acros
   `row.w` (`R/pca_imp.R`: `lower = 1e-10`) and flooring the weights it computes
   for `row.w = "n_miss"` (`R/pca_imp.R`: `row.w[row.w < 1e-10] <- 1e-10`), and
   applies a `.Machine$double.eps` variance floor.
-- `src/matrix_checks.h` is not in `armaSVD.cpp`'s include chain. It is included by
-  `src/mat_stats.cpp`, `src/sample_each_rep_cpp.cpp` and `src/imputed_value.h`, and
-  besides `col_ptr()` and the index refusals it holds `stop_on_inf()`, which
+- `src/matrix_checks.h` is included by `src/armaSVD.cpp`, for `col_ptr()` and
+  `stop_on_bad_col_index()`, as by
+  `src/mat_stats.cpp`, `src/sample_each_rep_cpp.cpp` and `src/imputed_value.h`.
+  Besides those it holds `stop_on_inf()`, which the PCA kernel does not call and which
   is reached from `src/mat_stats.cpp` via `check_inf()`, which `mean_imp_col()` calls
   (`R/mean_imp_col.R`: `check_inf(obj)`). `pca_imp()` no longer reaches it: its mean
   fill goes through `fallback_part()` directly, and `check_finite()` has already
@@ -799,10 +853,10 @@ values and do no arithmetic (NOT READ); the captures of step 4 are bitwise acros
 
 ## Compile-time switches
 
-**`-DARMA_64BIT_WORD=1`** -- set in `src/Makevars` and `src/Makevars.win`. Makes
-`arma::uword` 64 bits; without it a matrix past `2^32 - 1` elements wraps silently.
-`arma_uword_bytes()` (`src/armaSVD.cpp`: `int arma_uword_bytes()`) exists only so the test
-suite can assert the flag survived.
+**`-DARMA_64BIT_WORD=1`** -- still set in `src/Makevars` and `src/Makevars.win`, and read
+by nothing: it made `arma::uword` 64 bits, and no file under `src/` uses Armadillo since
+step 6 of Phase 2 of `dev/eigen_conversion.md`. `arma_uword_bytes()` and the test that
+pinned the flag went with that step; the flag itself goes in Phase 3.
 
 **`-DLOC_TIMER`** (`src/loc_timer.h`) -- when defined the header pulls in
 `rcpptimer.h` and the `LOC_TIMER_*` macros become real: `LOC_TIMER_OBJ` declares an
@@ -828,7 +882,7 @@ it they stay empty and
 `log_at()` (`src/hybrid_topk_eig.h`: `auto log_at = [&](`) is a no-op because its bounds check
 fails; the
 history buffers `eigval_hist`, `obj_hist`, `subspace_cos_hist` and their update
-block, which adds an `arma::svd` of `V_prev' * V_new` per iteration to track
+block, which adds the singular values of `V_prev' * V_new` per iteration (`si_la::matmul`, `si_la::svd_values`) to track
 subspace rotation; and a wider return list. The counters `n_exact`,
 `n_lobpcg_ok`, `n_lobpcg_bad` are always maintained and returned; only the per-iteration
 logs are gated.

@@ -167,7 +167,7 @@ test_that("an input with no holes is one part with an empty map", {
   expect_length(fit$chunks, 1L)
   expect_identical(nrow(fit$chunks[[1]]$map), 0L)
   expect_identical(as.matrix(fit), bare(m))
-  expect_identical(fit$chunks[[1]]$info$n_iter, 0)
+  expect_identical(fit$chunks[[1]]$info$n_iter, 0L)
 
   # Integer input with no holes: the matrix output keeps it integer, while
   # as.matrix() of the fit returns double, as it does for every input with a

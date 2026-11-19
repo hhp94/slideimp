@@ -2,60 +2,116 @@
 #define PCA_IMP_DIAGNOSTICS 0
 #endif
 
-// before svd_triplet.h: the chain it pulls in includes Rcpp.h, which
-// RcppArmadillo.h refuses to follow.
-#include <RcppArmadillo.h>
+#include <Rcpp.h>
 #include "svd_triplet.h"
+#include "matrix_checks.h"
 #include "loc_timer.h"
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <iomanip>
 #include <limits>
 #include <string>
+#include <vector>
+
+// Types, for the whole file. A row index and a column index of obj come from
+// R and are int; a count of rows, columns, components or iterations is held
+// in std::size_t once it has been checked, so that an offset into
+// column-major storage, such as j * nrX, is computed in std::size_t. Matrices
+// are std::vector<double>, column-major and unpadded, zero-filled when sized.
 
 template <typename F>
-static inline void for_each_missing_in_col(arma::uword cidx,
-                                           const arma::uvec &offsets,
-                                           const arma::uvec &rows_flat,
+static inline void for_each_missing_in_col(std::size_t cidx,
+                                           const std::vector<std::size_t> &offsets,
+                                           const std::vector<int> &rows_flat,
                                            F &&f)
 {
-  const arma::uword beg = offsets[cidx];
-  const arma::uword end = offsets[cidx + 1];
-  for (arma::uword p = beg; p < end; ++p)
+  const std::size_t beg = offsets[cidx];
+  const std::size_t end = offsets[cidx + 1];
+  for (std::size_t p = beg; p < end; ++p)
   {
-    f(rows_flat[p]);
+    f(static_cast<std::size_t>(rows_flat[p]));
   }
+}
+
+// ---------------------------------------------------------------------------
+// Two sums in the order Armadillo took them: one partial sum over the even
+// positions and one over the odd, added at the end (arrayops::accumulate()
+// behind arma::accu(), op_dot::direct_dot_generic() behind arma::dot()).
+// dev/CPP.md bans such a reduction. These are kept on the footing of
+// gram_trace() in src/svd_triplet.h: the first normalizes the row weights
+// and the second is the other term of the tail energy, every iteration of
+// the EM loop, so a plain sum moves results (dev/eigen_conversion.md, step 6
+// of Phase 2), and Phase 4 revisits them with the rest of Armadillo's
+// choices.
+// ---------------------------------------------------------------------------
+static inline double sum_two_partial(const double *x, const std::size_t n)
+{
+  double acc1 = 0.0;
+  double acc2 = 0.0;
+  std::size_t i = 0;
+  std::size_t j = 1;
+  for (; j < n; i += 2, j += 2)
+  {
+    acc1 += x[i];
+    acc2 += x[j];
+  }
+  if (i < n)
+  {
+    acc1 += x[i];
+  }
+  return acc1 + acc2;
+}
+
+// Armadillo took this sum itself up to 32 values and gave a longer one to
+// ddot; here every length is summed the same way.
+static inline double sum_squares_two_partial(const double *x,
+                                             const std::size_t n)
+{
+  double val1 = 0.0;
+  double val2 = 0.0;
+  std::size_t i = 0;
+  std::size_t j = 1;
+  for (; j < n; i += 2, j += 2)
+  {
+    val1 += x[i] * x[i];
+    val2 += x[j] * x[j];
+  }
+  if (i < n)
+  {
+    val1 += x[i] * x[i];
+  }
+  return val1 + val2;
 }
 
 // ---------------------------------------------------------------------------
 // impute_restandardize
 //
 // changing columns occupy positions [n_fixed, n_fixed + n_mc) of the
-// permuted Xhat, so column indices are derived rather than passed.
+// permuted Xhat, so column indices are derived rather than passed. et is
+// read and written only when Scale.
 // ---------------------------------------------------------------------------
 template <bool Scale>
-void impute_restandardize(arma::mat &Xhat,
-                          const arma::mat &fittedX,
-                          arma::rowvec &mean_p,
-                          arma::rowvec &et,
+void impute_restandardize(double *xptr,
+                          const double *fxp,
+                          double *mean_p,
+                          [[maybe_unused]] double *et,
                           const double *wptr,
                           const double *swptr,
                           double *X_chg_scaled,
-                          const arma::uword nrX,
-                          const arma::uword n_fixed,
-                          const arma::uword n_mc,
-                          const arma::uvec &miss_rows_flat,
-                          const arma::uvec &miss_rows_offsets,
+                          const std::size_t nrX,
+                          const std::size_t n_fixed,
+                          const std::size_t n_mc,
+                          const std::vector<int> &miss_rows_flat,
+                          const std::vector<std::size_t> &miss_rows_offsets,
                           const double *mu0,
                           const double *obs_sum_c,
                           const double *obs_sumsq_c)
 {
-  double *xptr = Xhat.memptr();
-  const double *fxp = fittedX.memptr();
-
-  for (arma::uword cidx = 0; cidx < n_mc; ++cidx)
+  for (std::size_t cidx = 0; cidx < n_mc; ++cidx)
   {
-    const arma::uword j = n_fixed + cidx;
-    const arma::uword off = j * nrX;
+    const std::size_t j = n_fixed + cidx;
+    const std::size_t off = j * nrX;
 
     double *col = xptr + off;
     const double *fit_col = fxp + off;
@@ -63,7 +119,7 @@ void impute_restandardize(arma::mat &Xhat,
     // Compact changing-column weighted buffer.
     //
     // Tall:
-    //   points into X_work.colptr(n_fixed)
+    //   points into column n_fixed of X_work
     //
     // Wide cached:
     //   points into gram_cache.X_chg_scaled
@@ -72,7 +128,7 @@ void impute_restandardize(arma::mat &Xhat,
     //   nullptr
     double *scaled_col = X_chg_scaled ? (X_chg_scaled + cidx * nrX) : nullptr;
 
-    const double old_mu = mean_p(j);
+    const double old_mu = mean_p[j];
 
     // old_mu stays within O(sd) of mu0[j], so this subtraction is exact
     // (Sterbenz) and dmu_old is an O(sd) quantity.
@@ -81,7 +137,7 @@ void impute_restandardize(arma::mat &Xhat,
     double old_et;
     if constexpr (Scale)
     {
-      old_et = et(j);
+      old_et = et[j];
     }
     else
     {
@@ -92,7 +148,7 @@ void impute_restandardize(arma::mat &Xhat,
     [[maybe_unused]] double imp_sumsq_c = 0.0; // accumulated only when Scale
 
     for_each_missing_in_col(cidx, miss_rows_offsets, miss_rows_flat,
-                            [&](arma::uword i)
+                            [&](std::size_t i)
                             {
                               const double v_std = fit_col[i];
                               col[i] = v_std;
@@ -133,7 +189,7 @@ void impute_restandardize(arma::mat &Xhat,
 
       if (scaled_col)
       {
-        for (arma::uword i = 0; i < nrX; ++i)
+        for (std::size_t i = 0; i < nrX; ++i)
         {
           const double z = col[i] * a + b;
           col[i] = z;
@@ -142,13 +198,13 @@ void impute_restandardize(arma::mat &Xhat,
       }
       else
       {
-        for (arma::uword i = 0; i < nrX; ++i)
+        for (std::size_t i = 0; i < nrX; ++i)
         {
           col[i] = col[i] * a + b;
         }
       }
 
-      et(j) = new_et_eff;
+      et[j] = new_et_eff;
     }
     else
     {
@@ -157,7 +213,7 @@ void impute_restandardize(arma::mat &Xhat,
 
       if (scaled_col)
       {
-        for (arma::uword i = 0; i < nrX; ++i)
+        for (std::size_t i = 0; i < nrX; ++i)
         {
           const double z = col[i] + b;
           col[i] = z;
@@ -166,30 +222,29 @@ void impute_restandardize(arma::mat &Xhat,
       }
       else
       {
-        for (arma::uword i = 0; i < nrX; ++i)
+        for (std::size_t i = 0; i < nrX; ++i)
         {
           col[i] += b;
         }
       }
     }
 
-    mean_p(j) = new_mu;
+    mean_p[j] = new_mu;
   }
 }
 
-static inline void initialize_missing_start(arma::mat &Xhat,
-                                            arma::mat &fittedX,
-                                            const arma::uword init,
-                                            const arma::uword nrX,
-                                            const arma::uword n_fixed,
-                                            const arma::uword n_mc,
-                                            const arma::uvec &miss_rows_flat,
-                                            const arma::uvec &miss_rows_offsets)
+// Starting values at the missing positions of Xhat and of fittedX, which the
+// caller hands over zero-filled: before the first dgemm only those positions
+// of fittedX are read.
+static inline void initialize_missing_start(double *Xhat,
+                                            double *fittedX,
+                                            const int init,
+                                            const std::size_t nrX,
+                                            const std::size_t n_fixed,
+                                            const std::size_t n_mc,
+                                            const std::vector<int> &miss_rows_flat,
+                                            const std::vector<std::size_t> &miss_rows_offsets)
 {
-  // Allocate the full fitted matrix once. It will be overwritten by DGEMM
-  // in the hot loop. Before the first DGEMM, only missing positions matter.
-  fittedX.zeros(nrX, Xhat.n_cols);
-
   if (n_mc == 0)
   {
     return;
@@ -197,15 +252,15 @@ static inline void initialize_missing_start(arma::mat &Xhat,
 
   if (init == 0)
   {
-    for (arma::uword ci = 0; ci < n_mc; ++ci)
+    for (std::size_t ci = 0; ci < n_mc; ++ci)
     {
-      const arma::uword j = n_fixed + ci;
+      const std::size_t j = n_fixed + ci;
 
-      double *col = Xhat.colptr(j);
-      double *fit_col = fittedX.colptr(j);
+      double *col = col_ptr(Xhat, j, nrX);
+      double *fit_col = col_ptr(fittedX, j, nrX);
 
       for_each_missing_in_col(ci, miss_rows_offsets, miss_rows_flat,
-                              [&](arma::uword i)
+                              [&](std::size_t i)
                               {
                                 col[i] = 0.0;
                                 fit_col[i] = 0.0;
@@ -215,19 +270,21 @@ static inline void initialize_missing_start(arma::mat &Xhat,
     return;
   }
 
-  Rcpp::NumericVector rand_vals = Rcpp::rnorm(miss_rows_flat.n_elem);
+  // the caller has refused more missing cells than an int counts.
+  Rcpp::NumericVector rand_vals =
+      Rcpp::rnorm(static_cast<int>(miss_rows_flat.size()));
 
-  for (arma::uword ci = 0; ci < n_mc; ++ci)
+  for (std::size_t ci = 0; ci < n_mc; ++ci)
   {
-    const arma::uword j = n_fixed + ci;
+    const std::size_t j = n_fixed + ci;
 
-    double *col = Xhat.colptr(j);
-    double *fit_col = fittedX.colptr(j);
+    double *col = col_ptr(Xhat, j, nrX);
+    double *fit_col = col_ptr(fittedX, j, nrX);
 
-    arma::uword p = miss_rows_offsets[ci];
+    std::size_t p = miss_rows_offsets[ci];
 
     for_each_missing_in_col(ci, miss_rows_offsets, miss_rows_flat,
-                            [&](arma::uword i)
+                            [&](std::size_t i)
                             {
                               const double z = rand_vals[p++];
                               col[i] = z;
@@ -237,24 +294,21 @@ static inline void initialize_missing_start(arma::mat &Xhat,
 }
 
 static inline double missing_weighted_residual_ss(
-    const arma::mat &Xhat,
-    const arma::mat &fittedX,
+    const double *xhp,
+    const double *fxp,
     const double *wptr,
-    const arma::uword nrX,
-    const arma::uword n_fixed,
-    const arma::uword n_mc,
-    const arma::uvec &miss_rows_flat,
-    const arma::uvec &miss_rows_offsets)
+    const std::size_t nrX,
+    const std::size_t n_fixed,
+    const std::size_t n_mc,
+    const std::vector<int> &miss_rows_flat,
+    const std::vector<std::size_t> &miss_rows_offsets)
 {
-  const double *xhp = Xhat.memptr();
-  const double *fxp = fittedX.memptr();
-
   double out = 0.0;
 
-  for (arma::uword ci = 0; ci < n_mc; ++ci)
+  for (std::size_t ci = 0; ci < n_mc; ++ci)
   {
-    const arma::uword j = n_fixed + ci;
-    const arma::uword off = j * nrX;
+    const std::size_t j = n_fixed + ci;
+    const std::size_t off = j * nrX;
 
     const double *xh = xhp + off;
     const double *fx = fxp + off;
@@ -262,7 +316,7 @@ static inline double missing_weighted_residual_ss(
     double s = 0.0;
 
     for_each_missing_in_col(ci, miss_rows_offsets, miss_rows_flat,
-                            [&](arma::uword i)
+                            [&](std::size_t i)
                             {
                               const double d = xh[i] - fx[i];
                               s += wptr[i] * d * d;
@@ -274,55 +328,56 @@ static inline double missing_weighted_residual_ss(
   return out;
 }
 
-// dst[:, j0 .. j0+nj) = U * V.rows(j0, j0+nj-1).t(), via dgemm on the
-// strided row block. dst must already have U.n_rows rows.
-static inline void reconstruct_cols(const arma::mat &U,
-                                    const arma::mat &V,
-                                    arma::mat &dst,
-                                    const arma::uword j0,
-                                    const arma::uword nj)
+// dst[:, j0 .. j0+nj) = U * V[j0 .. j0+nj, :]', by dgemm on the strided row
+// block of V. U is u_rows x u_cols, V has v_rows rows and u_cols columns,
+// and dst has u_rows rows.
+static inline void reconstruct_cols(const double *U,
+                                    const std::size_t u_rows,
+                                    const std::size_t u_cols,
+                                    const double *V,
+                                    const std::size_t v_rows,
+                                    double *dst,
+                                    const std::size_t j0,
+                                    const std::size_t nj)
 {
   if (nj == 0)
   {
     return;
   }
-  const char trN = 'N';
-  const char trT = 'T';
-  const double alpha = 1.0;
-  const double beta = 0.0;
-  const arma::blas_int m = static_cast<arma::blas_int>(U.n_rows);
-  const arma::blas_int n = static_cast<arma::blas_int>(nj);
-  const arma::blas_int k = static_cast<arma::blas_int>(U.n_cols);
-  const arma::blas_int lda = m;
-  const arma::blas_int ldb = static_cast<arma::blas_int>(V.n_rows);
-  const arma::blas_int ldc = static_cast<arma::blas_int>(dst.n_rows);
-  arma::dgemm_(&trN, &trT, &m, &n, &k,
-               &alpha,
-               U.memptr(), &lda,
-               V.memptr() + j0, &ldb,
-               &beta,
-               dst.colptr(j0), &ldc,
-               1, 1);
+  const int st = si_la::gemm('N', 'T', u_rows, nj, u_cols,
+                             1.0,
+                             U, u_rows,
+                             V + j0, v_rows,
+                             0.0,
+                             col_ptr(dst, j0, u_rows), u_rows);
+  if (st != si_la::ok)
+  {
+    Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
+  }
 }
 
+// Internal. `eligible_idx` holds 0-based columns of `obj`. Returns the
+// imputed cells as `loc`, an integer matrix of each one's 1-based row and
+// column in `obj`, and `value`, in the column-major order of the eligible
+// columns with the complete ones dropped.
 // [[Rcpp::export]]
 Rcpp::List pca_imp_internal_cpp(
-    const arma::mat &obj,
-    const arma::uvec &eligible_idx,
-    const arma::uword ncp,
+    const Rcpp::NumericMatrix &obj,
+    const Rcpp::IntegerVector &eligible_idx,
+    const int ncp,
     const bool scale,
     const bool regularized,
     const double threshold,
-    const arma::uword init,
-    const arma::uword maxiter,
-    const arma::uword miniter,
-    arma::rowvec row_w,
+    const int init,
+    const int maxiter,
+    const int miniter,
+    const Rcpp::NumericVector &row_w,
     const double coeff_ridge,
     const int solver,
-    const arma::uword warmup_iters,
+    const int warmup_iters,
     const double lobpcg_tol,
-    const arma::uword lobpcg_maxiter,
-    const arma::uword trace_iter = 0)
+    const int lobpcg_maxiter,
+    const int trace_iter = 0)
 {
   LOC_TIMER_OBJ(pca_imp_gram);
   LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
@@ -331,22 +386,35 @@ Rcpp::List pca_imp_internal_cpp(
   // initialization. check_finite() in pca_imp() is the gate, and it runs once.
 
   // -------------------------------------------------------------------------
-  // basic argument validation before we set up workspaces.
+  // basic argument validation before we set up workspaces. NA_integer_ is
+  // INT_MIN, so every lower bound below refuses it too.
   // -------------------------------------------------------------------------
-  const arma::uword nrX = obj.n_rows;
-  const arma::uword n_elig = eligible_idx.n_elem;
+  const std::size_t nrX = static_cast<std::size_t>(obj.nrow());
+  const std::size_t n_elig = static_cast<std::size_t>(eligible_idx.size());
 
-  if (maxiter == 0)
+  if (maxiter < 1)
   {
     Rcpp::stop("maxiter must be >= 1");
+  }
+  if (miniter < 0)
+  {
+    Rcpp::stop("miniter must be >= 0");
   }
   if (miniter > maxiter)
   {
     Rcpp::stop("miniter must be <= maxiter");
   }
-  if (ncp == 0)
+  if (ncp < 1)
   {
     Rcpp::stop("ncp must be >= 1");
+  }
+  if (init < 0)
+  {
+    Rcpp::stop("init must be >= 0");
+  }
+  if (trace_iter < 0)
+  {
+    Rcpp::stop("trace_iter must be >= 0");
   }
   if (solver < 0 || solver > 2)
   {
@@ -355,52 +423,54 @@ Rcpp::List pca_imp_internal_cpp(
 
   const bool lobpcg_requested = (solver != 0);
 
-  if (lobpcg_requested && lobpcg_maxiter == 0)
+  if (lobpcg_requested && lobpcg_maxiter < 1)
   {
     Rcpp::stop("lobpcg_maxiter must be >= 1 when solver is 1 (lobpcg) or 2 (auto)");
+  }
+  if (lobpcg_requested && warmup_iters < 0)
+  {
+    Rcpp::stop("warmup_iters must be >= 0 when solver is 1 (lobpcg) or 2 (auto)");
   }
 
   if (n_elig == 0)
   {
     Rcpp::stop("eligible_idx is empty");
   }
-  if (row_w.n_elem != nrX)
+  if (static_cast<std::size_t>(row_w.size()) != nrX)
   {
     Rcpp::stop("row_w length must equal n_rows(obj)");
   }
-  if (eligible_idx.max() >= obj.n_cols)
-  {
-    Rcpp::stop("eligible_idx contains out-of-bounds column indices");
-  }
+  stop_on_bad_col_index(eligible_idx, obj.ncol(), "eligible_idx");
 
-  const arma::uword min_problem_dim = std::min(nrX, n_elig);
-  if (ncp >= min_problem_dim)
+  const std::size_t n_cp = static_cast<std::size_t>(ncp);
+  const std::size_t max_iter = static_cast<std::size_t>(maxiter);
+  const std::size_t min_iter = static_cast<std::size_t>(miniter);
+  const std::size_t trace_every = static_cast<std::size_t>(trace_iter);
+
+  const std::size_t min_problem_dim = std::min(nrX, n_elig);
+  if (n_cp >= min_problem_dim)
   {
     Rcpp::stop("ncp + 1 must be <= min(n_rows, n_eligible_cols)");
   }
 
   // prevent nrX * n_elig overflow later.
-  if (n_elig != 0 && nrX > (std::numeric_limits<arma::uword>::max)() / n_elig)
+  if (nrX > (std::numeric_limits<std::size_t>::max)() / n_elig)
   {
     Rcpp::stop("problem dimensions are too large");
   }
 
   const bool tall = (nrX >= n_elig);
-  const arma::uword k = regularized ? ncp + 1 : ncp;
-  const arma::uword n_gram = tall ? n_elig : nrX;
+  const std::size_t k = regularized ? n_cp + 1 : n_cp;
+  const std::size_t n_gram = tall ? n_elig : nrX;
 
-  // BLAS/LAPACK integer range guard
+  // LAPACK workspace guard. The dimensions themselves fit an int: nrX is an
+  // R dimension, and n_cp and n_gram are below one.
   {
-    const arma::uword blas_max =
-        static_cast<arma::uword>((std::numeric_limits<arma::blas_int>::max)());
-
-    if (nrX > blas_max || n_elig > blas_max || ncp > blas_max || k > blas_max || n_gram > blas_max)
-    {
-      Rcpp::stop("problem dimensions exceed BLAS/LAPACK integer range");
-    }
+    const std::size_t int_max =
+        static_cast<std::size_t>((std::numeric_limits<int>::max)());
 
     // si_la::syevr_range gives dsyevr at least 26*n and 10*n workspace.
-    if (n_gram > blas_max / 26)
+    if (n_gram > int_max / 26)
     {
       Rcpp::stop("problem dimension too large for LAPACK dsyevr workspace");
     }
@@ -414,35 +484,34 @@ Rcpp::List pca_imp_internal_cpp(
       const long double dsyevd_lwork = 1.0L + 6.0L * rr_dim + 2.0L * rr_dim * rr_dim;
       const long double dsyevd_liwork = 3.0L + 5.0L * rr_dim;
 
-      if (rr_dim > static_cast<long double>(blas_max) ||
-          dsyevd_lwork > static_cast<long double>(blas_max) ||
-          dsyevd_liwork > static_cast<long double>(blas_max))
+      if (rr_dim > static_cast<long double>(int_max) ||
+          dsyevd_lwork > static_cast<long double>(int_max) ||
+          dsyevd_liwork > static_cast<long double>(int_max))
       {
         Rcpp::stop("ncp too large for LOBPCG internal LAPACK workspace");
       }
     }
+  }
 
-    const arma::uword int_max = static_cast<arma::uword>((std::numeric_limits<int>::max)());
+  // the kernel's own copy of the weights, normalized below.
+  std::vector<double> w(row_w.begin(), row_w.end());
 
-    if (lobpcg_requested)
+  for (std::size_t i = 0; i < nrX; ++i)
+  {
+    if (!std::isfinite(w[i]))
     {
-      if (warmup_iters > int_max || lobpcg_maxiter > int_max)
-      {
-        Rcpp::stop("LOBPCG iteration controls exceed int range");
-      }
+      Rcpp::stop("row_w must be finite");
+    }
+  }
+  for (std::size_t i = 0; i < nrX; ++i)
+  {
+    if (w[i] < 0.0)
+    {
+      Rcpp::stop("row_w must be non-negative");
     }
   }
 
-  if (!row_w.is_finite())
-  {
-    Rcpp::stop("row_w must be finite");
-  }
-  if (arma::any(row_w < 0.0))
-  {
-    Rcpp::stop("row_w must be non-negative");
-  }
-
-  const double row_w_sum = arma::accu(row_w);
+  const double row_w_sum = sum_two_partial(w.data(), nrX);
   if (!(row_w_sum > 0.0))
   {
     Rcpp::stop("row_w must have positive sum");
@@ -450,7 +519,7 @@ Rcpp::List pca_imp_internal_cpp(
 
   const double nrX_d = static_cast<double>(nrX);
   const double n_elig_d = static_cast<double>(n_elig);
-  const double ncp_d = static_cast<double>(ncp);
+  const double ncp_d = static_cast<double>(n_cp);
 
   const double denom_sigma = (n_elig_d - ncp_d) * (nrX_d - 1.0 - ncp_d);
   if (regularized && !(denom_sigma > 0.0))
@@ -458,89 +527,119 @@ Rcpp::List pca_imp_internal_cpp(
     Rcpp::stop("regularized=true requires n_elig > ncp and nrX - 1 > ncp");
   }
 
-  double old = arma::datum::inf;
+  double old = std::numeric_limits<double>::infinity();
 
-  row_w /= row_w_sum;
-  const double *wptr = row_w.memptr();
+  for (std::size_t i = 0; i < nrX; ++i)
+  {
+    w[i] /= row_w_sum;
+  }
+  const double *wptr = w.data();
+
+  const double *objp = obj.begin();
+  const int *elig = eligible_idx.begin();
 
   LOC_TIC(pca_imp_gram, "pass1_count_missing");
-  arma::uvec col_nmiss(n_elig, arma::fill::zeros);
-  for (arma::uword j_local = 0; j_local < n_elig; ++j_local)
+  std::vector<std::size_t> col_nmiss(n_elig, 0);
+  for (std::size_t j_local = 0; j_local < n_elig; ++j_local)
   {
-    const double *p = obj.colptr(eligible_idx[j_local]);
-    arma::uword c = 0;
-    for (arma::uword i = 0; i < nrX; ++i)
+    const double *p =
+        col_ptr(objp, static_cast<std::size_t>(elig[j_local]), nrX);
+    std::size_t c = 0;
+    for (std::size_t i = 0; i < nrX; ++i)
     {
-      c += static_cast<arma::uword>(std::isnan(p[i]));
+      c += static_cast<std::size_t>(std::isnan(p[i]));
     }
     col_nmiss[j_local] = c;
   }
   LOC_TOC(pca_imp_gram, "pass1_count_missing");
 
-  arma::uvec fixed_cols = arma::find(col_nmiss == 0);
-  arma::uvec changing_cols = arma::find(col_nmiss > 0);
-  const arma::uword n_fixed = fixed_cols.n_elem;
-  const arma::uword n_mc = changing_cols.n_elem;
-
-  arma::uvec perm(n_elig);
-  if (n_fixed > 0)
+  // perm lists the complete columns first, then the ones with a hole, each
+  // group in the order eligible_idx gives.
+  std::vector<std::size_t> perm;
+  perm.reserve(n_elig);
+  for (std::size_t j = 0; j < n_elig; ++j)
   {
-    perm.head(n_fixed) = fixed_cols;
+    if (col_nmiss[j] == 0)
+    {
+      perm.push_back(j);
+    }
   }
-  if (n_mc > 0)
+  const std::size_t n_fixed = perm.size();
+  for (std::size_t j = 0; j < n_elig; ++j)
   {
-    perm.tail(n_mc) = changing_cols;
+    if (col_nmiss[j] > 0)
+    {
+      perm.push_back(j);
+    }
   }
+  const std::size_t n_mc = n_elig - n_fixed;
 
-  arma::uvec eligible_idx_perm = eligible_idx.elem(perm);
+  std::vector<int> eligible_idx_perm(n_elig);
+  for (std::size_t jp = 0; jp < n_elig; ++jp)
+  {
+    eligible_idx_perm[jp] = elig[perm[jp]];
+  }
 
   // after the permutation, changing columns are exactly positions
   // [n_fixed, n_elig); loops derive local column indices as n_fixed + ci.
-  arma::uvec miss_rows_offsets(n_mc + 1, arma::fill::zeros);
-  if (n_mc > 0)
+  std::vector<std::size_t> miss_rows_offsets(n_mc + 1, 0);
+  for (std::size_t ci = 0; ci < n_mc; ++ci)
   {
-    miss_rows_offsets.tail(n_mc) = arma::cumsum(col_nmiss.elem(changing_cols));
+    miss_rows_offsets[ci + 1] =
+        miss_rows_offsets[ci] + col_nmiss[perm[n_fixed + ci]];
   }
-  const arma::uword n_missing = miss_rows_offsets[n_mc];
-  arma::uvec miss_rows_flat(n_missing);
+  const std::size_t n_missing = miss_rows_offsets[n_mc];
 
-  arma::mat Xhat(nrX, n_elig);
-  arma::mat fittedX;
+  // `loc` is an R matrix, whose dims are int.
+  if (n_missing > static_cast<std::size_t>((std::numeric_limits<int>::max)()))
+  {
+    Rcpp::stop(
+        std::string("The eligible columns hold ") +
+        std::to_string(n_missing) +
+        " missing values; the result has a row for each, and an R "
+        "matrix has at most " +
+        std::to_string((std::numeric_limits<int>::max)()) +
+        " rows.");
+  }
+  std::vector<int> miss_rows_flat(n_missing);
 
-  arma::rowvec denom(n_elig, arma::fill::zeros);
-  arma::rowvec mu0(n_elig, arma::fill::zeros);
-  arma::rowvec obs_sum_c(n_elig, arma::fill::zeros);
-  arma::rowvec obs_sumsq_c(n_elig, arma::fill::zeros);
+  std::vector<double> Xhat(nrX * n_elig);
+  std::vector<double> fittedX(nrX * n_elig);
+
+  std::vector<double> denom(n_elig);
+  std::vector<double> mu0(n_elig);
+  std::vector<double> obs_sum_c(n_elig);
+  std::vector<double> obs_sumsq_c(n_elig);
 
   LOC_TIC(pca_imp_gram, "pass2_scan");
   {
-    for (arma::uword jp = 0; jp < n_elig; ++jp)
+    for (std::size_t jp = 0; jp < n_elig; ++jp)
     {
-      const arma::uword orig_col = eligible_idx_perm[jp];
-      const double *src = obj.colptr(orig_col);
-      double *dst = Xhat.colptr(jp);
+      const double *src =
+          col_ptr(objp, static_cast<std::size_t>(eligible_idx_perm[jp]), nrX);
+      double *dst = col_ptr(Xhat.data(), jp, nrX);
 
       const bool has_miss = (jp >= n_fixed);
-      const arma::uword cidx = has_miss ? (jp - n_fixed) : 0;
-      arma::uword p = has_miss ? miss_rows_offsets[cidx] : 0;
+      const std::size_t cidx = has_miss ? (jp - n_fixed) : 0;
+      std::size_t p = has_miss ? miss_rows_offsets[cidx] : 0;
 
       // pass A: observed weight, raw weighted sum, missing-row indices.
       double d_acc = 0.0, ws_acc = 0.0;
-      for (arma::uword i = 0; i < nrX; ++i)
+      for (std::size_t i = 0; i < nrX; ++i)
       {
         const double v = src[i];
         if (std::isnan(v))
         {
           if (has_miss)
           {
-            miss_rows_flat[p++] = i;
+            miss_rows_flat[p++] = static_cast<int>(i);
           }
         }
         else
         {
-          const double w = wptr[i];
-          d_acc += w;
-          ws_acc += w * v;
+          const double wi = wptr[i];
+          d_acc += wi;
+          ws_acc += wi * v;
         }
       }
       denom[jp] = d_acc;
@@ -554,7 +653,7 @@ Rcpp::List pca_imp_internal_cpp(
       // pass B: centered moments at O(sd) magnitude (avoids the
       // E[x^2] - mu^2 catastrophic cancellation), plus the Xhat write.
       double osc_acc = 0.0, ossq_acc = 0.0;
-      for (arma::uword i = 0; i < nrX; ++i)
+      for (std::size_t i = 0; i < nrX; ++i)
       {
         const double v = src[i];
         if (std::isnan(v))
@@ -565,9 +664,9 @@ Rcpp::List pca_imp_internal_cpp(
         {
           dst[i] = v;
           const double vc = v - mu0_j;
-          const double w = wptr[i];
-          osc_acc += w * vc;
-          ossq_acc += w * vc * vc;
+          const double wi = wptr[i];
+          osc_acc += wi * vc;
+          ossq_acc += wi * vc * vc;
         }
       }
       obs_sum_c[jp] = osc_acc; // ~0 by construction; kept for exactness
@@ -578,40 +677,48 @@ Rcpp::List pca_imp_internal_cpp(
 
   // every eligible column must have at least one observed row with positive
   // weight, else mean_p (and the downstream Gram) is NaN.
-  for (arma::uword j = 0; j < n_elig; ++j)
+  for (std::size_t j = 0; j < n_elig; ++j)
   {
     if (!(denom[j] > 0.0))
     {
-      Rcpp::stop("eligible column has zero observed weight (column %u)",
-                 static_cast<unsigned>(eligible_idx_perm[j] + 1));
+      Rcpp::stop("eligible column has zero observed weight (column %d)",
+                 eligible_idx_perm[j] + 1);
     }
   }
 
-  const double *mu0ptr = mu0.memptr();
-  const double *oscptr = obs_sum_c.memptr();
-  const double *ossqptr = obs_sumsq_c.memptr();
-  const arma::rowvec mean_resid = obs_sum_c / denom;
-  arma::rowvec mean_p = mu0 + mean_resid;
-  arma::rowvec et;
+  const double *mu0ptr = mu0.data();
+  const double *oscptr = obs_sum_c.data();
+  const double *ossqptr = obs_sumsq_c.data();
+
+  // the column means, and when scaling the column scales floored at PCA_TOL.
+  // et stays empty otherwise, and nothing reads it.
+  std::vector<double> mean_p(n_elig);
+  std::vector<double> et;
   if (scale)
   {
-    arma::rowvec var = obs_sumsq_c / denom - mean_resid % mean_resid;
-    var.transform([](double v)
-                  { return v < 0.0 ? 0.0 : v; });
-    et = arma::sqrt(var);
-    et.transform([](double e)
-                 { return e < PCA_TOL ? PCA_TOL : e; });
+    et.resize(n_elig);
+  }
+  for (std::size_t j = 0; j < n_elig; ++j)
+  {
+    const double mean_resid = obs_sum_c[j] / denom[j];
+    mean_p[j] = mu0[j] + mean_resid;
+    if (scale)
+    {
+      const double var = obs_sumsq_c[j] / denom[j] - mean_resid * mean_resid;
+      const double e = std::sqrt(var < 0.0 ? 0.0 : var);
+      et[j] = e < PCA_TOL ? PCA_TOL : e;
+    }
   }
 
   if (scale)
   {
-    for (arma::uword j = 0; j < n_elig; ++j)
+    for (std::size_t j = 0; j < n_elig; ++j)
     {
-      double *col = Xhat.colptr(j);
+      double *col = col_ptr(Xhat.data(), j, nrX);
       const double mu = mean_p[j];
       const double inv_et = 1.0 / et[j];
 
-      for (arma::uword i = 0; i < nrX; ++i)
+      for (std::size_t i = 0; i < nrX; ++i)
       {
         col[i] = (col[i] - mu) * inv_et;
       }
@@ -619,19 +726,19 @@ Rcpp::List pca_imp_internal_cpp(
   }
   else
   {
-    for (arma::uword j = 0; j < n_elig; ++j)
+    for (std::size_t j = 0; j < n_elig; ++j)
     {
-      double *col = Xhat.colptr(j);
+      double *col = col_ptr(Xhat.data(), j, nrX);
       const double mu = mean_p[j];
 
-      for (arma::uword i = 0; i < nrX; ++i)
+      for (std::size_t i = 0; i < nrX; ++i)
       {
         col[i] -= mu;
       }
     }
   }
 
-  initialize_missing_start(Xhat, fittedX, init, nrX,
+  initialize_missing_start(Xhat.data(), fittedX.data(), init, nrX,
                            n_fixed, n_mc, miss_rows_flat, miss_rows_offsets);
 
   // ---------------------------------------------------------------------------
@@ -639,18 +746,16 @@ Rcpp::List pca_imp_internal_cpp(
   // ---------------------------------------------------------------------------
   double trace_val;
   double sigma2 = 0.0;
-  const arma::colvec sqrt_row_w = arma::sqrt(row_w.t());
-  arma::colvec inv_sqrt_row_w(nrX);
-  for (arma::uword i = 0; i < nrX; ++i)
+  std::vector<double> sqrt_row_w(nrX);
+  std::vector<double> inv_sqrt_row_w(nrX);
+  for (std::size_t i = 0; i < nrX; ++i)
   {
-    const double s = sqrt_row_w[i];
+    const double s = std::sqrt(w[i]);
+    sqrt_row_w[i] = s;
     inv_sqrt_row_w[i] = (s > PCA_TOL) ? (1.0 / s) : (1.0 / PCA_TOL);
   }
-  const double *sptr = sqrt_row_w.memptr();
-  const double *isptr = inv_sqrt_row_w.memptr();
-
-  arma::mat U, V, X_work, AA_NxN, Vn, eigvecs;
-  arma::vec vs_top, d_inv, eigvals, lambda_shrinked;
+  const double *sptr = sqrt_row_w.data();
+  const double *isptr = inv_sqrt_row_w.data();
 
   GramWorkspace gram_ws;
   gram_ws.init(nrX, n_elig, tall);
@@ -662,26 +767,24 @@ Rcpp::List pca_imp_internal_cpp(
 
   // every buffer SVD_triplet() reads or writes is sized here, once, and
   // written through raw pointers; the sizes are the ones its header lists.
-  // In the wide case V's fixed rows stay unwritten until postprocessing.
-  AA_NxN.set_size(n_gram, n_gram);
-  if (tall)
-  {
-    X_work.set_size(nrX, n_elig);
-  }
-  U.set_size(nrX, ncp);
-  V.set_size(n_elig, ncp);
-  Vn.set_size(n_gram, ncp);
-  eigvecs.set_size(n_gram, k);
-  eigvals.set_size(k);
-  vs_top.set_size(k);
-  d_inv.set_size(ncp);
-  lambda_shrinked.set_size(ncp);
+  // In the wide case V's fixed rows stay unwritten until postprocessing, and
+  // X_work is empty.
+  std::vector<double> AA_NxN(n_gram * n_gram);
+  std::vector<double> X_work(tall ? nrX * n_elig : 0);
+  std::vector<double> U(nrX * n_cp);
+  std::vector<double> V(n_elig * n_cp);
+  std::vector<double> Vn(n_gram * n_cp);
+  std::vector<double> eigvecs(n_gram * k);
+  std::vector<double> eigvals(k);
+  std::vector<double> vs_top(k);
+  std::vector<double> d_inv(n_cp);
+  std::vector<double> lambda_shrinked(n_cp);
 
   LOC_TIC(pca_imp_gram, "gram_cache_init");
   GramCache gram_cache;
   const int gram_init_st =
-      gram_cache_init(gram_cache, Xhat.memptr(), sptr, nrX, n_fixed, n_mc,
-                      tall, X_work.memptr());
+      gram_cache_init(gram_cache, Xhat.data(), sptr, nrX, n_fixed, n_mc,
+                      tall, X_work.data());
   LOC_TOC(pca_imp_gram, "gram_cache_init");
   if (gram_init_st != si_la::ok)
   {
@@ -689,16 +792,16 @@ Rcpp::List pca_imp_internal_cpp(
                gram_init_st);
   }
   double *weighted_chg_ptr = gram_changing_block(
-      gram_cache, X_work.memptr(), nrX, n_fixed, n_mc, tall);
+      gram_cache, X_work.data(), nrX, n_fixed, n_mc, tall);
 
   HybridEigContext hyb_ctx;
   hyb_ctx.eig_range = &eig_range;
   hyb_ctx.solver_mode = static_cast<HybridSolverMode>(solver);
-  hyb_ctx.warmup_iters = lobpcg_requested ? static_cast<int>(warmup_iters) : 0;
+  hyb_ctx.warmup_iters = lobpcg_requested ? warmup_iters : 0;
   hyb_ctx.lobpcg_opt.tol = lobpcg_tol;
-  hyb_ctx.lobpcg_opt.maxiter = lobpcg_requested ? static_cast<int>(lobpcg_maxiter) : 0;
+  hyb_ctx.lobpcg_opt.maxiter = lobpcg_requested ? lobpcg_maxiter : 0;
 #if PCA_IMP_DIAGNOSTICS
-  hyb_ctx.init_logs(maxiter);
+  hyb_ctx.init_logs(max_iter);
 #endif
 
   const double min_dim = std::min(n_elig_d, nrX_d - 1.0);
@@ -708,10 +811,11 @@ Rcpp::List pca_imp_internal_cpp(
   // hot loop prep
   // ---------------------------------------------------------------------------
   double objective = 0.0;
-  const double *xhp = Xhat.memptr();
+  const double *xhp = Xhat.data();
+  double *etptr = scale ? et.data() : nullptr;
 
-  arma::uword n_iter_final = 0;
-  double criterion_final = arma::datum::nan;
+  std::size_t n_iter_final = 0;
+  double criterion_final = std::numeric_limits<double>::quiet_NaN();
   bool converged = false;
 
   struct PrecGuard
@@ -732,7 +836,7 @@ Rcpp::List pca_imp_internal_cpp(
   const int obj_w = 8;
   const int ratio_w = 12;
 
-  if (trace_iter > 0)
+  if (trace_every > 0)
   {
     Rcpp::Rcout.precision(6);
     Rcpp::Rcout
@@ -743,24 +847,28 @@ Rcpp::List pca_imp_internal_cpp(
         << std::endl;
   }
 
-  auto print_iter = [&](arma::uword it, double obj, double crit)
+  auto print_iter = [&](std::size_t it, double obj_val, double crit)
   {
     Rcpp::Rcout
         << std::setw(iter_w) << it << " : "
-        << std::setw(obj_w) << obj
+        << std::setw(obj_w) << obj_val
         << " "
         << std::setw(ratio_w) << crit
         << std::endl;
   };
 
 #if PCA_IMP_DIAGNOSTICS
-  arma::mat eigval_hist(ncp, maxiter, arma::fill::zeros);
-  arma::vec obj_hist(maxiter, arma::fill::zeros);
-  arma::vec subspace_cos_hist(maxiter, arma::fill::zeros);
-  arma::mat V_prev;
+  // eigval_hist is n_cp x max_iter. V_prev holds the leading n_cp
+  // eigenvectors of the iteration before, and is empty during the first.
+  std::vector<double> eigval_hist(n_cp * max_iter);
+  std::vector<double> obj_hist(max_iter);
+  std::vector<double> subspace_cos_hist(max_iter);
+  std::vector<double> V_prev;
+  std::vector<double> V_cross(n_cp * n_cp);
+  std::vector<double> V_cross_sv(n_cp);
 #endif
 
-  for (arma::uword nb_iter = 1;; ++nb_iter)
+  for (std::size_t nb_iter = 1;; ++nb_iter)
   {
     if (nb_iter % 5 == 0)
     {
@@ -769,7 +877,8 @@ Rcpp::List pca_imp_internal_cpp(
     LOC_TIC(pca_imp_gram, "restandardize");
     if (scale)
     {
-      impute_restandardize<true>(Xhat, fittedX, mean_p, et,
+      impute_restandardize<true>(Xhat.data(), fittedX.data(),
+                                 mean_p.data(), etptr,
                                  wptr, sptr, weighted_chg_ptr, nrX,
                                  n_fixed, n_mc,
                                  miss_rows_flat, miss_rows_offsets,
@@ -777,7 +886,8 @@ Rcpp::List pca_imp_internal_cpp(
     }
     else
     {
-      impute_restandardize<false>(Xhat, fittedX, mean_p, et,
+      impute_restandardize<false>(Xhat.data(), fittedX.data(),
+                                  mean_p.data(), etptr,
                                   wptr, sptr, weighted_chg_ptr, nrX,
                                   n_fixed, n_mc,
                                   miss_rows_flat, miss_rows_offsets,
@@ -786,31 +896,31 @@ Rcpp::List pca_imp_internal_cpp(
     LOC_TOC(pca_imp_gram, "restandardize");
 
     LOC_TIC(pca_imp_gram, "svd");
-    SVD_triplet(Xhat.memptr(), sptr, ncp, tall,
-                vs_top.memptr(), trace_val, U.memptr(), V.memptr(),
-                X_work.memptr(), AA_NxN.memptr(),
-                d_inv.memptr(), Vn.memptr(), eigvals.memptr(), eigvecs.memptr(),
+    SVD_triplet(Xhat.data(), sptr, n_cp, tall,
+                vs_top.data(), trace_val, U.data(), V.data(),
+                X_work.data(), AA_NxN.data(),
+                d_inv.data(), Vn.data(), eigvals.data(), eigvecs.data(),
                 gram_ws, gram_cache,
                 hyb_ctx, static_cast<int>(nb_iter - 1) LOC_TIMER_ARG(pca_imp_gram));
     LOC_TOC(pca_imp_gram, "svd");
 
     LOC_TIC(pca_imp_gram, "post_svd");
     sigma2 = 0.0;
-    const double sum_top_sq = arma::dot(vs_top.head(ncp), vs_top.head(ncp));
+    const double sum_top_sq = sum_squares_two_partial(vs_top.data(), n_cp);
     // clamp tail energy once and use consistently in both sigma2 (was unclamped)
     // and the objective.
     const double tail = std::max(0.0, trace_val - sum_top_sq);
     if (regularized)
     {
       sigma2 = scale_factor * tail / denom_sigma;
-      sigma2 = std::min(sigma2 * coeff_ridge, vs_top(ncp) * vs_top(ncp));
+      sigma2 = std::min(sigma2 * coeff_ridge, vs_top[n_cp] * vs_top[n_cp]);
     }
 
     double top_corr = 0.0;
     {
-      const double *vp = vs_top.memptr();
-      double *lp = lambda_shrinked.memptr();
-      for (arma::uword i = 0; i < ncp; ++i)
+      const double *vp = vs_top.data();
+      double *lp = lambda_shrinked.data();
+      for (std::size_t i = 0; i < n_cp; ++i)
       {
         const double v = vp[i];
         const double lam = (v > PCA_TOL) ? (v - sigma2 / v) : 0.0;
@@ -827,22 +937,23 @@ Rcpp::List pca_imp_internal_cpp(
     // after this, U contains diag(isw) %*% U %*% diag(lambda_shrinked):
     // the row de-weighting of SVD_triplet's weighted-space U fused with the
     // shrunk column scaling.
-    pca_detail::scale_rows_cols_inplace(U.memptr(),
+    pca_detail::scale_rows_cols_inplace(U.data(),
                                         isptr,
-                                        lambda_shrinked.memptr(),
-                                        U.n_rows,
-                                        ncp);
+                                        lambda_shrinked.data(),
+                                        nrX,
+                                        n_cp);
     // reconstruct only the changing columns of fittedX; the fixed block is
     // never read inside the loop and is filled once after it exits.
-    reconstruct_cols(U, V, fittedX, n_fixed, n_mc);
+    reconstruct_cols(U.data(), nrX, n_cp, V.data(), n_elig, fittedX.data(),
+                     n_fixed, n_mc);
 
     LOC_TOC(pca_imp_gram, "reconstruct");
 
     LOC_TIC(pca_imp_gram, "objective");
     {
       const double miss_contrib =
-          missing_weighted_residual_ss(Xhat,
-                                       fittedX,
+          missing_weighted_residual_ss(Xhat.data(),
+                                       fittedX.data(),
                                        wptr,
                                        nrX,
                                        n_fixed,
@@ -855,21 +966,44 @@ Rcpp::List pca_imp_internal_cpp(
     LOC_TOC(pca_imp_gram, "objective");
 
 #if PCA_IMP_DIAGNOSTICS
-    eigval_hist.col(nb_iter - 1) = vs_top.head(ncp);
-    obj_hist(nb_iter - 1) = objective;
+    std::copy(vs_top.begin(), vs_top.begin() + n_cp,
+              eigval_hist.begin() + (nb_iter - 1) * n_cp);
+    obj_hist[nb_iter - 1] = objective;
+    if (!V_prev.empty())
     {
-      arma::mat V_new = eigvecs.head_cols(ncp);
-      if (V_prev.n_elem > 0)
+      // the smallest singular value of V_prev' * V_new: the cosine of the
+      // largest angle between the two subspaces.
+      int st = si_la::matmul(true, 1.0, V_prev.data(), n_gram, n_cp,
+                             eigvecs.data(), n_gram, n_cp,
+                             0.0, V_cross.data());
+      if (st != si_la::ok)
       {
-        arma::vec s = arma::svd(V_prev.t() * V_new);
-        subspace_cos_hist(nb_iter - 1) = s.min();
+        Rcpp::stop("internal error: dgemm or dgemv refused its arguments "
+                   "(status %d)",
+                   st);
       }
-      else
+      st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());
+      if (st > 0 || st == si_la::err_nonfinite)
       {
-        subspace_cos_hist(nb_iter - 1) = arma::datum::nan;
+        // dgesdd did not converge, or the product holds NaN or Inf.
+        Rcpp::stop("pca_imp diagnostics: the SVD of the subspace product failed");
       }
-      V_prev = std::move(V_new);
+      if (st == si_la::err_alloc)
+      {
+        Rcpp::stop("pca_imp diagnostics: could not allocate the workspace of dgesdd");
+      }
+      if (st != si_la::ok)
+      {
+        Rcpp::stop("internal error: dgesdd refused its arguments (status %d)", st);
+      }
+      subspace_cos_hist[nb_iter - 1] =
+          *std::min_element(V_cross_sv.begin(), V_cross_sv.end());
     }
+    else
+    {
+      subspace_cos_hist[nb_iter - 1] = std::numeric_limits<double>::quiet_NaN();
+    }
+    V_prev.assign(eigvecs.begin(), eigvecs.begin() + n_gram * n_cp);
 #endif
 
     // missMDA convergence test:
@@ -884,7 +1018,7 @@ Rcpp::List pca_imp_internal_cpp(
     old = objective;
 
     bool stop_now = false;
-    if (nb_iter >= miniter)
+    if (nb_iter >= min_iter)
     {
       if (criterion < threshold || objective < threshold)
       {
@@ -892,7 +1026,7 @@ Rcpp::List pca_imp_internal_cpp(
         converged = true;
       }
     }
-    if (!stop_now && nb_iter >= maxiter)
+    if (!stop_now && nb_iter >= max_iter)
     {
       stop_now = true;
       converged = false;
@@ -905,9 +1039,9 @@ Rcpp::List pca_imp_internal_cpp(
       // list and pca_imp() warns on it once, for the winning restart only.
     }
 
-    if (trace_iter > 0)
+    if (trace_every > 0)
     {
-      const bool periodic = (nb_iter == 1) || (nb_iter % trace_iter == 0);
+      const bool periodic = (nb_iter == 1) || (nb_iter % trace_every == 0);
       if (periodic || stop_now)
         print_iter(nb_iter, objective, criterion);
     }
@@ -933,73 +1067,82 @@ Rcpp::List pca_imp_internal_cpp(
   if (!tall)
   {
     const int st = pca_detail::gemm_tn_block(
-        Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed, Vn.memptr(),
-        Vn.n_rows, Vn.n_cols, V.memptr());
+        Xhat.data(), nrX, n_elig, 0, n_fixed, Vn.data(),
+        n_gram, n_cp, V.data());
     if (st != si_la::ok)
     {
       Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
     }
   }
-  reconstruct_cols(U, V, fittedX, 0, n_fixed);
-  const double *fxp = fittedX.memptr();
+  reconstruct_cols(U.data(), nrX, n_cp, V.data(), n_elig, fittedX.data(),
+                   0, n_fixed);
+  const double *fxp = fittedX.data();
 
   double sse = 0.0;
-  for (arma::uword j = 0; j < n_elig; ++j)
+  for (std::size_t j = 0; j < n_elig; ++j)
   {
     const double ej = scale ? et[j] : 1.0;
     const double ej2 = ej * ej;
-    const arma::uword off = j * nrX;
+    const std::size_t off = j * nrX;
     const double *xh = xhp + off;
     const double *fx = fxp + off;
     double s = 0.0;
-    for (arma::uword i = 0; i < nrX; ++i)
+    for (std::size_t i = 0; i < nrX; ++i)
     {
       const double d = xh[i] - fx[i];
       s += d * d;
     }
     sse += s * ej2;
   }
-  for (arma::uword ci = 0; ci < n_mc; ++ci)
+  for (std::size_t ci = 0; ci < n_mc; ++ci)
   {
-    const arma::uword j_local = n_fixed + ci;
+    const std::size_t j_local = n_fixed + ci;
     const double ej = scale ? et[j_local] : 1.0;
     const double ej2 = ej * ej;
-    const arma::uword off = j_local * nrX;
+    const std::size_t off = j_local * nrX;
     const double *xh = xhp + off;
     const double *fx = fxp + off;
     double s = 0.0;
     for_each_missing_in_col(ci, miss_rows_offsets, miss_rows_flat,
-                            [&](arma::uword i)
+                            [&](std::size_t i)
                             {
                               const double d = xh[i] - fx[i];
                               s += d * d;
                             });
     sse -= s * ej2;
   }
-  const arma::uword n_obs = nrX * n_elig - n_missing;
-  const double mse = (n_obs > 0) ? sse / static_cast<double>(n_obs) : arma::datum::nan;
+  const std::size_t n_obs = nrX * n_elig - n_missing;
+  const double mse = (n_obs > 0)
+                         ? sse / static_cast<double>(n_obs)
+                         : std::numeric_limits<double>::quiet_NaN();
 
-  arma::mat imputed_values(n_missing, 3);
+  // n_missing fits an int: refused above otherwise.
+  Rcpp::IntegerMatrix loc(static_cast<int>(n_missing), 2);
+  Rcpp::colnames(loc) = Rcpp::CharacterVector::create("row", "col");
+  Rcpp::NumericVector value(static_cast<R_xlen_t>(n_missing));
   {
-    arma::uword iv = 0;
-    for (arma::uword ci = 0; ci < n_mc; ++ci)
+    int *loc_row = loc.begin();
+    int *loc_col = loc_row + n_missing;
+    double *val = value.begin();
+    std::size_t iv = 0;
+    for (std::size_t ci = 0; ci < n_mc; ++ci)
     {
-      const arma::uword j_local = n_fixed + ci;
+      const std::size_t j_local = n_fixed + ci;
       const double ej = scale ? et[j_local] : 1.0;
       const double mj = mean_p[j_local];
-      const double orig_col_1based = static_cast<double>(eligible_idx_perm[j_local] + 1);
+      const int orig_col_1based = eligible_idx_perm[j_local] + 1;
 
       // missMDA::imputePCA() returns completeObs using the final Xhat at
       // missing positions, not the final fittedX. fittedX is still used above
       // for the nb.init selection MSE.
-      const double *xh = Xhat.colptr(j_local);
+      const double *xh = xhp + j_local * nrX;
 
       for_each_missing_in_col(ci, miss_rows_offsets, miss_rows_flat,
-                              [&](arma::uword i)
+                              [&](std::size_t i)
                               {
-                                imputed_values(iv, 0) = static_cast<double>(i + 1);
-                                imputed_values(iv, 1) = orig_col_1based;
-                                imputed_values(iv, 2) = xh[i] * ej + mj;
+                                loc_row[iv] = static_cast<int>(i) + 1;
+                                loc_col[iv] = orig_col_1based;
+                                val[iv] = xh[i] * ej + mj;
                                 ++iv;
                               });
     }
@@ -1007,21 +1150,25 @@ Rcpp::List pca_imp_internal_cpp(
 
   LOC_TOC(pca_imp_gram, "postprocessing");
   LOC_TOC(pca_imp_gram, "pca_imp_internal_cpp_total");
+  const int n_iter_out = static_cast<int>(n_iter_final);
 #if PCA_IMP_DIAGNOSTICS
-  eigval_hist.resize(ncp, n_iter_final);
+  Rcpp::NumericMatrix eigval_hist_out(ncp, n_iter_out);
+  std::copy(eigval_hist.begin(), eigval_hist.begin() + n_cp * n_iter_final,
+            eigval_hist_out.begin());
   obj_hist.resize(n_iter_final);
   subspace_cos_hist.resize(n_iter_final);
 
   hyb_ctx.truncate_logs(n_iter_final);
 
   return Rcpp::List::create(
-      Rcpp::Named("imputed_values") = imputed_values,
+      Rcpp::Named("loc") = loc,
+      Rcpp::Named("value") = value,
       Rcpp::Named("mse") = mse,
-      Rcpp::Named("n_iter") = n_iter_final,
+      Rcpp::Named("n_iter") = n_iter_out,
       Rcpp::Named("criterion_final") = criterion_final,
       Rcpp::Named("converged") = converged,
       Rcpp::Named("solver_chosen") = hyb_ctx.solver_chosen_code(),
-      Rcpp::Named("eigval_hist") = eigval_hist,
+      Rcpp::Named("eigval_hist") = eigval_hist_out,
       Rcpp::Named("obj_hist") = obj_hist,
       Rcpp::Named("subspace_cos_hist") = subspace_cos_hist,
       Rcpp::Named("n_exact") = hyb_ctx.n_exact,
@@ -1040,9 +1187,10 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::Named("eig_lobpcg_max_rel_res") = hyb_ctx.lobpcg_max_rel_res_log);
 #else
   return Rcpp::List::create(
-      Rcpp::Named("imputed_values") = imputed_values,
+      Rcpp::Named("loc") = loc,
+      Rcpp::Named("value") = value,
       Rcpp::Named("mse") = mse,
-      Rcpp::Named("n_iter") = n_iter_final,
+      Rcpp::Named("n_iter") = n_iter_out,
       Rcpp::Named("criterion_final") = criterion_final,
       Rcpp::Named("converged") = converged,
       Rcpp::Named("solver_chosen") = hyb_ctx.solver_chosen_code(),
@@ -1050,15 +1198,4 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::Named("n_lobpcg_ok") = hyb_ctx.n_lobpcg_ok,
       Rcpp::Named("n_lobpcg_bad") = hyb_ctx.n_lobpcg_bad);
 #endif
-}
-
-// Width of an Armadillo index, in bytes. Exists so the test suite can assert
-// that -DARMA_64BIT_WORD=1 survived in src/Makevars: without it arma indices
-// are 32 bits and a matrix past 2^32-1 elements wraps silently rather than
-// erroring. Nothing else calls this. It lives with the PCA chain, the last
-// code on Armadillo, and leaves with it (dev/eigen_conversion.md, Phase 3).
-// [[Rcpp::export]]
-int arma_uword_bytes()
-{
-  return static_cast<int>(sizeof(arma::uword));
 }
