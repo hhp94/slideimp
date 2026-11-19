@@ -1690,8 +1690,8 @@ What the notes had wrong, and is fixed:
   symmetric eigensolver failed to converge" under either solver, the same
   at both ends of the phase. Step 3 and the map called it unmeasured. A
   test now pins the class and the wording
-  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops before the eigensolver", {`,
-  as Phase 4 renamed it when the text changed).
+  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops before the eigensolver", {`).
+  Phase 4 renamed the test when the text changed.
   Run the same way it passes on the four builds of this branch and fails
   on `v1.2.0` on the wording alone, which read "`eig_sym_sel` failed to
   converge" until `c7a253b`; `dev/to-do.md` has a line for that. By reading

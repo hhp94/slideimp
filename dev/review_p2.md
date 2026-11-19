@@ -470,7 +470,7 @@ the two new tests against one installed build) and
 | 7 | Recorded and accepted: the chain stays on raw buffers; "What was decided", the table's caption and a Phase 4 item for `Block` say so |
 
 MEASURED, for the two tests
-(`tests/testthat/test-pca_imp.R`: `test_that("pca_imp returns on replicate samples with ncp above their rank", {`, `test_that("finite input whose squares overflow stops in the eigensolver", {`),
+(`tests/testthat/test-pca_imp.R`: `test_that("pca_imp returns on replicate samples with ncp above their rank", {`, `test_that("finite input whose squares overflow stops before the eigensolver", {`),
 each run alone in its own process against five installed builds:
 
 | build | replicate samples | overflow |
