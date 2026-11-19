@@ -2031,10 +2031,25 @@ is expected to be bitwise.
   exact 1.203. A third, over 11 repetitions: chr21 exact 1.013
   (a 0.329-0.445 s, b 0.326-0.368 s), sim exact 0.998 (a 0.902-1.711 s,
   b 0.900-2.352 s). The scan is not visible at the driver's resolution.
-- Not exercised by any case: the LAPACK-failure text, which needs dsyevr to
-  return `info > 0`, and the residual test. The Gram-NaN injections end at
-  the first Rayleigh-Ritz, where `si_la::syevd` refuses the small Gram, and
-  never reach a residual. Neither has a test that can fail.
+- The 60 edge cases exercised neither the LAPACK-failure text, which needs
+  dsyevr to return `info > 0`, nor the residual test: the Gram-NaN
+  injections end at the first Rayleigh-Ritz, where `si_la::syevd` refuses
+  the small Gram, and never reach a residual. Two injections were added
+  for them (maintainer, 2026-11-19), with 8 cases, 68 in all:
+  `eiginfo` makes the exact solver report `info = 1`, and `resnan` sets the
+  first column of `A * X` to NaN before the residuals of one iteration.
+  Measured, `6b25996` against `f7afaac`, each injection logged as hit in
+  all its 4 cases: the 4 `eiginfo` cases, under either solver, raised the
+  old text and raise "the symmetric eigensolver failed (LAPACK dsyevr,
+  info = 1)". The 4 `resnan` cases end the solve as `BAD_SEED` at the
+  injected iteration, where the build before ended it as `RR_FAILED` at
+  the same iteration: there the NaN went one step further, into the small
+  Gram, which `si_la::syevd` refused. Both send the outer iteration to the
+  exact solver and the results are bitwise the same. So the residual test
+  is shown to fire, and this injection does not show a case it alone
+  catches; the one known, a NaN that passes a dsyevd without the wrapper's
+  scan (Phase 2, step 4), cannot arise while the wrapper scans. Neither
+  check has a test in `tests/`: both need an instrumented build.
 
 ## Not settled yet
 

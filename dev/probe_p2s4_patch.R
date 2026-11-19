@@ -30,6 +30,11 @@
 #               to 0, so the solve takes its least-squares fallback, or,
 #               from Phase 4 on, dtrtrs reports the zero and the block
 #               counts as collapsed
+#     resnan    the first column of A * X is set to NaN before the residuals
+#               of a LOBPCG iteration, so one residual norm is NaN (the
+#               Block form of the file only)
+#     eiginfo   the exact solver reports LAPACK's info = 1 (from the
+#               raw-buffer Gram on)
 # - SLIDEIMP_P2S4_FRESH, the file of step 3 only: dsyevd gets the workspace
 #   length of its own query on every call, where step 3 kept the longest one
 #   so far. si_la::syevd always does.
@@ -169,20 +174,49 @@ if (!gram_arma && !grepl(solve_raw, hybrid_txt, fixed = TRUE)) {
 }
 solve_line <- if (gram_arma) solve_arma else solve_raw
 gram_cell <- if (gram_arma) "A(0, 0)" else "A[0]"
+## The exact solver made to report LAPACK's info = 1. Phase 4 made the call
+## return its status; before, it was tested in place. Files older than the
+## raw-buffer Gram do not get this injection.
+exact_status <- "  const int exact_st = eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng);"
+exact_flag <- "  if (eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng) != si_la::ok)"
+exact_ed <- if (grepl(exact_status, hybrid_txt, fixed = TRUE)) {
+  list(ed(
+    exact_status,
+    lines(
+      "  const int exact_st =",
+      "      p2s4::inject(\"eiginfo\")",
+      "          ? 1",
+      "          : eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng);"
+    )
+  ))
+} else if (grepl(exact_flag, hybrid_txt, fixed = TRUE)) {
+  list(ed(
+    exact_flag,
+    lines(
+      "  if (p2s4::inject(\"eiginfo\") ||",
+      "      eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng) != si_la::ok)"
+    )
+  ))
+} else {
+  list()
+}
 patch_file(
   "src/hybrid_topk_eig.h",
-  list(
-    ed(
-      solve_line,
-      lines(
-        "    if (p2s4::inject(\"gramnan\"))",
-        "    {",
-        sprintf("      %s = %s;", gram_cell, nan_cell),
-        "    }",
+  c(
+    exact_ed,
+    list(
+      ed(
         solve_line,
-        "    p2s4::log(\"lobpcg status %d iterations %d fail_iter %d k %llu\\n\",",
-        "              lob_res.status, lob_res.iterations, lob_res.fail_iter,",
-        "              p2s4::ull(ctx.lobpcg_state.X.n_cols));"
+        lines(
+          "    if (p2s4::inject(\"gramnan\"))",
+          "    {",
+          sprintf("      %s = %s;", gram_cell, nan_cell),
+          "    }",
+          solve_line,
+          "    p2s4::log(\"lobpcg status %d iterations %d fail_iter %d k %llu\\n\",",
+          "              lob_res.status, lob_res.iterations, lob_res.fail_iter,",
+          "              p2s4::ull(ctx.lobpcg_state.X.n_cols));"
+        )
       )
     )
   )
@@ -317,6 +351,19 @@ if (arma_calls) {
         lines("#include \"si_lapack.h\"", harness)
       ),
       xonly,
+      ed(
+        "    residual(AX, X, lam, R);",
+        lines(
+          "    if (p2s4::inject(\"resnan\"))",
+          "    {",
+          "      for (std::size_t p2s4_i = 0; p2s4_i < AX.n_rows; ++p2s4_i)",
+          "      {",
+          sprintf("        AX(p2s4_i, 0) = %s;", nan_cell),
+          "      }",
+          "    }",
+          "    residual(AX, X, lam, R);"
+        )
+      ),
       ed(rt_line, lines(singular, rt_line)),
       ed(
         "    if (status == si_la::ok)\n    {\n      return false;\n    }",

@@ -10,7 +10,8 @@
 # - LOBPCG settings that stall it or stop it early;
 # - each of the three calls made to fail on its k-th call, a NaN put into
 #   the small Gram or the Gram itself, and a triangle made singular before
-#   the solve. These cases set SLIDEIMP_P2S4_FAIL,
+#   the solve; and, added in Phase 4, a NaN residual norm and the exact
+#   solver reporting a failure. These cases set SLIDEIMP_P2S4_FAIL,
 #   which only a build instrumented by dev/probe_p2s4_patch.R reads: on any
 #   other build they are plain repeats of the same call.
 #
@@ -297,5 +298,26 @@ case(
   inj("singular:3", pca_imp(xb, ncp = 11, solver = "lobpcg"))
 )
 
-stopifnot(n_cases == 60L)
+## Phase 4: one residual norm NaN in the k-th LOBPCG iteration, and the
+## exact solver reporting info = 1 on its k-th call, under each solver.
+for (k in c(1L, 3L, 8L)) {
+  eval(bquote(case(
+    .(sprintf("inj_resnan_%02d", k)),
+    inj(.(sprintf("resnan:%d", k)), pca_imp(x1, ncp = 3, solver = "lobpcg"))
+  )))
+}
+case(
+  "inj_xb_resnan_05",
+  inj("resnan:5", pca_imp(xb, ncp = 11, solver = "lobpcg"))
+)
+for (solver in c("exact", "lobpcg")) {
+  for (k in c(1L, 3L)) {
+    eval(bquote(case(
+      .(sprintf("inj_eiginfo_%s_%02d", solver, k)),
+      inj(.(sprintf("eiginfo:%d", k)), pca_imp(x1, ncp = 3, solver = .(solver)))
+    )))
+  }
+}
+
+stopifnot(n_cases == 68L)
 cat(sprintf("%d cases, written to %s\n", n_cases, out_dir))
