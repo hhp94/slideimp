@@ -425,7 +425,7 @@ the reviewer's sixteen are among what it catches.
 Not done, and why. The scan for NaN and Inf is not timed. The Armadillo
 version of `src/eig_sym_sel.h` is not patched: a patch for CRAN is a
 separate thread (maintainer, 2026-11-18), and the conversion does not wait
-for it (`dev/to-do.md`). R 4.3.0 is not checked, as before.
+for it. Step 3 of Phase 2 ended the overrun on this branch. R 4.3.0 is not checked, as before.
 
 ## Who does which work
 
@@ -924,6 +924,61 @@ Step 2, on the working tree over `17e6415`:
   mirai daemons loading the step installed into a private library: 22
   files, 276 tests, none failed, errored or skipped.
 
+Step 3, on the working tree over `905e1ac`:
+
+- `src/eig_sym_sel.h` includes `src/si_lapack.h`, `src/pca_linalg_utils.h`,
+  `<algorithm>`, `<cstddef>` and `<utility>`, nothing of Armadillo or R,
+  and no longer declares `dsyevr_`. `eig_sym_sel()` calls
+  `si_la::syevr_range` with the routine, options and range of the declared
+  call; the wrapper's `isuppz` of `2 * topk` and its workspace, the larger
+  of the query and `26 n` and `10 n`, are the lengths the chain used (READ
+  in both). The wrapper asks for the workspace and allocates it on every
+  call, where `EigSymWorkspace::init()` asked once and kept it. The struct
+  kept nothing else, so it is now `EigSymRange`: `n`, `topk` and `il..iu`
+  as `std::size_t`, where `arma::blas_int` narrowed them. Its `init()`
+  checks `1 <= topk <= n` and nothing more, and the stop after it in
+  `src/armaSVD.cpp` reads "internal error: eigenpair count out of range",
+  where it read "eig workspace query failed". Neither is expected to be
+  reachable after the argument checks, and no test raises it.
+- `eig_sym_sel()` takes raw buffers and the two dimensions of `A`, which it
+  checks against `n` as before, and returns the wrapper's status,
+  `[[nodiscard]]`. `src/hybrid_topk_eig.h` sizes `eigvals` and `eigvecs`
+  before the call, as `eig_sym_sel()` did, and keeps the failure path: a
+  non-zero status is `false`, and `SVD_triplet()` stops with "top-k
+  symmetric eigensolver failed to converge". `HybridEigContext` holds a
+  `const EigSymRange *`.
+- What changes. dsyevr now has the `n` eigenvalue cells it documents, so a
+  range that cuts a group of equal eigenvalues no longer writes past
+  `eigvals`. That ends the defect `dev/to-do.md` carried: its entry is
+  deleted, its NEWS line moved to the list for the draft, and its demand
+  for a guard-cell check moved to Phase 4 above. A Gram holding NaN or Inf
+  in its upper triangle is refused before dsyevr is entered and stops with
+  the message above, where the chain's call came back with a wrong count
+  (the same stop) or did not return. Only the arithmetic of the fit could
+  put one there, not measured, and no test does.
+- `dev/review_eigen_wrappers.md` cited the line that sized the eigenvalue
+  buffer; it now names that line at `79cce0f`.
+- The timer build and the diagnostics build compile, with no warning from
+  the chain's own files. Capture `p2s3` against `p2s2` at tolerance 0: 71
+  cases, none failed, every one bitwise. Against `76d4c60` at the
+  defaults: the same 7 deliberate failures as `p2s2`, everything else
+  bitwise. Capture `p2s3-eigen5`, the same source against RcppEigen
+  0.4.9.9-5: 71 cases, every one bitwise identical to `p2s3`. Read
+  2026-11-18 on R 4.6.2, RcppEigen 0.3.4.0.2, RcppArmadillo 15.6.2-1.
+- The suite with the manual tests, under `load_all1(timer = FALSE)`, the
+  mirai daemons loading the step installed into a private library: 22
+  files, 276 tests, none failed, errored or skipped.
+- Timed, since the workspace query and allocation on every call, and the
+  scan for NaN and Inf, are new work on the exact path: the timing driver,
+  `905e1ac` as a and this step as b, both installed by
+  `dev/eigen_time_install.R` from worktrees outside the tree, the four PCA
+  workloads, 5 repetitions. b/a ratios of medians: `chr21_pca_exact`
+  0.998, `chr21_pca_lobpcg` 1.010, `sim_pca_exact` 1.001,
+  `sim_pca_lobpcg` 1.007. The 1.010 is outside the driver's band of 0.988
+  to 1.008, so the two chr21 workloads were timed again, 11 repetitions:
+  1.000 for LOBPCG, 1.007 for exact, both inside. No cost shows at these
+  sizes (Gram of order 200 for `sim_mat()`); larger orders not timed.
+
 ## Phase 3: remove the dependency
 
 - In `DESCRIPTION`, `RcppArmadillo` leaves `LinkingTo`.
@@ -987,7 +1042,12 @@ Scaffolding to remove, in `src/si_lapack.cpp` unless said otherwise:
 - The oracle (`dev/oracle_pairs.cpp`, `dev/oracle_run.R`,
   `dev/oracle_selftest.R`, `dev/oracle_install_armadillo.R`), their `!`
   lines, and `dev/lib/`, once the last item above is gone and nothing is
-  left to compare. The section "What the wrappers reproduce" in
+  left to compare. One check of the oracle's outlives it: guard cells after
+  the eigenvalue buffer of `syevr_range`, on a range that cuts a group of
+  equal eigenvalues, shown to fail when the wrapper hands dsyevr the
+  caller's buffer. A test through `pca_imp()` cannot see that overrun:
+  every run measured to write past the buffer returned normally. The
+  section "What the wrappers reproduce" in
   `dev/pca_imp_structure.md` is rewritten to say what the wrappers do, not
   what they copy.
 
@@ -1025,7 +1085,8 @@ guide:
   it would be if chosen fresh: one symmetric eigensolver or two, whether
   the values-only SVD is needed at all, whether a product that is
   symmetric by construction should be dsyrk, whether the workspace of
-  `syevr_range` is kept across calls as `src/eig_sym_sel.h` keeps it today.
+  `syevr_range` is kept across calls, as `src/eig_sym_sel.h` kept it before
+  step 3 of Phase 2.
 - Go through *Writing R Extensions* once more against the finished `src/`,
   not only the sections the wrapper layer needed: registration, visibility,
   interrupts, allocation, the portability list. Record each rule and where

@@ -175,9 +175,10 @@ values agreed with `eigen()` to 4.6e-13 in every case.
 doubles written past its buffer. The last two rows are what `pca_imp()`
 would pass when it is asked for more components than the data has rank.
 
-The chain's present code has the same sizing
-(`src/eig_sym_sel.h`: `eigvals.set_size(ws.topk);`), so this is not
-introduced by the wrapper; it is carried over and written into a contract.
+The chain's present code has the same sizing (`eigvals.set_size(ws.topk);`
+in `src/eig_sym_sel.h` as of `79cce0f`, gone since step 3 of Phase 2), so
+this is not introduced by the wrapper; it is carried over and written into
+a contract.
 READ, not run through `pca_imp()`.
 
 The oracle cannot see it: its pair allocates the same short buffer

@@ -1,180 +1,85 @@
 #ifndef EIG_SYM_SEL_H
 #define EIG_SYM_SEL_H
 
-#include <RcppArmadillo.h>
 #include <algorithm>
-#include <cstring>
-#include <vector>
+#include <cstddef>
+#include <utility>
 #include "pca_linalg_utils.h"
+#include "si_lapack.h"
 
-// dsyevr is not one of the LAPACK routines Armadillo declares, so it is
-// declared here rather than pulled from <R_ext/Lapack.h>: that header
-// redeclares C-linkage symbols Armadillo has already declared with different
-// types (Rcomplex* vs blas_cxd*, const mismatches), which warns on every
-// translation unit that includes both.
-//
-// jobz/range/uplo are Fortran CHARACTER arguments, so the ABI appends a hidden
-// length for each. They are declared and passed explicitly (arma::blas_len ==
-// ARMA_FORTRAN_CHARLEN_TYPE == R's FC_LEN_T), matching the trailing 1, 1 on the
-// arma::dsyrk_/dgemm_ calls elsewhere in the package. Omitting them is UB; see
-// Writing R Extensions 6.6.
-extern "C"
-{
-  void dsyevr_(const char *jobz, const char *range, const char *uplo,
-               const arma::blas_int *n, double *a, const arma::blas_int *lda,
-               const double *vl, const double *vu,
-               const arma::blas_int *il, const arma::blas_int *iu,
-               const double *abstol, arma::blas_int *m,
-               double *w, double *z, const arma::blas_int *ldz,
-               arma::blas_int *isuppz,
-               double *work, arma::blas_int *lwork,
-               arma::blas_int *iwork, arma::blas_int *liwork,
-               arma::blas_int *info,
-               arma::blas_len jobz_len, arma::blas_len range_len,
-               arma::blas_len uplo_len);
-}
-
-// ---------------------------------------------------------------------------
-// constants
-// ---------------------------------------------------------------------------
-inline constexpr char PEIG_JOBZ = 'V';
-inline constexpr char PEIG_RANGE = 'I';
+// the triangle of the Gram that form_weighted_gram() writes and dsyevr reads.
 inline constexpr char PEIG_UPLO = 'U';
-inline constexpr double PEIG_ABSTOL = 0.0;
-inline constexpr double PEIG_VL = 0.0;
-inline constexpr double PEIG_VU = 0.0;
 
 // ---------------------------------------------------------------------------
-// dsyevr workspace
+// the eigenpairs asked of dsyevr: the top topk of an n x n symmetric matrix,
+// which dsyevr counts from 1 in ascending order as il..iu.
+// si_la::syevr_range asks dsyevr for its workspace and allocates it on every
+// call, so nothing else is kept here.
 // ---------------------------------------------------------------------------
-struct EigSymWorkspace
+struct EigSymRange
 {
-  arma::blas_int n = 0;
-  arma::blas_int ldc = 0;
-  arma::blas_int topk = 0;
-  arma::blas_int il = 0;
-  arma::blas_int iu = 0;
-  arma::blas_int lwork = 0;
-  arma::blas_int liwork = 0;
-  std::vector<double> work;
-  std::vector<arma::blas_int> iwork;
-  std::vector<arma::blas_int> isuppz;
+  std::size_t n = 0;
+  std::size_t topk = 0;
+  std::size_t il = 0;
+  std::size_t iu = 0;
 
-  bool init(arma::uword dim_n, arma::uword topk_request)
+  [[nodiscard]] bool init(const std::size_t dim_n,
+                          const std::size_t topk_request)
   {
-    n = static_cast<arma::blas_int>(dim_n);
-    ldc = n;
-    topk = static_cast<arma::blas_int>(topk_request);
-    if (topk <= 0 || topk > n)
+    if (topk_request == 0 || topk_request > dim_n)
     {
       return false;
     }
+    n = dim_n;
+    topk = topk_request;
     il = n - topk + 1;
     iu = n;
-    isuppz.assign(2 * static_cast<size_t>(topk), 0);
-
-    arma::blas_int m_out = 0;
-    arma::blas_int info = 0;
-    arma::blas_int lw_flag = -1;
-    arma::blas_int liw_flag = -1;
-    double work_opt = 0.0;
-    arma::blas_int iwork_opt = 0;
-    double dummy_a = 0.0;
-    double dummy_w = 0.0;
-    double dummy_z = 0.0;
-
-    dsyevr_(&PEIG_JOBZ, &PEIG_RANGE, &PEIG_UPLO, &n,
-            &dummy_a, &ldc,
-            &PEIG_VL, &PEIG_VU, &il, &iu,
-            &PEIG_ABSTOL, &m_out,
-            &dummy_w, &dummy_z, &ldc,
-            isuppz.data(),
-            &work_opt, &lw_flag,
-            &iwork_opt, &liw_flag,
-            &info,
-            1, 1, 1);
-
-    if (info != 0)
-    {
-      return false;
-    }
-
-    arma::blas_int lwork_q = static_cast<arma::blas_int>(work_opt);
-    arma::blas_int liwork_q = iwork_opt;
-
-    const arma::blas_int lwork_min = 26 * n;
-    const arma::blas_int liwork_min = 10 * n;
-    if (lwork_q < lwork_min)
-    {
-      lwork_q = lwork_min;
-    }
-    if (liwork_q < liwork_min)
-    {
-      liwork_q = liwork_min;
-    }
-    lwork = lwork_q;
-    liwork = liwork_q;
-    work.resize(static_cast<size_t>(lwork));
-    iwork.resize(static_cast<size_t>(liwork));
     return true;
   }
 };
 
 // ---------------------------------------------------------------------------
-// top-k symmetric eigendecomposition via LAPACK dsyevr.
+// top-k symmetric eigendecomposition via LAPACK dsyevr, through
+// si_la::syevr_range.
+//
+// A is a_rows x a_cols and must be rng.n x rng.n; only its upper triangle is
+// read. eigvals receives rng.topk eigenvalues, descending, and eigvecs, which
+// is rng.n x rng.topk, the eigenvectors in the same order, each with its sign
+// set by canonicalize_signs(). The status is si_la's: err_arg when A is not
+// rng.n square, otherwise what si_la::syevr_range returned.
 //
 // destroys A: dsyevr overwrites the upper triangle it reads, so callers must
 // pass a matrix they can discard (the Gram is rebuilt every outer iteration).
 // ---------------------------------------------------------------------------
-inline bool eig_sym_sel(arma::vec &eigvals,
-                        arma::mat &eigvecs,
-                        arma::mat &A,
-                        EigSymWorkspace &ws)
+[[nodiscard]] inline int eig_sym_sel(double *eigvals,
+                                     double *eigvecs,
+                                     double *A,
+                                     const std::size_t a_rows,
+                                     const std::size_t a_cols,
+                                     const EigSymRange &rng)
 {
-  if (static_cast<arma::uword>(ws.n) != A.n_rows || A.n_rows != A.n_cols)
+  if (a_rows != rng.n || a_cols != rng.n)
   {
-    return false;
+    return si_la::err_arg;
   }
 
-  arma::blas_int m_out = 0;
-  arma::blas_int info = 0;
-
-  eigvals.set_size(ws.topk);
-  eigvecs.set_size(ws.n, ws.topk);
-
-  dsyevr_(&PEIG_JOBZ, &PEIG_RANGE, &PEIG_UPLO, &ws.n,
-          A.memptr(), &ws.ldc,
-          &PEIG_VL, &PEIG_VU, &ws.il, &ws.iu,
-          &PEIG_ABSTOL, &m_out,
-          eigvals.memptr(), eigvecs.memptr(), &ws.ldc,
-          ws.isuppz.data(),
-          ws.work.data(), &ws.lwork,
-          ws.iwork.data(), &ws.liwork,
-          &info,
-          1, 1, 1);
-
-  if (info != 0 || m_out != ws.topk)
+  const int st = si_la::syevr_range(PEIG_UPLO, rng.n, rng.il, rng.iu, A,
+                                    eigvals, eigvecs);
+  if (st != si_la::ok)
   {
-    return false;
+    return st;
   }
 
   // flip ascending -> descending in place.
+  for (std::size_t i = 0, j = rng.topk - 1; i < j; ++i, --j)
   {
-    double *ev = eigvals.memptr();
-    double *Z = eigvecs.memptr();
-    const std::ptrdiff_t n_stride = ws.n;
-    for (arma::blas_int i = 0, j = ws.topk - 1; i < j; ++i, --j)
-    {
-      std::swap(ev[i], ev[j]);
-      std::swap_ranges(Z + static_cast<std::ptrdiff_t>(i) * n_stride,
-                       Z + static_cast<std::ptrdiff_t>(i + 1) * n_stride,
-                       Z + static_cast<std::ptrdiff_t>(j) * n_stride);
-    }
+    std::swap(eigvals[i], eigvals[j]);
+    std::swap_ranges(eigvecs + i * rng.n, eigvecs + (i + 1) * rng.n,
+                     eigvecs + j * rng.n);
   }
 
-  pca_detail::canonicalize_signs(eigvecs.memptr(), eigvecs.n_rows,
-                                 eigvecs.n_cols);
-  return true;
+  pca_detail::canonicalize_signs(eigvecs, rng.n, rng.topk);
+  return si_la::ok;
 }
 
 #endif // EIG_SYM_SEL_H

@@ -61,7 +61,7 @@ inline constexpr double HYB_AUTO_MARGIN_DEFAULT = 0.10;
 
 struct HybridEigContext
 {
-  EigSymWorkspace *eig_ws = nullptr;
+  const EigSymRange *eig_range = nullptr;
   LOBPCGState lobpcg_state;
   LOBPCGOptions lobpcg_opt;
 
@@ -405,7 +405,11 @@ inline bool hybrid_topk_eig_impl(arma::vec &eigvals,
     ++ctx.n_lobpcg_bad;
   }
 
-  if (!eig_sym_sel(eigvals, eigvecs, A, *ctx.eig_ws))
+  const EigSymRange &rng = *ctx.eig_range;
+  eigvals.set_size(rng.topk);
+  eigvecs.set_size(rng.n, rng.topk);
+  if (eig_sym_sel(eigvals.memptr(), eigvecs.memptr(), A.memptr(), A.n_rows,
+                  A.n_cols, rng) != si_la::ok)
   {
     return false;
   }

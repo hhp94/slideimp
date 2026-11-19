@@ -36,7 +36,7 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |                   |    +- form_weighted_gram()     src/gram_ops.h -> si_la::syrk/gemm
   |                   |    +- hybrid_topk_eig()        src/hybrid_topk_eig.h
   |                   |    |    +- lobpcg_solve()      src/lobpcg_warm.h -> dsyevd_
-  |                   |    |    +- eig_sym_sel()       src/eig_sym_sel.h -> dsyevr_
+  |                   |    |    +- eig_sym_sel()       src/eig_sym_sel.h -> si_la::syevr_range
   |                   |    +- gemm_nn/gemm_tn_block()  src/pca_linalg_utils.h -> si_la::gemm
   |                   +- reconstruct_cols()            src/armaSVD.cpp -> dgemm_
   |                   +- missing_weighted_residual_ss()  src/armaSVD.cpp
@@ -65,8 +65,8 @@ C++ files in the chain: 4 translation units (`src/armaSVD.cpp`, `src/RcppExports
 `src/mat_stats.cpp`, `src/si_lapack.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`,
 `eig_sym_sel.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `si_lapack.h`,
 `matrix_checks.h`, `loc_timer.h`). `si_lapack.cpp/.h` is the wrapper layer ("What the
-wrappers reproduce"); `pca_linalg_utils.h` and `gram_ops.h` are so far the only files of the
-chain that include it. Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
+wrappers reproduce"); `pca_linalg_utils.h`, `gram_ops.h` and `eig_sym_sel.h` are so far the
+only files of the chain that include it. Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
 `impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
 
 ## Layer 1: R entry point (`R/pca_imp.R`)
@@ -254,8 +254,9 @@ kernel normalizes it in place (`src/armaSVD.cpp`: `arma::rowvec row_w,`, `row_w 
 Workspaces allocated once, outside the loop: `sqrt_row_w` / `inv_sqrt_row_w`
 (the weighted space is `diag(sqrt(w)) * Xhat`, and `U` comes back in it); `GramWorkspace`
 holding fixed dsyrk/dgemm dimension arguments (`src/gram_ops.h`: `struct GramWorkspace`);
-`EigSymWorkspace`, which runs the dsyevr workspace query once
-(`src/eig_sym_sel.h`: `bool init(arma::uword dim_n`); `AA_NxN` at `n_gram x n_gram`
+`EigSymRange`, which holds the range `il..iu` of the top `k` eigenpairs dsyevr is asked
+for (`src/eig_sym_sel.h`: `struct EigSymRange`) and refuses a `k` outside `1..n_gram`, an
+`Rcpp::stop` not expected to be reachable after the argument checks; `AA_NxN` at `n_gram x n_gram`
 and `X_work` at `nrX x n_elig` in the tall case only; `GramCache`, precomputing
 the fixed-column Gram contribution; and `HybridEigContext`,
 carrying the solver mode, warmup count, LOBPCG options and persistent LOBPCG state across
@@ -395,16 +396,16 @@ recent eigenblocks. On failure `n_lobpcg_bad` increments and control falls throu
 to `eig_sym_sel()`; after any exact solve, `seed_lobpcg_state()` re-seeds the warm
 start when `keep_lobpcg_seed_state()` allows.
 
-**Exact path** (`src/eig_sym_sel.h`). `dsyevr_` is declared by hand rather than
-pulled from `<R_ext/Lapack.h>`; the comment above it records that the R header clashes
-with Armadillo's own declarations. Hidden Fortran character-length arguments are passed
-explicitly (the trailing `1, 1, 1`). `EigSymWorkspace::init()` runs the
-`lwork = -1` query once and floors the result at the documented `26 * n` / `10 * n` minima.
-`eig_sym_sel()` requests eigenpairs `il..iu` with `range = 'I'`,
-returning exactly the top `k`. dsyevr returns ascending order, so
-it reverses eigenvalues and swaps whole eigenvector columns in place, then
-`canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`) applies the
-sklearn `svd_flip` convention.
+**Exact path** (`src/eig_sym_sel.h`). `eig_sym_sel()` takes raw buffers and calls
+`si_la::syevr_range`, which enters dsyevr with `range = 'I'` for eigenpairs `il..iu`, the
+top `k`, asks for the workspace on every call and floors it at the documented
+`26 * n` / `10 * n` minima ("What the wrappers reproduce"). The caller sizes `eigvals` and
+`eigvecs` first (`src/hybrid_topk_eig.h`: `eigvals.set_size(rng.topk);`). dsyevr returns
+ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
+in place, then `canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`)
+applies the sklearn `svd_flip` convention. A non-zero status, from the wrapper or from an
+`A` that is not `n_gram` square, makes `hybrid_topk_eig()` return false, and
+`SVD_triplet()` stops (`src/svd_triplet.h`: `top-k symmetric eigensolver failed`).
 `A` is destroyed by the call, which is safe because the Gram is rebuilt every
 outer iteration.
 
@@ -445,7 +446,7 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 | dgemm, through `si_la::gemm` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
 | dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `Xhat.memptr(), Xhat.n_rows, Xhat.n_cols, 0, n_fixed`) |
 | `dgemm_` | `reconstruct_cols()` (`src/armaSVD.cpp`) | `reconstruct_cols`, strided column block |
-| `dsyevr_` | `EigSymWorkspace::init()`, `eig_sym_sel()` (`src/eig_sym_sel.h`) | workspace query, exact top-k eigen |
+| dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
 | `dsyevd_` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz |
 | Armadillo | `qr_econ`, `solve`, `A * X` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization and matvecs |
 
@@ -457,7 +458,8 @@ QRs plus a `3k x 3k` dsyevd.
 
 `src/si_lapack.h` declares, and `src/si_lapack.cpp` defines, R's BLAS and LAPACK as plain
 functions over `double*`, dimensions and an int status. So far `src/pca_linalg_utils.h` calls
-`si_la::gemm`, and `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`; the table above says how each site enters BLAS and LAPACK. Each
+`si_la::gemm`, `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, and `src/eig_sym_sel.h`
+calls `si_la::syevr_range`; the table above says how each site enters BLAS and LAPACK. Each
 wrapper stands in for one
 call the chain makes today, and this section records what that call does, so that a call
 site can be moved to its wrapper without reading Armadillo again.
@@ -480,7 +482,7 @@ one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
 | `si_la::gemv` | no direct call; `*` reaches it (below) | dgemv, unit strides | BLAS has no status |
 | `si_la::syrk` | `arma::dsyrk_`, called directly | dsyrk, every argument passed through | BLAS has no status |
 | `si_la::matmul` | `*`, `+=` and `-=` of a product of two `arma::mat` | dgemv or dgemm (below) | Armadillo throws on dimensions that do not conform |
-| `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declares itself | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or another number of eigenpairs than asked; no test for NaN or Inf (the wrapper has one, below) |
+| `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declared itself until it moved to this wrapper | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or another number of eigenpairs than asked; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::syevd` | `arma::dsyevd_`, called directly | dsyevd, `jobz = 'V'` | `info != 0`; no test for NaN or Inf (the wrapper has one, below) |
 | `si_la::qr_econ` | `arma::qr_econ()` | dgeqrf, then dorgqr | returns false, `Q` and `R` reset |
 | `si_la::solve_tri` | `arma::solve()` on `trimatl()` or `trimatu()` | dtrtrs, dtrcon, and dgelsd as the fallback | throws `std::runtime_error` |
@@ -489,8 +491,8 @@ one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
 The three direct calls are Armadillo's own declarations of the Fortran symbols (READ:
 `def_blas.hpp`, `def_lapack.hpp`), with nothing between the call site and BLAS. Armadillo
 declares no dsyevr and calls it nowhere, so `si_la::syevr_range` has no Armadillo
-counterpart. The oracle compares it with dsyevr called as `src/eig_sym_sel.h` calls it,
-to the bit, and with `arma::eig_sym()`, which is dsyevd, to a tolerance (READ:
+counterpart. The oracle compares it with dsyevr called as `src/eig_sym_sel.h` called it
+before it moved to the wrapper, to the bit, and with `arma::eig_sym()`, which is dsyevd, to a tolerance (READ:
 `auxlib::eig_sym_dc()` returns false, before LAPACK, when the upper triangle holds NaN or
 Inf; it asks dsyevd for its workspace only from order 32 up, uses the larger of the answer
 and `1 + 6 n + 2 n^2` and `3 + 5 n` computed in `blas_int`, and returns `info == 0`).
@@ -502,20 +504,23 @@ purpose:
 - *The eigenvalue buffer of dsyevr.* LAPACK documents `W` as `n` cells whatever the range.
   For a proper subset dsyevr goes through dstebz, which stores every eigenvalue its search
   interval holds and then drops those outside `il..iu`; when the range cuts a group of
-  equal eigenvalues that is more than `iu - il + 1` of them. The chain gives `W` exactly
-  `topk` cells (`src/eig_sym_sel.h`: `eigvals.set_size(ws.topk);`), so such a call
-  writes past the end of `eigvals`. `pca_imp()` reaches it when the completed data is rank
+  equal eigenvalues that is more than `iu - il + 1` of them. The chain's own call gave `W`
+  exactly `topk` cells, so such a call wrote past the end of `eigvals`, and 1.2.0 does.
+  `pca_imp()` reaches it when the completed data is rank
   deficient and `ncp`, plus one when regularized, exceeds its rank: samples that are exact
   copies of each other, holes included, or columns that are. `si_la::syevr_range` holds the
-  `n` cells itself and copies `iu - il + 1` out, so its caller's buffer needs no more.
-- *NaN and Inf.* Neither call of the chain tests its matrix, and LAPACK does not refuse
-  such input. Measured on one machine with R's own LAPACK: dsyevr asked for every eigenpair
+  `n` cells itself and copies `iu - il + 1` out, so its caller's buffer needs no more, and
+  `eig_sym_sel()` now calls it.
+- *NaN and Inf.* Neither of the chain's own calls tested its matrix (the dsyevd call in
+  `src/lobpcg_warm.h` still does not), and LAPACK does not refuse such input. Measured on one machine with R's own LAPACK: dsyevr asked for every eigenpair
   of a matrix holding NaN does not return, a proper subset comes back with `info = 0` and
   another number of eigenpairs than asked, and dsyevd can return `info = 0` with NaN
   eigenvalues. Both wrappers test the triangle LAPACK reads, and only that one, before
   the routine is entered, and return `err_nonfinite`. `pca_imp()` refuses NaN and Inf in
   its input (`R/pca_imp.R`: `check_finite(obj)`), so only arithmetic inside the fit could
-  put one in a Gram; whether any input does is NOT MEASURED.
+  put one in a Gram; whether any input does is NOT MEASURED. On the exact path such a Gram
+  is now the stop of a failed eigensolve (Layer 6, "Exact path"), where the chain's own
+  call either reported a wrong count, the same stop, or did not return.
 
 `dev/eigen_conversion.md`, "The review of the wrapper layer", has the measurements behind
 both.

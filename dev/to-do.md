@@ -59,6 +59,9 @@ Easy to miss in the diff, noted so the draft does not:
   where `knn_imp()`'s `subset` still drops the one with a message and returns
   early on the other. The "Column mean fill" section now says
   `mean_filled_cols` counts the result's columns.
+- `pca_imp()` no longer writes past a buffer when asked for more components
+  than the data has rank (1.2.0 does, in its dsyevr call:
+  `dev/eigen_conversion.md`, "The review of the wrapper layer").
 
 ## Parts for the other imputers
 
@@ -134,30 +137,6 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
   `obj_masked` and `nmiss_masked` are zero-filled by `std::vector` before
   every cell is written; and `initialize_result()` guards invariants its
   one caller has just established.
-
-## The eigenvalue buffer of the chain's dsyevr call
-
-Found by the review of the wrapper layer, 2026-11-18
-(`dev/eigen_conversion.md`, "The review of the wrapper layer"), and in
-1.2.0 on CRAN (READ at the tag, not run there). `src/eig_sym_sel.h` gives
-dsyevr an eigenvalue buffer of `topk` cells where LAPACK documents `n`.
-When the completed data is rank deficient and `ncp`, plus one when
-regularized, exceeds its rank, dsyevr writes past the end of it: measured
-through `pca_imp()` at up to 16 cells, on 30 samples of which 6 are
-distinct. Random data and the chr21 file wrote nothing.
-
-- It is fixed when step 3 of Phase 2 moves `src/eig_sym_sel.h` to
-  `si_la::syevr_range`, which holds the `n` cells itself; this entry is
-  then deleted. A test through `pca_imp()` cannot see the overrun: every
-  run that wrote past the buffer returned normally. The check is the
-  guard cells after `w` in `dev/oracle_pairs.cpp`, shown to fail by
-  `dev/oracle_selftest.R`; Phase 4 deletes the oracle and must keep a
-  check of that kind.
-- A patch of the Armadillo version for CRAN is a separate thread
-  (maintainer, 2026-11-18); the conversion goes ahead as planned and does
-  not wait for it.
-- For the NEWS draft when it lands: `pca_imp()` no longer writes past a
-  buffer when asked for more components than the data has rank.
 
 ## Release condition: pass on the RcppEigen candidate
 

@@ -396,7 +396,7 @@ Rcpp::List pca_imp_internal_cpp(
       Rcpp::stop("problem dimensions exceed BLAS/LAPACK integer range");
     }
 
-    // EigSymWorkspace uses workspace minima 26*n and 10*n.
+    // si_la::syevr_range gives dsyevr at least 26*n and 10*n workspace.
     if (n_gram > blas_max / 26)
     {
       Rcpp::stop("problem dimension too large for LAPACK dsyevr workspace");
@@ -651,10 +651,10 @@ Rcpp::List pca_imp_internal_cpp(
 
   GramWorkspace gram_ws;
   gram_ws.init(nrX, n_elig, tall);
-  EigSymWorkspace eig_ws;
-  if (!eig_ws.init(n_gram, k))
+  EigSymRange eig_range;
+  if (!eig_range.init(n_gram, k))
   {
-    Rcpp::stop("eig workspace query failed");
+    Rcpp::stop("internal error: eigenpair count out of range");
   }
 
   // AA_NxN and X_work are written through raw pointers before any arma
@@ -681,7 +681,7 @@ Rcpp::List pca_imp_internal_cpp(
       gram_cache, X_work.memptr(), nrX, n_fixed, n_mc, tall);
 
   HybridEigContext hyb_ctx;
-  hyb_ctx.eig_ws = &eig_ws;
+  hyb_ctx.eig_range = &eig_range;
   hyb_ctx.solver_mode = static_cast<HybridSolverMode>(solver);
   hyb_ctx.warmup_iters = lobpcg_requested ? static_cast<int>(warmup_iters) : 0;
   hyb_ctx.lobpcg_opt.tol = lobpcg_tol;
