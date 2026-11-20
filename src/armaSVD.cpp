@@ -366,23 +366,26 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     }
   }
 
-  // the kernel's own copy of the weights, normalized below.
-  std::vector<double> w(row_w.begin(), row_w.end());
-
+  // row_w is checked where it lies, and the kernel normalizes its own copy.
+  const double *row_w_ptr = row_w.begin();
   for (std::size_t i = 0; i < nrX; ++i) {
-    if (!std::isfinite(w[i])) {
+    if (!std::isfinite(row_w_ptr[i])) {
       Rcpp::stop("'row_w' must be finite");
     }
   }
   double row_w_sum = 0.0;
   for (std::size_t i = 0; i < nrX; ++i) {
-    if (w[i] < 0.0) {
+    if (row_w_ptr[i] < 0.0) {
       Rcpp::stop("'row_w' must be non-negative");
     }
-    row_w_sum += w[i];
+    row_w_sum += row_w_ptr[i];
   }
   if (!(row_w_sum > 0.0)) {
     Rcpp::stop("'row_w' must have a positive sum");
+  }
+  std::vector<double> w(row_w.begin(), row_w.end());
+  for (std::size_t i = 0; i < nrX; ++i) {
+    w[i] /= row_w_sum;
   }
 
   const double nrX_d = static_cast<double>(nrX);
@@ -397,9 +400,6 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
 
   double old = std::numeric_limits<double>::infinity();
 
-  for (std::size_t i = 0; i < nrX; ++i) {
-    w[i] /= row_w_sum;
-  }
   const double *wptr = w.data();
 
   const double *objp = obj.begin();

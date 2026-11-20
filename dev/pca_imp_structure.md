@@ -228,7 +228,7 @@ step"): `obj` as a `const Rcpp::NumericMatrix &`, read in place through its poin
 never copied; `eligible_idx` as an integer vector of 0-based columns; every count and
 setting as `int`, which `pca_imp()` converts at the call where it holds a double
 (`R/pca_imp.R`: `maxiter = as.integer(maxiter),`); and `row_w` as a
-`const Rcpp::NumericVector &`, copied once into the kernel's own vector because the
+`const Rcpp::NumericVector &`, checked in place and then copied once into the kernel's own vector because the
 kernel normalizes it (`src/armaSVD.cpp`: `std::vector<double> w(row_w.begin(), row_w.end());`,
 `w[i] /= row_w_sum;`). Inside, a count is held in `std::size_t` once checked, so an offset
 such as `j * nrX` is computed in `std::size_t`; a row or column index of `obj` is `int`
@@ -747,14 +747,14 @@ two norms of LOBPCG, "Phase 4, as carried out" for the three sums of the EM loop
   trace (`src/armaSVD.cpp`: `sum_top_sq += vs_top[cp] * vs_top[cp];`), and the trace itself
   (`src/svd_triplet.h`: `static inline double gram_trace(`).
 - The sum the row weights are divided by, taken in the loop that tests their sign
-  (`src/armaSVD.cpp`: `row_w_sum += w[i];`).
+  (`src/armaSVD.cpp`: `row_w_sum += row_w_ptr[i];`).
 
 ## Data structures and ownership
 
 - `obj` crosses as `const Rcpp::NumericMatrix &` and is never mutated in C++; the write-back happens in
   R, through the matrix door (`R/pca_imp.R`: `obj <- fill_parts(obj, parts, keep = keep)`), or not at
   all through the `si_mi` door, whose chunks hold the holes and their values. `row_w` crosses by reference and
-  the kernel normalizes its own copy (`src/armaSVD.cpp`: `the kernel's own copy of the weights`).
+  the kernel checks it in place and normalizes its own copy (`src/armaSVD.cpp`: `row_w is checked where it lies`).
 - `Xhat` is the working copy -- permuted column order, centered, scaled, mutated in
   place every outer iteration. `fittedX` is allocated once (`src/armaSVD.cpp`: `std::vector<double> fittedX(nrX * n_elig);`);
   dgemm overwrites only its changing block each iteration, and the fixed block is

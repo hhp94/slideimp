@@ -246,7 +246,7 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
   (`src/armaSVD.cpp`), none measured apart: `Xhat`, `X_work`, `AA_NxN`, `U`,
   `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`
   before every cell that is read is written, where only `fittedX` needs its
-  zeros; and `row_w` is copied before it is checked. Profile first: after
+  zeros. Profile first: after
   the second half of step 4 of Phase 2, `sim_pca_lobpcg` took about 1.5%
   longer than at `ff0e394` over 11 repetitions of the step 4 timing (a
   0.483-0.491 s, b 0.490-0.501 s), and chr21 showed nothing measurable.
