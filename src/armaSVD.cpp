@@ -1002,9 +1002,11 @@ Rcpp::List pca_imp_internal_cpp(
     if (stop_now)
     {
       n_iter_final = nb_iter;
-      // A fit stopped by its objective alone has no criterion to report:
-      // there the ratio is of two values near zero, NaN, Inf or anything
-      // between by rounding.
+      // On a converged fit criterion_final is the criterion that stopped it.
+      // When the objective alone stopped the fit, the criterion did not, so
+      // there is none to report and the value is NA. That can withhold a
+      // well-defined ratio; it also covers one that is rounding noise, with
+      // no tolerance needed to tell the two apart.
       criterion_final =
           (converged && !(criterion < threshold)) ? NA_REAL : criterion;
       break;

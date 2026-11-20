@@ -1,5 +1,7 @@
 # Review of the wrapper layer and the oracle (dev/review_eigen_wrappers.md):
-# direct probes of src/si_lapack.h that dev/oracle_run.R does not make. Dev
+# direct probes of src/si_lapack.h that dev/oracle_run.R does not make. The
+# oracle and dev/lib/arma were removed after 141a9d0; the commit under
+# review, 79cce0f, has the oracle's files (git show 79cce0f:<path>). Dev
 # only, run by hand, from the package root:
 #   Rscript dev/review_eigen_wrappers_probe.R <lib> <out dir> [--group=<name>]
 # <lib>      the private RcppArmadillo library, as for dev/oracle_run.R.

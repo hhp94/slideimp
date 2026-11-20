@@ -65,7 +65,7 @@ C++ files in the chain: 4 translation units (`src/armaSVD.cpp`, `src/RcppExports
 `src/mat_stats.cpp`, `src/si_lapack.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`,
 `eig_sym_sel.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `si_lapack.h`,
 `matrix_checks.h`, `loc_timer.h`). `si_lapack.cpp/.h` is the wrapper layer ("What the
-wrappers reproduce"), and every BLAS and LAPACK call of the chain goes through it. No file
+wrappers do"), and every BLAS and LAPACK call of the chain goes through it. No file
 of the chain uses Armadillo, and since Phase 3 of `dev/eigen_conversion.md` the package
 does not link to it: RcppArmadillo is not in `LinkingTo`, so the generated
 `src/RcppExports.cpp` does not include `RcppArmadillo.h`.
@@ -338,10 +338,13 @@ order; each value comes from the final `Xhat` at the missing position, de-standa
 not from `fittedX`. The
 ordinary-build return list carries `loc`, `value`, `mse`, `n_iter` (an integer),
 `criterion_final`, `converged`, `solver_chosen`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`.
-`criterion_final` is `NA` when the fit converged on its objective alone, the criterion
-being at or above `threshold` (`src/armaSVD.cpp`:
-`(converged && !(criterion < threshold)) ? NA_REAL : criterion;`): with `ncp` at or
-above the rank of the data the objective is near zero and the ratio is rounding.
+`criterion_final` is the criterion that stopped a converged fit. When the objective alone
+stopped it, the criterion being at or above `threshold`, there is none to report and the
+value is `NA` (`src/armaSVD.cpp`:
+`(converged && !(criterion < threshold)) ? NA_REAL : criterion;`). The `NA` can withhold a
+well-defined ratio, and it also covers one that is rounding noise, as when `ncp` is at or
+above the rank of the data from the first iteration and the objective sits at the rounding
+floor of the subtraction, with no tolerance needed to tell the two apart.
 `solver_chosen` comes from `HybridEigContext::solver_chosen_code()`
 (`src/hybrid_topk_eig.h`: `int solver_chosen_code() const`): 0 forced exact, 1 forced lobpcg,
 2 auto never decided, 3 auto chose exact, 4 auto chose lobpcg. Under `solver = "auto"` only
@@ -429,7 +432,7 @@ start when `keep_lobpcg_seed_state()` allows.
 **Exact path** (`src/eig_sym_sel.h`). `eig_sym_sel()` takes raw buffers and calls
 `si_la::syevr_range`, which enters dsyevr with `range = 'I'` for eigenpairs `il..iu`, the
 top `k`, asks for the workspace on every call and floors it at the documented
-`26 * n` / `10 * n` minima ("What the wrappers reproduce"). `eigvals` and `eigvecs` are
+`26 * n` / `10 * n` minima ("What the wrappers do"). `eigvals` and `eigvecs` are
 `src/armaSVD.cpp`'s, sized there before the EM loop (`src/armaSVD.cpp`:
 `std::vector<double> eigvecs(n_gram * k);`). dsyevr returns
 ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
@@ -480,11 +483,12 @@ a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 what the calls into `si_la` are handed.
 Every product goes through one function (`src/lobpcg_warm.h`: `inline void product_into(`):
 a right operand of one column is a vector and the product is dgemv through `si_la::gemv`,
-any other is dgemm through `si_la::gemm`. The products are
-written the way Armadillo evaluated each one ("Products of two `arma::mat`" below): a
-product inside a sum or difference, or one whose target is among its operands, is formed
-first and added cell by cell; `-=` of a product whose operands do not include its target is
-one call with `beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). The boundary with
+any other is dgemm through `si_la::gemm`. A product inside a sum or
+difference, or one whose target is among its operands, is formed into a block of its own
+first and subtracted cell by cell (`src/lobpcg_warm.h`: `sub_cells(V, mul(X, tmul(X, V)));`,
+`sub_cells(P, mul(X_curr, tmul(X_curr, X_prev)));`), and of three operands the inner product
+is formed first; `-=` of a product whose operands do not include its target is one call with
+`beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). The boundary with
 `src/hybrid_topk_eig.h` holds no Armadillo either: `lobpcg_solve()` takes the Gram as a raw
 buffer and its two dimensions and reads it in place (`src/lobpcg_warm.h`:
 `inline LOBPCGResult lobpcg_solve(const double *a,`), `LOBPCGState` holds `X` and `P` as
@@ -509,8 +513,8 @@ which no call here can produce once kernel setup has refused dimensions past
 
 Every `LOBPCG_*` status but `LOBPCG_CONVERGED` leaves the state untouched and
 sends `hybrid_topk_eig_impl()` to the exact solver on the same Gram, as above.
-"What the wrappers reproduce" has what each call did before it moved to its
-wrapper, and what was measured.
+"What the wrappers do" has what each wrapper refuses before its routine and what
+its status means.
 
 **Where BLAS/LAPACK is entered.**
 
@@ -530,311 +534,162 @@ The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` 
 LOBPCG path never touches `n_gram`-sized LAPACK: its dense work is `n_gram x k` matvecs and
 QRs plus a `3k x 3k` dsyevd.
 
-## What the wrappers reproduce
+## What the wrappers do
 
 `src/si_lapack.h` declares, and `src/si_lapack.cpp` defines, R's BLAS and LAPACK as plain
-functions over `double*`, dimensions and an int status. So far `src/pca_linalg_utils.h` calls
-`si_la::gemm`, `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, `src/eig_sym_sel.h`
-calls `si_la::syevr_range`, and `src/lobpcg_warm.h` calls `si_la::qr_econ`,
-`si_la::solve_tri`, `si_la::syevd`, `si_la::gemm` and `si_la::gemv`; the table above says how each site enters BLAS and
-LAPACK. Each wrapper stands in for one
-call the chain makes, or made until its file was converted, and this section records what
-that call does, so that a call
-site can be moved to its wrapper without reading Armadillo again.
+functions over `double*`, `std::size_t` dimensions and an int status. The header's opening
+comment has the conventions and each function's comment what it computes; this section has
+what each does around its routine, and why. `src/pca_linalg_utils.h` calls `si_la::gemm`,
+`src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, `src/eig_sym_sel.h` calls
+`si_la::syevr_range`, `src/lobpcg_warm.h` calls `si_la::qr_econ`, `si_la::solve_tri`,
+`si_la::syevd`, `si_la::gemm` and `si_la::gemv`, and `src/armaSVD.cpp` calls `si_la::gemm`,
+and `si_la::svd_values` in the diagnostics build; Layer 6 has where each site enters BLAS and
+LAPACK and what it does with a status. `dev/si_lapack_test.R` tests every function against
+R's own products, `eigen()`, `svd()`, `qr()`, `backsolve()` and `forwardsolve()`, with guard
+cells after every buffer a wrapper writes, and `dev/si_lapack_selftest.R` shows it failing on
+a broken wrapper (`dev/eigen_conversion.md`, "The wrapper layer's own test"). READ means read
+in the source named; NOT READ is said where it applies.
 
-READ means read in `armadillo_bits` of the installed RcppArmadillo, version 15.6.2-1
-(Armadillo 15.6.2). NOT READ is said where it applies. `dev/oracle_run.R` runs every
-wrapper beside the call it stands in for.
+**Before the routine.** Each wrapper checks its arguments before Fortran is entered. An
+option character other than `'N'` or `'T'` for a transpose and `'U'` or `'L'` for a triangle,
+a leading dimension below the rows of its buffer, or dimensions the routine would refuse
+together are `err_arg`, so no illegal argument reaches xerbla, which under R raises an R error
+from inside the library and unwinds no C++ frame. A dimension past `int` is `err_size`, never
+narrowed, and so is a workspace whose documented minimum is past `int`, tested before the
+routine is asked for its optimum, since LAPACK's own arithmetic for that answer has wrapped by
+then (`src/si_lapack.cpp`: `bool fits_int(const double len)`). A failed allocation is
+`err_alloc`. A positive status is the routine's own `info`, passed on. Nothing in the file
+calls the R API, prints or throws: each call site raises its own error.
 
-**How RcppArmadillo configures Armadillo** (READ: `RcppArmadilloConfig.h`, `config.hpp`,
-`typedef_elem.hpp`, `compiler_setup.hpp`). `ARMA_USE_BLAS` and `ARMA_USE_LAPACK` are
-defined; `blas_int` is `int`; symbols take a trailing underscore; `ARMA_USE_FORTRAN_HIDDEN_ARGS`
-is defined, so every Fortran character argument is followed by a hidden `size_t` length,
-passed as a literal 1. `ARMA_WARN_LEVEL` is 2: a warning of level 1 or 2 is written to
-`ARMA_CERR_STREAM`, which RcppArmadillo points at `Rcpp::Rcerr`, and is not an R warning;
-one of level 3 is dropped. `ARMA_CHECK_NONFINITE` is defined.
-
-| wrapper | stands in for | routine and options | on failure |
+| wrapper | routine and options | refused before the routine, beyond the options | calls no routine when |
 | --- | --- | --- | --- |
-| `si_la::gemm` | `arma::dgemm_`, called directly | dgemm, every argument passed through | BLAS has no status |
-| `si_la::gemv` | no direct call; `*` reached it for a product of one row or one column (below) | dgemv, unit strides | BLAS has no status |
-| `si_la::syrk` | `arma::dsyrk_`, called directly | dsyrk, every argument passed through | BLAS has no status |
-| `si_la::syevr_range` | the `dsyevr_` that `src/eig_sym_sel.h` declared itself until it moved to this wrapper | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | `info != 0`, or another number of eigenpairs than asked; no test for NaN or Inf (the wrapper has one, below) |
-| `si_la::syevd` | `arma::dsyevd_`, which `small_eig_desc()` called directly until it moved to this wrapper | dsyevd, `jobz = 'V'` | `info != 0`; no test for NaN or Inf (the wrapper has one, below) |
-| `si_la::qr_econ` | `arma::qr_econ()` | dgeqrf, then dorgqr | returns false, `Q` and `R` reset |
-| `si_la::solve_tri` | `arma::solve()` on `trimatl()` or `trimatu()`, until Phase 4 (below) | dtrtrs alone; Armadillo adds dtrcon, and dgelsd as the fallback | throws `std::runtime_error` |
-| `si_la::svd_values` | `arma::svd()` returning the values alone | dgesdd, `jobz = 'N'` | throws `std::runtime_error` |
+| `si_la::gemm` | dgemm, every argument passed through | `ldc < m`; when `k > 0`, `lda` or `ldb` below the rows its operand is stored with | `m` or `n` is 0, and writes nothing; `k` is 0, and `C` becomes `beta * C` |
+| `si_la::gemv` | dgemv, unit strides | `lda < m` | `y` is empty; `x` is empty, and `y` becomes `beta * y`, where dgemv itself would leave `y` alone |
+| `si_la::syrk` | dsyrk, into the `uplo` triangle of `C` alone | `ldc < n`; when `k > 0`, `lda` below the rows `A` is stored with | `n` is 0; `k` is 0, and that triangle becomes `beta * C` |
+| `si_la::syevr_range` | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | not `1 <= il <= iu <= n`; NaN or Inf in the `uplo` triangle (`err_nonfinite`) | never: `n = 0` has no range |
+| `si_la::syevd` | dsyevd, `jobz = 'V'` | NaN or Inf in the `uplo` triangle (`err_nonfinite`) | `n` is 0 |
+| `si_la::qr_econ` | dgeqrf, then dorgqr with `k = n` | `m < n` | `n` is 0 |
+| `si_la::solve_tri` | dtrtrs, `trans = 'N'`, `diag = 'N'` | nothing | `n` or `nrhs` is 0 |
+| `si_la::svd_values` | dgesdd, `jobz = 'N'`; compiled only when `PCA_IMP_DIAGNOSTICS` is set | NaN or Inf anywhere in `a` (`err_nonfinite`) | `min(m, n)` is 0 |
 
-The three direct calls are Armadillo's own declarations of the Fortran symbols (READ:
-`def_blas.hpp`, `def_lapack.hpp`), with nothing between the call site and BLAS. Armadillo
-declares no dsyevr and calls it nowhere, so `si_la::syevr_range` has no Armadillo
-counterpart. The oracle compares it with dsyevr called as `src/eig_sym_sel.h` called it
-before it moved to the wrapper, to the bit, and with `arma::eig_sym()`, which is dsyevd, to a tolerance (READ:
-`auxlib::eig_sym_dc()` returns false, before LAPACK, when the upper triangle holds NaN or
-Inf; it asks dsyevd for its workspace only from order 32 up, uses the larger of the answer
-and `1 + 6 n + 2 n^2` and `3 + 5 n` computed in `blas_int`, and returns `info == 0`).
+Where a wrapper scales instead of calling, it scales as BLAS defines the result: `beta = 0`
+assigns 0, so a NaN or Inf already there does not survive, and `beta = 1` leaves the cells
+alone (`src/si_lapack.cpp`: `void scale_range(double *x, const std::size_t len, const double beta)`).
+After the routine, `syevr_range` returns `err_count` when dsyevr reports success with another
+number of eigenpairs than asked; with NaN and Inf refused first, no input is known to reach it.
+On any failure what the outputs hold is unspecified; `dev/si_lapack_test.R` checks that a
+refused call leaves them as they were.
 
-**The two eigen wrappers against the chain's calls.** Each enters the same routine with
-the same options as the call it stands in for, and differs from it in three places. The
-first two are on purpose; the third was found when the dsyevd call moved:
+**The eigenvalue buffer of `syevr_range`.** LAPACK documents `W` as `n` cells whatever the
+range. For a proper subset dsyevr goes through dstebz, which stores every eigenvalue its search
+interval holds and then drops those outside `il..iu`; when the range cuts a group of equal
+eigenvalues that is more than `iu - il + 1` of them. The wrapper holds the `n` cells itself
+and copies `iu - il + 1` out (`src/si_lapack.cpp`:
+`std::copy(w_all.begin(), w_all.begin() + count, w);`), so its caller's buffer needs no more.
+`pca_imp()` reaches such a range when the completed data is rank deficient and `ncp`, plus one
+when regularized, exceeds its rank: samples that are exact copies of each other, holes
+included, or columns that are. A call that hands dsyevr a buffer of `iu - il + 1` cells, as
+the chain did before it moved to this wrapper and 1.2.0 does, writes past it, and the write
+is not harmless. Measured on Windows (`dev/review_p2.md`, finding 1): on 30 samples of which 6
+are distinct, 1.2.0 built from source ends the R process with a segmentation fault,
+`pca_imp(x, ncp = 5)` at its defaults included. The regression test is that input
+(`tests/testthat/test-pca_imp.R`: `test_that("pca_imp returns on replicate samples with ncp above their rank", {`).
+It sees the overrun only where it does harm; `dev/si_lapack_test.R` sees it in guard cells
+after `w`, on ranges that cut a group, where it also shows dsyevr writing past the count.
 
-- *The eigenvalue buffer of dsyevr.* LAPACK documents `W` as `n` cells whatever the range.
-  For a proper subset dsyevr goes through dstebz, which stores every eigenvalue its search
-  interval holds and then drops those outside `il..iu`; when the range cuts a group of
-  equal eigenvalues that is more than `iu - il + 1` of them. The chain's own call gave `W`
-  exactly `topk` cells, so such a call wrote past the end of `eigvals`, and 1.2.0 does.
-  `pca_imp()` reaches it when the completed data is rank
-  deficient and `ncp`, plus one when regularized, exceeds its rank: samples that are exact
-  copies of each other, holes included, or columns that are. `si_la::syevr_range` holds the
-  `n` cells itself and copies `iu - il + 1` out, so its caller's buffer needs no more, and
-  `eig_sym_sel()` now calls it. The write was not harmless. Measured on Windows
-  (`dev/review_p2.md`, finding 1): on 30 samples of which 6 are distinct, 1.2.0 built from
-  source and every commit before the move end the R process with a segmentation fault,
-  `pca_imp(x, ncp = 5)` at its defaults included, and the builds after it return. The
-  regression test is that input
-  (`tests/testthat/test-pca_imp.R`: `test_that("pca_imp returns on replicate samples with ncp above their rank", {`).
-- *NaN and Inf.* Neither of the chain's own calls tested its matrix, and LAPACK does not
-  refuse such input. Measured on one machine with R's own LAPACK: dsyevr asked for every eigenpair
-  of a matrix holding NaN does not return, a proper subset comes back with `info = 0` and
-  another number of eigenpairs than asked, and dsyevd can return `info = 0` with NaN
-  eigenvalues. Both wrappers test the triangle LAPACK reads, and only that one, before
-  the routine is entered, and return `err_nonfinite`. `pca_imp()` refuses NaN and Inf in
-  its input (`R/pca_imp.R`: `check_finite(obj)`), so only arithmetic inside the fit could
-  put one in a Gram. Finite input whose squares overflow does: unscaled values near 1e160,
-  or near 1e200 with `scale = TRUE`, ended in the stop of a failed eigensolve under either
-  solver, the same before and after the wrappers, and near 1e150 the fit returns (measured,
-  `dev/review_p2.md`, finding 3). Since Phase 4 of `dev/eigen_conversion.md` the Gram is
-  tested where it is formed (Layer 5), before either solver, and such input gets a stop
-  that names the cause. A test pins it
-  (`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops before the eigensolver", {`).
-  The wrappers keep their own test, so a non-finite Gram that reached the exact path would
-  still be refused there, where the chain's own
-  call either reported a wrong count, the same stop, or did not return. On the LOBPCG
-  path a small Gram holding NaN or Inf is a failed Rayleigh-Ritz, so that outer iteration
-  goes to the exact solver. The chain's own dsyevd call did one of three things with it,
-  measured by writing a NaN into the matrix (`dev/eigen_conversion.md`, Phase 2, step 4):
-  at orders 8 to 12 dsyevd returned `info > 0`, the same failed Rayleigh-Ritz; at order 34
-  it returned `info = 0` and the NaN went on, to end either in the error of a failed
-  triangular solve or, when the Gram itself held the NaN, in `lobpcg_solve()` reporting
-  convergence, because the largest residual norm is taken with a `>` that NaN never
-  passes (`src/lobpcg_warm.h`: `const double max_res = max_skip_nan(rn.data(), rn.size());`).
-  Since Phase 4 a residual norm that is NaN or Inf ends the solve as `LOBPCG_BAD_SEED`
-  before the convergence test (`src/lobpcg_warm.h`: `if (!lobpcg_detail::all_finite(rn))`),
-  so that outer iteration goes to the exact solver.
-- *The workspace of dsyevd.* Until it moved to the wrapper, `small_eig_desc()` kept its
-  dsyevd workspace on the `LOBPCGState` and only ever lengthened it, so a Rayleigh-Ritz
-  problem that followed a larger one was solved with the larger one's workspace.
-  `si_la::syevd` gives dsyevd the length of its own query on every call. The length is
-  not neutral. READ, in LAPACK 3.12.0 (`dsyevd.f`, `dormql.f`, fetched from the reference
-  repository, not from R's sources): dsyevd keeps `1 + 2 n + n^2` cells and hands the
-  rest to dormtr, which is dormql for `uplo = 'U'`; dormql applies the reflectors in
-  blocks only when its block size is below `n - 1` and that remainder holds its `T`
-  array of 4160 cells and at least two columns a block, and otherwise one at a time. At
-  the queried length, `1 + 6 n + 2 n^2`, the remainder is `n^2 + 4 n + 1`. With a block
-  size of 32 (NOT READ: ilaenv; it is the value the measured boundaries give) that makes
-  the eigenvectors depend on the length for orders 34 to 79 and for no other. Measured,
-  `dev/probe_p2s4_syevd_lwork.R`, orders 2 to 140: with the workspace of a problem 1.5,
-  2 or 3 times the order, every call of order 34 to 79 differs from the wrapper's and no
-  other does; with that of the order plus one, orders 62 to 79; the eigenvalues never
-  differ, and the eigenvectors by at most 6.9e-16. The oracle runs the pair with a
-  longer workspace only at orders 30, 90 and 200, on either side of that range, and so
-  reports them the same. In `pca_imp()` the first Rayleigh-Ritz of every `lobpcg_solve()`
-  call after a state's first is of order `2 k` with the workspace of order `3 k` held, so
-  the two differ from 17 eigenpairs up, which is `ncp` 16 when regularized
-  (`14 k^2 + 10 k >= 4159`). LOBPCG iterates on the difference: step 4 has what it does
-  to the result.
+**NaN and Inf.** LAPACK does not refuse them. Measured on one machine with R's own LAPACK
+(`dev/eigen_conversion.md`, "The review of the wrapper layer"): dsyevr asked for every
+eigenpair of a matrix holding NaN does not return, a proper subset comes back with `info = 0`
+and another number of eigenpairs than asked, and dsyevd can return `info = 0` with NaN
+eigenvalues. So `syevr_range` and `syevd` test the triangle LAPACK reads, and only that one,
+before the routine is entered (`src/si_lapack.cpp`:
+`bool tri_finite(const char uplo, const std::size_t n, const double *a)`), and `svd_values`
+tests all of `a`. `qr_econ` and `solve_tri` test nothing, and NaN or Inf goes through to their
+output. In the chain, `pca_imp()` refuses NaN and Inf in its input (`R/pca_imp.R`:
+`check_finite(obj)`), and the Gram is tested where it is formed (Layer 5), so finite input
+whose squares overflow, unscaled values near 1e160 or near 1e200 with `scale = TRUE`
+(`dev/review_p2.md`, finding 3), stops there with a message that names the cause
+(`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops before the eigensolver", {`).
+A non-finite Gram that reached the exact path would still be refused by `syevr_range`. On the
+LOBPCG path a small Gram holding NaN or Inf is a failed Rayleigh-Ritz, and a residual norm
+that is NaN or Inf ends the solve as `LOBPCG_BAD_SEED` before the convergence test
+(`src/lobpcg_warm.h`: `if (!lobpcg_detail::all_finite(rn))`), since the largest norm is taken
+by `max_skip_nan()`, which passes over NaN; either way that outer iteration goes to the exact
+solver.
 
-`dev/eigen_conversion.md`, "The review of the wrapper layer", has the measurements behind
-the first two, and Phase 2, step 4, those behind the third.
+**Workspace.** Every wrapper that needs a workspace asks its routine for it on every call,
+with a length of -1, and uses the larger of the answer and the routine's documented minimum
+(`src/si_lapack.cpp`: `bool work_len(const double queried, const double minimum, int &out)`):
+`26 n` and `10 n` for dsyevr, `1 + 6 n + 2 n^2` and `3 + 5 n` for dsyevd, `max(1, n)` for
+dgeqrf and for dorgqr, and `3 min(m, n) + max(max(m, n), 7 min(m, n))` for dgesdd. An answer
+that is not usable, 0, negative or NaN, leaves the minimum. Nothing is kept between calls, so
+the length is a function of the problem alone. That matters, since the length can change the
+result:
 
-**`arma::qr_econ(Q, R, X)`**, which `qr_orthonormalize()` called until it moved to the
-wrapper (`src/lobpcg_warm.h`: `if (la_failed(si_la::qr_econ(v_rows, v_cols, V.data(), Q.data(),`). READ:
-`fn_qr.hpp`, `auxlib::qr_econ()`, `auxlib::qr()`. For `m > n` it copies `X` into `Q`, runs
-dgeqrf there, copies the upper triangle into an `n x n` `R`, zero below, and runs dorgqr on
-`Q` with `k = n`. For `m <= n`, square included, it hands over to the full `qr()`: dgeqrf
-in an `m x n` `R`, the first `m` columns copied into an `m x m` `Q`, `R` zeroed below its
-diagonal, dorgqr with `k = m`. Both are dgeqrf on the `m x n` matrix and dorgqr on its first
-`min(m, n)` columns, which is how the wrapper writes it. One workspace serves both
-routines: dgeqrf is asked for its optimum, the answer is raised to `max(1, m, n)`, and
-dorgqr is not asked. The wrapper has left Armadillo on two of these since Phase 4 of
-`dev/eigen_conversion.md`: it asks each routine for its own workspace, with `max(1, n)`
-as the floor of both, and it keeps the `m >= n` form alone, factoring in `Q`, and returns
-`err_arg` for `m < n`, a shape no call site passes. An empty `X` succeeds without LAPACK. Nothing checks for NaN or Inf.
-On `info != 0` from either routine `auxlib` returns false; `qr_econ()` then resets `Q` and
-`R`, warns at level 3, which is dropped, and returns false. The caller tested that flag,
-and now tests the wrapper's status the same way (Layer 6, "Where a factorization can fail
-on the LOBPCG path"). A dimension past `blas_int` was an exception from Armadillo, so an
-R error and not the flag (READ: `arma_assert_blas_size()`, called in `auxlib::qr_econ()`
-before LAPACK, throws `std::runtime_error`), and so was a failed allocation (READ:
-`arma_stop_bad_alloc()` throws `std::bad_alloc`; NOT READ: that every allocation of the
-call reaches it). The wrapper returns them as `err_size` and `err_alloc`, and the call
-site stops on both.
+- dsyevr: given `26 n` in place of its answer, the eigenvectors change at orders 60 and 300
+  (`dev/eigen_conversion.md`, "The review of the wrapper layer").
+- dsyevd: READ, in LAPACK 3.12.0 (`dsyevd.f`, `dormql.f`, fetched from the reference
+  repository, not from R's sources): dsyevd keeps `1 + 2 n + n^2` cells and hands the rest to
+  dormtr, which is dormql for `uplo = 'U'`; dormql applies the reflectors in blocks only when
+  its block size is below `n - 1` and that remainder holds its `T` array of 4160 cells and at
+  least two columns a block, and otherwise one at a time. At the queried length,
+  `1 + 6 n + 2 n^2`, the remainder is `n^2 + 4 n + 1`. With a block size of 32 (NOT READ:
+  ilaenv; it is the value the measured boundaries give) that makes the eigenvectors depend on
+  the length for orders 34 to 79 and for no other. Measured, `dev/probe_p2s4_syevd_lwork.R`,
+  orders 2 to 140: with the workspace of a problem 1.5, 2 or 3 times the order, every call of
+  order 34 to 79 differs from the wrapper's and no other does; with that of the order plus
+  one, orders 62 to 79; the eigenvalues never differ, and the eigenvectors by at most 6.9e-16.
+  The chain once kept the longest dsyevd workspace so far on the LOBPCG state;
+  `dev/eigen_conversion.md`, Phase 2, step 4, has what giving each call its own did to
+  results.
 
-**`arma::solve(arma::trimatl(A), B)`**, which `qr_orthonormalize_update_matvec()` called as
-`AQ = arma::solve(arma::trimatl(R.t()), AQ.t()).t()` until it moved to the wrapper
-(`src/lobpcg_warm.h`: `if (la_failed(si_la::solve_tri('L', Rt.nrow, Y.ncol, Rt.data(),`). READ:
-`fn_solve.hpp`, `glue_solve_tri_default::apply()`, `auxlib::solve_trimat_rcond()`,
-`auxlib::rcond_trimat()`, `auxlib::solve_approx_svd()`. It is not a plain triangular
-solve:
+**`qr_econ`.** One form, `m >= n`: `x` is copied into `q`, dgeqrf factors it there, the upper
+triangle it leaves is copied into the `n x n` `r` with zeros below, and dorgqr forms the `n`
+columns of `q` with `k = n`. The sign of each column is LAPACK's: the diagonal of `r` is not
+made positive. `m < n` is `err_arg`, a shape the one call site stops on before the call
+(`src/lobpcg_warm.h`: `internal error: a LOBPCG block has more columns than rows`). The call
+(`src/lobpcg_warm.h`: `if (la_failed(si_la::qr_econ(v_rows, v_cols, V.data(), Q.data(),`)
+and what a failure there leads to are in Layer 6.
 
-1. dtrtrs with `trans = 'N'`, `diag = 'N'` on a copy of `B`. `info != 0`, a zero on the
-   diagonal, counts as failed, with the estimate left at 0.
-2. Otherwise dtrcon estimates the reciprocal condition number in the 1-norm; `info != 0`
-   there makes it 0.
-3. If the solve failed, or the estimate is below `DBL_EPSILON` or NaN, Armadillo writes a
-   level-2 warning ("system is singular; attempting approx solution", or "system is close
-   to singular; rcond: ...") and discards the triangular answer. It copies the triangle
-   alone into a square matrix and solves by dgelsd, from `B` as given, treating singular
-   values under `n * DBL_EPSILON` times the largest as zero: the minimum-norm least-squares
-   solution. That fallback refuses NaN or Inf in the triangle or in `B`.
-4. If the fallback fails too, `solve()` throws `std::runtime_error`, "solve(): solution not
-   found", which Rcpp turns into an R error.
+**`solve_tri`.** dtrtrs alone, which is how R's own `qr.coef()` solves a triangle (READ:
+`qr_coef_real` in R's `Lapack.c`, dtrtrs with `info != 0` an error). A positive status `i` is
+dtrtrs's: diagonal element `i` of the triangle is exactly zero, and `b` is as it was given.
+Nothing estimates the condition of the triangle, so one singular to working precision is
+solved as it is, and NaN or Inf in either operand goes through to the answer. The one call
+site solves `R' Y = (A Q)'` with the two transposes written out (`src/lobpcg_warm.h`:
+`if (la_failed(si_la::solve_tri('L', Rt.nrow, Y.ncol, Rt.data(),`).
 
-So this call site went on with an approximate `AQ` whenever `R` was singular to working
-precision, having printed a line and raised nothing, and so did `si_la::solve_tri` through
-Phases 2 and 3.
-
-Since Phase 4 of `dev/eigen_conversion.md` the wrapper is step 1 alone, which is how R's
-own `qr.coef()` solves a triangle (READ: `qr_coef_real` in R's `Lapack.c`, dtrtrs with
-`info != 0` an error): no dtrcon, no dgelsd, no flag. The call site writes the two
-transposes out (READ: `glue_solve_tri_default::apply()` evaluates the triangle's expression
-into a matrix with `quasi_unwrap` before dtrtrs, so `R.t()` was formed there too). A
-positive status, a zero on the diagonal, makes `qr_orthonormalize_update_matvec()` return
-false, which is `LOBPCG_P_COLLAPSED`, and no longer an R error. NaN or Inf in either
-operand is not refused and goes through to `AQ`.
-
-**`arma::svd(X)`**, which the `PCA_IMP_DIAGNOSTICS` build called as
-`arma::svd(V_prev.t() * V_new)` until step 6 of Phase 2, once per iteration from the
-second on. READ: `fn_svd.hpp`, `auxlib::svd_dc()`. dgesdd with
-`jobz = 'N'` on a copy of `X`. An empty `X` gives an empty result. NaN or Inf in `X` is
-refused before LAPACK. The workspace is the larger of
-`3 min(m, n) + max(max(m, n), 7 min(m, n))` and dgesdd's own optimum, which is asked for
-only when `X` has 1024 cells or more. A refusal or `info != 0` makes `svd()` throw
-`std::runtime_error`, "svd(): decomposition failed". The wrapper asks dgesdd for its
-optimum at every size since Phase 4 of `dev/eigen_conversion.md`, and is compiled only
-when `PCA_IMP_DIAGNOSTICS` is set, so the package as shipped does not reference dgesdd.
-
-The call site now forms the product with `si_la::gemm` (dgemm for one component too,
-where `*` took dgemv; this is the diagnostics build only) and hands it to
-`si_la::svd_values`
+**`svd_values`.** The diagnostics build only: it is compiled when `PCA_IMP_DIAGNOSTICS` is
+set, so the package as shipped does not reference dgesdd. Its one caller forms `V_prev' V_new`
+with `si_la::gemm`, once per iteration from the second on, and hands it over
 (`src/armaSVD.cpp`: `st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());`).
-A positive status or `err_nonfinite` is an R error, as the throw was, in the chain's own
-words and as an `Rcpp::exception` (`src/armaSVD.cpp`:
-`the SVD of the subspace product failed`); `err_alloc` and the wrapper's refusals of its
-arguments stop too, the second as an internal error. The smallest singular value is
-taken with `std::min_element`, where `s.min()` was (NOT READ: `Mat::min()`); singular
-values are not NaN on success. No route to the failure is known: a Gram holding NaN is
-refused before the eigenvectors exist. `dev/probe_p2s6_run.sh` forces it in both
-versions.
+A positive status or `err_nonfinite` is an R error, as an `Rcpp::exception`
+(`src/armaSVD.cpp`: `the SVD of the subspace product failed`); `err_alloc` and a refusal of
+the arguments stop too, the second as an internal error. The smallest singular value is taken
+with `std::min_element`. No route to the failure is known, since a Gram holding NaN is refused
+before the eigenvectors exist; `dev/probe_p2s6_run.sh` forces it.
 
-**Products of two `arma::mat`** (READ: `glue_times_meat.hpp`, `mul_gemm.hpp`,
-`mul_gemv.hpp`, `mul_syrk.hpp`). `A * B` and `A.t() * B` choose their routine at run time,
-in this order. The chain kept the order in a wrapper, `si_la::matmul`, until Phase 4 of
-`dev/eigen_conversion.md`. Since then `product_into()` has one rule of its own, a right
-operand of one column goes to dgemv, and the table below is Armadillo's alone:
+**Sums outside the wrappers.** The chain's other reductions call no BLAS. Each is a plain loop
+in order; `dev/CPP.md` bans the multi-accumulator form some of them once had, and
+`dev/eigen_conversion.md` has what each moved when it took this form ("Not wrapped" for the
+two norms of LOBPCG, "Phase 4, as carried out" for the three sums of the EM loop):
 
-| product | routine |
-| --- | --- |
-| either operand has no cells | no BLAS: the result is zero-filled |
-| the result has one row | dgemv, `trans = 'T'`, on `B`, with the row as the vector |
-| else `B` has one column | dgemv on `A`, `'N'` for `A * B`, `'T'` for `A.t() * B` |
-| else `A.t() * A` on one object | dsyrk into the upper triangle, then mirrored; a vector, or `A` of 48 cells or fewer, by Armadillo's own loops |
-| else | dgemm, `'N'` or `'T'` for `A`, `'N'` for `B` |
-
-`C += A * B` and `C -= A * B` do not form the product and then add it: when `C` is not one
-of the operands they are one call of the same routine with `beta = 1` and `alpha = 1` or
-`-1` (`glue_times::apply_inplace_plus()`). When `C` is an operand, nested products
-included (READ: `Glue::is_alias()` and `Op::is_alias()` ask their operands in turn), the
-product is formed first and subtracted cell by cell: `V -= X * (X.t() * V)` was that form,
-and is written so now (`src/lobpcg_warm.h`: `sub_cells(V, mul(X, tmul(X, V)));`). A product
-inside a sum or difference is formed first too, as `P = X_prev - X_curr * (X_curr.t() * X_prev)`
-was and is written now (`src/lobpcg_warm.h`: `sub_cells(P, mul(X_curr, tmul(X_curr, X_prev)));`):
-READ, no overload in `operator_plus.hpp` or `operator_minus.hpp` names `glue_times`, so the
-product is an operand of the sum (NOT READ: the proxy that then evaluates it). The oracle
-does not cover those forms; the capture runs them. Three operands written `A * (B * C)` are two products, the
-inner one first: `depth_lhs` counts only operands nested on the left (READ), so the
-parenthesised product is one operand (NOT READ: `partial_unwrap`, which evaluates it).
-
-Three things Armadillo does that the chain does not:
-
-- The one-row test, taken before the one-column test: a result of one row is dgemv on
-  `B` with `A` as the vector. The chain tests only for one column of `B`, so a 1 x 1
-  result, every `X' * Y` of a fit with one component, is dgemv on `A` with `B` as the
-  vector, and a result of one row and several columns is dgemm. The products are the
-  same; the bits need not be, and the record of Phase 4 has what was measured.
-- For a square matrix operand of 4 x 4 or less (dgemv), or two square operands of the same
-  size up to 4 x 4 (dgemm), Armadillo runs loops of its own and calls no BLAS (READ: the
-  tests in `gemm::apply_blas_type()` and `gemv::apply_blas_type()`; NOT READ: the loops).
-  The chain calls BLAS, so such a product can differ in its last bits. In the chain that
-  needs a Gram of at most 4 x 4 under LOBPCG. Measured (`dev/review_p2.md`, finding 2): with
-  `solver = "lobpcg"` on a Gram of order 2 to 4, when one eigenpair or every eigenpair is
-  asked for, 267 of 280 fits differ from the Armadillo build, by at most 5.2e-9 absolute;
-  fits outside that rule, and every fit under the exact solver, are identical.
-- The dsyrk route for `A.t() * A` on one object. No call site of the chain has that form.
-
-An in-place product with an empty inner dimension is passed on to dgemm with a leading
-dimension of 0 (READ from the arguments `gemm::apply_blas_type()` builds; not run, since
-BLAS answers that through xerbla). The wrapper scales `C` by `beta` and calls nothing.
-
-**Calls no wrapper stands in for.** Four norms, a dot product and a trace, and the plain
-loops that replace them in `src/lobpcg_warm.h` and `src/svd_triplet.h`:
-
-- `arma::norm(P, "fro")` in `build_momentum_P()` was dnrm2 over all cells, recomputed by a
-  scaled loop when the result is 0 or not finite (READ: `fn_norm.hpp`,
-  `op_norm::vec_norm_2_direct_std()`; NOT READ: the scaled loop). Now a plain sum of
-  squares (`src/lobpcg_warm.h`: `!(frobenius_norm(P) > min_projected_fro_norm))`), as ruled
-  (`dev/eigen_conversion.md`, "Not wrapped"): not bitwise equal to dnrm2, and only a
-  threshold reads it.
-- `arma::norm(A, "inf")` was `as_scalar(max(sum(abs(A), 1), 0))` with no BLAS (READ:
-  `op_norm::mat_norm_inf()`). `sum(, 1)` starts each row's sum from its first column and adds
-  the others in column order, whichever of its two paths it takes (READ:
-  `op_sum::apply_mat_noalias()`, `op_sum::apply_proxy_noalias()`), and `max()` starts from
-  `-Inf` and keeps a value only when it is `>` the best so far, so NaN is skipped (READ:
-  `op_max::direct_max()`, which keeps two running maxima and returns the larger; the maximum
-  of values that are not NaN does not depend on that order). `norm_inf()` does the same, from
-  a zero sum, which adds nothing to a value that is not negative (`src/lobpcg_warm.h`:
-  `row_sum[i] += std::abs(col[i]);`), so it is bitwise equal.
-- The residual norms, `arma::sqrt(arma::sum(arma::square(R), 0))`, which no note named before
-  the second half of step 4: `sum()` of `square()` of a matrix takes each column's sum with
-  `op_dot::direct_dot()` (READ: `op_sum::apply()` for `eOp<T1, eop_square>`,
-  `op_sum::apply_mat_square_noalias()`), so two partial sums up to 32 rows and ddot above.
-  Now a plain sum of squares (`src/lobpcg_warm.h`: `inline std::vector<double> column_norms(`),
-  not bitwise equal to either, on the same footing as the Frobenius norm: the norms feed the
-  tests of the iteration and `max_rel_res`, which only the diagnostics build reports
-  (`src/armaSVD.cpp`: `Rcpp::Named("eig_lobpcg_max_rel_res")`). `rn.max()` reached
-  `op_max::direct_max()` (READ: `Mat::max()`), which `max_skip_nan()` reproduces.
-- `arma::dot(vs_top.head(ncp), vs_top.head(ncp))`, the sum of the squared leading
-  singular values that the tail energy subtracts from the trace, was Armadillo's own
-  loop up to 32 values, two partial sums over the even and the odd positions added at
-  the end, and ddot above (READ: `op_dot::apply()`, where two `subview_col` take the
-  vector branch, `partial_unwrap` being fast for them; `op_dot::direct_dot()`;
-  `op_dot::direct_dot_generic()`). Now a plain sum in order (`src/armaSVD.cpp`:
-  `sum_top_sq += vs_top[cp] * vs_top[cp];`), so not bitwise equal from two components
-  up; Phase 4 chose it with the trace below (`dev/eigen_conversion.md`, "Phase 4, as
-  carried out", has the measurements).
-- `arma::accu(row_w)`, the sum the row weights are divided by, was two partial sums over
-  the even and the odd positions, added at the end (READ: `op_accu_mat::apply()`,
-  `arrayops::accumulate()`). Now a plain sum in order, taken in the loop that tests the
-  weights' sign (`src/armaSVD.cpp`: `row_w_sum += w[i];`). Equal weights sum exactly in
-  either order; with unequal ones the last bits can differ.
-- The rest of what `src/armaSVD.cpp` asked of Armadillo did no arithmetic that depends
-  on an order, and is written as loops: `row_w /= row_w_sum` divided each cell (READ:
-  `arrayops::inplace_div_base()`); `cumsum()` of a column kept one running sum (READ:
-  `op_cumsum::apply_noalias()`); `is_finite()` tested each cell (READ:
-  `arrayops::is_finite()`); the element-wise `/`, `%`, `-`, `+` and `sqrt()` behind the
-  column means and scales, `find()`, `elem()`, `any()` and `max()` of an index vector
-  (NOT READ; the captures are bitwise across the change).
-
-- `arma::trace(AA_NxN)` in `SVD_triplet()`, the tail energy's trace, was two partial sums,
-  one over the even and one over the odd diagonal cells, added at the end (READ:
-  `fn_trace.hpp`, `trace()` of a `Base`), no BLAS. Now `gram_trace()` (`src/svd_triplet.h`:
-  `static inline double gram_trace(`), a plain sum in order, so not bitwise equal: the two
-  partial sums were the multi-accumulator reduction `dev/CPP.md` bans, kept through Phases 2
-  and 3 and dropped in Phase 4 with the two sums above (`dev/eigen_conversion.md`, "Phase 4,
-  as carried out").
-
-`find`, `fliplr` and `reverse`, which `src/lobpcg_warm.h` called and now writes as loops, move
-values and do no arithmetic (NOT READ); the captures of step 4 are bitwise across the change.
+- The Frobenius norm of `P` in `build_momentum_P()`, a sum of squares, read only by a
+  threshold (`src/lobpcg_warm.h`: `!(frobenius_norm(P) > min_projected_fro_norm))`).
+- The residual norms of LOBPCG, one sum of squares a column (`src/lobpcg_warm.h`:
+  `inline std::vector<double> column_norms(`). They feed the iteration's tests and
+  `max_rel_res`, which only the diagnostics build reports (`src/armaSVD.cpp`:
+  `Rcpp::Named("eig_lobpcg_max_rel_res")`).
+- The infinity norm of the Gram, which scales LOBPCG's tolerance, `norm_inf()`: each row's sum
+  of absolute values, from zero in column order (`src/lobpcg_warm.h`:
+  `row_sum[i] += std::abs(col[i]);`), then the largest.
+- The largest of a set of norms, `max_skip_nan()`: from `-Inf`, keeping a value only when it
+  is `>` the best so far, so NaN is skipped and a set of NaN gives `-Inf`.
+- The sum of the squared leading singular values that the tail energy subtracts from the
+  trace (`src/armaSVD.cpp`: `sum_top_sq += vs_top[cp] * vs_top[cp];`), and the trace itself
+  (`src/svd_triplet.h`: `static inline double gram_trace(`).
+- The sum the row weights are divided by, taken in the loop that tests their sign
+  (`src/armaSVD.cpp`: `row_w_sum += w[i];`).
 
 ## Data structures and ownership
 

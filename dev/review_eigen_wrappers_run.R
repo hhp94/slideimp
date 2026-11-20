@@ -1,6 +1,8 @@
 # Review of the wrapper layer and the oracle (dev/review_eigen_wrappers.md):
 # run the author's oracle scripts as they are, each in a child R process,
-# and keep the whole output. Dev only, run by hand, from the package root:
+# and keep the whole output. The oracle and dev/lib/arma were removed after
+# 141a9d0; the commit under review, 79cce0f, has the oracle's files (git
+# show 79cce0f:<path>). Dev only, run by hand, from the package root:
 #   Rscript dev/review_eigen_wrappers_run.R <lib> <out dir> <what>...
 # <lib>      the private RcppArmadillo library (dev/lib/arma on this machine).
 # <out dir>  where logs and builds go; nothing is built in the working tree.

@@ -13,6 +13,13 @@ scratch folder outside the repository. R 4.6.1 ucrt, GCC 14.2.0, R's LAPACK
 Rcpp 1.1.2, RcppArmadillo 15.6.2.1 in `dev/lib/arma`. Run 2026-11-18. Every
 figure below is a reading on this one machine with this one BLAS and LAPACK.
 
+The oracle and `dev/lib/arma` were removed after `141a9d0` (Phase 4 of
+`dev/eigen_conversion.md`). The version reviewed here is `79cce0f`'s, which
+`git show 79cce0f:dev/oracle_pairs.cpp`, `git show 79cce0f:dev/oracle_run.R`,
+`git show 79cce0f:dev/oracle_selftest.R` and
+`git show 79cce0f:dev/oracle_install_armadillo.R` print; the anchors below
+into those files are to that version.
+
 Probe scripts, all in `dev/` (ignored, like the earlier review notes), each
 run from the package root with `R_LIBS_USER` set as above:
 

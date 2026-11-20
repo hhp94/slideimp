@@ -2234,8 +2234,9 @@ it now stands NOT RUN.
   12; the other 8 expectations pass. `dev/to-do.md` has the reminder line.
 
 **Rulings on the last items** (maintainer, 2026-11-19: "agree all" to the
-author's recommendations). Recorded here; the first two are carried out
-below, "`Block` off Armadillo's names" and "The wrapper layer's own test".
+author's recommendations). Recorded here; the first three are carried out
+below, "`Block` off Armadillo's names", "The wrapper layer's own test" and
+"The oracle removed".
 
 - `lobpcg_detail::Block` is renamed off Armadillo's member names. The
   updates that alias their own operand stay as they are until a profile
@@ -2349,6 +2350,43 @@ Run by hand from the package root, like the oracle; nothing under `R/`,
 - Not run on the first machine or on R's own BLAS, and under one
   RcppEigen only: nothing in either file includes Eigen. The oracle stays
   until the next ruling removes it.
+
+**The oracle removed** (the third ruling above). `dev/oracle_pairs.cpp`,
+`dev/oracle_run.R`, `dev/oracle_selftest.R` and
+`dev/oracle_install_armadillo.R` are deleted with their `!` lines in
+`dev/.gitignore`, and `dev/lib/arma`, the private RcppArmadillo library
+they ran against, is deleted on the second machine. It is ignored, so git
+holds none of it, and a copy on the first machine is not touched by this.
+Nothing was built or run: the oracle has not compiled since `97525a2`, and
+the one line under `src/` that changes is a comment.
+
+- The four files are the same from `59920f4` to `141a9d0`, the last commit
+  that has them: `git show 141a9d0:dev/oracle_pairs.cpp`,
+  `git show 141a9d0:dev/oracle_run.R`, `git show 141a9d0:dev/oracle_selftest.R`
+  and `git show 141a9d0:dev/oracle_install_armadillo.R` print them. The
+  version `dev/review_eigen_wrappers.md` reviewed is `79cce0f`'s, and that
+  note now says so, which also takes its two stale anchors into the oracle
+  off the checker's list.
+- "What the wrappers reproduce" in `dev/pca_imp_structure.md` is now "What
+  the wrappers do": what each wrapper refuses before its routine, where it
+  calls none, its workspace, and the reasons for the eigenvalue buffer of
+  `syevr_range`, the tests for NaN and Inf and the workspace lengths, with
+  the measurements behind them. What Armadillo did, as read in
+  `armadillo_bits`, is gone from the map, and so are "Products of two
+  `arma::mat`" and the Armadillo side of "Calls no wrapper stands in for";
+  `git show 141a9d0:dev/pca_imp_structure.md` has the section as it was.
+  Layer 6 says how the LOBPCG products are formed without pointing at
+  Armadillo's rules, and `src/si_lapack.h` points at the new section and at
+  `dev/si_lapack_test.R` in place of the oracle.
+- The scripts that ran the oracle stay, as records, and each says in its
+  header where the oracle's files are now: `dev/probe_p2s4_syevd_lwork.R`,
+  `dev/review_eigen_wrappers_mutants.R`, `dev/review_eigen_wrappers_probe.R`,
+  `dev/review_eigen_wrappers_probe.cpp` and `dev/review_eigen_wrappers_run.R`.
+  The earlier entries of this note name the oracle as it was and are not
+  changed.
+- What the oracle checked and nothing checks now, from "The wrapper
+  layer's own test": a workspace that ignores LAPACK's answer, and a
+  nonzero `abstol`.
 
 ## Not settled yet
 

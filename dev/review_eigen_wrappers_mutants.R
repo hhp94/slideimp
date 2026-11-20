@@ -1,6 +1,8 @@
 # Review of the wrapper layer and the oracle (dev/review_eigen_wrappers.md):
 # can dev/oracle_run.R pass with a wrong wrapper that dev/oracle_selftest.R
-# does not try? Dev only, run by hand, from the package root:
+# does not try? The oracle and dev/lib/arma were removed after 141a9d0; the
+# commit under review, 79cce0f, has the oracle's files (git show
+# 79cce0f:<path>). Dev only, run by hand, from the package root:
 #   Rscript dev/review_eigen_wrappers_mutants.R <lib> <out dir> [--only=<regex>]
 # <lib>      the private RcppArmadillo library, as for dev/oracle_run.R.
 # <out dir>  where the broken copies are written and built, and each run's

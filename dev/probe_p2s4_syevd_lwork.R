@@ -17,6 +17,10 @@
 #   Rscript dev/probe_p2s4_syevd_lwork.R <lib> [<n max>]
 # <lib> is the private library dev/oracle_install_armadillo.R installed
 # RcppArmadillo into (dev/lib/arma).
+#
+# The oracle and dev/lib/arma were removed after 141a9d0, and from 97525a2
+# on the oracle does not compile: this runs in a clone of an earlier commit,
+# which has the oracle's files (git show 141a9d0:<path> prints each).
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) < 1L) {
   stop(

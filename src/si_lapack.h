@@ -25,9 +25,9 @@
 //   raises an R error from inside the library and unwinds no C++ frame.
 // - Input and output buffers must not overlap unless a function says so.
 //
-// dev/pca_imp_structure.md, "What the wrappers reproduce", records the
-// Armadillo call each of these stands in for, as read in armadillo_bits.
-// dev/oracle_run.R checks each against that call.
+// dev/pca_imp_structure.md, "What the wrappers do", has what each of these
+// does around its routine, and why. dev/si_lapack_test.R checks each against
+// R's own functions.
 
 #include <cstddef>
 

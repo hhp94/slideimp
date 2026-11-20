@@ -225,9 +225,8 @@ carried out".
   the maintainer (2026-11-19): whether it should be `NA` whenever the
   objective is below `threshold`, which also covers a rounding criterion
   that lands below it.
-- **Ruled, not carried out,** each its own commit with the gate: remove
-  the oracle and `dev/lib/arma` and rewrite "What the wrappers reproduce";
-  the pass through *Writing R Extensions* against `src/`.
+- **Ruled, not carried out,** its own commit with the gate: the pass
+  through *Writing R Extensions* against `src/`.
 - **Not ruled:** the OpenMP flag in `src/Makevars` (see "Sampler port: what
   is still owed").
 

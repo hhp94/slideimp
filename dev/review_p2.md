@@ -274,8 +274,10 @@ Every product of `src/lobpcg_warm.h` went through one call, to
 `product_into()` (`src/lobpcg_warm.h`: `inline void product_into(`),
 and the wrapper's header said what it did not reproduce: for square
 operands up to 4 x 4 Armadillo runs its own loops.
-The map carries the consequence in one sentence
-(`dev/pca_imp_structure.md`: `needs a Gram of at most 4 x 4 under LOBPCG.`).
+The map carries the consequence in one sentence, ending "needs a Gram of
+at most 4 x 4 under LOBPCG." (in `dev/pca_imp_structure.md` until Phase 4
+rewrote "What the wrappers reproduce";
+`git show 141a9d0:dev/pca_imp_structure.md` has it).
 That is all. Step 4's record lists what changes under
 (`dev/eigen_conversion.md`: `What changes, none of it reachable from`)
 and this is not there; `dev/to-do.md` has reminder lines for 17 eigenpairs
