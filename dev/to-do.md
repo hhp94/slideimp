@@ -258,18 +258,16 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
   4, so they do not account for it, to the driver's resolution of about
   half a percent. Deferred to this pass by the maintainer, 2026-11-18,
   with any `/simplify` calls.
-- **How R calls the same LAPACK routines.** Read R's own sources (the
-  LAPACK module behind `eigen()`, `qr()`, `svd()` and `La.svd()`), and
-  where R and `src/si_lapack.cpp` differ on options, workspace or checks,
-  take R's form unless a measurement says otherwise. R's usage is what
-  CRAN's machines exercise most. NOT READ yet.
 - **Each routine as if chosen fresh.** One symmetric eigensolver or two
   (dsyevr and dsyevd); whether the values-only SVD is needed at all;
   whether a product symmetric by construction should be dsyrk. Fewer
   routines is fewer declarations to depend on in the oldest supported R's
   `R_ext/Lapack.h`, and fewer paths through an external BLAS or LAPACK on
-  a check machine. Settled, not to reopen: `syevr_range` asks dsyevr for
-  its workspace on every call (maintainer, 2026-11-19).
+  a check machine. R itself calls dsyevd nowhere, and dsyevr only for
+  every eigenpair (`dev/pca_imp_structure.md`, "What the wrappers do",
+  "Against R's own calls"). Settled, not to reopen: `syevr_range` asks
+  dsyevr for its workspace on every call (maintainer, 2026-11-19), and
+  for `range = 'I'`, the top `ncp` alone (maintainer, 2026-11-20).
 - **The R callers, now that the return types can change.** Whether the R
   sides of `pca_imp()` and `knn_imp()` are tidied to what the kernels can
   return without Armadillo. Not decided.

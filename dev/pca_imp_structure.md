@@ -681,6 +681,34 @@ the arguments stop too, the second as an internal error. The smallest singular v
 with `std::min_element`. No route to the failure is known, since a Gram holding NaN is refused
 before the eigenvectors exist; `dev/probe_p2s6_run.sh` forces it.
 
+**Against R's own calls.** READ, in R's sources at the tags `R-4-6-1` and `R-4-4-0`
+(`src/modules/lapack/Lapack.c`, `src/main/array.c`, `src/modules/lapack/dlapack.f`, and
+`eigen.R` and `svd.R` of base); the functions named here are the same text at both tags, apart
+from two initializers in `La_rs`. One difference is material, and it stays by ruling
+(maintainer, 2026-11-20):
+
+- dsyevr. `La_rs`, behind `eigen()`, asks for `range = 'A'`, which in R's bundled dsyevr is
+  the dstemr path. `syevr_range` asks for `range = 'I'`, and a proper subset goes to dstebz
+  and dstein, bisection and inverse iteration: a path `eigen()` never takes. R's form would
+  be every eigenpair with the top `ncp` copied out, `n` vectors through dormtr where `ncp`
+  are wanted. The two forms were not timed or compared.
+
+The rest differ in nothing that reaches a result, or by design:
+
+- dsyevd: R calls it nowhere. The Rayleigh-Ritz solve of LOBPCG is its one use here.
+- QR: R calls neither dgeqrf nor dorgqr. `La_qr` is dgeqp3, with column pivoting, and
+  `qr_qy_real` applies `Q` with dormqr without forming it. A pivoted `R` is not the triangle
+  the update `X R = A Q` solves with, and LOBPCG needs `Q` formed.
+- Products: `matprod` sends a right operand of one column to dgemv, as `product_into()` does,
+  and also a left operand of one row, to dgemv on the transpose, which `product_into()` sends
+  to dgemm. `symcrossprod` is dsyrk with `uplo = 'U'`, the form of `src/gram_ops.h`.
+- NaN and Inf: R scans both operands of every product before BLAS and falls back to a plain
+  loop, and tests the input of `eigen()` and `svd()` in R code. The chain tests its input
+  once and the Gram where it is formed, as above.
+- Workspace: R takes the queried length as it comes, with no floor at the documented minimum
+  and no test that it fits `int`.
+- `uplo`: R gives dsyevr `'L'`, the chain `'U'`, the triangle dsyrk wrote.
+
 **Sums outside the wrappers.** The chain's other reductions call no BLAS. Each is a plain loop
 in order; `dev/CPP.md` bans the multi-accumulator form some of them once had, and
 `dev/eigen_conversion.md` has what each moved when it took this form ("Not wrapped" for the
