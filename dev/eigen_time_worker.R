@@ -9,7 +9,8 @@
 # without its all-NA probes) or on sim_mat(sim_n, sim_p) under set.seed(1):
 #   chr21_pca_exact chr21_pca_lobpcg chr21_knn sim_pca_exact sim_pca_lobpcg
 #   sim_knn
-# and pca_lobpcg1, the LOBPCG call with one component, on either.
+# and pca_lobpcg1, the LOBPCG call with one component, and knn4, the K-NN
+# call with cores = 4, on either.
 # Only the imputer calls are timed, not loading the data. One untimed call
 # runs first: the first call in a process pays for lazy loading and first
 # BLAS use, 1.4 to 2.5 times a later one on the chr21 PCA workloads, and
@@ -76,6 +77,8 @@ run <- switch(
   ## every product is matrix times vector (item 9 of Phase 4).
   pca_lobpcg1 = function() pca_imp(x, ncp = 1, solver = "lobpcg"),
   knn = function() knn_imp(x, k = 10),
+  ## The same call over four worker threads.
+  knn4 = function() knn_imp(x, k = 10, cores = 4),
   stop("unknown workload: ", workload, call. = FALSE)
 )
 

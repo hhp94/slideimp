@@ -135,7 +135,7 @@ then compared with `src/si_lapack.cpp` and with the READ notes.
 
 | wrapper | what was read | agrees |
 |---|---|---|
-| `gemm`, `syrk` | the chain calls `arma::dgemm_` and `arma::dsyrk_` directly (`src/gram_ops.h`, `src/pca_linalg_utils.h`, `src/armaSVD.cpp`), block forms with a leading dimension larger than the block included; the wrapper passes every argument through | yes |
+| `gemm`, `syrk` | the chain calls `arma::dgemm_` and `arma::dsyrk_` directly (`src/gram_ops.h`, `src/pca_linalg_utils.h`, `src/pca_kernel.cpp`), block forms with a leading dimension larger than the block included; the wrapper passes every argument through | yes |
 | `gemv`, `matmul` | `glue_times::apply()` and `apply_inplace_plus()`: empty operand, then one row (dgemv 'T' on B), then one column, then dsyrk for one object, then dgemm; `+=` and `-=` are one call with beta 1. `gemm::apply_blas_type()` and `gemv::apply_blas_type()` run their own loops for square operands up to 4 x 4. `syrk` uses its own loops for a vector or 48 cells or fewer | yes, with the two differences the header states |
 | `syevr_range` | no Armadillo counterpart; the chain's own call in `src/eig_sym_sel.h` passes `jobz = 'V'`, `range = 'I'`, `abstol = 0`, `isuppz` of `2 * topk`, workspace the larger of the query and `26 n` and `10 n`, failure on `info != 0` or a wrong count | yes; finding 1 is in both |
 | `syevd` | against `small_eig_desc()` in `src/lobpcg_warm.h`: query, then the solve with a buffer at least as long as the query asked; failure on `info != 0`; no finiteness check | yes |
@@ -231,7 +231,7 @@ dsyevr solves by another routine, hangs in four and returns success with
 NaN in one. A hang inside LAPACK cannot be interrupted from R.
 
 The chain can ask for the full range: `k` is `ncp + 1` when regularized
-(`src/armaSVD.cpp`: `const std::size_t k = regularized ? n_cp + 1 : n_cp;`)
+(`src/pca_kernel.cpp`: `const std::size_t k = regularized ? n_cp + 1 : n_cp;`)
 and `ncp` may be as large as the eligible column count less one
 (`R/pca_imp.R`: `max_ncp_cols <- n_elig - 1L`), so `k` can equal the order
 of the Gram. READ, not run. Whether a NaN can reach the Gram in

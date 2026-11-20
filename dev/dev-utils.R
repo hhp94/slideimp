@@ -11,7 +11,7 @@
 #   away without it, so a bare load_all() silently produces a package with no
 #   phase timers at all.
 # - `debug = TRUE` sets -DPCA_IMP_DIAGNOSTICS=1, which guards the diagnostic
-#   blocks in src/armaSVD.cpp. The source defaults it to 0, so it is off in
+#   blocks in src/pca_kernel.cpp. The source defaults it to 0, so it is off in
 #   every build that does not ask.
 #
 # It calls clean_dll() first, every time. That is deliberate: a package DLL

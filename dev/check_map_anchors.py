@@ -45,7 +45,7 @@ any. What it checks:
    writing `git show <commit>:<path>` somewhere in it; that commit must
    actually have the file.
 3. Call trees: fenced blocks with no language tag. Paths are written in full
-   (`src/armaSVD.cpp`, not `armaSVD.cpp`), and every name written as a call,
+   (`src/pca_kernel.cpp`, not `pca_kernel.cpp`), and every name written as a call,
    `name()` or `name<...>()`, on a line that names a file must occur in at
    least one of the files named on that line.
 4. No line numbers: `R/knn_imp.R:96` and `:96-106` are errors anywhere.

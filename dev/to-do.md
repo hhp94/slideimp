@@ -239,7 +239,7 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
   2026-11-20; what it changed is a8d0827, 28a151e, 37a4c53 and 26702a1.
   - Looked at and kept: the zero-fill by `std::vector` of `obj_masked` and
     `nmiss_masked` in the K-NN kernel, of `Xhat`, `X_work`, `AA_NxN`, `U`,
-    `V`, `Vn` and the eigenpair buffers in `src/armaSVD.cpp`, and of each
+    `V`, `Vn` and the eigenpair buffers in `src/pca_kernel.cpp`, and of each
     new `Block` in `src/lobpcg_warm.h`. An uninitialized buffer would make
     the code less simple, and the ten solve buffers cost 0.04% to 0.20% of
     a call (profile below).
@@ -263,8 +263,8 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
     `sim_mat(200, 5000)`. Shares of the kernel's own total, as the range
     over exact and LOBPCG on both data sets: the eigensolver 41% to 60%,
     forming the Gram 16% to 25%, the whole `svd` phase 69% to 81%; the ten
-    solve buffers, in a phase of their own (`src/armaSVD.cpp`:
-    `LOC_TIC(pca_imp_gram, "alloc_solve_buffers");`), 0.04% to 0.20%, 0.05
+    solve buffers, in a phase of their own (`src/pca_kernel.cpp`:
+    `LOC_TIC(pca_kernel, "alloc_solve_buffers");`), 0.04% to 0.20%, 0.05
     to 0.10 ms a call; what no phase covers 1.0% to 2.9% (0.9 to 2.3 ms a
     call): the argument checks, `row_w`, the allocation of `Xhat` and
     `fittedX`, and the centering and scaling of `Xhat`, not told apart.

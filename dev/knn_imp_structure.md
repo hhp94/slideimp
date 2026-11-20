@@ -207,7 +207,7 @@ Project headers reached, following the `#include` graph:
 Plus the external `Rcpp.h` (included by `src/knn_kernel.cpp`) and
 `RcppThread.h` (by `src/knn_kernel.cpp`); no Armadillo. The remaining `src/` headers
 (`eig_sym_sel.h`, `gram_ops.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`,
-`pca_linalg_utils.h`, `svd_triplet.h`) and `.cpp` files (`armaSVD.cpp`,
+`pca_linalg_utils.h`, `svd_triplet.h`) and `.cpp` files (`pca_kernel.cpp`,
 `find_windows.cpp`, `find_windows_flank.cpp`, `sample_each_rep_cpp.cpp`) serve
 the PCA, windowing, and simulation paths and are not reached from `knn_imp()`.
 

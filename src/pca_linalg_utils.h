@@ -15,8 +15,8 @@ inline constexpr double PCA_TOL = 1e-15;
 namespace pca_detail {
 // sklearn svd_flip convention: for each of the k columns of the n x k
 // matrix V, force the largest-magnitude entry to be non-negative.
-static inline void canonicalize_signs(double *V, const std::size_t n,
-                                      const std::size_t k) {
+inline void canonicalize_signs(double *V, const std::size_t n,
+                               const std::size_t k) {
   if (n == 0) return;
   for (std::size_t j = 0; j < k; ++j) {
     double *col = V + j * n;
@@ -37,10 +37,9 @@ static inline void canonicalize_signs(double *V, const std::size_t n,
 
 // col[i] = (col[i] * rw[i]) * cs[j] -- row scaling then column scaling,
 // fused into one pass.
-static inline void scale_rows_cols_inplace(double *M, const double *rw,
-                                           const double *cs,
-                                           const std::size_t nr,
-                                           const std::size_t nc) {
+inline void scale_rows_cols_inplace(double *M, const double *rw,
+                                    const double *cs, const std::size_t nr,
+                                    const std::size_t nc) {
   for (std::size_t j = 0; j < nc; ++j) {
     const double cj = cs[j];
     double *col = M + j * nr;
@@ -50,9 +49,8 @@ static inline void scale_rows_cols_inplace(double *M, const double *rw,
   }
 }
 
-static inline void copy_scale_rows(double *dst, const double *src,
-                                   const double *w, const std::size_t nr,
-                                   const std::size_t nc) {
+inline void copy_scale_rows(double *dst, const double *src, const double *w,
+                            const std::size_t nr, const std::size_t nc) {
   for (std::size_t j = 0; j < nc; ++j) {
     double *dcol = dst + j * nr;
     const double *scol = src + j * nr;
@@ -63,7 +61,7 @@ static inline void copy_scale_rows(double *dst, const double *src,
 }
 
 // Copy the strict upper triangle of the n x n matrix M onto its lower one.
-static inline void mirror_upper_to_lower(double *M, const std::size_t n) {
+inline void mirror_upper_to_lower(double *M, const std::size_t n) {
   for (std::size_t j = 0; j < n; ++j) {
     for (std::size_t i = 0; i < j; ++i) {
       M[j + i * n] = M[i + j * n];
@@ -76,10 +74,10 @@ static inline void mirror_upper_to_lower(double *M, const std::size_t n) {
 // dgemv, whatever the shape. When a_cols is 0 the product is empty and C
 // is zero. Returns the si_la status: err_arg when the inner dimensions
 // differ.
-[[nodiscard]] static inline int
-gemm_nn(const double *A, const std::size_t a_rows, const std::size_t a_cols,
-        const double *B, const std::size_t b_rows, const std::size_t b_cols,
-        double *C) {
+[[nodiscard]] inline int gemm_nn(const double *A, const std::size_t a_rows,
+                                 const std::size_t a_cols, const double *B,
+                                 const std::size_t b_rows,
+                                 const std::size_t b_cols, double *C) {
   if (a_cols != b_rows) return si_la::err_arg;
   return si_la::gemm('N', 'N', a_rows, b_cols, a_cols, 1.0, A, a_rows, B,
                      b_rows, 0.0, C, a_rows);
@@ -93,7 +91,7 @@ gemm_nn(const double *A, const std::size_t a_rows, const std::size_t a_cols,
 // product is one dgemm whatever the block. When a_rows is 0 the block of C
 // is zero. Returns the si_la status: err_arg when B does not have a_rows
 // rows or the block runs past A.
-[[nodiscard]] static inline int
+[[nodiscard]] inline int
 gemm_tn_block(const double *A, const std::size_t a_rows,
               const std::size_t a_cols, const std::size_t j0,
               const std::size_t nj, const double *B, const std::size_t b_rows,

@@ -12,32 +12,6 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// pca_imp_internal_cpp
-Rcpp::List pca_imp_internal_cpp(const Rcpp::NumericMatrix& obj, const Rcpp::IntegerVector& eligible_idx, const int ncp, const bool scale, const bool regularized, const double threshold, const int init, const int maxiter, const int miniter, const Rcpp::NumericVector& row_w, const double coeff_ridge, const int solver, const int warmup_iters, const double lobpcg_tol, const int lobpcg_maxiter, const int trace_iter);
-RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP objSEXP, SEXP eligible_idxSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP, SEXP solverSEXP, SEXP warmup_itersSEXP, SEXP lobpcg_tolSEXP, SEXP lobpcg_maxiterSEXP, SEXP trace_iterSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type eligible_idx(eligible_idxSEXP);
-    Rcpp::traits::input_parameter< const int >::type ncp(ncpSEXP);
-    Rcpp::traits::input_parameter< const bool >::type scale(scaleSEXP);
-    Rcpp::traits::input_parameter< const bool >::type regularized(regularizedSEXP);
-    Rcpp::traits::input_parameter< const double >::type threshold(thresholdSEXP);
-    Rcpp::traits::input_parameter< const int >::type init(initSEXP);
-    Rcpp::traits::input_parameter< const int >::type maxiter(maxiterSEXP);
-    Rcpp::traits::input_parameter< const int >::type miniter(miniterSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type row_w(row_wSEXP);
-    Rcpp::traits::input_parameter< const double >::type coeff_ridge(coeff_ridgeSEXP);
-    Rcpp::traits::input_parameter< const int >::type solver(solverSEXP);
-    Rcpp::traits::input_parameter< const int >::type warmup_iters(warmup_itersSEXP);
-    Rcpp::traits::input_parameter< const double >::type lobpcg_tol(lobpcg_tolSEXP);
-    Rcpp::traits::input_parameter< const int >::type lobpcg_maxiter(lobpcg_maxiterSEXP);
-    Rcpp::traits::input_parameter< const int >::type trace_iter(trace_iterSEXP);
-    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(obj, eligible_idx, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge, solver, warmup_iters, lobpcg_tol, lobpcg_maxiter, trace_iter));
-    return rcpp_result_gen;
-END_RCPP
-}
 // find_windows
 List find_windows(const NumericVector x, double window, double overlap);
 RcppExport SEXP _slideimp_find_windows(SEXP xSEXP, SEXP windowSEXP, SEXP overlapSEXP) {
@@ -234,6 +208,32 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// pca_imp_internal_cpp
+Rcpp::List pca_imp_internal_cpp(const Rcpp::NumericMatrix& obj, const Rcpp::IntegerVector& eligible_idx, const int ncp, const bool scale, const bool regularized, const double threshold, const int init, const int maxiter, const int miniter, const Rcpp::NumericVector& row_w, const double coeff_ridge, const int solver, const int warmup_iters, const double lobpcg_tol, const int lobpcg_maxiter, const int trace_iter);
+RcppExport SEXP _slideimp_pca_imp_internal_cpp(SEXP objSEXP, SEXP eligible_idxSEXP, SEXP ncpSEXP, SEXP scaleSEXP, SEXP regularizedSEXP, SEXP thresholdSEXP, SEXP initSEXP, SEXP maxiterSEXP, SEXP miniterSEXP, SEXP row_wSEXP, SEXP coeff_ridgeSEXP, SEXP solverSEXP, SEXP warmup_itersSEXP, SEXP lobpcg_tolSEXP, SEXP lobpcg_maxiterSEXP, SEXP trace_iterSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type eligible_idx(eligible_idxSEXP);
+    Rcpp::traits::input_parameter< const int >::type ncp(ncpSEXP);
+    Rcpp::traits::input_parameter< const bool >::type scale(scaleSEXP);
+    Rcpp::traits::input_parameter< const bool >::type regularized(regularizedSEXP);
+    Rcpp::traits::input_parameter< const double >::type threshold(thresholdSEXP);
+    Rcpp::traits::input_parameter< const int >::type init(initSEXP);
+    Rcpp::traits::input_parameter< const int >::type maxiter(maxiterSEXP);
+    Rcpp::traits::input_parameter< const int >::type miniter(miniterSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::NumericVector& >::type row_w(row_wSEXP);
+    Rcpp::traits::input_parameter< const double >::type coeff_ridge(coeff_ridgeSEXP);
+    Rcpp::traits::input_parameter< const int >::type solver(solverSEXP);
+    Rcpp::traits::input_parameter< const int >::type warmup_iters(warmup_itersSEXP);
+    Rcpp::traits::input_parameter< const double >::type lobpcg_tol(lobpcg_tolSEXP);
+    Rcpp::traits::input_parameter< const int >::type lobpcg_maxiter(lobpcg_maxiterSEXP);
+    Rcpp::traits::input_parameter< const int >::type trace_iter(trace_iterSEXP);
+    rcpp_result_gen = Rcpp::wrap(pca_imp_internal_cpp(obj, eligible_idx, ncp, scale, regularized, threshold, init, maxiter, miniter, row_w, coeff_ridge, solver, warmup_iters, lobpcg_tol, lobpcg_maxiter, trace_iter));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sample_each_rep_cpp
 Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix& obj, const Rcpp::IntegerVector& pool_idx_in, const Rcpp::IntegerVector& na_per_col, const Rcpp::IntegerVector& row_room, const Rcpp::IntegerVector& pool_cap, const int max_attempts);
 RcppExport SEXP _slideimp_sample_each_rep_cpp(SEXP objSEXP, SEXP pool_idx_inSEXP, SEXP na_per_colSEXP, SEXP row_roomSEXP, SEXP pool_capSEXP, SEXP max_attemptsSEXP) {
@@ -252,7 +252,6 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 16},
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 9},
@@ -266,6 +265,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_mipca_da_loop_multi", (DL_FUNC) &_slideimp_mipca_da_loop_multi, 29},
     {"_slideimp_crps_block", (DL_FUNC) &_slideimp_crps_block, 2},
     {"_slideimp_mipca_cell_diag", (DL_FUNC) &_slideimp_mipca_cell_diag, 3},
+    {"_slideimp_pca_imp_internal_cpp", (DL_FUNC) &_slideimp_pca_imp_internal_cpp, 16},
     {"_slideimp_sample_each_rep_cpp", (DL_FUNC) &_slideimp_sample_each_rep_cpp, 6},
     {NULL, NULL, 0}
 };

@@ -1358,7 +1358,7 @@ test_that("LOBPCG fallback to exact still produces correct result", {
 test_that("wide recover_factors block agrees with the stored reference", {
   # SVD_triplet()'s wide branch forms V = Xhat' * Vn only for the changing
   # (NA-containing) columns inside the EM loop, and the fixed columns' rows
-  # once after it (src/svd_triplet.h, src/armaSVD.cpp postprocessing). The
+  # once after it (src/svd_triplet.h, src/pca_kernel.cpp postprocessing). The
   # fixed rows reach R only through `mse`, the nb.init selection statistic;
   # the imputed values never read them. So both are compared, for a wide
   # input with fixed columns (Gram cache active), a wide input with an NA in

@@ -15,11 +15,9 @@
 // the d_inv-scaled (and, when row_scale is non-null, row-scaled) copy into
 // Vn. dst and Vn are n x ncp.
 // ---------------------------------------------------------------------------
-static inline void split_eigvec_block(const double *eigvecs,
-                                      const std::size_t n, double *dst,
-                                      double *Vn, const double *d_inv,
-                                      const double *row_scale,
-                                      const std::size_t ncp) {
+inline void split_eigvec_block(const double *eigvecs, const std::size_t n,
+                               double *dst, double *Vn, const double *d_inv,
+                               const double *row_scale, const std::size_t ncp) {
   for (std::size_t j = 0; j < ncp; ++j) {
     const double dj = d_inv[j];
     const double *ecol = eigvecs + j * n;
@@ -44,7 +42,7 @@ static inline void split_eigvec_block(const double *eigvecs,
 // ---------------------------------------------------------------------------
 // the sum of the diagonal of the n x n A, in order
 // ---------------------------------------------------------------------------
-static inline double gram_trace(const double *A, const std::size_t n) {
+inline double gram_trace(const double *A, const std::size_t n) {
   double trace = 0.0;
   for (std::size_t i = 0; i < n; ++i) {
     trace += A[i + i * n];

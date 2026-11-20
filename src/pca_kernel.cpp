@@ -1,7 +1,3 @@
-#ifndef PCA_IMP_DIAGNOSTICS
-# define PCA_IMP_DIAGNOSTICS 0
-#endif
-
 #include <Rcpp.h>
 #include "svd_triplet.h"
 #include "matrix_checks.h"
@@ -12,7 +8,7 @@
 #include <iomanip>
 #include <ios>
 #include <limits>
-#include <string>
+#include <ostream>
 #include <vector>
 
 // Types, for the whole file. A row index and a column index of obj come from
@@ -21,11 +17,12 @@
 // column-major storage, such as j * nrX, is computed in std::size_t. Matrices
 // are std::vector<double>, column-major and unpadded, zero-filled when sized.
 
+namespace {
+
 template <typename F>
-static inline void
-for_each_missing_in_col(std::size_t cidx,
-                        const std::vector<std::size_t> &offsets,
-                        const std::vector<int> &rows_flat, F &&f) {
+void for_each_missing_in_col(std::size_t cidx,
+                             const std::vector<std::size_t> &offsets,
+                             const std::vector<int> &rows_flat, F &&f) {
   const std::size_t beg = offsets[cidx];
   const std::size_t end = offsets[cidx + 1];
   for (std::size_t p = beg; p < end; ++p) {
@@ -157,12 +154,11 @@ void impute_restandardize(double *xptr, const double *fxp, double *mean_p,
 // Starting values at the missing positions of Xhat and of fittedX, which the
 // caller hands over zero-filled: before the first dgemm only those positions
 // of fittedX are read.
-static inline void
-initialize_missing_start(double *Xhat, double *fittedX, const int init,
-                         const std::size_t nrX, const std::size_t n_fixed,
-                         const std::size_t n_mc,
-                         const std::vector<int> &miss_rows_flat,
-                         const std::vector<std::size_t> &miss_rows_offsets) {
+void initialize_missing_start(
+    double *Xhat, double *fittedX, const int init, const std::size_t nrX,
+    const std::size_t n_fixed, const std::size_t n_mc,
+    const std::vector<int> &miss_rows_flat,
+    const std::vector<std::size_t> &miss_rows_offsets) {
   if (n_mc == 0) {
     return;
   }
@@ -205,7 +201,7 @@ initialize_missing_start(double *Xhat, double *fittedX, const int init,
   }
 }
 
-static inline double missing_weighted_residual_ss(
+double missing_weighted_residual_ss(
     const double *xhp, const double *fxp, const double *wptr,
     const std::size_t nrX, const std::size_t n_fixed, const std::size_t n_mc,
     const std::vector<int> &miss_rows_flat,
@@ -236,11 +232,10 @@ static inline double missing_weighted_residual_ss(
 // dst[:, j0 .. j0+nj) = U * V[j0 .. j0+nj, :]', by dgemm on the strided row
 // block of V. U is u_rows x u_cols, V has v_rows rows and u_cols columns,
 // and dst has u_rows rows.
-static inline void reconstruct_cols(const double *U, const std::size_t u_rows,
-                                    const std::size_t u_cols, const double *V,
-                                    const std::size_t v_rows, double *dst,
-                                    const std::size_t j0,
-                                    const std::size_t nj) {
+void reconstruct_cols(const double *U, const std::size_t u_rows,
+                      const std::size_t u_cols, const double *V,
+                      const std::size_t v_rows, double *dst,
+                      const std::size_t j0, const std::size_t nj) {
   if (nj == 0) {
     return;
   }
@@ -251,6 +246,8 @@ static inline void reconstruct_cols(const double *U, const std::size_t u_rows,
     Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
   }
 }
+
+} // namespace
 
 // Internal. `eligible_idx` holds 0-based columns of `obj`. Returns the
 // imputed cells as `loc`, an integer matrix of each one's 1-based row and
@@ -266,8 +263,8 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
                      const double coeff_ridge, const int solver,
                      const int warmup_iters, const double lobpcg_tol,
                      const int lobpcg_maxiter, const int trace_iter = 0) {
-  LOC_TIMER_OBJ(pca_imp_gram);
-  LOC_TIC(pca_imp_gram, "pca_imp_internal_cpp_total");
+  LOC_TIMER_OBJ(pca_kernel);
+  LOC_TIC(pca_kernel, "pca_imp_internal_cpp_total");
   // No Inf scan here. pca_imp() calls this once per `nb.init` on an unchanged
   // `obj`, so a guard at this level would re-scan the whole matrix on every
   // initialization. check_finite() in pca_imp() is the gate, and it runs once.
@@ -331,7 +328,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   }
 
   // prevent nrX * n_elig overflow later.
-  if (nrX > (std::numeric_limits<std::size_t>::max)() / n_elig) {
+  if (nrX > std::numeric_limits<std::size_t>::max() / n_elig) {
     Rcpp::stop("problem dimensions are too large");
   }
 
@@ -343,7 +340,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   // R dimension, and n_cp and n_gram are below one.
   {
     const std::size_t int_max =
-        static_cast<std::size_t>((std::numeric_limits<int>::max)());
+        static_cast<std::size_t>(std::numeric_limits<int>::max());
 
     // si_la::syevr_range gives dsyevr at least 26*n and 10*n workspace.
     if (n_gram > int_max / 26) {
@@ -405,7 +402,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   const double *objp = obj.begin();
   const int *elig = eligible_idx.begin();
 
-  LOC_TIC(pca_imp_gram, "pass1_count_missing");
+  LOC_TIC(pca_kernel, "pass1_count_missing");
   std::vector<std::size_t> col_nmiss(n_elig, 0);
   for (std::size_t j_local = 0; j_local < n_elig; ++j_local) {
     const double *p =
@@ -416,7 +413,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     }
     col_nmiss[j_local] = c;
   }
-  LOC_TOC(pca_imp_gram, "pass1_count_missing");
+  LOC_TOC(pca_kernel, "pass1_count_missing");
 
   // perm lists the complete columns first, then the ones with a hole, each
   // group in the order eligible_idx gives.
@@ -450,11 +447,11 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   const std::size_t n_missing = miss_rows_offsets[n_mc];
 
   // `loc` is an R matrix, whose dims are int.
-  if (n_missing > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
+  if (n_missing > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
     Rcpp::stop("the columns to impute hold %d missing values, but the result "
                "has a row for each and an R matrix holds at most %d rows. "
                "Impute the columns in groups with group_imp()",
-               n_missing, (std::numeric_limits<int>::max)());
+               n_missing, std::numeric_limits<int>::max());
   }
   std::vector<int> miss_rows_flat(n_missing);
 
@@ -466,7 +463,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   std::vector<double> obs_sum_c(n_elig);
   std::vector<double> obs_sumsq_c(n_elig);
 
-  LOC_TIC(pca_imp_gram, "pass2_scan");
+  LOC_TIC(pca_kernel, "pass2_scan");
   {
     for (std::size_t jp = 0; jp < n_elig; ++jp) {
       const double *src =
@@ -517,7 +514,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
       obs_sumsq_c[jp] = ossq_acc;
     }
   }
-  LOC_TOC(pca_imp_gram, "pass2_scan");
+  LOC_TOC(pca_kernel, "pass2_scan");
 
   // every eligible column must have at least one observed row with positive
   // weight, else mean_p (and the downstream Gram) is NaN.
@@ -599,7 +596,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   // written through raw pointers; the sizes are the ones its header lists.
   // In the wide case V's fixed rows stay unwritten until postprocessing, and
   // X_work is empty.
-  LOC_TIC(pca_imp_gram, "alloc_solve_buffers");
+  LOC_TIC(pca_kernel, "alloc_solve_buffers");
   std::vector<double> AA_NxN(n_gram * n_gram);
   std::vector<double> X_work(tall ? nrX * n_elig : 0);
   std::vector<double> U(nrX * n_cp);
@@ -610,13 +607,13 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   std::vector<double> vs_top(k);
   std::vector<double> d_inv(n_cp);
   std::vector<double> lambda_shrinked(n_cp);
-  LOC_TOC(pca_imp_gram, "alloc_solve_buffers");
+  LOC_TOC(pca_kernel, "alloc_solve_buffers");
 
-  LOC_TIC(pca_imp_gram, "gram_cache_init");
+  LOC_TIC(pca_kernel, "gram_cache_init");
   GramCache gram_cache;
   const int gram_init_st = gram_cache_init(gram_cache, Xhat.data(), sptr, nrX,
                                            n_fixed, n_mc, tall, X_work.data());
-  LOC_TOC(pca_imp_gram, "gram_cache_init");
+  LOC_TOC(pca_kernel, "gram_cache_init");
   if (gram_init_st != si_la::ok) {
     Rcpp::stop("internal error: dsyrk refused its arguments (status %d)",
                gram_init_st);
@@ -689,7 +686,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     if (nb_iter % 5 == 0) {
       Rcpp::checkUserInterrupt();
     }
-    LOC_TIC(pca_imp_gram, "restandardize");
+    LOC_TIC(pca_kernel, "restandardize");
     if (scale) {
       impute_restandardize<true>(Xhat.data(), fittedX.data(), mean_p.data(),
                                  etptr, wptr, sptr, weighted_chg_ptr, nrX,
@@ -701,17 +698,17 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
                                   n_fixed, n_mc, miss_rows_flat,
                                   miss_rows_offsets, mu0ptr, oscptr, ossqptr);
     }
-    LOC_TOC(pca_imp_gram, "restandardize");
+    LOC_TOC(pca_kernel, "restandardize");
 
-    LOC_TIC(pca_imp_gram, "svd");
+    LOC_TIC(pca_kernel, "svd");
     SVD_triplet(Xhat.data(), sptr, n_cp, tall, vs_top.data(), trace_val,
                 U.data(), V.data(), X_work.data(), AA_NxN.data(), d_inv.data(),
                 Vn.data(), eigvals.data(), eigvecs.data(), gram_ws, gram_cache,
                 hyb_ctx,
-                static_cast<int>(nb_iter - 1) LOC_TIMER_ARG(pca_imp_gram));
-    LOC_TOC(pca_imp_gram, "svd");
+                static_cast<int>(nb_iter - 1) LOC_TIMER_ARG(pca_kernel));
+    LOC_TOC(pca_kernel, "svd");
 
-    LOC_TIC(pca_imp_gram, "post_svd");
+    LOC_TIC(pca_kernel, "post_svd");
     sigma2 = 0.0;
     double sum_top_sq = 0.0;
     for (std::size_t cp = 0; cp < n_cp; ++cp) {
@@ -738,9 +735,9 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
       }
     }
     const double objective_full = tail + top_corr;
-    LOC_TOC(pca_imp_gram, "post_svd");
+    LOC_TOC(pca_kernel, "post_svd");
 
-    LOC_TIC(pca_imp_gram, "reconstruct");
+    LOC_TIC(pca_kernel, "reconstruct");
 
     // after this, U contains diag(isw) %*% U %*% diag(lambda_shrinked):
     // the row de-weighting of SVD_triplet's weighted-space U fused with the
@@ -752,9 +749,9 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     reconstruct_cols(U.data(), nrX, n_cp, V.data(), n_elig, fittedX.data(),
                      n_fixed, n_mc);
 
-    LOC_TOC(pca_imp_gram, "reconstruct");
+    LOC_TOC(pca_kernel, "reconstruct");
 
-    LOC_TIC(pca_imp_gram, "objective");
+    LOC_TIC(pca_kernel, "objective");
     {
       const double miss_contrib = missing_weighted_residual_ss(
           Xhat.data(), fittedX.data(), wptr, nrX, n_fixed, n_mc, miss_rows_flat,
@@ -762,7 +759,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
 
       objective = std::max(0.0, objective_full - miss_contrib);
     }
-    LOC_TOC(pca_imp_gram, "objective");
+    LOC_TOC(pca_kernel, "objective");
 
 #if PCA_IMP_DIAGNOSTICS
     std::copy(vs_top.begin(), vs_top.begin() + n_cp,
@@ -851,7 +848,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   // ---------------------------------------------------------------------------
   // postprocessing.
   // ---------------------------------------------------------------------------
-  LOC_TIC(pca_imp_gram, "postprocessing");
+  LOC_TIC(pca_kernel, "postprocessing");
   // the changing columns of fittedX hold the final reconstruction from the
   // last hot-loop DGEMM (U carries the isw/lambda_shrinked scaling); the
   // fixed block was skipped in the loop and is completed here for the SSE.
@@ -933,8 +930,8 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     }
   }
 
-  LOC_TOC(pca_imp_gram, "postprocessing");
-  LOC_TOC(pca_imp_gram, "pca_imp_internal_cpp_total");
+  LOC_TOC(pca_kernel, "postprocessing");
+  LOC_TOC(pca_kernel, "pca_imp_internal_cpp_total");
   const int n_iter_out = static_cast<int>(n_iter_final);
 #if PCA_IMP_DIAGNOSTICS
   Rcpp::NumericMatrix eigval_hist_out(ncp, n_iter_out);

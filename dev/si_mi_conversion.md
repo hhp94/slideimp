@@ -123,7 +123,7 @@ last phase landed; read it with `git show 4f2b669:dev/eigen_conversion.md`.
   remembered. Phase 3 found the one intended difference it planned, the
   kernel-`NA` case, unreachable, so there is none.
 - No change under `src/` unless a step says so: the `eigen` branch rewrites
-  `src/mat_stats.cpp` and `src/armaSVD.cpp` (`dev/eigen_conversion.md`).
+  `src/mat_stats.cpp` and `src/pca_kernel.cpp` (`dev/eigen_conversion.md`).
 - Tests follow `.claude/CLAUDE.md`: worst-case absolute and relative error
   against a stored reference, on a tolerance, with bitwise-ness reported;
   `identical()` only for two objects built in one process and for maps; every
@@ -370,7 +370,7 @@ Phase 3 removes it.
   of `dev/eigen_conversion.md`) already is a map and its values: row, column
   in the input's numbering, value. READ: the kernel visits the changing
   columns in the order `eligible_idx` lists them, ascending, through
-  `eligible_idx_perm` (`src/armaSVD.cpp`: `eligible_idx_perm[jp] = elig[perm[jp]];`).
+  `eligible_idx_perm` (`src/pca_kernel.cpp`: `eligible_idx_perm[jp] = elig[perm[jp]];`).
   NOT ASSERTED anywhere: the part's validator checks it, and a failure is an
   internal error. No kernel change.
 - `clamp` is applied to the values before the part is built.
@@ -394,7 +394,7 @@ The kernel-`NA` branch was dead code, so it was dropped rather than
 changed. READ, not measured, since finite input does not make the kernel
 return NaN: the kernel's final SSE sums the squared residual over every cell
 of each eligible column, holes included, and only then subtracts the holes'
-share (`src/armaSVD.cpp`: `sse -= s * ej2;`). So a NaN or Inf at any imputed
+share (`src/pca_kernel.cpp`: `sse -= s * ej2;`). So a NaN or Inf at any imputed
 cell makes `mse` NaN, and at 1.2.0 `if (cur_obj < init_obj)` then failed
 with base R's "missing value where TRUE/FALSE needed" before any value was
 written. In its place, each restart's `mse` must be finite or the call stops

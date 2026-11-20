@@ -1,5 +1,5 @@
 # Inputs for step 6 of Phase 2 (dev/eigen_conversion.md at 4f2b669), which took
-# src/armaSVD.cpp off Armadillo. The Phase 0 capture runs the kernel through
+# src/pca_kernel.cpp off Armadillo. The Phase 0 capture runs the kernel through
 # pca_imp(), in a build without diagnostics. This calls
 # pca_imp_internal_cpp() directly in the diagnostics build
 # (-DPCA_IMP_DIAGNOSTICS=1), where each iteration takes the singular values

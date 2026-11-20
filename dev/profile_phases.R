@@ -81,12 +81,12 @@ profile_pca <- function(label, x, solver) {
   set.seed(1)
   warm <- run()
   stopifnot(is.matrix(warm), !anyNA(warm))
-  first <- take_timer("pca_imp_gram")
+  first <- take_timer("pca_kernel")
   sums <- NULL
   counts <- NULL
   for (i in seq_len(n_calls)) {
     run()
-    tm <- take_timer("pca_imp_gram")
+    tm <- take_timer("pca_kernel")
     tot <- phase_totals(tm)
     cnt <- stats::setNames(tm$Count, rownames(tm))
     if (is.null(sums)) {

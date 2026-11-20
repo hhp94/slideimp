@@ -75,7 +75,7 @@ Probe scripts, all in `dev/`, each run from the package root:
 | 1 | `dev/eigen_conversion.md`, Phase 4 and step 3; `tests/testthat/` | The overrun step 3 ended is not silent: on duplicated samples the release, `v1.2.0`, and every commit before step 3 end the R process, 11 of 18 cases, default arguments included. The plan says every such run returned normally and that no test through `pca_imp()` can see it. There is no regression test | high |
 | 2 | `src/lobpcg_warm.h`, `matmul_into()` | A Gram of order 2 to 4 under `solver = "lobpcg"` no longer returns what it did: 267 of 280 fits differ, worst 5.2e-9. The map names the cause; no step record lists it as a change, no reminder line carries it, and it was not put to the maintainer | medium |
 | 3 | `src/svd_triplet.h`, the stop after `hybrid_topk_eig()` | A Gram holding Inf or NaN is reachable from finite input (values near 1e160 unscaled, 1e200 scaled). The notes leave that unmeasured; no test raises the stop; its text says the solver failed to converge | medium |
-| 4 | `src/armaSVD.cpp`, `sum_two_partial()` | The third two-accumulator sum rests on a ruling given for another sum and is missing from Phase 4's list of what to remove | low |
+| 4 | `src/pca_kernel.cpp`, `sum_two_partial()` | The third two-accumulator sum rests on a ruling given for another sum and is missing from Phase 4's list of what to remove | low |
 | 5 | `dev/to-do.md`, the NEWS reminders | Two changes to the error surface have no reminder line: the class and message of a failed triangular solve, and the new refusal of more than `INT_MAX` missing cells | low |
 | 6 | `dev/to-do.md`, the reminder for `ncp` above 32 | "About 1e-14" under the exact solver is not a bound: 1.6e-13 absolute and 1.2e-11 relative measured on one fit | low |
 | 7 | `src/lobpcg_warm.h`, `lobpcg_detail::Block` | The plan's table names Eigen for four of these files; the phase added none and wrote a matrix type with eleven helpers by hand. No record says the plan changed | low |
@@ -383,8 +383,8 @@ head's stop comes from the refusal or from dsyevr.
 ### 4. `sum_two_partial()` is kept on another sum's ruling and is not listed for removal
 
 `dev/CPP.md` bans a manual multi-accumulator reduction. The range adds
-three: `gram_trace()` (`src/svd_triplet.h`: `static inline double gram_trace(`),
-ruled in step 5; `sum_squares_two_partial()` in `src/armaSVD.cpp`,
+three: `gram_trace()` (`src/svd_triplet.h`: `inline double gram_trace(`),
+ruled in step 5; `sum_squares_two_partial()` in `src/pca_kernel.cpp`,
 ruled in step 6; and the sum of the row weights, `sum_two_partial()` in
 the same file. (Item 10 of Phase 4 made all three plain sums and removed
 the last two functions, so they are named here without a fragment.)
@@ -420,7 +420,7 @@ that entry has no line for either of these:
   reason for no line. If so the plan should say that such a change needs
   none.
 - More than `INT_MAX` missing cells among the eligible columns
-  (`src/armaSVD.cpp`: `has a row for each and an R matrix holds at most %d rows`),
+  (`src/pca_kernel.cpp`: `has a row for each and an R matrix holds at most %d rows`),
   a new error. Not raised here. Before the range the same input reached
   Rcpp's conversion of a matrix with that many rows; what that did is not
   read.
@@ -445,7 +445,7 @@ not the exponent.
 ### 7. The plan names Eigen for these files, and the phase wrote a matrix type by hand
 
 "Where Armadillo is used today" gives `src/hybrid_topk_eig.h` and
-`src/svd_triplet.h` as becoming Eigen, and `src/armaSVD.cpp` and
+`src/svd_triplet.h` as becoming Eigen, and `src/pca_kernel.cpp` and
 `src/lobpcg_warm.h` as Eigen in part; "What was decided" says where
 (`dev/eigen_conversion.md`: `Eigen is used where a small dense step reads more simply than a raw`).
 READ: no file of the chain includes an Eigen header at the head. The
