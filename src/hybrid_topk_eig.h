@@ -136,9 +136,9 @@ struct HybridEigContext
     auto_choice = HybridAutoChoice::Exact;
     // once auto chooses exact, discard LOBPCG state so exact mode has no
     // continuing seed-maintenance overhead.
-    lobpcg_state.X.reset();
-    lobpcg_state.P.reset();
-    X_prev.reset();
+    lobpcg_state.X.clear();
+    lobpcg_state.P.clear();
+    X_prev.clear();
   }
 
   void choose_auto_lobpcg()
@@ -402,7 +402,7 @@ inline int hybrid_topk_eig_impl(double *eigvals,
       // the state was seeded from an n x topk block and keeps its shape, so
       // the caller's buffers fit; not expected to fail.
       const lobpcg_detail::Block &X_state = ctx.lobpcg_state.X;
-      if (X_state.n_rows != rng.n || X_state.n_cols != rng.topk ||
+      if (X_state.nrow != rng.n || X_state.ncol != rng.topk ||
           lob_res.eigvals.size() != rng.topk)
       {
         Rcpp::stop("internal error: the LOBPCG state does not match the "
@@ -410,9 +410,9 @@ inline int hybrid_topk_eig_impl(double *eigvals,
       }
       std::copy(lob_res.eigvals.begin(), lob_res.eigvals.end(), eigvals);
       lobpcg_detail::Block X_curr = X_state;
-      std::copy(X_curr.mem.begin(), X_curr.mem.end(), eigvecs);
+      std::copy(X_curr.cells.begin(), X_curr.cells.end(), eigvecs);
 
-      if (!ctx.X_prev.is_empty())
+      if (!ctx.X_prev.empty())
       {
         refresh_momentum_P(ctx.lobpcg_state, X_curr, ctx.X_prev,
                            ctx.lobpcg_opt);
@@ -448,7 +448,7 @@ inline int hybrid_topk_eig_impl(double *eigvals,
   {
     lobpcg_detail::Block X_curr =
         lobpcg_detail::copy_of(eigvecs, rng.n, rng.topk);
-    if (!ctx.X_prev.is_empty())
+    if (!ctx.X_prev.empty())
     {
       seed_lobpcg_state(ctx.lobpcg_state, X_curr, ctx.X_prev, ctx.lobpcg_opt);
     }

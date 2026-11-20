@@ -225,9 +225,8 @@ carried out".
   the maintainer (2026-11-19): whether it should be `NA` whenever the
   objective is below `threshold`, which also covers a rounding criterion
   that lands below it.
-- **Ruled, not carried out,** each its own commit with the gate: rename
-  `lobpcg_detail::Block` off Armadillo's member names; the wrapper test as
-  a `dev/` script through `Rcpp::sourceCpp()`; remove the oracle and
+- **Ruled, not carried out,** each its own commit with the gate: the
+  wrapper test as a `dev/` script through `Rcpp::sourceCpp()`; remove the oracle and
   `dev/lib/arma` and rewrite "What the wrappers reproduce"; the pass
   through *Writing R Extensions* against `src/`.
 - **Not ruled:** the OpenMP flag in `src/Makevars` (see "Sampler port: what

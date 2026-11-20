@@ -9,7 +9,8 @@
 # through si_la (si_la::qr_econ, si_la::solve_tri, si_la::syevd): ff0e394,
 # whose containers are still arma::mat, or the second half of step 4, whose
 # are lobpcg_detail::Block. Two anchors differ between those two and are
-# taken from whichever the file holds. The call into it in
+# taken from whichever the file holds; Phase 4 renamed the members of Block,
+# and nm() writes every anchor in the names the file holds. The call into it in
 # src/hybrid_topk_eig.h is likewise found by its form: the Gram an arma::mat
 # before step 5 of Phase 2, a raw buffer with its two dimensions from step 5
 # on. Every version gets the same three
@@ -66,9 +67,22 @@ anchor <- function(...) {
   }
   hit[[1]]
 }
+## Phase 4 renamed the members of lobpcg_detail::Block off Armadillo's
+## names. Before, a Block and an arma::mat both had n_rows, n_cols and
+## memptr(); a file that holds the new names gets every anchor and every
+## line written below in nrow, ncol and data(), through ed().
+block_new_names <- holds("    std::size_t nrow = 0;")
+nm <- function(s) {
+  if (!block_new_names) {
+    return(s)
+  }
+  s <- gsub(".n_rows", ".nrow", s, fixed = TRUE)
+  s <- gsub(".n_cols", ".ncol", s, fixed = TRUE)
+  gsub(".memptr()", ".data()", s, fixed = TRUE)
+}
 arma_calls <- holds("arma::qr_econ(Q, R, V)")
 ## Phase 4 made si_la::solve_tri plain dtrtrs, without the two outputs.
-plain_solve <- !arma_calls && !holds("Y.memptr(), &rcond, &approx)")
+plain_solve <- !arma_calls && !holds(nm("Y.memptr(), &rcond, &approx)"))
 
 patch_file <- function(f, edits) {
   txt <- paste(readLines(f), collapse = "\n")
@@ -89,7 +103,7 @@ patch_file <- function(f, edits) {
   }
   writeLines(txt, f)
 }
-ed <- function(old, new, n = 1L) list(old = old, new = new, n = n)
+ed <- function(old, new, n = 1L) list(old = nm(old), new = nm(new), n = n)
 lines <- function(...) paste(..., sep = "\n")
 
 harness <- lines(

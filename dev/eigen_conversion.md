@@ -2234,7 +2234,8 @@ it now stands NOT RUN.
   12; the other 8 expectations pass. `dev/to-do.md` has the reminder line.
 
 **Rulings on the last items** (maintainer, 2026-11-19: "agree all" to the
-author's recommendations). Recorded here; none is carried out.
+author's recommendations). Recorded here; the first is carried out below,
+"`Block` off Armadillo's names".
 
 - `lobpcg_detail::Block` is renamed off Armadillo's member names. The
   updates that alias their own operand stay as they are until a profile
@@ -2253,6 +2254,32 @@ author's recommendations). Recorded here; none is carried out.
 - Not ruled: whether the OpenMP flag stays in `src/Makevars`. The author
   gave no recommendation. `dev/to-do.md`, "Sampler port: what is still
   owed", has the entry that covers it, with a measurement owed first.
+
+**`Block` off Armadillo's names** (the first ruling above). In
+`src/lobpcg_warm.h` the members of `lobpcg_detail::Block` are `nrow`,
+`ncol`, `cells`, `data()`, `empty()` and `clear()`, where they were
+Armadillo's `n_rows`, `n_cols`, `mem`, `memptr()`, `is_empty()` and
+`reset()`; `src/hybrid_topk_eig.h` follows. A rename only: no line changes
+what it does, and no helper was merged or removed.
+
+- `dev/probe_p2s4_patch.R` writes its anchors and the lines it inserts in
+  the names the file holds (`nm()`), so one script still patches a clone
+  from before the rename and one after.
+- Measured on the second machine (R 4.6.2, R's BLAS and LAPACK replaced by
+  OpenBLAS 0.3.34), `e86d532` against the change, in one run of
+  `dev/eigen_p4_gate.sh`: the capture bitwise on 71 of 71 cases under both
+  RcppEigen versions, the diagnostics build on 49 of 49, the edges on 68 of
+  68, at tolerance 0. The probe made the same 17 insertions in both edge
+  clones, and their event logs are byte for byte the same, 83276 lines. The
+  suite with manual tests: 279 tests, 0 failed, 0 skipped, under both
+  versions. No timing: the rename adds no work.
+- The earlier entries of Phase 4 were measured on the first machine, R
+  4.6.1. On the second, HEAD's edges end 1187 of 1316 `lobpcg_solve()`
+  calls as `CONVERGED` and 26 as `BAD_SEED`, against 1172 of 1318 and 37 in
+  item 10's record: the last digits of another BLAS. A gate compares two
+  builds on one machine, so it is not affected; a stored capture compared
+  across the two machines would be. The captures of those entries, `aa1ceee`
+  among them, are in `dev/ref/` on the first machine only.
 
 ## Not settled yet
 

@@ -475,8 +475,9 @@ solve, with no norm floor; `refresh_momentum_P()` after a LOBPCG success, with
 a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
 
 **Storage on the LOBPCG path.** The iteration holds its matrices in `lobpcg_detail::Block`
-(`src/lobpcg_warm.h`: `struct Block`), a column-major buffer whose members carry
-Armadillo's names, so the three calls into `si_la` read as they did on `arma::mat`.
+(`src/lobpcg_warm.h`: `struct Block`), a column-major buffer with its dimensions `nrow` and
+`ncol`, its cells in a `std::vector<double>`, and `data()` for the first cell, which is
+what the calls into `si_la` are handed.
 Every product goes through one function (`src/lobpcg_warm.h`: `inline void product_into(`):
 a right operand of one column is a vector and the product is dgemv through `si_la::gemv`,
 any other is dgemm through `si_la::gemm`. The products are
@@ -647,7 +648,7 @@ first two are on purpose; the third was found when the dsyevd call moved:
 the first two, and Phase 2, step 4, those behind the third.
 
 **`arma::qr_econ(Q, R, X)`**, which `qr_orthonormalize()` called until it moved to the
-wrapper (`src/lobpcg_warm.h`: `if (la_failed(si_la::qr_econ(v_rows, v_cols, V.memptr(), Q.memptr(),`). READ:
+wrapper (`src/lobpcg_warm.h`: `if (la_failed(si_la::qr_econ(v_rows, v_cols, V.data(), Q.data(),`). READ:
 `fn_qr.hpp`, `auxlib::qr_econ()`, `auxlib::qr()`. For `m > n` it copies `X` into `Q`, runs
 dgeqrf there, copies the upper triangle into an `n x n` `R`, zero below, and runs dorgqr on
 `Q` with `k = n`. For `m <= n`, square included, it hands over to the full `qr()`: dgeqrf
@@ -671,7 +672,7 @@ site stops on both.
 
 **`arma::solve(arma::trimatl(A), B)`**, which `qr_orthonormalize_update_matvec()` called as
 `AQ = arma::solve(arma::trimatl(R.t()), AQ.t()).t()` until it moved to the wrapper
-(`src/lobpcg_warm.h`: `if (la_failed(si_la::solve_tri('L', Rt.n_rows, Y.n_cols, Rt.memptr(),`). READ:
+(`src/lobpcg_warm.h`: `if (la_failed(si_la::solve_tri('L', Rt.nrow, Y.ncol, Rt.data(),`). READ:
 `fn_solve.hpp`, `glue_solve_tri_default::apply()`, `auxlib::solve_trimat_rcond()`,
 `auxlib::rcond_trimat()`, `auxlib::solve_approx_svd()`. It is not a plain triangular
 solve:
