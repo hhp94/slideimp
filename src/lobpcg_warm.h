@@ -14,15 +14,23 @@
 //  previous call (which is not orthonormal) is fine to commit.
 //  - On converged == true, state is committed with the new (X, P). X is
 //  sign-canonicalized; P is left as the post-RR search direction (not
-//  orthonormal, not orth X), entry-time cleanup handles it.
+//  orthonormal, not orth X), entry-time cleanup handles it. P is empty in
+//  the one case the P invariant below names.
 //  - On converged == false, state is left untouched; caller must fall back
 //  to the exact solver (dsyevr) and re-seed.
 //
 // P invariant (committed state):
-//  X is orthonormal and sign-canonical. P has the right shape (n x k);
-//  it is NOT orthonormal nor strictly orth X. The entry-time projection
-//  + QR re-orthonormalization rebuilds the clean basis we need for the
-//  Rayleigh-Ritz.
+//  X is orthonormal and sign-canonical. P is n x k; it is NOT orthonormal
+//  nor strictly orth X. The entry-time projection + QR re-orthonormalization
+//  rebuilds the clean basis we need for the Rayleigh-Ritz.
+//  The exception: when P does not survive that cleanup, the first
+//  Rayleigh-Ritz is over X alone and there is no P until the first
+//  iteration builds one, so a call that converges at its first residual
+//  test commits an empty P. The state is then not seeded() unless the
+//  caller's refresh_momentum_P() builds a P from the temporal direction;
+//  if it does not, the next call of hybrid_topk_eig_impl() takes the exact
+//  path (HYB_REASON_NO_SEED under solver = lobpcg) and seeds the state
+//  again from that solve, which can fail as after any exact solve.
 //
 // Storage: the iteration holds its matrices in lobpcg_detail::Block and
 // enters BLAS and LAPACK only through src/si_lapack.h. The Gram comes in as
@@ -41,9 +49,11 @@
 #include "pca_linalg_utils.h"
 #include "si_lapack.h"
 
+// tol and maxiter are R's defaults, those of lobpcg_control() in
+// R/pca_imp.R; the kernel sets both from the call on every run.
 struct LOBPCGOptions {
-  double tol = 1e-8;
-  int maxiter = 15;
+  double tol = 1e-9;
+  int maxiter = 20;
   int stall_window = 5;
   double qr_rel_tol = 1e-12;
 };
@@ -470,9 +480,10 @@ inline bool qr_orthonormalize_update_matvec(Block &Q, Block &AQ,
 }
 
 // All eigenpairs of the small symmetric M, descending, by dsyevd through
-// si_la::syevd. M is symmetrized and then destroyed. false when dsyevd
-// fails or M holds NaN or Inf, which the wrapper refuses before LAPACK;
-// the caller then reports a failed Rayleigh-Ritz.
+// si_la::syevd. M is symmetrized, and on success its cells become Z's and
+// M comes back empty. false when dsyevd fails or M holds NaN or Inf, which
+// the wrapper refuses before LAPACK; the caller then reports a failed
+// Rayleigh-Ritz.
 inline bool small_eig_desc(Block &M, Block &w, Block &Z) {
   const std::size_t n = M.nrow;
   if (n == 0) {
@@ -496,13 +507,14 @@ inline bool small_eig_desc(Block &M, Block &w, Block &Z) {
     return false;
   }
 
-  // dsyevd's order is ascending: reverse the columns and the values.
-  Z = Block(n, n);
-  for (std::size_t j = 0; j < n; ++j) {
-    std::copy(M.data() + (n - 1 - j) * n, M.data() + (n - j) * n,
-              Z.data() + j * n);
+  // dsyevd's order is ascending: reverse the columns and the values in
+  // place, and hand the columns over as Z.
+  for (std::size_t i = 0, j = n - 1; i < j; ++i, --j) {
+    std::swap_ranges(M.data() + i * n, M.data() + (i + 1) * n,
+                     M.data() + j * n);
   }
   std::reverse(w.cells.begin(), w.cells.end());
+  Z = std::exchange(M, Block());
   return true;
 }
 
@@ -788,11 +800,13 @@ inline LOBPCGResult lobpcg_solve(const double *a, const std::size_t n,
       const Block RtP = tmul(Ract, P);
 
       // Pact = P - X * XtP - Ract * RtP, and APact = A * Pact by linearity,
-      // each product formed first.
-      Pact = P;
+      // each product formed first. Pact and APact take over the cells of P
+      // and AP, which are not read again: below they become pp and app, and
+      // every exit before that leaves without committing P.
+      Pact = std::exchange(P, Block());
       sub_cells(Pact, mul(X, XtP));
       sub_cells(Pact, mul(Ract, RtP));
-      APact = AP;
+      APact = std::exchange(AP, Block());
       sub_cells(APact, mul(AX, XtP));
       sub_cells(APact, mul(ARact, RtP));
 

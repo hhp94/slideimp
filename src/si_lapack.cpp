@@ -246,9 +246,8 @@ int syevr_range(const char uplo, const std::size_t n, const std::size_t il,
   }
   const std::size_t count = iu - il + 1;
 
-  // dsyevr documents 26 n and 10 n as the least it accepts.
-  const double lwork_min = 26.0 * static_cast<double>(n);
-  const double liwork_min = 10.0 * static_cast<double>(n);
+  const double lwork_min = syevr_lwork_min(n);
+  const double liwork_min = syevr_liwork_min(n);
   if (!fits_int(lwork_min)) {
     return err_size;
   }
@@ -326,11 +325,8 @@ int syevd(const char uplo, const std::size_t n, double *a, double *w) {
     return err_size;
   }
 
-  // dsyevd documents these for jobz 'V'. In double, since 2 n^2 leaves int
-  // long before n does.
-  const double nd = static_cast<double>(n);
-  const double lwork_min = 1.0 + 6.0 * nd + 2.0 * nd * nd;
-  const double liwork_min = 3.0 + 5.0 * nd;
+  const double lwork_min = syevd_lwork_min(n);
+  const double liwork_min = syevd_liwork_min(n);
   if (!fits_int(lwork_min)) {
     return err_size;
   }

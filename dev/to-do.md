@@ -186,6 +186,10 @@ and `check_si_mi_names()` for the `"mipca"` output.
 - `tune_imp()` and `slide_imp()` keep returning a matrix. Until
   `group_imp()` takes parts, it passes `output = "matrix"` to `pca_imp()`, as
   `slide_imp()` and `tune_imp()` do.
+- The size of it (maintainer, 2026-11-20): this is one bigger change, not
+  `knn_imp()` alone. `group_imp()` and `slide_imp()` both narrow their
+  output by `subset`, and both use the part interface internally, to save
+  memory.
 
 Added 2026-11-17: `subset` narrows the output, package-wide, in input order,
 with no flag (`dev/si_mi_conversion.md`, "What was decided"; the doors and
@@ -283,14 +287,6 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
   manual's route is a `.def` file in `src/` exporting `R_init_slideimp`
   alone. Advice, not a requirement (maintainer, 2026-11-19: fine as it is,
   otherwise for this pass). What it changes on Linux is not measured.
-
-## `criterion_final` below `threshold`: deferred
-
-Deferred by the maintainer, 2026-11-19 (`dev/eigen_conversion.md`, "Phase
-4, as carried out", "`criterion_final` as `NA`"): whether `criterion_final`
-should be `NA` whenever the objective is below `threshold`, which also
-covers a rounding criterion that lands below it. Today it is `NA` only when
-the criterion itself is not below `threshold`.
 
 ## Test suite: cleanup and tiers for local and CRAN runs
 
@@ -486,3 +482,24 @@ Owed:
   stay there. No test here runs `mipca_tune()`, `mipca_fit()`,
   `mipca_flank()`, `mipca_complete()` or `abb_cols()`. A test that lands as
   a `test-mipca-*` file is part of the copy, so it is written upstream.
+
+## One census at the front door
+
+Scoped 2026-11-20 in `dev/census_scope.md`, read-only; not started. It
+LANDS LAST (maintainer, 2026-11-20): after "Parts for the other imputers",
+"Take cli out; audit every message against the R manuals" and "Kernel
+cleanup after the Eigen conversion", since each of them rewrites the doors
+it would change.
+
+- One internal C++ pass per entry point, in place, that counts and never
+  refuses: per column the missing count, the row of the first Inf and the
+  variance by today's Welford loop; per-row counts behind a flag. Each
+  entry point applies its own policy in R by indexing into it, and
+  `group_imp()`, `slide_imp()` and `tune_imp()` hand it to the imputers'
+  internal cores instead of rescanning each block.
+- `check_finite()` and `check_inf()` stop being gates; `mat_miss()` and
+  `col_vars()` stay exported.
+- Open, the maintainer's: the four decisions in the note's section 6, and
+  the measurements listed under them, made before any code.
+- The sampler's side is upstream's; settle it with the sampler-port item
+  "The `Inf` refusal has two shapes" above.

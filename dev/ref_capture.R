@@ -289,6 +289,30 @@ case(
 )
 case("pca_xt_nocache", pca_imp(xt, ncp = 3, solver = "exact"))
 case("pca_xt2_lobpcg", pca_imp(xt2, ncp = 3, solver = "lobpcg"))
+## LOBPCG twins of the cases above that force the exact solver, so each
+## kernel path is captured under both. The warm-up is 1 iteration, not the
+## default 10, so that the short fits reach LOBPCG too.
+lo <- lobpcg_control(warmup_iters = 1L)
+pca_lo <- function(...) {
+  pca_imp(..., solver = "lobpcg", lobpcg_control = lo)
+}
+case("pca_x1_noscale_lobpcg", pca_lo(x1, ncp = 3, scale = FALSE))
+case("pca_x1_roww_lobpcg", pca_lo(x1, ncp = 3, row.w = seq_len(nrow(x1))))
+case("pca_x1_clamp_lobpcg", pca_lo(x1, ncp = 3, clamp = c(0, 1)))
+case("pca_x1_nbinit_lobpcg", pca_lo(x1, ncp = 3, nb.init = 3, seed = 7))
+case("pca_x2_post_lobpcg", pca_lo(x2, ncp = 3))
+case("pca_x2_nopost_lobpcg", pca_lo(x2, ncp = 3, post_imp = FALSE))
+case("pca_chr21_nopost_lobpcg", pca_lo(chr21, ncp = 5, post_imp = FALSE))
+case(
+  "pca_x1_unconverged_lobpcg",
+  pca_lo(x1, ncp = 3, maxiter = 3, miniter = 1)
+)
+case("pca_xw_nocache_lobpcg", pca_lo(xw, ncp = 3))
+case(
+  "pca_xw_nocache_roww_lobpcg",
+  pca_lo(xw, ncp = 3, row.w = seq_len(nrow(xw)))
+)
+case("pca_xt_nocache_lobpcg", pca_lo(xt, ncp = 3))
 case("pca_x2i_inf_error", pca_imp(x2i, ncp = 3))
 
 ## mean_imp_col()

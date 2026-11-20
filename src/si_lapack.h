@@ -75,6 +75,25 @@ int syrk(char uplo, char trans, std::size_t n, std::size_t k, double alpha,
          const double *a, std::size_t lda, double beta, double *c,
          std::size_t ldc);
 
+// The least workspace dsyevr and dsyevd document for jobz 'V' and order n,
+// lwork and liwork, in double, since 2 n^2 leaves int long before n does.
+// syevr_range() and syevd() give their routine at least these, and refuse
+// with err_size an lwork past int; kernel setup (src/pca_kernel.cpp) tests
+// the same values for every problem a call can reach before it starts.
+constexpr double syevr_lwork_min(const std::size_t n) {
+  return 26.0 * static_cast<double>(n);
+}
+constexpr double syevr_liwork_min(const std::size_t n) {
+  return 10.0 * static_cast<double>(n);
+}
+constexpr double syevd_lwork_min(const std::size_t n) {
+  return 1.0 + 6.0 * static_cast<double>(n) +
+         2.0 * static_cast<double>(n) * static_cast<double>(n);
+}
+constexpr double syevd_liwork_min(const std::size_t n) {
+  return 3.0 + 5.0 * static_cast<double>(n);
+}
+
 // dsyevr, jobz 'V', range 'I', abstol 0: eigenpairs il..iu of the symmetric
 // n x n matrix whose uplo triangle is in a, counted from 1 in ascending
 // order, so il = n - k + 1 and iu = n are the k largest. a is destroyed.

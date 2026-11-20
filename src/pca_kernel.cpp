@@ -145,27 +145,25 @@ void check_arguments(const Rcpp::NumericMatrix &obj,
   const std::size_t k = regularized ? n_cp + 1 : n_cp;
   const std::size_t n_gram = tall ? n_elig : nrX;
 
-  // LAPACK workspace guard. The dimensions themselves fit an int: nrX is an
-  // R dimension, and n_cp and n_gram are below one.
-  const std::size_t int_max =
-      static_cast<std::size_t>(std::numeric_limits<int>::max());
+  // LAPACK workspace guard: the least workspace of each eigensolver the call
+  // can reach, as src/si_lapack.h defines it, must fit an int. The
+  // dimensions themselves fit one: nrX is an R dimension, and n_cp and
+  // n_gram are below one.
+  const double int_max = static_cast<double>(std::numeric_limits<int>::max());
 
-  // si_la::syevr_range gives dsyevr at least 26*n and 10*n workspace.
-  if (n_gram > int_max / 26) {
+  // the exact solver, dsyevr, on the Gram.
+  if (si_la::syevr_lwork_min(n_gram) > int_max) {
     Rcpp::stop("problem dimension too large for LAPACK dsyevr workspace");
   }
 
-  // LOBPCG internally solves small Rayleigh-Ritz problems up to ~3*k.
-  // only apply this guard when the requested solver can actually use
-  // LOBPCG (lobpcg_maxiter >= 1 was already enforced above).
+  // LOBPCG's Rayleigh-Ritz problems, by dsyevd, of order at most 3 k: only
+  // when the requested solver can use LOBPCG (lobpcg_maxiter >= 1 was
+  // enforced above).
   if (lobpcg_requested) {
-    const double rr_dim = 3.0 * static_cast<double>(k);
-    const double dsyevd_lwork = 1.0 + 6.0 * rr_dim + 2.0 * rr_dim * rr_dim;
-    const double dsyevd_liwork = 3.0 + 5.0 * rr_dim;
-
-    if (rr_dim > static_cast<double>(int_max) ||
-        dsyevd_lwork > static_cast<double>(int_max) ||
-        dsyevd_liwork > static_cast<double>(int_max)) {
+    const std::size_t rr_dim = 3 * k;
+    if (static_cast<double>(rr_dim) > int_max ||
+        si_la::syevd_lwork_min(rr_dim) > int_max ||
+        si_la::syevd_liwork_min(rr_dim) > int_max) {
       Rcpp::stop("'ncp' is too large for the LAPACK workspace of LOBPCG");
     }
   }

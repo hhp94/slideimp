@@ -30,7 +30,6 @@ enum HybridEigReason {
   HYB_REASON_NOT_RUN = -100,
   HYB_REASON_WARMUP = -10,
   HYB_REASON_NO_SEED = -11,
-  HYB_REASON_DISABLED = -12,
   HYB_REASON_AUTO_EXACT_PROBE = -13,
   HYB_REASON_AUTO_CHOSE_EXACT = -14,
   HYB_REASON_FORCED_EXACT = -15
@@ -59,10 +58,18 @@ enum HybridSolverChosen {
 inline constexpr int HYB_AUTO_N_PROBE_ITER_DEFAULT = 5;
 inline constexpr int HYB_AUTO_MIN_EXACT_ITER_DEFAULT = 3;
 inline constexpr double HYB_AUTO_MARGIN_DEFAULT = 0.10;
+// an exact probe call comes before the first LOBPCG probe, so the end of a
+// call has run maybe_decide_auto() before any call that tries LOBPCG while
+// auto is undecided: hybrid_topk_eig_impl() relies on it.
+static_assert(HYB_AUTO_MIN_EXACT_ITER_DEFAULT >= 1,
+              "auto mode needs at least one exact probe call");
 
 struct HybridEigContext {
   const EigSymRange *eig_range = nullptr;
   LOBPCGState lobpcg_state;
+  // maxiter is at least 1 unless solver_mode is Exact: kernel setup refuses
+  // a lobpcg_maxiter below 1 for solver 1 (lobpcg) and 2 (auto), so no arm
+  // below tests it.
   LOBPCGOptions lobpcg_opt;
 
   lobpcg_detail::Block X_prev;
@@ -186,10 +193,6 @@ struct HybridEigContext {
       return false;
     }
 
-    if (lobpcg_opt.maxiter <= 0) {
-      return false;
-    }
-
     if (solver_mode == HybridSolverMode::Auto &&
         auto_choice == HybridAutoChoice::Exact) {
       return false;
@@ -244,7 +247,6 @@ struct HybridEigContext {
 
   const bool past_warmup = outer_iter >= ctx.warmup_iters;
   const bool has_seed = ctx.lobpcg_state.seeded();
-  const bool lobpcg_enabled = ctx.lobpcg_opt.maxiter > 0;
 
   // every arm below that leaves try_lobpcg false sets direct_reason, which
   // is read only then.
@@ -254,9 +256,7 @@ struct HybridEigContext {
   if (ctx.solver_mode == HybridSolverMode::Exact) {
     direct_reason = HYB_REASON_FORCED_EXACT;
   } else if (ctx.solver_mode == HybridSolverMode::Lobpcg) {
-    if (!lobpcg_enabled) {
-      direct_reason = HYB_REASON_DISABLED;
-    } else if (!past_warmup) {
+    if (!past_warmup) {
       direct_reason = HYB_REASON_WARMUP;
     } else if (!has_seed) {
       direct_reason = HYB_REASON_NO_SEED;
@@ -265,10 +265,7 @@ struct HybridEigContext {
     }
   } else // HybridSolverMode::Auto
   {
-    if (!lobpcg_enabled) {
-      direct_reason = HYB_REASON_DISABLED;
-      ctx.choose_auto_exact();
-    } else if (ctx.auto_choice == HybridAutoChoice::Exact) {
+    if (ctx.auto_choice == HybridAutoChoice::Exact) {
       direct_reason = HYB_REASON_AUTO_CHOSE_EXACT;
     } else if (ctx.auto_choice == HybridAutoChoice::Lobpcg) {
       if (has_seed) {
@@ -278,23 +275,16 @@ struct HybridEigContext {
       }
     } else // auto undecided
     {
+      // the exact probe, then the LOBPCG probe. A call after the exact
+      // probe that is still undecided has a seeded state and has run fewer
+      // than auto_n_probe_iter LOBPCG probes: otherwise maybe_decide_auto(),
+      // at the end of the call before, would have decided.
       if (ctx.auto_exact_n < ctx.auto_exact_target()) {
         direct_reason = HYB_REASON_AUTO_EXACT_PROBE;
         ctx.last_auto_probe = HybridAutoProbe::Exact;
-      } else if (!has_seed) {
-        direct_reason = HYB_REASON_NO_SEED;
-        ctx.choose_auto_exact();
-      } else if (ctx.auto_lobpcg_n < ctx.auto_n_probe_iter) {
+      } else {
         try_lobpcg = true;
         ctx.last_auto_probe = HybridAutoProbe::Lobpcg;
-      } else {
-        ctx.maybe_decide_auto();
-
-        if (ctx.auto_choice == HybridAutoChoice::Lobpcg) {
-          try_lobpcg = true;
-        } else {
-          direct_reason = HYB_REASON_AUTO_CHOSE_EXACT;
-        }
       }
     }
   }

@@ -12,6 +12,7 @@
 !CPP.md
 !WRITING.md
 !audit_pca_imp_cr.R
+!census_scope.md
 !check_impute_knn.R
 !check_map_anchors.py
 !check_slideimp_extra.R

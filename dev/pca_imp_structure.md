@@ -258,8 +258,10 @@ the EM loop of Layer 4 is written out in it.
   `INT_MIN`, so each lower bound refuses it; as `arma::uword` a negative count wrapped to
   a huge one. A further check (`src/pca_kernel.cpp`: `prevent nrX * n_elig overflow later.`)
   guards `nrX * n_elig`. The block (`src/pca_kernel.cpp`: `LAPACK workspace guard`) guards
-  the `int` range of the `26 * n` dsyevr workspace minimum and of the `~3k` Rayleigh-Ritz
-  dsyevd workspace LOBPCG would need; the dimensions themselves fit an `int`, being R's.
+  the `int` range of the `26 * n` dsyevr workspace minimum and of the dsyevd minimums of the
+  Rayleigh-Ritz problems LOBPCG would solve, of order at most `3k`, taking each from the
+  functions the wrappers use ("What the wrappers do", "Workspace"); the dimensions themselves
+  fit an `int`, being R's.
   `normalized_row_weights()` then refuses a `row_w` that is not finite, has a negative
   weight or does not sum to a positive number, in that order and in two loops, and returns
   the normalized copy; the entry point then refuses `regularized` with too few rows or
@@ -313,7 +315,10 @@ writes, `AA_NxN` at `n_gram x n_gram` and `X_work` at `nrX x n_elig` in the tall
 among them, with `lambda_shrinked` beside it; `GramCache`, precomputing
 the fixed-column Gram contribution; and `HybridEigContext`,
 carrying the solver mode, warmup count, LOBPCG options and persistent LOBPCG state across
-all outer iterations.
+all outer iterations. Its `LOBPCGOptions` is the one in the chain, and the entry point
+sets its `tol` and `maxiter` from the call (`src/pca_kernel.cpp`:
+`hyb_ctx.lobpcg_opt.tol = lobpcg_tol;`), so their member defaults, which are those of
+`lobpcg_control()`, are never what a run uses; `stall_window` and `qr_rel_tol` keep theirs.
 
 ## Layer 4: the EM outer loop (`src/pca_kernel.cpp`)
 
@@ -383,7 +388,9 @@ value is `NA` (`src/pca_kernel.cpp`:
 `(converged && !(criterion < threshold)) ? NA_REAL : criterion;`). The `NA` can withhold a
 well-defined ratio, and it also covers one that is rounding noise, as when `ncp` is at or
 above the rank of the data from the first iteration and the objective sits at the rounding
-floor of the subtraction, with no tolerance needed to tell the two apart.
+floor of the subtraction, with no tolerance needed to tell the two apart. The rule stays
+as it is (maintainer, 2026-11-20, final): `criterion_final` is not made `NA` whenever the
+objective is below `threshold`, a proposal that was put and denied.
 `solver_chosen` comes from `HybridEigContext::solver_chosen_code()`
 (`src/hybrid_topk_eig.h`: `int solver_chosen_code() const`): 0 forced exact, 1 forced lobpcg,
 2 auto never decided, 3 auto chose exact, 4 auto chose lobpcg. Under `solver = "auto"` only
@@ -468,11 +475,18 @@ call with a `steady_clock` measurement and feeds it to `record_auto_probe_time()
 - `Auto` (`src/hybrid_topk_eig.h`: `else // HybridSolverMode::Auto`) -- exact for at least
   `max(warmup_iters, auto_min_exact_iter)`
   iterations, then `HYB_AUTO_N_PROBE_ITER_DEFAULT = 5` LOBPCG
-  probes, then decides. `maybe_decide_auto()` picks LOBPCG only
+  probes, then decides, at the end of an undecided call only (`record_auto_probe_time()`),
+  so an undecided call past the exact probe always has a seed and a LOBPCG probe to run,
+  and the undecided arm has two branches (`src/hybrid_topk_eig.h`:
+  `the exact probe, then the LOBPCG probe.`). `maybe_decide_auto()` picks LOBPCG only
   when its mean time is below `(1 - 0.10) * exact_mean`
   (`src/hybrid_topk_eig.h`: `HYB_AUTO_MARGIN_DEFAULT = 0.10`); otherwise
   it picks exact and drops the LOBPCG state so exact mode carries no seed-maintenance
   overhead (`src/hybrid_topk_eig.h`: `void choose_auto_exact()`).
+
+No arm tests `lobpcg_opt.maxiter`, nor does `keep_lobpcg_seed_state()`: kernel setup refuses
+a `lobpcg_maxiter` below 1 for `Lobpcg` and `Auto`, and sets 0 only for `Exact`
+(`src/hybrid_topk_eig.h`: `maxiter is at least 1 unless solver_mode is Exact`).
 
 On LOBPCG success (`src/hybrid_topk_eig.h`: `if (lob_res.converged)`) the eigenvalues and
 the committed `X` are copied into the caller's buffers, after a check that the state still
@@ -504,7 +518,12 @@ outer iteration.
 callers must check `LOBPCGState::seeded()` first. The state carries `X` (`n x k`,
 orthonormal, sign-canonicalized approximate top-k eigenvectors) and `P` (`n x k`, the search
 direction). The header's "P invariant" note states that the committed `P` is
-deliberately *not* orthonormal and not orthogonal to `X`; entry-time cleanup
+deliberately *not* orthonormal and not orthogonal to `X`, and names the one case in which
+it is empty: `P` lost at entry, so the first Rayleigh-Ritz is over `X` alone, and the
+call converging at its first residual test. Unless `refresh_momentum_P()` then builds a
+`P`, the state is not seeded and the next call goes to the exact solver, `NO_SEED` under
+`solver = "lobpcg"`, which seeds it again, or tries to (the edges case `dup_xdc_ncp08` of
+`dev/eigen_p2s4_edges.R` commits an empty `P` on its last iteration); entry-time cleanup
 (`src/lobpcg_warm.h`: `bool have_P = qr_project_out_qr(`)
 re-projects and re-orthonormalizes it. Both matvecs are recomputed fresh at entry
 (`src/lobpcg_warm.h`: `Block AX = mul(a, n, n, X);`) because `A` changes between outer calls. The
@@ -545,7 +564,10 @@ is formed first. `V -= X (X' V)` is `project_out()`
 `sub_cells(V, mul(X, tmul(X, V)));`), at four sites: in `qr_project_out_qr()`, in
 `build_momentum_P()` on a copy of `X_prev`, and on `P` at entry and on the active
 residuals in `lobpcg_solve()`. The three-block path projects `P` out of `X` and the active
-residuals with products of its own, which it shares with `A P`. `-=` of a product whose operands do not include its target is one call with
+residuals with products of its own, which it shares with `A P`; `P_active` and its
+product take over the cells of `P` and `A P`, which the iteration does not read again
+(`src/lobpcg_warm.h`: `Pact = std::exchange(P, Block());`). `small_eig_desc()` likewise
+reverses dsyevd's columns in place and hands them over as its eigenvector block. `-=` of a product whose operands do not include its target is one call with
 `beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). The boundary with
 `src/hybrid_topk_eig.h` holds no Armadillo either: `lobpcg_solve()` takes the Gram as a raw
 buffer and its order and reads it in place (`src/lobpcg_warm.h`:
@@ -681,7 +703,10 @@ solver.
 with a length of -1, and uses the larger of the answer and the routine's documented minimum
 (`src/si_lapack.cpp`: `bool work_len(const double queried, const double minimum, int &out)`):
 `26 n` and `10 n` for dsyevr, `1 + 6 n + 2 n^2` and `3 + 5 n` for dsyevd, `max(1, n)` for
-dgeqrf and for dorgqr, and `3 min(m, n) + max(max(m, n), 7 min(m, n))` for dgesdd. An answer
+dgeqrf and for dorgqr, and `3 min(m, n) + max(max(m, n), 7 min(m, n))` for dgesdd. The two
+eigensolvers' minimums are defined once, in the header, as `syevr_lwork_min()` and three
+more after it (`src/si_lapack.h`: `constexpr double syevr_lwork_min(`), and kernel setup's
+guard tests the same functions. An answer
 that is not usable, 0, negative or NaN, leaves the minimum. Nothing is kept between calls, so
 the length is a function of the problem alone. That matters, since the length can change the
 result:
