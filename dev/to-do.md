@@ -241,9 +241,8 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
   timing driver; no hand unrolling or OpenMP (`dev/CPP.md`). Candidates
   seen in the K-NN kernel while converting it, none measured yet:
   `rows_to_impute` repeats, 0-based, the rows `loc` already holds;
-  `obj_masked` and `nmiss_masked` are zero-filled by `std::vector` before
-  every cell is written; and `initialize_result()` guards invariants its
-  one caller has just established. Seen in the PCA kernel
+  and `obj_masked` and `nmiss_masked` are zero-filled by `std::vector`
+  before every cell is written. Seen in the PCA kernel
   (`src/armaSVD.cpp`), none measured apart: `Xhat`, `X_work`, `AA_NxN`, `U`,
   `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`
   before every cell that is read is written, where only `fittedX` needs its

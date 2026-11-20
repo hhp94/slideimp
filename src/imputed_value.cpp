@@ -34,26 +34,6 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
     return;
   }
 
-  // basic shape checks before any column access.
-  if (nmiss_masked.size() <
-      static_cast<std::size_t>(n_imp) * static_cast<std::size_t>(n_rows)) {
-    Rcpp::stop("internal error: initialize_result: nmiss_masked holds fewer "
-               "than %d columns",
-               n_imp);
-  }
-
-  if (grp_impute.size() < n_imp) {
-    Rcpp::stop("internal error: initialize_result: grp_impute has too few "
-               "elements. Expected at least %d, got %d",
-               n_imp, grp_impute.size());
-  }
-
-  if (n_col_valid.size() < static_cast<std::size_t>(n_imp)) {
-    Rcpp::stop("internal error: initialize_result: n_col_valid has too few "
-               "elements. Expected at least %d, got %d",
-               n_imp, n_col_valid.size());
-  }
-
   std::vector<int> n_col_miss(n_imp);
   col_offsets.assign(static_cast<std::size_t>(n_imp) + 1, 0);
 
@@ -61,12 +41,6 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
   std::size_t sum_missing = 0;
 
   for (int i = 0; i < n_imp; ++i) {
-    if (n_col_valid[i] > n_rows) {
-      Rcpp::stop("internal error: initialize_result: n_col_valid exceeds the "
-                 "number of rows at column %d. n_col_valid = %d, n_rows = %d",
-                 i, n_col_valid[i], n_rows);
-    }
-
     const int n_miss_i = n_rows - n_col_valid[i];
     n_col_miss[i] = n_miss_i;
     sum_missing += static_cast<std::size_t>(n_miss_i);
@@ -100,25 +74,12 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
     std::vector<int> rows(n_miss_i);
     int w = 0;
 
+    // copy_with_mask counted the ones of this mask column into n_col_valid,
+    // so it holds exactly n_miss_i zeros.
     for (int r = 0; r < n_rows; ++r) {
       if (mask_col[r] == 0) {
-        // critical safety check: do not write past rows.
-        if (w >= n_miss_i) {
-          Rcpp::stop("internal error: initialize_result: n_col_valid "
-                     "inconsistent with nmiss_masked at column %d. More "
-                     "missing rows found than expected",
-                     i);
-        }
-
         rows[w++] = r;
       }
-    }
-
-    if (w != n_miss_i) {
-      Rcpp::stop("internal error: initialize_result: n_col_valid inconsistent "
-                 "with nmiss_masked at column %d. Expected %d missing rows, "
-                 "found %d",
-                 i, n_miss_i, w);
     }
 
     rows_to_impute[i] = std::move(rows);

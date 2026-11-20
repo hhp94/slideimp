@@ -279,8 +279,11 @@ slice of `value` and threads never collide. `value` starts as `NA`
 `orig_col_1based = grp_impute[i] + 1`), and `rows_to_impute[i]` records which
 rows of target column `i` are missing.
 Empty cases short-circuit (`src/imputed_value.cpp`: `if (n_imp == 0)`,
-`if (sum_missing == 0)`), and `Rcpp::stop` consistency guards surround the
-bookkeeping.
+`if (sum_missing == 0)`). It checks nothing its one caller has just
+established: `copy_with_mask` adds to `n_col_valid` the same byte it writes to
+the mask, so column `i` of the mask holds exactly `n_rows - n_col_valid[i]`
+zeros (`src/imputed_value.cpp`: `so it holds exactly n_miss_i zeros`). Its one
+refusal is a result too large for an R matrix, above.
 
 ## Layer 5 -- neighbor search (`src/impute_knn_brute.cpp`)
 
@@ -461,7 +464,7 @@ Everything else that aborts here is a plain error, not `slideimp_infeasible`:
 `check_finite()` for `Inf` and all-`NA` columns (`tests/testthat/test-knn_imp.R`:
 `Throw on Inf`, `"has a column with no observed value"`), plus the C++ guards in `validate_knn_inputs()`
 (`tests/testthat/test-knn_imp.R`: `the kernel checks the invariants`) and
-`initialize_result_matrix()`. Catch sites are in the
+the refusal in `initialize_result()` of a result past an R matrix's rows. Catch sites are in the
 wrappers only (next section); each switches on `on_infeasible` to abort (both raise a
 new `cli_abort()` with the original as `parent` and the `slideimp_infeasible` class),
 skip the block unchanged, or
