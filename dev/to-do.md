@@ -133,6 +133,9 @@ Easy to miss in the diff, noted so the draft does not:
   `src/Makevars` (`dev/eigen_conversion.md`, Phase 3), so the line already
   in `NEWS.md` saying the package is compiled with 64-bit Armadillo indices
   is no longer true. Building from source no longer needs RcppArmadillo.
+- `pca_imp()`'s `criterion_final` is `NA` when the fit converged on its
+  objective alone; it was NaN, Inf or a number made by rounding
+  (`dev/eigen_conversion.md`, "Phase 4, as carried out").
 
 ## Parts for the other imputers
 
@@ -218,15 +221,10 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
 State on 2026-11-19; the record is `dev/eigen_conversion.md`, "Phase 4, as
 carried out".
 
-- **`criterion_final` as `NA`.** Ruled, coded and committed. The kernel
-  edit passed the gate; the rewritten test in
-  `tests/testthat/test-pca_imp.R` has not been run. Left: run the suite
-  under both RcppEigen versions, fix the test if it fails, and add the
-  reminder line to the NEWS entry above
-  (`criterion_final` is `NA` when the fit converged on its objective; it
-  was NaN, Inf or a number). One question is open for the maintainer:
-  whether it should be `NA` whenever the objective is below `threshold`,
-  which also covers a rounding criterion that lands below it.
+- **`criterion_final` as `NA`.** Done, test run and passing. Deferred by
+  the maintainer (2026-11-19): whether it should be `NA` whenever the
+  objective is below `threshold`, which also covers a rounding criterion
+  that lands below it.
 - **Ruled, not carried out,** each its own commit with the gate: rename
   `lobpcg_detail::Block` off Armadillo's member names; the wrapper test as
   a `dev/` script through `Rcpp::sourceCpp()`; remove the oracle and

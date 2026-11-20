@@ -2223,8 +2223,15 @@ it now stands NOT RUN.
   and is put to the maintainer, not coded.
 - The test was rewritten to what holds on every build: a converged fit
   reports `NA` or a criterion below `threshold`, never NaN or a larger
-  number. That version has not been run; the suite run was stopped at the
-  maintainer's request. `dev/to-do.md` has what is left.
+  number. That version was not run before the commit; the suite run was
+  stopped at the maintainer's request.
+- Run since, on R 4.6.2, in a clone of `e86d532` through the `suite` stage
+  of `dev/eigen_p4_gate.sh`: 279 tests, 0 failed, 0 skipped, 2856
+  expectations passed, under RcppEigen 0.3.4.0.2 and under 0.4.9.9.5.
+- Shown to fail: the test file of `e86d532` on a clone of `894826d`, the
+  build before the rule (`dev/criterion_na_check.R`), fails at all four
+  `ncp`, with `criterion_final` 1, NaN, Inf and 0.934 at `ncp` 5, 6, 7 and
+  12; the other 8 expectations pass. `dev/to-do.md` has the reminder line.
 
 **Rulings on the last items** (maintainer, 2026-11-19: "agree all" to the
 author's recommendations). Recorded here; none is carried out.
