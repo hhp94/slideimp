@@ -682,7 +682,7 @@ with `std::min_element`. No route to the failure is known, since a Gram holding 
 before the eigenvectors exist; `dev/probe_p2s6_run.sh` forces it.
 
 **Against R's own calls.** READ, in R's sources at the tags `R-4-6-1` and `R-4-4-0`
-(`src/modules/lapack/Lapack.c`, `src/main/array.c`, `src/modules/lapack/dlapack.f`, and
+(`Lapack.c` and `dlapack.f` of its LAPACK module, `array.c` of its main sources, and
 `eigen.R` and `svd.R` of base); the functions named here are the same text at both tags, apart
 from two initializers in `La_rs`. One difference is material, and it stays by ruling
 (maintainer, 2026-11-20):
