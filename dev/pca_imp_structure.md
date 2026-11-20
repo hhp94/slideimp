@@ -75,7 +75,7 @@ of the chain uses Armadillo, and since Phase 3 of `dev/eigen_conversion.md` the 
 does not link to it: RcppArmadillo is not in `LinkingTo`, so the generated
 `src/RcppExports.cpp` does not include `RcppArmadillo.h`.
 Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
-`impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
+`knn_kernel.cpp`, `sample_each_rep_cpp.cpp`.
 
 ## Layer 1: R entry point (`R/pca_imp.R`)
 
@@ -797,7 +797,7 @@ two norms of LOBPCG, "Phase 4, as carried out" for the three sums of the EM loop
   applies a `.Machine$double.eps` variance floor.
 - `src/matrix_checks.h` is included by `src/armaSVD.cpp`, for `col_ptr()` and
   `stop_on_bad_col_index()`, as by
-  `src/mat_stats.cpp`, `src/sample_each_rep_cpp.cpp` and `src/imputed_value.h`.
+  `src/mat_stats.cpp`, `src/sample_each_rep_cpp.cpp` and `src/knn_kernel.cpp`.
   Besides those it holds `stop_on_inf()`, which the PCA kernel does not call and which
   is reached from `src/mat_stats.cpp` via `check_inf()`, which `mean_imp_col()` calls
   (`R/mean_imp_col.R`: `check_inf(obj)`). `pca_imp()` no longer reaches it: its mean
@@ -845,7 +845,7 @@ logs are gated.
   neither does any header it pulls in. All intra-call parallelism comes from whatever BLAS
   the R installation links.
 - **RcppThread** is reached through `par_for()` (`src/par_for.h`: `inline void par_for(`),
-  which only the K-NN kernel calls (`src/impute_knn_brute.cpp`, not in this
+  which only the K-NN kernel calls (`src/knn_kernel.cpp`, not in this
   chain); `col_vars()` (`R/col_vars.R`: `col_vars <- function(`), which
   `pca_imp()` does call, runs on one thread and takes no `cores`.
   `src/Makevars` links `RcppThread::LdFlags()`; `src/Makevars.win`

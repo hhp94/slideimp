@@ -65,7 +65,7 @@ prep)
   echo "== clones of $(git -C "$base" rev-parse --short HEAD)"
   # a file the working tree deleted is listed too: it is removed from `p4`,
   # not copied
-  git -C "$repo" diff --name-only HEAD | while read -r f; do
+  git -C "$repo" diff --no-renames --name-only HEAD | while read -r f; do
     if [ ! -e "$repo/$f" ]; then
       rm -f "$p4/$f"
       echo "   removed $f"

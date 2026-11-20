@@ -8,7 +8,7 @@
 
 // Helpers shared by the kernels that read an R matrix in place:
 // src/mat_stats.cpp, src/sample_each_rep_cpp.cpp and the K-NN kernel
-// (src/imputed_value.h, src/impute_knn_brute.cpp).
+// (src/knn_kernel.cpp).
 //
 // Indices that come from R, and counts bounded by nrow() or ncol(), are int.
 // An offset into column-major storage is taken in std::size_t, through

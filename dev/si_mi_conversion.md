@@ -893,12 +893,12 @@ Decided in discussion (maintainer, 2026-11-18):
   `dev/to-do.md` gains the NEWS line.
 - The kernel fills those cells itself. It leaves a cell in two ways: a whole
   column, when no candidate shares an observed row with it, so the worker
-  skips it (`src/impute_knn_brute.cpp`: `if (n_neighbors > 0)`), and a single cell,
+  skips it (`src/knn_kernel.cpp`: `if (n_neighbors > 0)`), and a single cell,
   when none of the chosen neighbors is observed at that row, so its weight
   total is 0 and no value is written
-  (`src/imputed_value.cpp`: `out[r] = ws_ptr[r] / wt_ptr[r];`).
+  (`src/knn_kernel.cpp`: `out[r] = ws_ptr[r] / wt_ptr[r];`).
   Both kinds sit in an imputed column, whose masked copy (holes set to 0) and
-  observed count the kernel already holds (`src/impute_knn_brute.cpp`:
+  observed count the kernel already holds (`src/knn_kernel.cpp`:
   `n_col_valid[local_pos] = valid_count;`), so the mean costs one pass over
   that column's copy, and nothing of the input's size.
 - The columns over `colmax` stay in R. The kernel never sees them: they are

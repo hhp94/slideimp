@@ -1,21 +1,141 @@
-#include "imputed_value.h"
-#include "loc_timer.h"
+// The K-NN kernel: input validation, the masked copy, the neighbor search,
+// the weights, the result layout and the accumulation, with the exported
+// entry point impute_knn_brute() at the end. Everything but the entry point
+// is local to this file.
 
-// parallelism
+#include <Rcpp.h>
 #include <RcppThread.h> // RcppThread::ProgressBar, checkUserInterrupt
-#include "par_for.h"    // parallelFor with a serial path at one thread
+#include "loc_timer.h"
+#include "matrix_checks.h" // col_ptr, stop_on_bad_col_index, stop_on_inf
+#include "par_for.h"       // parallelFor with a serial path at one thread
 
-// standard library
-#include <algorithm> // std::min, std::max, std::stable_sort, std::swap
-#include <cmath>     // std::isnan, std::abs, std::pow
+#include <algorithm> // std::max, std::min, std::stable_sort
+#include <cmath>     // std::abs, std::isfinite, std::isnan, std::pow, std::sqrt
 #include <cstddef>   // std::size_t
-#include <limits>    // std::numeric_limits<double>::infinity()
+#include <cstdint>   // std::uint8_t
+#include <limits>    // std::numeric_limits
 #include <memory>    // std::unique_ptr
-#include <vector>    // std::vector<NeighborInfo>
+#include <utility>   // std::swap
+#include <vector>
 
 // Indices that come from R (rows, columns, k) are int, bounded by nrow() and
 // ncol(); a column's offset into a buffer is taken in size_t by col_ptr()
 // (src/matrix_checks.h).
+
+namespace {
+
+// single source of truth for the mask storage type
+using MaskByte = std::uint8_t;
+
+// GroupLayout: single source of truth for group boundaries.
+// Groups 1+2 (imputed + missing-no-impute) share identical kernel treatment
+// and live together in obj_masked / nmiss_masked at local cols [0, n_masked()).
+// n_imp is retained so initialize_result knows which columns actually get
+// imputed.
+//
+// complete_start() is a "virtual" index: there is no physical column at that
+// position in obj_masked. It's used as a tag in nn_columns to mark
+// "this neighbor came from group 3, offset (local - complete_start()) into
+// grp_complete".
+//
+// The groups are disjoint and in range (validate_knn_inputs), so every count
+// here is at most ncol().
+struct GroupLayout {
+  int n_imp;
+  int n_mni;
+  int n_complete;
+  int mni_start() const { return n_imp; }
+  int n_masked() const { return n_imp + n_mni; }
+  int complete_start() const { return n_imp + n_mni; }
+  int n_working() const { return n_imp + n_mni + n_complete; }
+};
+
+void validate_knn_inputs(const Rcpp::NumericMatrix &obj, const int k,
+                         const Rcpp::IntegerVector &grp_impute,
+                         const Rcpp::IntegerVector &grp_miss_no_imp,
+                         const Rcpp::IntegerVector &grp_complete,
+                         const int method, const double dist_pow) {
+  const int n_rows = obj.nrow();
+  const int n_cols = obj.ncol();
+
+  if (n_rows == 0) {
+    Rcpp::stop("'obj' must have at least one row");
+  }
+
+  if (n_cols < 2) {
+    Rcpp::stop("'obj' must have at least two columns");
+  }
+
+  // NA_integer_ is INT_MIN, so an NA k fails here too.
+  if (k < 1) {
+    Rcpp::stop("'k' must be >= 1");
+  }
+
+  if (method != 0 && method != 1) {
+    Rcpp::stop("'method' must be 0 (Euclidean) or 1 (Manhattan)");
+  }
+
+  if (!std::isfinite(dist_pow) || dist_pow < 0.0) {
+    Rcpp::stop("'dist_pow' must be finite and >= 0");
+  }
+
+  stop_on_bad_col_index(grp_impute, n_cols, "grp_impute");
+  stop_on_bad_col_index(grp_miss_no_imp, n_cols, "grp_miss_no_imp");
+  stop_on_bad_col_index(grp_complete, n_cols, "grp_complete");
+
+  // The three groups partition the working set. The kernel relies on that
+  // when it tags a group-3 neighbor by its offset into grp_complete, and a
+  // column listed twice would appear as its own neighbor at distance zero
+  // and take the whole weight, so the partition is checked, not assumed.
+  std::vector<MaskByte> seen(n_cols, 0);
+  auto claim_group = [&](const Rcpp::IntegerVector &g, const char *name) {
+    for (R_xlen_t i = 0; i < g.size(); ++i) {
+      if (seen[g[i]]) {
+        Rcpp::stop("'%s' contains column index %d, which already belongs to "
+                   "another group. The three groups must be disjoint",
+                   name, g[i]);
+      }
+      seen[g[i]] = 1;
+    }
+  };
+
+  claim_group(grp_impute, "grp_impute");
+  claim_group(grp_miss_no_imp, "grp_miss_no_imp");
+  claim_group(grp_complete, "grp_complete");
+
+  // Group 3 is read straight out of obj with no mask
+  // (impute_column_values), because its columns are declared complete. A
+  // NaN there is never excluded from the weighted sum, so it produces a
+  // missing imputed value with no error. This is where "complete" is
+  // enforced; it costs one pass over the group-3 block, against the
+  // k * n_complete distance passes the kernel is about to do.
+  const double *x = obj.begin();
+  for (R_xlen_t i = 0; i < grp_complete.size(); ++i) {
+    const double *col = col_ptr(x, grp_complete[i], n_rows);
+    for (int r = 0; r < n_rows; ++r) {
+      if (std::isnan(col[r])) {
+        Rcpp::stop("'grp_complete' column %d has a missing value at row %d. "
+                   "'grp_complete' columns must be fully observed",
+                   grp_complete[i] + 1, r + 1);
+      }
+    }
+  }
+
+  // disjoint and in range, so at most n_cols
+  const int n_working = static_cast<int>(
+      grp_impute.size() + grp_miss_no_imp.size() + grp_complete.size());
+
+  if (grp_impute.size() > 0) {
+    if (n_working < 2) {
+      Rcpp::stop("need at least one candidate neighbor column");
+    }
+
+    if (k > n_working - 1) {
+      Rcpp::stop("'k' is %d, more than the %d candidate neighbor columns", k,
+                 n_working - 1);
+    }
+  }
+}
 
 // -----------------------------------------------------------------------------
 // metric definitions, add new metrics by defining a struct with an accumulate()
@@ -290,8 +410,8 @@ distance_vector(const double *obj_masked, const MaskByte *nmiss_masked,
 }
 
 // inverse-distance KNN weights, rescaled so the largest weight is 1
-static std::vector<double> knn_weights(const std::vector<NeighborInfo> &top_k,
-                                       double dist_pow) {
+std::vector<double> knn_weights(const std::vector<NeighborInfo> &top_k,
+                                double dist_pow) {
   const std::size_t n = top_k.size();
   std::vector<double> w(n, 1.0);
 
@@ -334,6 +454,173 @@ static std::vector<double> knn_weights(const std::vector<NeighborInfo> &top_k,
 
   return w;
 }
+
+// The result has one entry per missing cell of group 1 (local columns
+// [0, n_imp) of the masked copy), column by column and down each column:
+// `loc` holds its 1-based row and original 1-based column, `value` holds NA
+// until impute_column_values() writes it. col_offsets[i] is where column i's
+// entries start, and col_offsets[n_imp] is their total.
+// n_col_valid holds the observed count of each masked column, taken during
+// the copy-with-mask pass, so the missing counts need no second pass over
+// the mask. Only entries [0, layout.n_imp) are read here.
+void initialize_result(const std::vector<MaskByte> &nmiss_masked,
+                       const int n_rows, const Rcpp::IntegerVector &grp_impute,
+                       const GroupLayout &layout,
+                       const std::vector<int> &n_col_valid,
+                       std::vector<std::size_t> &col_offsets,
+                       Rcpp::IntegerMatrix &loc, Rcpp::NumericVector &value) {
+  const int n_imp = layout.n_imp;
+
+  col_offsets.clear();
+  loc = Rcpp::IntegerMatrix(0, 2);
+  value = Rcpp::NumericVector(0);
+
+  if (n_imp == 0) {
+    return;
+  }
+
+  col_offsets.assign(static_cast<std::size_t>(n_imp) + 1, 0);
+
+  // at most n_imp * n_rows, so a size_t sum cannot overflow
+  std::size_t sum_missing = 0;
+
+  for (int i = 0; i < n_imp; ++i) {
+    const int n_miss_i = n_rows - n_col_valid[i];
+    sum_missing += static_cast<std::size_t>(n_miss_i);
+    col_offsets[i + 1] = sum_missing;
+  }
+
+  if (sum_missing == 0) {
+    return;
+  }
+
+  // `loc` is an R matrix, whose dims are int.
+  if (sum_missing > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    Rcpp::stop("the columns to impute hold %d missing values, but the result "
+               "has a row for each and an R matrix holds at most %d rows. "
+               "Impute fewer columns at a time with 'subset'",
+               sum_missing, std::numeric_limits<int>::max());
+  }
+
+  const int n_total = static_cast<int>(sum_missing);
+  loc = Rcpp::IntegerMatrix(Rcpp::no_init_matrix(n_total, 2));
+  value = Rcpp::NumericVector(n_total, NA_REAL);
+  int *loc_row = loc.begin();
+  int *loc_col = loc.begin() + n_total;
+
+  for (int i = 0; i < n_imp; ++i) {
+    const MaskByte *mask_col = col_ptr(nmiss_masked.data(), i, n_rows);
+    const int orig_col_1based = grp_impute[i] + 1;
+    std::size_t w = col_offsets[i];
+
+    // copy_with_mask counted the ones of this mask column into n_col_valid,
+    // so it holds exactly as many zeros as its slice of the result has rows.
+    for (int r = 0; r < n_rows; ++r) {
+      if (mask_col[r] == 0) {
+        loc_row[w] = r + 1;           // 1-based row
+        loc_col[w] = orig_col_1based; // original 1-based column
+        ++w;
+      }
+    }
+  }
+}
+
+// Runs in a worker: plain pointers and std containers only, never an Rcpp
+// object. `out` is this column's slice of the result values, and loc_rows
+// the same slice of the first column of `loc`: the n_miss 1-based rows the
+// values stand for.
+//
+// nn_columns holds tagged positions: values < layout.complete_start() index
+// directly into obj_masked/nmiss_masked; values >= layout.complete_start()
+// must be de-tagged via (nn_columns[j] - complete_start()) and looked up
+// through grp_complete into obj.
+//
+// Neighbors are split into masked (groups 1+2) and unmasked (group 3) buckets
+// before accumulation. Each bucket gets its own clean inner loop.
+//
+// Unmasked simplification: every row is valid, so wt_ptr[r] += w for every r,
+// every unmasked neighbor collapses to a single "total_unmasked_w" added to
+// every row once at the end. The ws_ptr accumulation still varies per row
+// (different obj values).
+void impute_column_values(double *out, const double *obj_masked,
+                          const MaskByte *nmiss_masked, const int n_rows,
+                          const GroupLayout &layout,
+                          const std::vector<int> &nn_columns,
+                          const std::vector<double> &nn_weights,
+                          const int *loc_rows, const int n_miss,
+                          const double *obj, const int *grp_complete) {
+  if (n_miss == 0) {
+    return;
+  }
+
+  std::vector<double> weighted_sums(n_miss, 0.0);
+  std::vector<double> weight_totals(n_miss, 0.0);
+
+  double *ws_ptr = weighted_sums.data();
+  double *wt_ptr = weight_totals.data();
+
+  const int complete_start = layout.complete_start();
+
+  std::vector<std::size_t> masked_j;
+  std::vector<std::size_t> complete_j;
+  masked_j.reserve(nn_columns.size());
+  complete_j.reserve(nn_columns.size());
+
+  for (std::size_t j = 0; j < nn_columns.size(); ++j) {
+    if (nn_columns[j] < complete_start) {
+      masked_j.push_back(j);
+    } else {
+      complete_j.push_back(j);
+    }
+  }
+
+  // masked neighbors (groups 1+2) ----
+  for (std::size_t j : masked_j) {
+    const double w = nn_weights[j];
+    const int local = nn_columns[j];
+    const double *obj_col = col_ptr(obj_masked, local, n_rows);
+    const MaskByte *nmiss_col = col_ptr(nmiss_masked, local, n_rows);
+
+    for (int r = 0; r < n_miss; ++r) {
+      const int row_idx = loc_rows[r] - 1; // loc holds 1-based rows
+      double valid = nmiss_col[row_idx];   // uint8 -> double: exact 0.0/1.0
+      double weight = w * valid;
+      ws_ptr[r] += weight * obj_col[row_idx];
+      wt_ptr[r] += weight;
+    }
+  }
+
+  // complete neighbors (group 3) ----
+  // valid == 1 for every row, so weight == w uniformly across rows.
+  double total_complete_w = 0.0;
+
+  for (std::size_t j : complete_j) {
+    const double w = nn_weights[j];
+    const int c = nn_columns[j] - complete_start;
+    const double *obj_col = col_ptr(obj, grp_complete[c], n_rows);
+
+    for (int r = 0; r < n_miss; ++r) {
+      ws_ptr[r] += w * obj_col[loc_rows[r] - 1];
+    }
+    total_complete_w += w;
+  }
+
+  if (total_complete_w > 0.0) {
+    for (int r = 0; r < n_miss; ++r) {
+      wt_ptr[r] += total_complete_w;
+    }
+  }
+
+  // a row where none of the chosen neighbors is observed keeps the NA
+  // initialize_result() wrote.
+  for (int r = 0; r < n_miss; ++r) {
+    if (wt_ptr[r] > 0.0) {
+      out[r] = ws_ptr[r] / wt_ptr[r];
+    }
+  }
+}
+
+} // namespace
 
 // -----------------------------------------------------------------------------
 // Entry point

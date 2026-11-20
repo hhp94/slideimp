@@ -19,7 +19,7 @@ compiler, and change floating-point results in the bargain.
 
 Chunking a loop to amortize a CONTROL-FLOW check is not what this bans. An
 early-abandon bound tested once per block rather than once per element - as in
-`calc_distance_raw` (`src/impute_knn_brute.cpp`), which chunks over a
+`calc_distance_raw` (`src/knn_kernel.cpp`), which chunks over a
 `GRAIN` constant so the distance loop can quit early without branching on
 every row - is an algorithmic optimization that happens to look like a strip
 mine. The ban is on chunking whose PURPOSE is to hand-roll vectorization. The
