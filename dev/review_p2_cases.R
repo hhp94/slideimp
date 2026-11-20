@@ -1,6 +1,6 @@
-# Review of Phase 2 of dev/eigen_conversion.md (dev/review_p2.md): cases run
-# through the public pca_imp() on one installed build of slideimp, each
-# result or error written to its own .rds, so two builds can be compared by
+# Review of Phase 2 of dev/eigen_conversion.md at 4f2b669 (dev/review_p2.md):
+# cases run through the public pca_imp() on one installed build of slideimp,
+# each result or error written to its own .rds, so two builds can be compared by
 # dev/review_p2_compare.R. Dev only, run by hand from the package root:
 #   Rscript dev/review_p2_cases.R <lib> <out dir> <group> [<case>]
 # <lib> holds the build under test (dev/eigen_time_install.R made it) and

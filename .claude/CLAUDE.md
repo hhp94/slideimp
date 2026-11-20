@@ -193,9 +193,10 @@ of one line that occurs exactly once in that file (`R/knn_imp.R`:
 `knn_imp <- function(`), never by line number. A line number moves with every
 edit above it and still lands on a real line, so it goes wrong without
 failing; a stale fragment matches nothing. `uv run dev/check_map_anchors.py`
-checks every citation in the tracked notes and in this file; its header gives
-the forms. Run it after changing code that a note cites, and fix what it
-reports in the same change.
+checks every citation in the two maps and in this file; its header gives the
+forms, and naming another note on its command line checks that note too. Run
+it after changing code that a map cites, and fix what it reports in the same
+change.
 
 ## Layout
 

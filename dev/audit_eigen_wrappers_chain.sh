@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Audit of dev/review_eigen_wrappers.md, finding 1 (dev/eigen_conversion.md,
-# "The review of the wrapper layer"): does the chain's own dsyevr call write
-# past its eigenvalue buffer when pca_imp() reaches it? Clones a commit
-# outside the working tree, instruments the clone's src/eig_sym_sel.h, and
-# runs pca_imp() on it. Dev only, run by hand, from the package root:
+# Audit of dev/review_eigen_wrappers.md, finding 1 (dev/eigen_conversion.md at
+# 4f2b669, "The review of the wrapper layer"): does the chain's own dsyevr call
+# write past its eigenvalue buffer when pca_imp() reaches it? Clones a commit
+# outside the working tree, instruments the clone's src/eig_sym_sel.h, and runs
+# pca_imp() on it. Dev only, run by hand, from the package root:
 #   bash dev/audit_eigen_wrappers_chain.sh <scratch dir> [<commit>]
 # <commit> defaults to HEAD; it must be one in which src/eig_sym_sel.h still
 # calls dsyevr itself (79cce0f is the one measured). Under Git Bash, set

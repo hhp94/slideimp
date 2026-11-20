@@ -1,5 +1,6 @@
 # Install one build of slideimp into its own library, for the timing driver
-# dev/eigen_time_builds.R (dev/eigen_conversion.md, Phase 0, "Timing").
+# dev/eigen_time_builds.R (dev/eigen_conversion.md at 4f2b669, Phase 0,
+# "Timing").
 #   Rscript dev/eigen_time_install.R <source dir> <lib>
 # <source dir> is a checkout of the build to time, outside this tree, since
 # other sessions may be building here, and used for nothing else while this

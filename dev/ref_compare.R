@@ -33,14 +33,14 @@
 # - Functions and environments are skipped and counted.
 # Cases present in only one capture fail. Exit status is 1 on any failure.
 #
-# The noise floor (dev/eigen_conversion.md, Phase 0): capture the reference
-# build twice, in two processes, and compare the two. On the reference build
-# that run is bitwise, so the defaults below are not tighter than it. They
-# are loose enough for a change of summation order in the last bits (a few
-# ulp) and tight enough to fail on anything larger. A step that needs looser
-# passes --tol-abs and --tol-rel and says why in its commit.
-# dev/ref_compare_selftest.R proves this script still fails where it should;
-# rerun it after changing the walk or the defaults.
+# The noise floor (dev/eigen_conversion.md at 4f2b669, Phase 0): capture the
+# reference build twice, in two processes, and compare the two. On the reference
+# build that run is bitwise, so the defaults below are not tighter than it. They
+# are loose enough for a change of summation order in the last bits (a few ulp)
+# and tight enough to fail on anything larger. A step that needs looser passes
+# --tol-abs and --tol-rel and says why in its commit. dev/ref_compare_selftest.R
+# proves this script still fails where it should; rerun it after changing the
+# walk or the defaults.
 
 tol_abs <- 1e-12
 tol_rel <- 1e-10

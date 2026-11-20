@@ -5,7 +5,8 @@ this file when the branch merges; git history keeps it.
 
 The Armadillo removal (`dev/eigen_conversion.md`) is done on this branch too
 (maintainer, 2026-11-18). Where this file says "the `eigen` branch", it
-means that work; no such branch is merged.
+means that work; no such branch is merged. That plan was deleted when its
+last phase landed; read it with `git show 4f2b669:dev/eigen_conversion.md`.
 
 ## Why
 

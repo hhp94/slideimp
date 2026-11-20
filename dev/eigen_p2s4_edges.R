@@ -1,7 +1,7 @@
-# Inputs for step 4 of Phase 2 (dev/eigen_conversion.md), which moved the QR,
-# the triangular solve and the dsyevd of src/lobpcg_warm.h onto si_la. The
-# Phase 0 capture asks LOBPCG for at most 6 eigenpairs and never makes one of
-# those three calls fail; this runs what it leaves out:
+# Inputs for step 4 of Phase 2 (dev/eigen_conversion.md at 4f2b669), which moved
+# the QR, the triangular solve and the dsyevd of src/lobpcg_warm.h onto si_la.
+# The Phase 0 capture asks LOBPCG for at most 6 eigenpairs and never makes one
+# of those three calls fail; this runs what it leaves out:
 #
 # - LOBPCG with 12 to 41 eigenpairs, where the Rayleigh-Ritz problems reach
 #   orders 34 to 79 (dev/probe_p2s4_syevd_lwork.R says why that range);

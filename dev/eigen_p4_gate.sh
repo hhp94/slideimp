@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Phase 4 of dev/eigen_conversion.md: the gate of one item, on clones in a
-# scratch folder outside the repository. The working tree is read and never
+# Phase 4 of dev/eigen_conversion.md at 4f2b669: the gate of one item, on clones
+# in a scratch folder outside the repository. The working tree is read and never
 # built in. Dev only, run by hand from the package root:
 #   bash dev/eigen_p4_gate.sh <scratch dir> <stage>
 # Stages, in order:

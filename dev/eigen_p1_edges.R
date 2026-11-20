@@ -1,10 +1,10 @@
-# Edge inputs for the exports Phase 1 of dev/eigen_conversion.md converts:
-# empty dims, integer and logical input, a vector that is not a matrix, NA,
-# NaN and Inf, a zero held as both 0 and -0 at a column's extreme, and the
-# sampler's odd arguments. The Phase 0 capture runs these exports on
-# ordinary input only; this checks that the rewritten kernels compute what
-# the Armadillo ones did on the inputs both accept. The K-NN kernel cases
-# at the end were added in step 3.
+# Edge inputs for the exports Phase 1 of dev/eigen_conversion.md at 4f2b669
+# converts: empty dims, integer and logical input, a vector that is not a
+# matrix, NA, NaN and Inf, a zero held as both 0 and -0 at a column's extreme,
+# and the sampler's odd arguments. The Phase 0 capture runs these exports on
+# ordinary input only; this checks that the rewritten kernels compute what the
+# Armadillo ones did on the inputs both accept. The K-NN kernel cases at the end
+# were added in step 3.
 #
 # Run from the package root of a build, with a label naming the capture:
 #   Rscript dev/eigen_p1_edges.R <label>

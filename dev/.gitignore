@@ -19,7 +19,6 @@
 !check_map_anchors.py
 !check_slideimp_extra.R
 !dev-utils.R
-!eigen_conversion.md
 !eigen_install_candidate.R
 !eigen_p1_edges.R
 !eigen_p2s4_edges.R

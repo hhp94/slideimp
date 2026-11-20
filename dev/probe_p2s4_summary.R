@@ -1,6 +1,6 @@
-# Step 4 of Phase 2 (dev/eigen_conversion.md): read the event logs that the
-# instrumented clones of dev/probe_p2s4_run.sh wrote, one of the code before
-# the step and one of the code after it, over the same run.
+# Step 4 of Phase 2 (dev/eigen_conversion.md at 4f2b669): read the event logs
+# that the instrumented clones of dev/probe_p2s4_run.sh wrote, one of the code
+# before the step and one of the code after it, over the same run.
 #   Rscript dev/probe_p2s4_summary.R <old log> <new log>
 # It prints, for each: how often each call was made and failed, how every
 # lobpcg_solve() call ended, and the orders dsyevd was asked for; then the

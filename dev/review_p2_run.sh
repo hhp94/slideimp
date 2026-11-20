@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Review of Phase 2 of dev/eigen_conversion.md (dev/review_p2.md): every
-# build and run of the review, each stage on clones in a scratch folder
-# outside the repository. The working tree is read and never built in. Dev
-# only, run by hand from the package root:
+# Review of Phase 2 of dev/eigen_conversion.md at 4f2b669 (dev/review_p2.md):
+# every build and run of the review, each stage on clones in a scratch folder
+# outside the repository. The working tree is read and never built in. Dev only,
+# run by hand from the package root:
 #   bash dev/review_p2_run.sh <scratch dir> <stage> [...]
 # Stages, in the order the note uses them:
 #   build    clone 59920f4 (old) and 597d28e (new) and install each into its

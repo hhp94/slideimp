@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Step 4 of Phase 2 (dev/eigen_conversion.md): run the Phase 0 capture and
-# dev/eigen_p2s4_edges.R on two instrumented clones outside the working tree,
-# one of src/lobpcg_warm.h before the step and one after, and compare them.
-# Dev only, run by hand, from the package root:
+# Step 4 of Phase 2 (dev/eigen_conversion.md at 4f2b669): run the Phase 0
+# capture and dev/eigen_p2s4_edges.R on two instrumented clones outside the
+# working tree, one of src/lobpcg_warm.h before the step and one after, and
+# compare them. Dev only, run by hand, from the package root:
 #   bash dev/probe_p2s4_run.sh <scratch dir> [<old commit>]
 # <old commit> defaults to HEAD. For the first half of the step it was the
 # last commit whose src/lobpcg_warm.h calls Armadillo for its QR, triangular

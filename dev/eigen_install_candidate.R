@@ -1,6 +1,7 @@
 # Install the RcppEigen candidate (Eigen 5) into its own private library
-# (dev/eigen_conversion.md, "Both RcppEigen versions"). Never over the CRAN
-# one: a run selects the candidate by setting R_LIBS=<lib> before R starts.
+# (dev/eigen_conversion.md at 4f2b669, "Both RcppEigen versions"). Never over
+# the CRAN one: a run selects the candidate by setting R_LIBS=<lib> before R
+# starts.
 #   Rscript dev/eigen_install_candidate.R <lib> [--check]
 # The candidate comes from the RcppCore r-universe, the source
 # https://github.com/RcppCore/RcppEigen/issues/151 names. It installs only

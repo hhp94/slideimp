@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# Review of Phase 2 of dev/eigen_conversion.md (dev/review_p2.md): install
-# one more commit or tag into its own library in the scratch folder and run
-# groups of dev/review_p2_cases.R on it, to compare with the two builds of
+# Review of Phase 2 of dev/eigen_conversion.md at 4f2b669 (dev/review_p2.md):
+# install one more commit or tag into its own library in the scratch folder and
+# run groups of dev/review_p2_cases.R on it, to compare with the two builds of
 # dev/review_p2_run.sh. Used for v1.2.0, the release, and for 905e1ac and
-# eade032, the commits either side of step 3. Dev only, from the package
-# root:
+# eade032, the commits either side of step 3. Dev only, from the package root:
 #   bash dev/review_p2_tag.sh <scratch dir> <commit or tag> "<groups>"
 set -uo pipefail
 repo="$(pwd)"

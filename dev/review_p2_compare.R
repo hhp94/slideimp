@@ -1,5 +1,5 @@
-# Review of Phase 2 of dev/eigen_conversion.md (dev/review_p2.md): compare
-# the cases dev/review_p2_cases.R wrote for two builds. Dev only:
+# Review of Phase 2 of dev/eigen_conversion.md at 4f2b669 (dev/review_p2.md):
+# compare the cases dev/review_p2_cases.R wrote for two builds. Dev only:
 #   Rscript dev/review_p2_compare.R <old dir> <new dir> [<group regex>]
 # Per case it prints one line: whether both sides ended the same way; for two
 # values, whether they are identical(), and if not, whether they are once

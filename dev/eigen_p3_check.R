@@ -1,4 +1,4 @@
-# Phase 3 of dev/eigen_conversion.md: devtools::document() or
+# Phase 3 of dev/eigen_conversion.md at 4f2b669: devtools::document() or
 # devtools::check() on a scratch clone, never on the working tree
 # (dev/eigen_p3_gate.sh makes the clone). Run from the ROOT OF THAT CLONE:
 #   Rscript dev/eigen_p3_check.R document --in-scratch-clone

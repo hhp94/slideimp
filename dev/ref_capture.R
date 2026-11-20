@@ -1,8 +1,8 @@
 # Reference capture: run a fixed set of calls on one build and save every
 # result, with its type, dims and attributes, so a later build can be checked
 # against it by dev/ref_compare.R. Shared by the two plans on the si-mi
-# branch, dev/si_mi_conversion.md and dev/eigen_conversion.md (Phase 0 in
-# each), so it covers what both list.
+# branch, dev/si_mi_conversion.md and dev/eigen_conversion.md at 4f2b669 (Phase
+# 0 in each), so it covers what both list.
 #
 # Run from the package root, with a label naming the capture:
 #   Rscript dev/ref_capture.R e5b3cf7
@@ -53,7 +53,7 @@ meta <- list(
   blas = extSoftVersion()[["BLAS"]],
   ## The build links to whichever RcppEigen and RcppArmadillo come first on
   ## the library path, which R_LIBS set before R starts can change
-  ## (dev/eigen_conversion.md, "Both RcppEigen versions").
+  ## (dev/eigen_conversion.md at 4f2b669, "Both RcppEigen versions").
   rcppeigen = as.character(packageVersion("RcppEigen")),
   rcppeigen_lib = dirname(find.package("RcppEigen")),
   rcpparmadillo = as.character(packageVersion("RcppArmadillo")),
@@ -106,18 +106,18 @@ stopifnot(!anyNA(x0))
 ## x2i: x2 with one Inf, for the messages that name the offending cell. It
 ## sits off the first row and column, so an off-by-one in the 1-based row
 ## and column those messages print shows. It sits in a column with holes for
-## mean_imp_col_internal(), deleted in Phase 1 of dev/eigen_conversion.md;
-## the placement stays so the input matches the reference capture's.
+## mean_imp_col_internal(), deleted in Phase 1 of dev/eigen_conversion.md at
+## 4f2b669; the placement stays so the input matches the reference capture's.
 x2i <- x2
 inf_col <- which(colSums(is.na(x2)) > 0L & seq_len(ncol(x2)) >= 10L)[[1]]
 inf_row <- which(!is.na(x2[, inf_col]) & seq_len(nrow(x2)) >= 3L)[[1]]
 x2i[inf_row, inf_col] <- Inf
 
-## Inputs that take the PCA paths x1 does not (dev/eigen_conversion.md,
-## Phase 0 review). xb: large enough that solver = "auto" reaches the
-## kernel's own choice (R demotes auto to exact when min(nrow, eligible
-## columns) < 250). xw and xt: every column has a hole, so the kernel has no
-## Gram cache, wide and tall. xt2: tall, with complete columns, for LOBPCG.
+## Inputs that take the PCA paths x1 does not (dev/eigen_conversion.md at
+## 4f2b669, Phase 0 review). xb: large enough that solver = "auto" reaches the
+## kernel's own choice (R demotes auto to exact when min(nrow, eligible columns)
+## < 250). xw and xt: every column has a hole, so the kernel has no Gram cache,
+## wide and tall. xt2: tall, with complete columns, for LOBPCG.
 set.seed(11)
 xb <- sim_mat(n = 300, p = 400, perc_total_na = 0.1, perc_col_na = 0.5)$input
 set.seed(12)
@@ -413,7 +413,8 @@ case(
   )
 )
 
-## Armadillo-facing internals called directly (dev/eigen_conversion.md)
+## Armadillo-facing internals called directly (dev/eigen_conversion.md at
+## 4f2b669)
 case("int_col_min_max", col_min_max(x2))
 case("int_col_vars", col_vars_internal(x2))
 case("int_check_inf", check_inf(x2))

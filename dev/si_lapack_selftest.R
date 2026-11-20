@@ -1,5 +1,5 @@
-# Proves the test of the wrapper layer can fail (dev/eigen_conversion.md,
-# "Rulings on the last items"). Dev only, run by hand, from the package
+# Proves the test of the wrapper layer can fail (dev/eigen_conversion.md at
+# 4f2b669, "Rulings on the last items"). Dev only, run by hand, from the package
 # root:
 #   Rscript dev/si_lapack_selftest.R [--build=<dir>] [--only=<regex>]
 # --build   where the broken copies are written and built (default: a folder

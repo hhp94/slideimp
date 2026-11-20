@@ -1,6 +1,6 @@
-# Timing driver (dev/eigen_conversion.md, Phase 0, "Timing"): two installed
-# builds of slideimp, each in its own library, timed in alternating fresh
-# Rscript processes; reports medians over the interleaved repetitions.
+# Timing driver (dev/eigen_conversion.md at 4f2b669, Phase 0, "Timing"): two
+# installed builds of slideimp, each in its own library, timed in alternating
+# fresh Rscript processes; reports medians over the interleaved repetitions.
 #   Rscript dev/eigen_time_builds.R --lib-a=<lib> --lib-b=<lib> [options]
 # Install each build first with dev/eigen_time_install.R; a is the reference,
 # b the converted build. Proving the driver: pass the reference twice, as two

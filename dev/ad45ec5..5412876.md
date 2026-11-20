@@ -12,6 +12,9 @@ broken.
 
 Code is cited by file and a fragment of one line, as `dev/` notes do.
 
+`dev/eigen_conversion.md` was deleted when its last phase landed; read it
+with `git show 4f2b669:dev/eigen_conversion.md`.
+
 ## The three questions asked
 
 ### Int narrowing or overflow in index and offset arithmetic

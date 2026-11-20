@@ -1,8 +1,8 @@
-// The test of the wrapper layer's own (dev/eigen_conversion.md, "Rulings on
-// the last items"): each function of src/si_lapack.h exported to R as it is,
-// with guard cells after every buffer it writes. dev/si_lapack_test.R stages
-// this file beside src/si_lapack.h and src/si_lapack.cpp, compiles it with
-// Rcpp::sourceCpp() and decides; nothing here decides whether a result is
+// The test of the wrapper layer's own (dev/eigen_conversion.md at 4f2b669,
+// "Rulings on the last items"): each function of src/si_lapack.h exported to R
+// as it is, with guard cells after every buffer it writes. dev/si_lapack_test.R
+// stages this file beside src/si_lapack.h and src/si_lapack.cpp, compiles it
+// with Rcpp::sourceCpp() and decides; nothing here decides whether a result is
 // right. sourceCpp() builds si_lapack.cpp as a translation unit of its own,
 // because the header of the same name is included here.
 //

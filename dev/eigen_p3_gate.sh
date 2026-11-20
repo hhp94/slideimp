@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Phase 3 of dev/eigen_conversion.md: every build and run of the phase, on
-# clones in a scratch folder outside the repository. The working tree is
-# read and never built in. Dev only, run by hand from the package root:
+# Phase 3 of dev/eigen_conversion.md at 4f2b669: every build and run of the
+# phase, on clones in a scratch folder outside the repository. The working tree
+# is read and never built in. Dev only, run by hand from the package root:
 #   bash dev/eigen_p3_gate.sh <scratch dir> <stage>
 # Stages, in order:
 #   prep     clone HEAD twice: `base` as it is, `p3` with the working tree's

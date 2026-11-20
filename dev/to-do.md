@@ -8,6 +8,10 @@ An entry says what to change and why, enough that a session with no memory of
 the conversation can pick it up. If an entry turns out to be wrong, delete it
 and say so in chat.
 
+`dev/eigen_conversion.md`, the plan that took Armadillo out of `src/`, was
+deleted when its last phase landed. Entries below still cite it by section;
+read it with `git show 4f2b669:dev/eigen_conversion.md`.
+
 ## Draft `NEWS.md` for the release after 1.2.0
 
 `NEWS.md` is written once per release, from the whole diff since the last
@@ -202,8 +206,13 @@ maintainer the same day:
 
 ## Kernel cleanup after the Eigen conversion
 
-Agreed 2026-11-18, to run once `dev/eigen_conversion.md` has landed, each as
-its own change. Vendored files (`dev/vendored.md`) are out of scope.
+Agreed 2026-11-18, to run once `dev/eigen_conversion.md` had landed, which it
+did on 2026-11-19; each as its own change. Vendored files (`dev/vendored.md`)
+are out of scope. The gate of a change is `dev/eigen_p4_gate.sh`: the
+reference capture against HEAD and the suite, under CRAN's RcppEigen and the
+candidate. Each finding is a proposal with a measurement, put to the
+maintainer before it is made; nothing here licenses a hand-rolled kernel
+(`dev/CPP.md`) or a call that R's headers do not declare.
 
 - **Investigate dropping `col_min_max()`.** Its one caller is `sim_mat()`,
   rescaling `rnorm()` output to [0, 1] when `beta = TRUE`. Measure whether
@@ -226,7 +235,32 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
   (`src/armaSVD.cpp`), none measured apart: `Xhat`, `X_work`, `AA_NxN`, `U`,
   `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`
   before every cell that is read is written, where only `fittedX` needs its
-  zeros; and `row_w` is copied before it is checked.
+  zeros; and `row_w` is copied before it is checked. Profile first: after
+  the second half of step 4 of Phase 2, `sim_pca_lobpcg` took about 1.5%
+  longer than at `ff0e394` over 11 repetitions of the step 4 timing (a
+  0.483-0.491 s, b 0.490-0.501 s), and chr21 showed nothing measurable.
+  Not profiled. Suspected, an assumption until profiled: the zero-fill of
+  every new `Block` in `src/lobpcg_warm.h`, the gathered sub-blocks, and
+  the transposes written out around the triangular solve. The copies in
+  and out of Armadillo were removed in step 5 and timed 1.003 against step
+  4, so they do not account for it, to the driver's resolution of about
+  half a percent. Deferred to this pass by the maintainer, 2026-11-18,
+  with any `/simplify` calls.
+- **How R calls the same LAPACK routines.** Read R's own sources (the
+  LAPACK module behind `eigen()`, `qr()`, `svd()` and `La.svd()`), and
+  where R and `src/si_lapack.cpp` differ on options, workspace or checks,
+  take R's form unless a measurement says otherwise. R's usage is what
+  CRAN's machines exercise most. NOT READ yet.
+- **Each routine as if chosen fresh.** One symmetric eigensolver or two
+  (dsyevr and dsyevd); whether the values-only SVD is needed at all;
+  whether a product symmetric by construction should be dsyrk. Fewer
+  routines is fewer declarations to depend on in the oldest supported R's
+  `R_ext/Lapack.h`, and fewer paths through an external BLAS or LAPACK on
+  a check machine. Settled, not to reopen: `syevr_range` asks dsyevr for
+  its workspace on every call (maintainer, 2026-11-19).
+- **The R callers, now that the return types can change.** Whether the R
+  sides of `pca_imp()` and `knn_imp()` are tidied to what the kernels can
+  return without Armadillo. Not decided.
 - **Symbol visibility.** The DLL exports 433 names, where registration
   with `R_useDynamicSymbols(dll, FALSE)` leaves R needing only
   `R_init_slideimp` (*Writing R Extensions*, "Controlling visibility").
@@ -236,15 +270,13 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
   alone. Advice, not a requirement (maintainer, 2026-11-19: fine as it is,
   otherwise for this pass). What it changes on Linux is not measured.
 
-## Phase 4 of the Eigen conversion: what is left
+## `criterion_final` below `threshold`: deferred
 
-State on 2026-11-19; the record is `dev/eigen_conversion.md`, "Phase 4, as
-carried out".
-
-- **Deferred by the maintainer** (2026-11-19): whether `criterion_final`
-  should be `NA` whenever the objective is below `threshold`, which also
-  covers a rounding criterion that lands below it. Today it is `NA` only
-  when the criterion itself is not below `threshold`.
+Deferred by the maintainer, 2026-11-19 (`dev/eigen_conversion.md`, "Phase
+4, as carried out", "`criterion_final` as `NA`"): whether `criterion_final`
+should be `NA` whenever the objective is below `threshold`, which also
+covers a rounding criterion that lands below it. Today it is `NA` only when
+the criterion itself is not below `threshold`.
 
 ## Test suite: cleanup and tiers for local and CRAN runs
 
@@ -327,9 +359,17 @@ candidate current on that day (0.3.4.0.2 and 0.4.9.9-2 when this was written,
 2026-11-18):
 
 - The whole suite, `check_manual()` and `devtools::check()`. The candidate
-  goes in its own private library, selected with `R_LIBS` before R starts;
-  `dev/eigen_conversion.md`, "Both RcppEigen versions", says how. Record
-  both versions tested in the release commit.
+  goes in its own private library, never over the CRAN one:
+  `dev/eigen_install_candidate.R` takes the library as an argument,
+  installs from the RcppCore r-universe only when the candidate is missing
+  or older, and prints the Eigen version its headers define. A run selects
+  it with `R_LIBS` set before R starts; `dev/eigen_p4_gate.sh`, stage
+  suite, does that for the suite. "Passes" means the reverse-dependency
+  run's standard, the suite and the check, not a compile. Record both
+  versions tested in the release commit.
+- The reference capture on the BLAS of the rhub Linux images, compared
+  against one taken here. Until then the default tolerances of
+  `dev/ref_compare.R` are a reading from one BLAS, on one machine.
 - The sampler's draws under fixed seeds, compared between the two builds:
   worst absolute and worst relative difference, and whether they are
   bitwise identical. If they move beyond what the `test-mipca-*` files

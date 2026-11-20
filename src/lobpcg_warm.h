@@ -267,8 +267,8 @@ inline void put_block_t(Block &C, const std::size_t r0, const std::size_t c0,
 // The Frobenius norm as a plain sum of squares. arma::norm(, "fro") was
 // dnrm2, which scales as it sums, so the last bits can differ; the value
 // only feeds a threshold test, and the block is a projection of
-// orthonormal columns, so the sum cannot overflow (dev/eigen_conversion.md,
-// "The wrapper layer and the oracle, as written", "Not wrapped").
+// orthonormal columns, so the sum cannot overflow (dev/eigen_conversion.md at
+// 4f2b669, "The wrapper layer and the oracle, as written", "Not wrapped").
 inline double frobenius_norm(const Block &A) {
   double ss = 0.0;
   for (const double v : A.cells) {

@@ -1,7 +1,7 @@
-# Step 6 of Phase 2 (dev/eigen_conversion.md): instrument the SVD that the
-# diagnostics build of src/armaSVD.cpp takes each iteration, in a scratch
-# clone, never in the working tree. dev/probe_p2s6_run.sh copies this into a
-# clone and runs it from the clone's root:
+# Step 6 of Phase 2 (dev/eigen_conversion.md at 4f2b669): instrument the SVD
+# that the diagnostics build of src/armaSVD.cpp takes each iteration, in a
+# scratch clone, never in the working tree. dev/probe_p2s6_run.sh copies this
+# into a clone and runs it from the clone's root:
 #   Rscript dev/probe_p2s6_patch.R --in-scratch-clone
 # The patch is chosen by what the file holds: arma::svd() of the product, as
 # up to step 5, or si_la::matmul and si_la::svd_values, as from step 6.

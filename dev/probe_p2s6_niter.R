@@ -1,11 +1,11 @@
-# Step 6 of Phase 2 (dev/eigen_conversion.md) made the `n_iter` attribute of
-# pca_imp()'s result an integer, where it was a double holding a whole
-# number. dev/ref_compare.R fails every case that carries the attribute, on
-# its type alone, and then says no more about that attribute. This reads two
-# captures and shows the type is all that changed: for every case that
-# returned a value in both, it reports the type of `n_iter` on each side and
-# whether the counts are equal, then whether the two results are identical()
-# once the count is read as a double on both sides.
+# Step 6 of Phase 2 (dev/eigen_conversion.md at 4f2b669) made the `n_iter`
+# attribute of pca_imp()'s result an integer, where it was a double holding a
+# whole number. dev/ref_compare.R fails every case that carries the attribute,
+# on its type alone, and then says no more about that attribute. This reads two
+# captures and shows the type is all that changed: for every case that returned
+# a value in both, it reports the type of `n_iter` on each side and whether the
+# counts are equal, then whether the two results are identical() once the count
+# is read as a double on both sides.
 #   Rscript dev/probe_p2s6_niter.R <capture before> <capture after>
 # Arguments are labels under dev/ref/, or paths to capture folders.
 # identical() is reported, not asserted: the two captures are bytes from two

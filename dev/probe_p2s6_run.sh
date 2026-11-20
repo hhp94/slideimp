@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Step 6 of Phase 2 (dev/eigen_conversion.md): run dev/eigen_p2s6_diag.R on
-# two instrumented clones outside the working tree, one of the kernel before
-# the step and one after, and compare them. Dev only, run by hand, from the
-# package root:
+# Step 6 of Phase 2 (dev/eigen_conversion.md at 4f2b669): run
+# dev/eigen_p2s6_diag.R on two instrumented clones outside the working tree, one
+# of the kernel before the step and one after, and compare them. Dev only, run
+# by hand, from the package root:
 #   bash dev/probe_p2s6_run.sh <scratch dir> [<old commit>]
 # <old commit> defaults to HEAD; the one measured is 8c15416, step 5. The
 # "new" clone is HEAD with every file under src/ and R/ that the working tree

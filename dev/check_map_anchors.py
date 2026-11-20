@@ -12,8 +12,12 @@ without failing. A stale fragment matches nothing, which this script reports.
 
 Usage, from the repository root:
 
-    uv run dev/check_map_anchors.py             every tracked dev/*.md, and .claude/CLAUDE.md
-    uv run dev/check_map_anchors.py FILE...     just these files
+    uv run dev/check_map_anchors.py             the two maps and .claude/CLAUDE.md
+    uv run dev/check_map_anchors.py FILE...     just these files, any note
+
+With no files it checks only DEFAULT_DOCS: the maps of the R-to-C++ chains
+and the file that sets these rules. The other notes in dev/ are records and
+plans; name one on the command line to check it.
     uv run dev/check_map_anchors.py --list      also print where each fragment lands
 
 Prints one line per problem as `file:line: message` and exits 1 if there is
@@ -52,6 +56,12 @@ import os
 import re
 import subprocess
 import sys
+
+DEFAULT_DOCS = [
+    ".claude/CLAUDE.md",
+    "dev/knn_imp_structure.md",
+    "dev/pca_imp_structure.md",
+]
 
 PATH = r"(?:DESCRIPTION|NAMESPACE|[\w.-]*[/.][\w./-]*)"
 FRAG = r"`[^`\n]+`"
@@ -244,13 +254,7 @@ def main():
         sys.exit("run this from the repository root")
     docs = args.files
     if not docs:
-        out = subprocess.run(
-            ["git", "ls-files", "--", "dev/*.md", ".claude/CLAUDE.md"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
-        docs = out.split()
+        docs = DEFAULT_DOCS
     checker = Checker(args.list)
     for doc in docs:
         checker.check_doc(doc)

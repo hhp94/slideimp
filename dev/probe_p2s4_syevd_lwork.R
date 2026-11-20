@@ -1,5 +1,5 @@
-# Step 4 of Phase 2 (dev/eigen_conversion.md): does dsyevd return the same
-# bits whatever workspace length it is given above its own answer?
+# Step 4 of Phase 2 (dev/eigen_conversion.md at 4f2b669): does dsyevd return the
+# same bits whatever workspace length it is given above its own answer?
 #
 # Before step 4, small_eig_desc() (src/lobpcg_warm.h) kept its dsyevd
 # workspace on the LOBPCGState and never shrank it, so a Rayleigh-Ritz

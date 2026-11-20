@@ -6,6 +6,9 @@ under review: `59920f4..597d28e` on `si-mi`, the seven commits of steps 1 to
 `597d28e`), working tree clean at the start. `/code-review` at high effort,
 one session, no verify pass.
 
+`dev/eigen_conversion.md` was deleted when its last phase landed; read it
+with `git show 4f2b669:dev/eigen_conversion.md`.
+
 Not a fresh session. The plan asks for one; the maintainer pasted the
 command into the session that wrote step 6 and the failure-path half of
 step 4, and chose to run it there. What this note says about those two

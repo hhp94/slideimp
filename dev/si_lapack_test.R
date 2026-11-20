@@ -1,8 +1,8 @@
-# The test of the wrapper layer's own (dev/eigen_conversion.md, "Rulings on
-# the last items"): every function of src/si_lapack.h, called through
-# dev/si_lapack_test.cpp, checked against what its comment in the header
-# says it does. The references are R's own; no other library is loaded.
-# Dev only, run by hand, from the package root:
+# The test of the wrapper layer's own (dev/eigen_conversion.md at 4f2b669,
+# "Rulings on the last items"): every function of src/si_lapack.h, called
+# through dev/si_lapack_test.cpp, checked against what its comment in the header
+# says it does. The references are R's own; no other library is loaded. Dev
+# only, run by hand, from the package root:
 #   Rscript dev/si_lapack_test.R [--src=<dir>] [--build=<dir>] [--verbose]
 # --src      the folder holding si_lapack.h and si_lapack.cpp (default:
 #            src). dev/si_lapack_selftest.R points this at a copy with one

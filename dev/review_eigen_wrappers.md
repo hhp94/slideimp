@@ -6,6 +6,9 @@ on `si-mi` (one commit, `79cce0f`), working tree clean at the start.
 `/code-review` at high effort, one session, no verify pass: the session
 that wrote the wrappers audits this note.
 
+`dev/eigen_conversion.md` was deleted when its last phase landed; read it
+with `git show 4f2b669:dev/eigen_conversion.md`.
+
 Nothing under `src/` and no oracle file was edited, nothing was committed,
 and nothing was built in the working tree: every build was staged in a
 scratch folder outside the repository. R 4.6.1 ucrt, GCC 14.2.0, R's LAPACK
