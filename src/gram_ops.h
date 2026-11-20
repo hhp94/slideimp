@@ -3,9 +3,9 @@
 
 // The weighted Gram of the PCA chain, formed with R's BLAS through
 // src/si_lapack.h. Matrices are raw column-major buffers with std::size_t
-// dimensions; nothing here uses an Armadillo, Eigen or R type. A function
-// that calls BLAS returns the wrapper's status, si_la::ok on success, and
-// raising the R error is the caller's.
+// dimensions; nothing here uses an Eigen or R type. A function that calls
+// BLAS returns the wrapper's status, si_la::ok on success, and raising the R
+// error is the caller's.
 
 #include "si_lapack.h"
 #include "pca_linalg_utils.h"
@@ -13,9 +13,6 @@
 #include <cstddef>
 #include <cstring>
 #include <vector>
-
-inline constexpr double SYRK_ALPHA = 1.0;
-inline constexpr double SYRK_BETA = 0.0;
 
 // ---------------------------------------------------------------------------
 // the dimensions of a Gram and of the dsyrk that forms it, no storage: A is
@@ -44,7 +41,8 @@ struct GramDims {
 };
 
 // ---------------------------------------------------------------------------
-// cached fixed-column contribution to the Gram.
+// cached fixed-column contribution to the Gram, active when there is a fixed
+// column.
 //   Gram_fixed:   the fixed columns' Gram, upper triangle written, lower
 //                 zero; n_fixed x n_fixed (tall) or nr x nr (wide)
 //   X_chg_scaled: nr x n_mc, the sw-scaled changing columns; wide and
@@ -53,9 +51,10 @@ struct GramDims {
 // ---------------------------------------------------------------------------
 struct GramCache {
   std::size_t n_fixed = 0;
-  bool active = false;
   std::vector<double> Gram_fixed;
   std::vector<double> X_chg_scaled;
+
+  bool active() const { return n_fixed > 0; }
 };
 
 // ---------------------------------------------------------------------------
@@ -64,68 +63,67 @@ struct GramCache {
 // ---------------------------------------------------------------------------
 [[nodiscard]] inline int syrk_upper(const double *A, double *C,
                                     const GramDims &dims) {
-  return si_la::syrk('U', dims.trans, dims.n, dims.k, SYRK_ALPHA, A, dims.nr,
-                     SYRK_BETA, C, dims.n);
+  return si_la::syrk('U', dims.trans, dims.n, dims.k, 1.0, A, dims.nr, 0.0, C,
+                     dims.n);
 }
 
 // ---------------------------------------------------------------------------
-// initialize the fixed-block cache. Xhat_perm is nrX x (n_fixed + n_mc),
-// fixed columns first. In the tall case X_work (nrX x (n_fixed + n_mc))
-// receives the sw-scaled fixed columns; the wide case does not touch it.
+// initialize the fixed-block cache. dims are those of the whole Gram, and
+// Xhat_perm is dims.nr x dims.nc, its n_fixed fixed columns first. In the
+// tall case X_work, also dims.nr x dims.nc, receives the sw-scaled fixed
+// columns; the wide case does not touch it.
 // ---------------------------------------------------------------------------
-[[nodiscard]] inline int
-gram_cache_init(GramCache &cache, const double *Xhat_perm, const double *sw,
-                const std::size_t nrX, const std::size_t n_fixed,
-                const std::size_t n_mc, const bool tall, double *X_work) {
+[[nodiscard]] inline int gram_cache_init(GramCache &cache,
+                                         const double *Xhat_perm,
+                                         const double *sw, const GramDims &dims,
+                                         const std::size_t n_fixed,
+                                         double *X_work) {
   cache.n_fixed = n_fixed;
-  cache.active = (n_fixed > 0);
   if (n_fixed == 0) {
     return si_la::ok;
   }
+  const std::size_t nr = dims.nr;
+  const std::size_t n_mc = dims.nc - n_fixed;
 
   GramDims fixed_dims;
-  fixed_dims.init(nrX, n_fixed, tall);
+  fixed_dims.init(nr, n_fixed, dims.tall);
 
-  if (tall) {
-    pca_detail::copy_scale_rows(X_work, Xhat_perm, sw, nrX, n_fixed);
+  // the sw-scaled fixed columns: in the tall case the leading columns of
+  // X_work, which keeps them; in the wide case a copy for the dsyrk alone.
+  std::vector<double> X_fixed_scaled(dims.tall ? 0 : nr * n_fixed);
+  double *X_fixed = dims.tall ? X_work : X_fixed_scaled.data();
+  pca_detail::copy_scale_rows(X_fixed, Xhat_perm, sw, nr, n_fixed);
 
-    // zero-fill so the lower triangle is well-defined. dsyrk only writes the
-    // upper triangle
-    cache.Gram_fixed.assign(n_fixed * n_fixed, 0.0);
-    return syrk_upper(X_work, cache.Gram_fixed.data(), fixed_dims);
+  // zero-fill so the lower triangle is well-defined: dsyrk writes only the
+  // upper one.
+  cache.Gram_fixed.assign(fixed_dims.n * fixed_dims.n, 0.0);
+  const int st = syrk_upper(X_fixed, cache.Gram_fixed.data(), fixed_dims);
+
+  if (!dims.tall) {
+    cache.X_chg_scaled.assign(nr * n_mc, 0.0);
   }
-
-  std::vector<double> X_fixed_scaled(nrX * n_fixed);
-  pca_detail::copy_scale_rows(X_fixed_scaled.data(), Xhat_perm, sw, nrX,
-                              n_fixed);
-
-  // zero-fill so the lower triangle is well-defined.
-  cache.Gram_fixed.assign(nrX * nrX, 0.0);
-  const int st =
-      syrk_upper(X_fixed_scaled.data(), cache.Gram_fixed.data(), fixed_dims);
-
-  cache.X_chg_scaled.assign(nrX * n_mc, 0.0);
   return st;
 }
 
 // ---------------------------------------------------------------------------
-// where the sw-scaled changing-column block lives, if anywhere. The caller
+// where the sw-scaled changing-column block lives, if anywhere, for the dims
+// of the whole Gram and the cache gram_cache_init() made of it. The caller
 // must keep that block scaled by sw between form_weighted_gram() calls.
-//   tall:            the tail columns of X_work (nrX rows)
-//   wide, cached:    the compact GramCache::X_chg_scaled block
-//   wide, non-cached: nowhere (form_weighted_gram scales the Gram instead)
+//   no changing column: nowhere
+//   tall:               the tail columns of X_work (dims.nr rows)
+//   wide, cached:       the compact GramCache::X_chg_scaled block
+//   wide, non-cached:   nowhere (form_weighted_gram scales the Gram instead)
 // ---------------------------------------------------------------------------
 inline double *gram_changing_block(GramCache &cache, double *X_work,
-                                   const std::size_t nrX,
-                                   const std::size_t n_fixed,
-                                   const std::size_t n_mc, const bool tall) {
+                                   const GramDims &dims) {
+  const std::size_t n_mc = dims.nc - cache.n_fixed;
   if (n_mc == 0) {
     return nullptr;
   }
-  if (tall) {
-    return X_work + n_fixed * nrX;
+  if (dims.tall) {
+    return X_work + cache.n_fixed * dims.nr;
   }
-  if (cache.active) {
+  if (cache.active()) {
     return cache.X_chg_scaled.data();
   }
   return nullptr;
@@ -148,12 +146,14 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
 // gram_dims.n x gram_dims.n.
 //
 // tall (n = ncols): AA = Xhat^T diag(sw^2) Xhat
-//  - X_work[:, n_fixed:] is filled with sw-scaled changing cols.
-//  - When cache.active, Gram_fixed is copied into the top-left block and
+//  - X_work[:, n_fixed:] holds the sw-scaled changing cols, which
+//  impute_restandardize() writes.
+//  - When cache.active(), Gram_fixed is copied into the top-left block and
 //  dgemm/dsyrk fill the cross and changing-changing blocks.
 // wide (n = nrows): AA = Xhat diag(sw^2) Xhat^T
-//  - When cache.active, Gram_fixed is the base and dsyrk(beta=1) adds the
-//  contribution of the changing columns. cache.X_chg_scaled is filled.
+//  - When cache.active(), Gram_fixed is the base and dsyrk(beta=1) adds the
+//  contribution of the changing columns, which impute_restandardize() keeps
+//  sw-scaled in cache.X_chg_scaled.
 //
 // Xhat and X_work are gram_dims.nr x gram_dims.nc; X_work is read in the
 // tall case only, Xhat in the wide non-cached case only.
@@ -167,7 +167,7 @@ form_weighted_gram(const double *Xhat, const double *sw, const double *X_work,
   const std::size_t n = gram_dims.n;
   const std::size_t n_fixed = gram_cache.n_fixed;
   const std::size_t n_mc = nc - n_fixed;
-  const bool use_cache = gram_cache.active;
+  const bool use_cache = gram_cache.active();
   if (gram_dims.tall) {
     // X_work already contains sw * Xhat.
     // fixed columns initialized in cache init.
@@ -186,14 +186,14 @@ form_weighted_gram(const double *Xhat, const double *sw, const double *X_work,
     double *AA_chg_cols = AA_NxN + n_fixed * n;
 
     // fixed-changing cross block
-    const int st = si_la::gemm('T', 'N', n_fixed, n_mc, nr, SYRK_ALPHA, X_work,
-                               nr, X_chg, nr, SYRK_BETA, AA_chg_cols, n);
+    const int st = si_la::gemm('T', 'N', n_fixed, n_mc, nr, 1.0, X_work, nr,
+                               X_chg, nr, 0.0, AA_chg_cols, n);
     if (st != si_la::ok) {
       return st;
     }
 
     // changing-changing block
-    return si_la::syrk('U', 'T', n_mc, nr, SYRK_ALPHA, X_chg, nr, SYRK_BETA,
+    return si_la::syrk('U', 'T', n_mc, nr, 1.0, X_chg, nr, 0.0,
                        AA_chg_cols + n_fixed, n);
   }
 
@@ -205,9 +205,8 @@ form_weighted_gram(const double *Xhat, const double *sw, const double *X_work,
       return si_la::ok;
     }
 
-    const double beta_one = 1.0;
-    return si_la::syrk('U', 'N', n, n_mc, SYRK_ALPHA,
-                       gram_cache.X_chg_scaled.data(), nr, beta_one, AA_NxN, n);
+    return si_la::syrk('U', 'N', n, n_mc, 1.0, gram_cache.X_chg_scaled.data(),
+                       nr, 1.0, AA_NxN, n);
   }
 
   const int st = syrk_upper(Xhat, AA_NxN, gram_dims);

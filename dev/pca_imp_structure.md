@@ -236,7 +236,7 @@ never copied; `eligible_idx` as an integer vector of 0-based columns; every coun
 setting as `int`, which `pca_imp()` converts at the call where it holds a double
 (`R/pca_imp.R`: `maxiter = as.integer(maxiter),`); and `row_w` as a
 `const Rcpp::NumericVector &`, checked in place and then copied once into the kernel's own vector because the
-kernel normalizes it, both in `normalized_row_weights()` (`src/pca_kernel.cpp`: `std::vector<double> w(row_w.begin(), row_w.end());`,
+kernel normalizes it, both in `normalized_row_weights()` (`src/pca_kernel.cpp`: `std::vector<double> w(row_w_ptr, row_w_ptr + nrX);`,
 `w[i] /= row_w_sum;`). Inside, a count is held in `std::size_t` once checked, so an offset
 such as `j * nrX` is computed in `std::size_t`; a row or column index of `obj` is `int`
 (`src/pca_kernel.cpp`: `Types, for the whole file.`).
@@ -298,14 +298,14 @@ the EM loop of Layer 4 is written out in it.
   scale `et` floored at `PCA_TOL`, the other two fields of `ColumnMoments`, which
   `impute_restandardize()` updates every iteration; it then centers (and scales) `Xhat` in place.
   `fittedX` is allocated once, zero-filled, and `initialize_missing_start()`
-  writes starting values at missing positions only: zeros for `init == 0`, `Rcpp::rnorm`
-  draws otherwise.
+  writes starting values at missing positions only: for `init == 0` zeros into `Xhat`,
+  which `fittedX` already holds, and otherwise `Rcpp::rnorm` draws into both.
 
 Workspaces allocated once, outside the loop: `sqrt_row_w` / `inv_sqrt_row_w`
 (the weighted space is `diag(sqrt(w)) * Xhat`, and `U` comes back in it); `GramDims`,
 the dimensions of the Gram and its dsyrk, orientation included, and no storage
 (`src/gram_ops.h`: `struct GramDims {`);
-`EigSymRange`, which holds the range `il..iu` of the top `k` eigenpairs dsyevr is asked
+`EigSymRange`, which holds the range `il..n` of the top `k` eigenpairs dsyevr is asked
 for (`src/eig_sym_sel.h`: `struct EigSymRange`) and refuses a `k` outside `1..n_gram`, an
 `Rcpp::stop` not expected to be reachable after the argument checks; `SolveBuffers`
 (`src/svd_triplet.h`: `struct SolveBuffers {`), the nine buffers `SVD_triplet()` reads and
@@ -319,7 +319,8 @@ all outer iterations.
 
 One iteration:
 
-1. `Rcpp::checkUserInterrupt()` every 5 iterations.
+1. `Rcpp::checkUserInterrupt()` every fifth iteration, `INTERRUPT_EVERY`
+   (`src/pca_kernel.cpp`: `if (nb_iter % INTERRUPT_EVERY == 0)`).
 2. `impute_restandardize<Scale>()` -- the fused heart of
    the loop. It copies the previous fit into `Xhat` at missing positions, updates each
    changing column's mean (and variance when scaling) incrementally from `mu0` plus centered
@@ -345,7 +346,8 @@ One iteration:
 **Convergence** (`src/pca_kernel.cpp`: `const double criterion =`): the criterion is
 `abs(1 - objective / old)`, reproducing `missMDA::imputePCA()`. It is tested only once
 `nb_iter >= miniter`, and stopping requires `criterion < threshold || objective < threshold`.
-Hitting `maxiter` first sets `converged = false` and nothing else. The kernel stays silent
+Hitting `maxiter` first stops the loop with `converged` still false, and does nothing
+else. The kernel stays silent
 because a warning raised from C++ can longjmp past the frame's destructors, so `pca_imp()` warns
 once, through `cli::cli_warn()`, for the winning restart only
 (`R/pca_imp.R`: `if (!isTRUE(best_diag$converged)) {`). The loop
@@ -394,8 +396,9 @@ collapses 1 and 4 to "lobpcg" and everything else to "exact"; the string is set 
 `SVD_triplet()` (`src/svd_triplet.h`: `inline double SVD_triplet(`) never forms an SVD directly.
 It builds the
 weighted Gram into `AA_NxN` via `form_weighted_gram()`, stops if its upper triangle
-holds NaN or Inf (`src/svd_triplet.h`: `if (!gram_upper_finite(AA_NxN, n))`), the one
-such test in the chain and the stop that finite input whose squares overflow gets, takes
+holds NaN or Inf (`src/svd_triplet.h`: `if (!gram_upper_finite(AA_NxN, n))`), the stop
+that finite input whose squares overflow gets, before either solver; on the exact path
+`si_la::syevr_range` tests the same triangle again ("What the wrappers do"). It takes
 the trace of `AA_NxN` (`gram_trace()`), which it returns for the tail energy, calls `hybrid_topk_eig()`
 (a status other than 0 being an `Rcpp::stop`), converts eigenvalues to singular values and
 inverses with a `PCA_TOL` floor, and recovers the other factor with one dgemm
@@ -408,7 +411,9 @@ from the
 Gram cache the way `form_weighted_gram()` does. Both helpers take raw buffers and their
 dimensions, refuse operands whose dimensions do not fit, and return the wrapper's status; a
 non-zero one is an `Rcpp::stop` at the call site
-(`src/svd_triplet.h`: `const int st = pca_detail::gemm_nn(`). Every dimension is checked
+(`src/svd_triplet.h`: `const int st = pca_detail::gemm_nn(`), through
+`stop_if_gemm_refused()` (`src/svd_triplet.h`: `inline void stop_if_gemm_refused(`), which
+every dgemm of `src/pca_kernel.cpp` stops through too. Every dimension is checked
 against the `int` range at kernel setup, so that error is not expected to be reachable.
 `SVD_triplet()` takes its buffers as one `SolveBuffers`, reads every dimension from `GramDims`
 and the eigenpair range, and takes a raw pointer to each buffer at its top, so the code below
@@ -434,16 +439,21 @@ each entering BLAS through `si_la::syrk` and `si_la::gemm` with the arguments it
 
 `src/gram_ops.h` takes raw buffers and the dimensions `GramDims` holds, as `std::size_t`,
 each number under one name: `nr` the rows of `A` and its leading dimension, `n` the order of
-the Gram and its leading dimension, with `tall` the orientation they follow from,
-and `GramCache` keeps the fixed Gram and the wide case's scaled changing columns in
-`std::vector<double>`. `gram_cache_init()` and `form_weighted_gram()` return the wrapper's
+the Gram and its leading dimension, with `tall` the orientation they follow from;
+`gram_cache_init()` and `gram_changing_block()` take the `GramDims` of the whole Gram, as
+`form_weighted_gram()` does. `GramCache` keeps the fixed Gram and the wide case's scaled
+changing columns in `std::vector<double>`, and the count of fixed columns, which is what
+makes it active (`src/gram_ops.h`: `bool active() const { return n_fixed > 0; }`).
+`gram_cache_init()` and `form_weighted_gram()` return the wrapper's
 status; a non-zero one is an `Rcpp::stop` at the call site (`src/pca_kernel.cpp`:
 `if (gram_init_st != si_la::ok)`; `src/svd_triplet.h`: `if (gram_st != si_la::ok)`), not
 expected to be reachable for the reason given above.
 
 Only the upper triangle is written, matching dsyevr's `uplo = 'U'`
 (`src/eig_sym_sel.h`: `PEIG_UPLO = 'U'`). The
-LOBPCG path mirrors it down first (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, a_rows)`).
+LOBPCG path mirrors it down first (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, n)`).
+The order of the Gram reaches both solvers as one `n`, `GramDims::n`, through
+`hybrid_topk_eig()` and `hybrid_topk_eig_impl()` to `eig_sym_sel()` and `lobpcg_solve()`.
 
 ## Layer 6: the eigensolver
 
@@ -473,7 +483,7 @@ to `eig_sym_sel()`; after any exact solve, `seed_lobpcg_state()` re-seeds the wa
 start when `keep_lobpcg_seed_state()` allows.
 
 **Exact path** (`src/eig_sym_sel.h`). `eig_sym_sel()` takes raw buffers and calls
-`si_la::syevr_range`, which enters dsyevr with `range = 'I'` for eigenpairs `il..iu`, the
+`si_la::syevr_range`, which enters dsyevr with `range = 'I'` for eigenpairs `il..n`, the
 top `k`, asks for the workspace on every call and floors it at the documented
 `26 * n` / `10 * n` minima ("What the wrappers do"). `eigvals` and `eigvecs` are
 buffers of `SolveBuffers`, sized once before the EM loop (`src/svd_triplet.h`:
@@ -481,7 +491,7 @@ buffers of `SolveBuffers`, sized once before the EM loop (`src/svd_triplet.h`:
 ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
 in place, then `canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`)
 applies the sklearn `svd_flip` convention. A non-zero status, from the wrapper or from an
-`A` that is not `n_gram` square, is what `hybrid_topk_eig()` returns, and
+order `n` that is not the range's, is what `hybrid_topk_eig()` returns, and
 `SVD_triplet()` stops with a text chosen by it: LAPACK's own `info`
 (`src/svd_triplet.h`: `Rcpp::stop("the symmetric eigensolver failed (LAPACK dsyevr, info = %d)",`),
 a failed allocation, a non-finite Gram, which says the same as the test before the
@@ -505,7 +515,7 @@ unusable (`src/lobpcg_warm.h`: `fall back to X-only initial RR`).
 The iteration (`src/lobpcg_warm.h`: `for (; it < opt.maxiter; ++it)`) is standard three-block
 LOBPCG over `[X, R_active, P_active]`.
 Besides convergence it exits on `maxiter`, a divergence guard at relative
-residual > 10, a stall counter over `stall_window = 5`, residual collapse
+residual > 10 (`DIVERGED_REL_RES`), a stall counter over `stall_window = 5`, residual collapse
 after QR, `P` collapse, and `LOBPCG_RR_FAILED` when
 `rr_two_block` or `small_eig_desc` fails. `MATVEC_REFRESH = 20`
 periodically recomputes `AX`/`AP` from scratch to shed accumulated
@@ -518,7 +528,8 @@ Warm-start construction is two entry
 points over one helper, `build_momentum_P()`, which forms
 `P = X_prev - X_curr (X_curr' X_prev)`: `seed_lobpcg_state()` after an exact
 solve, with no norm floor; `refresh_momentum_P()` after a LOBPCG success, with
-a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
+a floor of `1e-10 * sqrt(k)` (`TEMPORAL_NORM_FLOOR`) below which the post-RR `P` is kept
+instead.
 
 **Storage on the LOBPCG path.** The iteration holds its matrices in `lobpcg_detail::Block`
 (`src/lobpcg_warm.h`: `struct Block`), a column-major buffer with its dimensions `nrow` and
@@ -528,12 +539,16 @@ Every product goes through one function (`src/lobpcg_warm.h`: `inline void produ
 a right operand of one column is a vector and the product is dgemv through `si_la::gemv`,
 any other is dgemm through `si_la::gemm`. A product inside a sum or
 difference, or one whose target is among its operands, is formed into a block of its own
-first and subtracted cell by cell (`src/lobpcg_warm.h`: `sub_cells(V, mul(X, tmul(X, V)));`,
-`sub_cells(P, mul(X_curr, tmul(X_curr, X_prev)));`), and of three operands the inner product
-is formed first; `-=` of a product whose operands do not include its target is one call with
+first and subtracted cell by cell, and of three operands the inner product
+is formed first. `V -= X (X' V)` is `project_out()`
+(`src/lobpcg_warm.h`: `inline void project_out(Block &V, const Block &X) {`,
+`sub_cells(V, mul(X, tmul(X, V)));`), at four sites: in `qr_project_out_qr()`, in
+`build_momentum_P()` on a copy of `X_prev`, and on `P` at entry and on the active
+residuals in `lobpcg_solve()`. The three-block path projects `P` out of `X` and the active
+residuals with products of its own, which it shares with `A P`. `-=` of a product whose operands do not include its target is one call with
 `beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). The boundary with
 `src/hybrid_topk_eig.h` holds no Armadillo either: `lobpcg_solve()` takes the Gram as a raw
-buffer and its two dimensions and reads it in place (`src/lobpcg_warm.h`:
+buffer and its order and reads it in place (`src/lobpcg_warm.h`:
 `inline LOBPCGResult lobpcg_solve(const double *a,`), `LOBPCGState` holds `X` and `P` as
 `Block`s, `LOBPCGResult` holds the eigenvalues as a `std::vector<double>`, and
 `seed_lobpcg_state()` and `refresh_momentum_P()` take the two eigenvector blocks as `Block`s.
@@ -658,7 +673,7 @@ whose squares overflow, unscaled values near 1e160 or near 1e200 with `scale = T
 A non-finite Gram that reached the exact path would still be refused by `syevr_range`. On the
 LOBPCG path a small Gram holding NaN or Inf is a failed Rayleigh-Ritz, and a residual norm
 that is NaN or Inf ends the solve as `LOBPCG_BAD_SEED` before the convergence test
-(`src/lobpcg_warm.h`: `if (!lobpcg_detail::all_finite(rn))`), since the largest norm is taken
+(`src/lobpcg_warm.h`: `if (!all_finite(rn))`), since the largest norm is taken
 by `max_skip_nan()`, which passes over NaN; either way that outer iteration goes to the exact
 solver.
 
@@ -764,7 +779,7 @@ stays as it is (maintainer, 2026-11-20); none of the alternatives was built or m
 - The values-only SVD stays: only the diagnostics build compiles it.
 - No product is left that dsyrk could form. The Gram goes through it; the small Grams of
   LOBPCG, symmetric by construction, are each the product of two different blocks
-  (`src/lobpcg_warm.h`: `const Block XAX_s = tmul(X, AX);`), which dsyrk does not express.
+  (`src/lobpcg_warm.h`: `const Block PAP = tmul(Pact, APact);`), which dsyrk does not express.
 
 **Sums outside the wrappers.** The chain's other reductions call no BLAS. Each is a plain loop
 in order; `dev/CPP.md` bans the multi-accumulator form some of them once had, and
@@ -802,7 +817,7 @@ two norms of LOBPCG, "Phase 4, as carried out" for the three sums of the EM loop
 - `AA_NxN` is destroyed by every eigen call: dsyevr overwrites it
   (`src/eig_sym_sel.h`: `destroys A: dsyevr overwrites`),
   and the LOBPCG path mirrors its upper triangle down first
-  (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, a_rows)`).
+  (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, n)`).
 - `HybridEigContext` carries state across outer iterations: `lobpcg_state` (`X` and `P`),
   `X_prev`, `auto_choice`, the auto counters and timing sums,
   and `n_exact`/`n_lobpcg_ok`/`n_lobpcg_bad` (`src/hybrid_topk_eig.h`: `LOBPCGState lobpcg_state;`).
@@ -871,7 +886,7 @@ kernel reaches through `svd_triplet.h`, set by
 `load_all1(debug = TRUE)` (`dev/dev-utils.R`: `sprintf("-DPCA_IMP_DIAGNOSTICS=%d"`). It gates
 three things:
 `hyb_ctx.init_logs(maxiter)`, which allocates the five per-iteration log
-vectors in `HybridEigContext` (`src/hybrid_topk_eig.h`: `void init_logs(size_t n)`) -- without
+vectors in `HybridEigContext` (`src/hybrid_topk_eig.h`: `void init_logs(std::size_t n)`) -- without
 it they stay empty and
 `log_at()` (`src/hybrid_topk_eig.h`: `auto log_at = [&](`) is a no-op because its bounds check
 fails; the

@@ -18,8 +18,8 @@
 // - "Organization of header files": the standard headers come before R's,
 //   as the manual asks of C++ that does not define R_NO_REMAP.
 //
-// This file includes nothing of Rcpp, Armadillo or Eigen, and R headers only
-// for those declarations: no function here calls the R API.
+// This file includes nothing of Rcpp or Eigen, and R headers only for those
+// declarations: no function here calls the R API.
 
 #ifndef USE_FC_LEN_T
 # define USE_FC_LEN_T
@@ -45,6 +45,10 @@ namespace {
 
 constexpr std::size_t int_max =
     static_cast<std::size_t>(std::numeric_limits<int>::max());
+
+// The workspace length, for lwork and liwork alike, that asks a LAPACK
+// routine for the lengths it wants instead of running it.
+constexpr int work_query = -1;
 
 bool to_int(const std::size_t v, int &out) {
   if (v > int_max) {
@@ -276,11 +280,9 @@ int syevr_range(const char uplo, const std::size_t n, const std::size_t il,
 
   double work_q = 0.0;
   int iwork_q = 0;
-  const int lwork_query = -1;
-  const int liwork_query = -1;
   F77_CALL(dsyevr)(&jobz, &range, &uplo, &n_i, a, &n_i, &vl, &vu, &il_i, &iu_i,
                    &abstol, &m_out, w_all.data(), z, &n_i, isuppz.data(),
-                   &work_q, &lwork_query, &iwork_q, &liwork_query,
+                   &work_q, &work_query, &iwork_q, &work_query,
                    &info FCONE FCONE FCONE);
   if (info != 0) {
     return info;
@@ -344,10 +346,8 @@ int syevd(const char uplo, const std::size_t n, double *a, double *w) {
 
   double work_q = 0.0;
   int iwork_q = 0;
-  const int lwork_query = -1;
-  const int liwork_query = -1;
-  F77_CALL(dsyevd)(&jobz, &uplo, &n_i, a, &n_i, w, &work_q, &lwork_query,
-                   &iwork_q, &liwork_query, &info FCONE FCONE);
+  F77_CALL(dsyevd)(&jobz, &uplo, &n_i, a, &n_i, w, &work_q, &work_query,
+                   &iwork_q, &work_query, &info FCONE FCONE);
   if (info != 0) {
     return info;
   }
@@ -393,13 +393,12 @@ int qr_econ(const std::size_t m, const std::size_t n, const double *x,
   // Each routine is asked for its own workspace. Both document max(1, n)
   // as the least they accept.
   const double lwork_min = static_cast<double>(n);
-  const int lwork_query = -1;
   int info = 0;
   double work_q = 0.0;
   int lwork;
   std::vector<double> work;
 
-  F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), &work_q, &lwork_query,
+  F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), &work_q, &work_query,
                    &info);
   if (info != 0) {
     return info;
@@ -422,7 +421,7 @@ int qr_econ(const std::size_t m, const std::size_t n, const double *x,
   }
 
   work_q = 0.0;
-  F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), &work_q, &lwork_query,
+  F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), &work_q, &work_query,
                    &info);
   if (info != 0) {
     return info;
@@ -502,9 +501,8 @@ int svd_values(const std::size_t m, const std::size_t n, double *a, double *s) {
   int info = 0;
 
   double work_q = 0.0;
-  const int lwork_query = -1;
   F77_CALL(dgesdd)(&jobz, &m_i, &n_i, a, &m_i, s, &u, &ld_one, &vt, &ld_one,
-                   &work_q, &lwork_query, iwork.data(), &info FCONE);
+                   &work_q, &work_query, iwork.data(), &info FCONE);
   if (info != 0) {
     return info;
   }

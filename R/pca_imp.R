@@ -130,7 +130,7 @@ lobpcg_control <- function(warmup_iters = 10L, tol = 1e-9, maxiter = 20) {
 #' @noRd
 check_lobpcg_fields <- function(warmup_iters, tol, maxiter, prefix = "") {
   # `assert_int` rejects anything outside integer range as non-integerish, so
-  # the `arma::uword` overflow the C++ backend guards against cannot get past
+  # a value too large for the `int` the C++ backend takes cannot get past
   # here; no explicit upper bound is needed for it.
   checkmate::assert_int(
     warmup_iters,
@@ -187,8 +187,9 @@ new_lobpcg_control <- function(
   # evidence the fields are still sound: a control object is an ordinary list,
   # so `ctrl$tol <- -1` or `ctrl$maxiter <- NULL` survives construction and is
   # only noticed further down - a negative `tol` not at all, a NULL field as
-  # `missing value where TRUE/FALSE needed`, a negative `maxiter` as an
-  # `arma::uword` overflow reported by the C++ backend as an int-range error.
+  # `missing value where TRUE/FALSE needed`, a negative `maxiter` as the C++
+  # backend's refusal of its argument `lobpcg_maxiter`, and that only when
+  # the backend is asked for LOBPCG.
   # Re-check the fields here, against the same rules the constructor uses.
   control_names <- names(formals(lobpcg_control))
   if (inherits(x, "slideimp_lobpcg_control")) {

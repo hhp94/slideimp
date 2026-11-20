@@ -3,8 +3,7 @@
 
 // Small dense helpers of the PCA chain, over column-major buffers with
 // std::size_t dimensions. The two products go to dgemm through
-// src/si_lapack.h and return its status; nothing here uses Armadillo or the
-// R API.
+// src/si_lapack.h and return its status; nothing here uses the R API.
 
 #include "si_lapack.h"
 #include <cmath>
@@ -49,6 +48,8 @@ inline void scale_rows_cols_inplace(double *M, const double *rw,
   }
 }
 
+// dst = diag(w) * src: the nr x nc src with row i scaled by w[i], written to
+// dst, also nr x nc.
 inline void copy_scale_rows(double *dst, const double *src, const double *w,
                             const std::size_t nr, const std::size_t nc) {
   for (std::size_t j = 0; j < nc; ++j) {

@@ -56,6 +56,17 @@ inline constexpr char GRAM_NOT_FINITE_MSG[] =
     "when squared, rescale the input";
 
 // ---------------------------------------------------------------------------
+// stops with an internal error unless st, the si_la status of a dgemm, is
+// si_la::ok. Kernel setup refuses every dimension past int, so no call is
+// expected to stop here.
+// ---------------------------------------------------------------------------
+inline void stop_if_gemm_refused(const int st) {
+  if (st != si_la::ok) {
+    Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // the buffers SVD_triplet() reads and writes, sized once by the constructor,
 // before the EM loop, and zero-filled; every call reuses them. With nr, nc
 // and n those of the GramDims and topk the number of eigenpairs asked for:
@@ -93,7 +104,7 @@ struct SolveBuffers {
 // (fused with its own column scaling of U).
 //
 // In the wide case V is written only for the changing columns, rows
-// n_fixed .. n_elig-1; the caller fills the fixed rows once after the EM
+// n_fixed .. nc-1; the caller fills the fixed rows once after the EM
 // loop from the same Vn. In the tall case V is complete.
 //
 // Xhat is gram_dims.nr x gram_dims.nc, and buf was sized for gram_dims, ncp
@@ -129,8 +140,8 @@ inline double SVD_triplet(const double *Xhat, const double *sw,
                gram_st);
   }
 
-  // The one test for NaN and Inf in the chain's linear algebra, before
-  // either solver sees the Gram.
+  // The Gram is tested for NaN and Inf here, before either solver sees it.
+  // On the exact path si_la::syevr_range tests the same triangle again.
   if (!gram_upper_finite(AA_NxN, n)) {
     Rcpp::stop(GRAM_NOT_FINITE_MSG);
   }
@@ -139,7 +150,7 @@ inline double SVD_triplet(const double *Xhat, const double *sw,
 
   LOC_TIC(timer, "eig");
   const int eig_st =
-      hybrid_topk_eig(eigvals, eigvecs, AA_NxN, n, n, hyb_ctx, outer_iter);
+      hybrid_topk_eig(eigvals, eigvecs, AA_NxN, n, hyb_ctx, outer_iter);
   LOC_TOC(timer, "eig");
   if (eig_st > 0) {
     Rcpp::stop("the symmetric eigensolver failed (LAPACK dsyevr, info = %d)",
@@ -171,22 +182,18 @@ inline double SVD_triplet(const double *Xhat, const double *sw,
   if (gram_dims.tall) {
     split_eigvec_block(eigvecs, n, V, Vn, d_inv, nullptr, ncp);
     const int st = pca_detail::gemm_nn(X_work, nr, nc, Vn, n, ncp, U);
-    if (st != si_la::ok) {
-      Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
-    }
+    stop_if_gemm_refused(st);
   } else {
     split_eigvec_block(eigvecs, n, U, Vn, d_inv, sw, ncp);
     // inside the EM loop only the changing columns' rows of V are read, and
     // the permutation keeps those columns in the tail block of Xhat, so one
-    // dgemm over that block fills rows n_fixed .. n_elig-1 in place. The
+    // dgemm over that block fills rows n_fixed .. nc-1 in place. The
     // caller sized V once, before the EM loop, so the rows written earlier
     // stay where they are.
     const std::size_t n_fixed = gram_cache.n_fixed;
     const int st = pca_detail::gemm_tn_block(Xhat, nr, nc, n_fixed,
                                              nc - n_fixed, Vn, n, ncp, V);
-    if (st != si_la::ok) {
-      Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
-    }
+    stop_if_gemm_refused(st);
   }
   LOC_TOC(timer, "recover_factors");
   return trace_val;

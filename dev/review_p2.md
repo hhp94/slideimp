@@ -204,7 +204,7 @@ here); which status the wrapper returned in finding 3.
 ### 1. The overrun step 3 ended kills the R process, and the notes say it does not
 
 Step 3 moved `eig_sym_sel()` onto the wrapper
-(`src/eig_sym_sel.h`: `si_la::syevr_range(PEIG_UPLO, rng.n, rng.il, rng.iu, A, eigvals, eigvecs);`),
+(`src/eig_sym_sel.h`: `si_la::syevr_range(PEIG_UPLO,`),
 which holds the `n` eigenvalue cells dsyevr documents. Before it, the chain
 gave dsyevr `topk` cells, and dsyevr writes past them when the range cuts a
 group of equal eigenvalues. The plan treats that as an overrun nobody has

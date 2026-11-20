@@ -19,6 +19,9 @@
 
 namespace {
 
+// the EM loop asks for a user interrupt once in this many iterations
+constexpr std::size_t INTERRUPT_EVERY = 5;
+
 // The eligible columns as the kernel holds them: permuted so that the
 // n_fixed complete ones come first and the n_mc with a hole after them,
 // each group in the order eligible_idx gives, every column nrX rows long.
@@ -42,7 +45,8 @@ struct ColumnLayout {
 // and nothing changes after; then the column mean mean_p and, when scaling,
 // the column scale et floored at PCA_TOL, which the standardization sets
 // and every EM iteration updates. et stays empty otherwise, and nothing
-// reads it.
+// reads it. scale_of(j) is the scale of column j: et[j], or 1 when not
+// scaling.
 struct ColumnMoments {
   std::vector<double> denom;
   std::vector<double> mu0;
@@ -54,6 +58,10 @@ struct ColumnMoments {
   ColumnMoments(const std::size_t n_elig, const bool scale)
       : denom(n_elig), mu0(n_elig), obs_sum_c(n_elig), obs_sumsq_c(n_elig),
         mean_p(n_elig), et(scale ? n_elig : 0) {}
+
+  double scale_of(const std::size_t j) const {
+    return et.empty() ? 1.0 : et[j];
+  }
 };
 
 template <typename F>
@@ -139,28 +147,26 @@ void check_arguments(const Rcpp::NumericMatrix &obj,
 
   // LAPACK workspace guard. The dimensions themselves fit an int: nrX is an
   // R dimension, and n_cp and n_gram are below one.
-  {
-    const std::size_t int_max =
-        static_cast<std::size_t>(std::numeric_limits<int>::max());
+  const std::size_t int_max =
+      static_cast<std::size_t>(std::numeric_limits<int>::max());
 
-    // si_la::syevr_range gives dsyevr at least 26*n and 10*n workspace.
-    if (n_gram > int_max / 26) {
-      Rcpp::stop("problem dimension too large for LAPACK dsyevr workspace");
-    }
+  // si_la::syevr_range gives dsyevr at least 26*n and 10*n workspace.
+  if (n_gram > int_max / 26) {
+    Rcpp::stop("problem dimension too large for LAPACK dsyevr workspace");
+  }
 
-    // LOBPCG internally solves small Rayleigh-Ritz problems up to ~3*k.
-    // only apply this guard when the requested solver can actually use
-    // LOBPCG (lobpcg_maxiter >= 1 was already enforced above).
-    if (lobpcg_requested) {
-      const double rr_dim = 3.0 * static_cast<double>(k);
-      const double dsyevd_lwork = 1.0 + 6.0 * rr_dim + 2.0 * rr_dim * rr_dim;
-      const double dsyevd_liwork = 3.0 + 5.0 * rr_dim;
+  // LOBPCG internally solves small Rayleigh-Ritz problems up to ~3*k.
+  // only apply this guard when the requested solver can actually use
+  // LOBPCG (lobpcg_maxiter >= 1 was already enforced above).
+  if (lobpcg_requested) {
+    const double rr_dim = 3.0 * static_cast<double>(k);
+    const double dsyevd_lwork = 1.0 + 6.0 * rr_dim + 2.0 * rr_dim * rr_dim;
+    const double dsyevd_liwork = 3.0 + 5.0 * rr_dim;
 
-      if (rr_dim > static_cast<double>(int_max) ||
-          dsyevd_lwork > static_cast<double>(int_max) ||
-          dsyevd_liwork > static_cast<double>(int_max)) {
-        Rcpp::stop("'ncp' is too large for the LAPACK workspace of LOBPCG");
-      }
+    if (rr_dim > static_cast<double>(int_max) ||
+        dsyevd_lwork > static_cast<double>(int_max) ||
+        dsyevd_liwork > static_cast<double>(int_max)) {
+      Rcpp::stop("'ncp' is too large for the LAPACK workspace of LOBPCG");
     }
   }
 }
@@ -185,7 +191,7 @@ std::vector<double> normalized_row_weights(const Rcpp::NumericVector &row_w) {
   if (!(row_w_sum > 0.0)) {
     Rcpp::stop("'row_w' must have a positive sum");
   }
-  std::vector<double> w(row_w.begin(), row_w.end());
+  std::vector<double> w(row_w_ptr, row_w_ptr + nrX);
   for (std::size_t i = 0; i < nrX; ++i) {
     w[i] /= row_w_sum;
   }
@@ -495,7 +501,8 @@ void impute_restandardize(double *xptr, const double *fxp, ColumnMoments &mom,
 
 // Starting values at the missing positions of Xhat and of fittedX, which the
 // caller hands over zero-filled: before the first dgemm only those positions
-// of fittedX are read.
+// of fittedX are read. A start of zero, init == 0, is written to Xhat only,
+// since fittedX already holds it.
 void initialize_missing_start(double *Xhat, double *fittedX, const int init,
                               const ColumnLayout &layout) {
   const std::size_t nrX = layout.nrX;
@@ -510,12 +517,8 @@ void initialize_missing_start(double *Xhat, double *fittedX, const int init,
       const std::size_t j = n_fixed + ci;
 
       double *col = col_ptr(Xhat, j, nrX);
-      double *fit_col = col_ptr(fittedX, j, nrX);
 
-      for_each_missing_in_col(layout, ci, [&](std::size_t i) {
-        col[i] = 0.0;
-        fit_col[i] = 0.0;
-      });
+      for_each_missing_in_col(layout, ci, [&](std::size_t i) { col[i] = 0.0; });
     }
 
     return;
@@ -582,9 +585,7 @@ void reconstruct_cols(const double *U, const std::size_t u_rows,
   const int st =
       si_la::gemm('N', 'T', u_rows, nj, u_cols, 1.0, U, u_rows, V + j0, v_rows,
                   0.0, col_ptr(dst, j0, u_rows), u_rows);
-  if (st != si_la::ok) {
-    Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
-  }
+  stop_if_gemm_refused(st);
 }
 
 // Restores, when it goes out of scope, the precision Rcpp::Rcout had when it
@@ -628,9 +629,7 @@ double subspace_cosine(const std::vector<double> &V_prev, const double *V_new,
   // largest angle between the two subspaces.
   int st = si_la::gemm('T', 'N', n_cp, n_cp, n_gram, 1.0, V_prev.data(), n_gram,
                        V_new, n_gram, 0.0, V_cross.data(), n_cp);
-  if (st != si_la::ok) {
-    Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
-  }
+  stop_if_gemm_refused(st);
   st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());
   if (st > 0 || st == si_la::err_nonfinite) {
     // dgesdd did not converge, or the product holds NaN or Inf.
@@ -663,9 +662,7 @@ void complete_fixed_block(const double *Xhat, double *fittedX,
     const int st =
         pca_detail::gemm_tn_block(Xhat, nrX, n_elig, 0, n_fixed, buf.Vn.data(),
                                   n_gram, n_cp, buf.V.data());
-    if (st != si_la::ok) {
-      Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
-    }
+    stop_if_gemm_refused(st);
   }
   reconstruct_cols(buf.U.data(), nrX, n_cp, buf.V.data(), n_elig, fittedX, 0,
                    n_fixed);
@@ -675,8 +672,7 @@ void complete_fixed_block(const double *Xhat, double *fittedX,
 // statistic: the residual over every cell in the units of obj (times et^2
 // per column), less that over the holes.
 double observed_mse(const double *xhp, const double *fxp,
-                    const ColumnMoments &mom, const bool scale,
-                    const ColumnLayout &layout) {
+                    const ColumnMoments &mom, const ColumnLayout &layout) {
   const std::size_t nrX = layout.nrX;
   const std::size_t n_fixed = layout.n_fixed;
   const std::size_t n_mc = layout.n_mc;
@@ -685,7 +681,7 @@ double observed_mse(const double *xhp, const double *fxp,
 
   double sse = 0.0;
   for (std::size_t j = 0; j < n_elig; ++j) {
-    const double ej = scale ? mom.et[j] : 1.0;
+    const double ej = mom.scale_of(j);
     const double ej2 = ej * ej;
     const std::size_t off = j * nrX;
     const double *xh = xhp + off;
@@ -699,7 +695,7 @@ double observed_mse(const double *xhp, const double *fxp,
   }
   for (std::size_t ci = 0; ci < n_mc; ++ci) {
     const std::size_t j_local = n_fixed + ci;
-    const double ej = scale ? mom.et[j_local] : 1.0;
+    const double ej = mom.scale_of(j_local);
     const double ej2 = ej * ej;
     const std::size_t off = j_local * nrX;
     const double *xh = xhp + off;
@@ -711,10 +707,10 @@ double observed_mse(const double *xhp, const double *fxp,
     });
     sse -= s * ej2;
   }
+  // n_obs >= n_elig >= 1: standardize_columns() refused a column with no
+  // observed weight, so every column has an observed cell.
   const std::size_t n_obs = nrX * n_elig - n_missing;
-  const double mse = (n_obs > 0) ? sse / static_cast<double>(n_obs)
-                                 : std::numeric_limits<double>::quiet_NaN();
-  return mse;
+  return sse / static_cast<double>(n_obs);
 }
 
 // The imputed cells as they go back to R: `loc`, an integer matrix of each
@@ -726,7 +722,7 @@ struct ImputedCells {
 };
 
 ImputedCells imputed_cells(const double *xhp, const ColumnMoments &mom,
-                           const bool scale, const ColumnLayout &layout) {
+                           const ColumnLayout &layout) {
   const std::size_t nrX = layout.nrX;
   const std::size_t n_fixed = layout.n_fixed;
   const std::size_t n_mc = layout.n_mc;
@@ -736,29 +732,27 @@ ImputedCells imputed_cells(const double *xhp, const ColumnMoments &mom,
   Rcpp::IntegerMatrix loc(static_cast<int>(n_missing), 2);
   Rcpp::colnames(loc) = Rcpp::CharacterVector::create("row", "col");
   Rcpp::NumericVector value(static_cast<R_xlen_t>(n_missing));
-  {
-    int *loc_row = loc.begin();
-    int *loc_col = loc_row + n_missing;
-    double *val = value.begin();
-    std::size_t iv = 0;
-    for (std::size_t ci = 0; ci < n_mc; ++ci) {
-      const std::size_t j_local = n_fixed + ci;
-      const double ej = scale ? mom.et[j_local] : 1.0;
-      const double mj = mom.mean_p[j_local];
-      const int orig_col_1based = layout.eligible_idx_perm[j_local] + 1;
+  int *loc_row = loc.begin();
+  int *loc_col = loc_row + n_missing;
+  double *val = value.begin();
+  std::size_t iv = 0;
+  for (std::size_t ci = 0; ci < n_mc; ++ci) {
+    const std::size_t j_local = n_fixed + ci;
+    const double ej = mom.scale_of(j_local);
+    const double mj = mom.mean_p[j_local];
+    const int orig_col_1based = layout.eligible_idx_perm[j_local] + 1;
 
-      // missMDA::imputePCA() returns completeObs using the final Xhat at
-      // missing positions, not the final fittedX. fittedX is still used
-      // for the nb.init selection MSE.
-      const double *xh = xhp + j_local * nrX;
+    // missMDA::imputePCA() returns completeObs using the final Xhat at
+    // missing positions, not the final fittedX. fittedX is still used
+    // for the nb.init selection MSE.
+    const double *xh = xhp + j_local * nrX;
 
-      for_each_missing_in_col(layout, ci, [&](std::size_t i) {
-        loc_row[iv] = static_cast<int>(i) + 1;
-        loc_col[iv] = orig_col_1based;
-        val[iv] = xh[i] * ej + mj;
-        ++iv;
-      });
-    }
+    for_each_missing_in_col(layout, ci, [&](std::size_t i) {
+      loc_row[iv] = static_cast<int>(i) + 1;
+      loc_col[iv] = orig_col_1based;
+      val[iv] = xh[i] * ej + mj;
+      ++iv;
+    });
   }
   return ImputedCells{loc, value};
 }
@@ -810,10 +804,6 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
                "and nrow('obj') - 1 > 'ncp'");
   }
 
-  double old = std::numeric_limits<double>::infinity();
-
-  const double *wptr = w.data();
-
   const double *objp = obj.begin();
   const int *elig = eligible_idx.begin();
 
@@ -830,7 +820,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   ColumnMoments mom(n_elig, scale);
 
   LOC_TIC(pca_kernel, "pass2_scan");
-  scan_columns(objp, wptr, layout, Xhat.data(), mom);
+  scan_columns(objp, w.data(), layout, Xhat.data(), mom);
   LOC_TOC(pca_kernel, "pass2_scan");
 
   standardize_columns(Xhat.data(), layout, scale, mom);
@@ -840,7 +830,6 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   // ---------------------------------------------------------------------------
   // SVD / solve buffers.
   // ---------------------------------------------------------------------------
-  double sigma2 = 0.0;
   std::vector<double> sqrt_row_w(nrX);
   std::vector<double> inv_sqrt_row_w(nrX);
   for (std::size_t i = 0; i < nrX; ++i) {
@@ -848,8 +837,6 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     sqrt_row_w[i] = s;
     inv_sqrt_row_w[i] = (s > PCA_TOL) ? (1.0 / s) : (1.0 / PCA_TOL);
   }
-  const double *sptr = sqrt_row_w.data();
-  const double *isptr = inv_sqrt_row_w.data();
 
   GramDims gram_dims;
   gram_dims.init(nrX, n_elig, tall);
@@ -870,15 +857,15 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   LOC_TIC(pca_kernel, "gram_cache_init");
   GramCache gram_cache;
   const int gram_init_st =
-      gram_cache_init(gram_cache, Xhat.data(), sptr, nrX, layout.n_fixed,
-                      layout.n_mc, tall, buf.X_work.data());
+      gram_cache_init(gram_cache, Xhat.data(), sqrt_row_w.data(), gram_dims,
+                      layout.n_fixed, buf.X_work.data());
   LOC_TOC(pca_kernel, "gram_cache_init");
   if (gram_init_st != si_la::ok) {
     Rcpp::stop("internal error: dsyrk refused its arguments (status %d)",
                gram_init_st);
   }
-  double *weighted_chg_ptr = gram_changing_block(
-      gram_cache, buf.X_work.data(), nrX, layout.n_fixed, layout.n_mc, tall);
+  double *weighted_chg_ptr =
+      gram_changing_block(gram_cache, buf.X_work.data(), gram_dims);
 
   HybridEigContext hyb_ctx;
   hyb_ctx.eig_range = &eig_range;
@@ -896,8 +883,6 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   // ---------------------------------------------------------------------------
   // hot loop prep
   // ---------------------------------------------------------------------------
-  double objective = 0.0;
-
   std::size_t n_iter_final = 0;
   double criterion_final = std::numeric_limits<double>::quiet_NaN();
   bool converged = false;
@@ -919,34 +904,35 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   std::vector<double> V_cross_sv(n_cp);
 #endif
 
+  double old = std::numeric_limits<double>::infinity();
   for (std::size_t nb_iter = 1;; ++nb_iter) {
-    if (nb_iter % 5 == 0) {
+    if (nb_iter % INTERRUPT_EVERY == 0) {
       Rcpp::checkUserInterrupt();
     }
     LOC_TIC(pca_kernel, "restandardize");
     if (scale) {
-      impute_restandardize<true>(Xhat.data(), fittedX.data(), mom, wptr, sptr,
-                                 weighted_chg_ptr, layout);
+      impute_restandardize<true>(Xhat.data(), fittedX.data(), mom, w.data(),
+                                 sqrt_row_w.data(), weighted_chg_ptr, layout);
     } else {
-      impute_restandardize<false>(Xhat.data(), fittedX.data(), mom, wptr, sptr,
-                                  weighted_chg_ptr, layout);
+      impute_restandardize<false>(Xhat.data(), fittedX.data(), mom, w.data(),
+                                  sqrt_row_w.data(), weighted_chg_ptr, layout);
     }
     LOC_TOC(pca_kernel, "restandardize");
 
     LOC_TIC(pca_kernel, "svd");
     const double trace_val = SVD_triplet(
-        Xhat.data(), sptr, n_cp, buf, gram_dims, gram_cache, hyb_ctx,
-        static_cast<int>(nb_iter - 1) LOC_TIMER_ARG(pca_kernel));
+        Xhat.data(), sqrt_row_w.data(), n_cp, buf, gram_dims, gram_cache,
+        hyb_ctx, static_cast<int>(nb_iter - 1) LOC_TIMER_ARG(pca_kernel));
     LOC_TOC(pca_kernel, "svd");
 
     LOC_TIC(pca_kernel, "post_svd");
-    sigma2 = 0.0;
+    double sigma2 = 0.0;
     double sum_top_sq = 0.0;
     for (std::size_t cp = 0; cp < n_cp; ++cp) {
       sum_top_sq += buf.vs_top[cp] * buf.vs_top[cp];
     }
-    // clamp tail energy once and use consistently in both sigma2 (was unclamped)
-    // and the objective.
+    // the tail energy is clamped at zero once, and both sigma2 and the
+    // objective use the clamped value.
     const double tail = std::max(0.0, trace_val - sum_top_sq);
     if (regularized) {
       sigma2 = scale_factor * tail / denom_sigma;
@@ -955,16 +941,12 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     }
 
     double top_corr = 0.0;
-    {
-      const double *vp = buf.vs_top.data();
-      double *lp = lambda_shrinked.data();
-      for (std::size_t i = 0; i < n_cp; ++i) {
-        const double v = vp[i];
-        const double lam = (v > PCA_TOL) ? (v - sigma2 / v) : 0.0;
-        lp[i] = lam;
-        const double d = v - lam;
-        top_corr += d * d;
-      }
+    for (std::size_t i = 0; i < n_cp; ++i) {
+      const double v = buf.vs_top[i];
+      const double lam = (v > PCA_TOL) ? (v - sigma2 / v) : 0.0;
+      lambda_shrinked[i] = lam;
+      const double d = v - lam;
+      top_corr += d * d;
     }
     const double objective_full = tail + top_corr;
     LOC_TOC(pca_kernel, "post_svd");
@@ -974,7 +956,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     // after this, U contains diag(isw) %*% U %*% diag(lambda_shrinked):
     // the row de-weighting of SVD_triplet's weighted-space U fused with the
     // shrunk column scaling.
-    pca_detail::scale_rows_cols_inplace(buf.U.data(), isptr,
+    pca_detail::scale_rows_cols_inplace(buf.U.data(), inv_sqrt_row_w.data(),
                                         lambda_shrinked.data(), nrX, n_cp);
     // reconstruct only the changing columns of fittedX; the fixed block is
     // never read inside the loop and is filled once after it exits.
@@ -984,12 +966,9 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     LOC_TOC(pca_kernel, "reconstruct");
 
     LOC_TIC(pca_kernel, "objective");
-    {
-      const double miss_contrib = missing_weighted_residual_ss(
-          Xhat.data(), fittedX.data(), wptr, layout);
-
-      objective = std::max(0.0, objective_full - miss_contrib);
-    }
+    const double miss_contrib = missing_weighted_residual_ss(
+        Xhat.data(), fittedX.data(), w.data(), layout);
+    const double objective = std::max(0.0, objective_full - miss_contrib);
     LOC_TOC(pca_kernel, "objective");
 
 #if PCA_IMP_DIAGNOSTICS
@@ -1025,7 +1004,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     }
     if (!stop_now && nb_iter >= max_iter) {
       stop_now = true;
-      converged = false;
+      // converged stays false: the test above sets it only with stop_now.
       // deliberately silent. The std::string overload of Rcpp::warning is a
       // bare Rf_warning, so under options(warn = 2) - or any calling handler
       // that invokes a restart - R longjmps straight out of this frame.
@@ -1059,9 +1038,8 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   LOC_TIC(pca_kernel, "postprocessing");
   complete_fixed_block(Xhat.data(), fittedX.data(), buf, gram_dims,
                        layout.n_fixed, n_cp);
-  const double mse =
-      observed_mse(Xhat.data(), fittedX.data(), mom, scale, layout);
-  const ImputedCells imputed = imputed_cells(Xhat.data(), mom, scale, layout);
+  const double mse = observed_mse(Xhat.data(), fittedX.data(), mom, layout);
+  const ImputedCells imputed = imputed_cells(Xhat.data(), mom, layout);
   LOC_TOC(pca_kernel, "postprocessing");
   LOC_TOC(pca_kernel, "pca_imp_internal_cpp_total");
   const int n_iter_out = static_cast<int>(n_iter_final);

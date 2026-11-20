@@ -38,11 +38,21 @@ enum HybridEigReason {
 
 enum class HybridSolverMode : int { Exact = 0, Lobpcg = 1, Auto = 2 };
 
-enum class HybridAutoChoice : int { Undecided = 0, Exact = 3, Lobpcg = 4 };
+enum class HybridAutoChoice : int { Undecided, Exact, Lobpcg };
 
 enum class HybridAutoProbe : int { None = 0, Exact = 1, Lobpcg = 2 };
 
-// v2 auto policy.
+// what solver_chosen_code() returns, and R/pca_imp.R decodes: the solver
+// forced, or under auto whether and how the probe decided.
+enum HybridSolverChosen {
+  HYB_CHOSEN_FORCED_EXACT = 0,
+  HYB_CHOSEN_FORCED_LOBPCG = 1,
+  HYB_CHOSEN_AUTO_UNDECIDED = 2,
+  HYB_CHOSEN_AUTO_EXACT = 3,
+  HYB_CHOSEN_AUTO_LOBPCG = 4
+};
+
+// The auto policy.
 //
 // exact warmup iterations double as the exact timing probe.
 // Then auto runs a small number of LOBPCG probe calls.
@@ -84,7 +94,7 @@ struct HybridEigContext {
   std::vector<int> lobpcg_fail_iter_log;
   std::vector<double> lobpcg_max_rel_res_log;
 
-  void init_logs(size_t n) {
+  void init_logs(std::size_t n) {
     path_log.assign(n, HYB_NOT_RUN);
     reason_log.assign(n, HYB_REASON_NOT_RUN);
     lobpcg_iter_log.assign(n, -1);
@@ -92,7 +102,7 @@ struct HybridEigContext {
     lobpcg_max_rel_res_log.assign(n, std::numeric_limits<double>::quiet_NaN());
   }
 
-  void truncate_logs(size_t n) {
+  void truncate_logs(std::size_t n) {
     path_log.resize(n);
     reason_log.resize(n);
     lobpcg_iter_log.resize(n);
@@ -121,20 +131,13 @@ struct HybridEigContext {
   void choose_auto_lobpcg() { auto_choice = HybridAutoChoice::Lobpcg; }
 
   void maybe_decide_auto() {
-    if (solver_mode != HybridSolverMode::Auto) {
-      return;
-    }
-
-    if (auto_choice != HybridAutoChoice::Undecided) {
+    if (!auto_timing_active()) {
       return;
     }
 
     if (auto_lobpcg_n >= auto_n_probe_iter && auto_exact_n > 0) {
-      const double exact_mean =
-          auto_exact_sec / static_cast<double>(auto_exact_n);
-
-      const double lobpcg_mean =
-          auto_lobpcg_sec / static_cast<double>(auto_lobpcg_n);
+      const double exact_mean = auto_exact_mean_sec();
+      const double lobpcg_mean = auto_lobpcg_mean_sec();
 
       if (exact_mean > 0.0 && lobpcg_mean < (1.0 - auto_margin) * exact_mean) {
         choose_auto_lobpcg();
@@ -151,9 +154,10 @@ struct HybridEigContext {
     }
   }
 
+  // last_auto_probe is what the call just timed set it to: every call of
+  // hybrid_topk_eig_impl() sets it first thing.
   void record_auto_probe_time(double seconds) {
-    if (solver_mode == HybridSolverMode::Auto &&
-        auto_choice == HybridAutoChoice::Undecided) {
+    if (auto_timing_active()) {
       if (last_auto_probe == HybridAutoProbe::Exact) {
         auto_exact_sec += seconds;
         ++auto_exact_n;
@@ -164,8 +168,6 @@ struct HybridEigContext {
 
       maybe_decide_auto();
     }
-
-    last_auto_probe = HybridAutoProbe::None;
   }
 
   double auto_exact_mean_sec() const {
@@ -198,37 +200,37 @@ struct HybridEigContext {
 
   int solver_chosen_code() const {
     if (solver_mode == HybridSolverMode::Exact) {
-      return 0;
+      return HYB_CHOSEN_FORCED_EXACT;
     }
 
     if (solver_mode == HybridSolverMode::Lobpcg) {
-      return 1;
+      return HYB_CHOSEN_FORCED_LOBPCG;
     }
 
     if (auto_choice == HybridAutoChoice::Exact) {
-      return 3;
+      return HYB_CHOSEN_AUTO_EXACT;
     }
 
     if (auto_choice == HybridAutoChoice::Lobpcg) {
-      return 4;
+      return HYB_CHOSEN_AUTO_LOBPCG;
     }
     // solver = auto, but the run stopped before the auto probe completed.
-    return 2;
+    return HYB_CHOSEN_AUTO_UNDECIDED;
   }
 };
 
-inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs, double *A,
-                                const std::size_t a_rows,
-                                const std::size_t a_cols, HybridEigContext &ctx,
-                                int outer_iter) {
+[[nodiscard]] inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs,
+                                              double *A, const std::size_t n,
+                                              HybridEigContext &ctx,
+                                              int outer_iter) {
   const EigSymRange &rng = *ctx.eig_range;
 
-  auto log_at = [&](int path, int reason, const LOBPCGResult *res = nullptr) {
+  auto log_at = [&](int path, int reason, const LOBPCGResult *res) {
     if (outer_iter < 0 ||
-        static_cast<size_t>(outer_iter) >= ctx.path_log.size()) {
+        static_cast<std::size_t>(outer_iter) >= ctx.path_log.size()) {
       return;
     }
-    const size_t oi = static_cast<size_t>(outer_iter);
+    const std::size_t oi = static_cast<std::size_t>(outer_iter);
 
     ctx.path_log[oi] = path;
     ctx.reason_log[oi] = reason;
@@ -244,8 +246,10 @@ inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs, double *A,
   const bool has_seed = ctx.lobpcg_state.seeded();
   const bool lobpcg_enabled = ctx.lobpcg_opt.maxiter > 0;
 
+  // every arm below that leaves try_lobpcg false sets direct_reason, which
+  // is read only then.
   bool try_lobpcg = false;
-  int direct_reason = HYB_REASON_WARMUP;
+  int direct_reason = HYB_REASON_NOT_RUN;
 
   if (ctx.solver_mode == HybridSolverMode::Exact) {
     direct_reason = HYB_REASON_FORCED_EXACT;
@@ -286,7 +290,7 @@ inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs, double *A,
       } else {
         ctx.maybe_decide_auto();
 
-        if (ctx.auto_choice == HybridAutoChoice::Lobpcg && has_seed) {
+        if (ctx.auto_choice == HybridAutoChoice::Lobpcg) {
           try_lobpcg = true;
         } else {
           direct_reason = HYB_REASON_AUTO_CHOSE_EXACT;
@@ -296,17 +300,14 @@ inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs, double *A,
   }
 
   LOBPCGResult lob_res;
-  bool attempted_lobpcg = false;
 
   if (try_lobpcg) {
-    attempted_lobpcg = true;
+    pca_detail::mirror_upper_to_lower(A, n);
 
-    pca_detail::mirror_upper_to_lower(A, a_rows);
-
-    lob_res = lobpcg_solve(A, a_rows, a_cols, ctx.lobpcg_state, ctx.lobpcg_opt);
+    lob_res = lobpcg_solve(A, n, ctx.lobpcg_state, ctx.lobpcg_opt);
 
     if (lob_res.converged) {
-      ctx.n_lobpcg_ok++;
+      ++ctx.n_lobpcg_ok;
 
       // the state was seeded from an n x topk block and keeps its shape, so
       // the caller's buffers fit; not expected to fail.
@@ -334,14 +335,14 @@ inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs, double *A,
     ++ctx.n_lobpcg_bad;
   }
 
-  const int exact_st = eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng);
+  const int exact_st = eig_sym_sel(eigvals, eigvecs, A, n, rng);
   if (exact_st != si_la::ok) {
     return exact_st;
   }
 
   ++ctx.n_exact;
 
-  if (attempted_lobpcg) {
+  if (try_lobpcg) {
     log_at(HYB_DSYEVR_FALLBACK, lob_res.status, &lob_res);
   } else {
     log_at(HYB_DSYEVR_DIRECT, direct_reason, nullptr);
@@ -360,27 +361,24 @@ inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs, double *A,
   return si_la::ok;
 }
 
-// top-k eigenpairs of the symmetric a_rows x a_cols A. Only A's upper
-// triangle need be valid on entry (matching dsyevr's uplo='U'); A is mutated
-// in place. eigvals has ctx.eig_range->topk cells and eigvecs is
+// top-k eigenpairs of the symmetric n x n A. Only A's upper triangle need
+// be valid on entry (matching dsyevr's uplo='U'); A is mutated in place.
+// eigvals has ctx.eig_range->topk cells and eigvecs is
 // ctx.eig_range->n x topk, sized by the caller. While the auto probe is
 // undecided, each call is timed and recorded so the context can pick a
 // solver. The status is si_la's: si_la::ok, or what the exact solver
 // returned when it failed. A LOBPCG solve that fails is not a failure here:
 // the exact solver takes that call.
 [[nodiscard]] inline int hybrid_topk_eig(double *eigvals, double *eigvecs,
-                                         double *A, const std::size_t a_rows,
-                                         const std::size_t a_cols,
+                                         double *A, const std::size_t n,
                                          HybridEigContext &ctx,
                                          int outer_iter) {
   if (!ctx.auto_timing_active()) {
-    return hybrid_topk_eig_impl(eigvals, eigvecs, A, a_rows, a_cols, ctx,
-                                outer_iter);
+    return hybrid_topk_eig_impl(eigvals, eigvecs, A, n, ctx, outer_iter);
   }
 
   const auto t0 = std::chrono::steady_clock::now();
-  const int st = hybrid_topk_eig_impl(eigvals, eigvecs, A, a_rows, a_cols, ctx,
-                                      outer_iter);
+  const int st = hybrid_topk_eig_impl(eigvals, eigvecs, A, n, ctx, outer_iter);
   const auto t1 = std::chrono::steady_clock::now();
 
   ctx.record_auto_probe_time(std::chrono::duration<double>(t1 - t0).count());

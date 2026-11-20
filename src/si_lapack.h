@@ -5,8 +5,7 @@
 // an int status. Every BLAS and LAPACK call the PCA chain makes goes through
 // this header; src/si_lapack.cpp is the one file that includes R_ext/BLAS.h
 // and R_ext/Lapack.h for it. This header declares no BLAS or LAPACK symbol
-// and uses no Armadillo, Eigen or R type, so any translation unit can
-// include it.
+// and uses no Eigen or R type, so any translation unit can include it.
 //
 // Conventions, for every function here:
 //

@@ -8,8 +8,11 @@
 # through the conversion. It now patches the sources as clang-format lays
 # them out, which is every commit from 571d176 on, with either form of the
 # update after a QR: dtrtrs on the transposed operands (si_la::solve_tri), or
-# one dtrsm from the right (si_la::solve_tri_right). For an older file, the
-# Armadillo ones included, use `git show 2eb46bb:dev/probe_p2s4_patch.R`.
+# one dtrsm from the right (si_la::solve_tri_right); and with either form of
+# the Gram's order in src/hybrid_topk_eig.h: a_rows and a_cols, or one n.
+# The `edges` stage runs the working tree's copy on both clones, so it must
+# take the form HEAD has as well as the one the tree has. For an older file,
+# the Armadillo ones included, use `git show 2eb46bb:dev/probe_p2s4_patch.R`.
 # Every text it replaces must occur exactly once, or it stops. Every version
 # gets the same things, driven by environment variables read at run time, so
 # one build serves every run:
@@ -119,15 +122,22 @@ harness <- lines(
 nan_cell <- "std::numeric_limits<double>::quiet_NaN()"
 
 ## src/hybrid_topk_eig.h: the status of every lobpcg_solve() call, the NaN in
-## the Gram, and the exact solver made to report LAPACK's info = 1.
+## the Gram, and the exact solver made to report LAPACK's info = 1. The order
+## of the Gram reaches both solvers as one n, or, in the form before it, as
+## a_rows and a_cols.
+hybrid_txt <- paste(readLines("src/hybrid_topk_eig.h"), collapse = "\n")
+gram_order <- if (grepl("A, a_rows, a_cols,", hybrid_txt, fixed = TRUE)) {
+  "a_rows, a_cols"
+} else {
+  "n"
+}
 solve_line <- paste0(
-  "    lob_res = lobpcg_solve(A, a_rows, a_cols, ctx.lobpcg_state, ",
-  "ctx.lobpcg_opt);"
+  "    lob_res = lobpcg_solve(A, ",
+  gram_order,
+  ", ctx.lobpcg_state, ctx.lobpcg_opt);"
 )
-exact_status <- paste0(
-  "  const int exact_st = eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, ",
-  "rng);"
-)
+exact_call <- paste0("eig_sym_sel(eigvals, eigvecs, A, ", gram_order, ", rng);")
+exact_status <- paste0("  const int exact_st = ", exact_call)
 patch_file(
   "src/hybrid_topk_eig.h",
   list(
@@ -137,7 +147,7 @@ patch_file(
         "  const int exact_st =",
         "      p2s4::inject(\"eiginfo\")",
         "          ? 1",
-        "          : eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng);"
+        paste0("          : ", exact_call)
       )
     ),
     ed(
