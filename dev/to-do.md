@@ -240,8 +240,7 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
   of hot paths. Measure each change against the reference capture and the
   timing driver; no hand unrolling or OpenMP (`dev/CPP.md`). Candidates
   seen in the K-NN kernel while converting it, none measured yet:
-  `rows_to_impute` repeats, 0-based, the rows `loc` already holds;
-  and `obj_masked` and `nmiss_masked` are zero-filled by `std::vector`
+  `obj_masked` and `nmiss_masked` are zero-filled by `std::vector`
   before every cell is written. Seen in the PCA kernel
   (`src/armaSVD.cpp`), none measured apart: `Xhat`, `X_work`, `AA_NxN`, `U`,
   `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`

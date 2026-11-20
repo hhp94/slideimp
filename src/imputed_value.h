@@ -127,7 +127,7 @@ validate_knn_inputs(const Rcpp::NumericMatrix &obj, const int k,
 // [0, n_imp) of the masked copy), column by column and down each column:
 // `loc` holds its 1-based row and original 1-based column, `value` holds NA
 // until impute_column_values() writes it. col_offsets[i] is where column i's
-// entries start, rows_to_impute[i] the 0-based rows they stand for.
+// entries start, and col_offsets[n_imp] is their total.
 // n_col_valid holds the observed count of each masked column, taken during
 // the copy-with-mask pass, so the missing counts need no second pass over
 // the mask. Only entries [0, layout.n_imp) are read here.
@@ -136,11 +136,12 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
                        const GroupLayout &layout,
                        const std::vector<int> &n_col_valid,
                        std::vector<std::size_t> &col_offsets,
-                       std::vector<std::vector<int>> &rows_to_impute,
                        Rcpp::IntegerMatrix &loc, Rcpp::NumericVector &value);
 
 // Runs in a worker: plain pointers and std containers only, never an Rcpp
-// object. `out` is this column's slice of the result values.
+// object. `out` is this column's slice of the result values, and loc_rows
+// the same slice of the first column of `loc`: the n_miss 1-based rows the
+// values stand for.
 //
 // nn_columns holds tagged positions: values < layout.complete_start() index
 // directly into obj_masked/nmiss_masked; values >= layout.complete_start()
@@ -151,7 +152,7 @@ void impute_column_values(double *out, const double *obj_masked,
                           const GroupLayout &layout,
                           const std::vector<int> &nn_columns,
                           const std::vector<double> &nn_weights,
-                          const std::vector<int> &rows_to_impute,
+                          const int *loc_rows, const int n_miss,
                           const double *obj, const int *grp_complete);
 
 #endif

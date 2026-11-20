@@ -275,14 +275,17 @@ and a prefix sum builds `col_offsets` (`src/imputed_value.cpp`:
 `col_offsets[i + 1] = sum_missing;`) so each target column owns a contiguous
 slice of `value` and threads never collide. `value` starts as `NA`
 (`src/imputed_value.cpp`: `value = Rcpp::NumericVector(n_total, NA_REAL);`),
-`loc` is filled up front (`src/imputed_value.cpp`:
-`orig_col_1based = grp_impute[i] + 1`), and `rows_to_impute[i]` records which
-rows of target column `i` are missing.
+`loc` is filled up front, in one scan down each mask column
+(`src/imputed_value.cpp`: `orig_col_1based = grp_impute[i] + 1`). Its first
+column is also the one record of which rows of target column `i` are missing:
+the worker reads entries `col_offsets[i]` to `col_offsets[i + 1]` of it
+through a plain pointer and subtracts the 1 (`src/imputed_value.cpp`:
+`const int row_idx = loc_rows[r] - 1;`).
 Empty cases short-circuit (`src/imputed_value.cpp`: `if (n_imp == 0)`,
 `if (sum_missing == 0)`). It checks nothing its one caller has just
 established: `copy_with_mask` adds to `n_col_valid` the same byte it writes to
 the mask, so column `i` of the mask holds exactly `n_rows - n_col_valid[i]`
-zeros (`src/imputed_value.cpp`: `so it holds exactly n_miss_i zeros`). Its one
+zeros (`src/imputed_value.cpp`: `so it holds exactly as many zeros as its slice`). Its one
 refusal is a result too large for an R matrix, above.
 
 ## Layer 5 -- neighbor search (`src/impute_knn_brute.cpp`)
@@ -500,7 +503,7 @@ fall back to `mean_imp_col()`.
 - Column indices cross the boundary 0-based, R subtracting 1 (`R/knn_imp.R`:
   `grp_impute = as.integer(grp_impute - 1L)`), and come back 1-based along with
   the row indices, C++ adding 1 to both (`src/imputed_value.cpp`: `orig_col_1based = grp_impute[i] + 1`,
-  `rows_ref[r] + 1`).
+  `loc_row[w] = r + 1;`).
 - Per-thread scratch is small and local: `top_k` (`src/impute_knn_brute.cpp`:
   `std::vector<NeighborInfo> top_k;`), whatever temporary buffer
   `std::stable_sort` takes for it, `nn_columns` and `weights`
@@ -530,8 +533,8 @@ and scalars (`src/impute_knn_brute.cpp`:
 use of `obj`, `grp_complete` or `value` inside it would not compile; the
 functions it calls take the same pointers.
 
-All threads read `obj`, `obj_masked`, `nmiss_masked`, and `grp_complete` without
-writing them, and each writes only entries `[col_offsets[i], col_offsets[i+1])`
+All threads read `obj`, `obj_masked`, `nmiss_masked`, `grp_complete` and the
+first column of `loc` without writing them, and each writes only entries `[col_offsets[i], col_offsets[i+1])`
 of `value`, a disjoint slice per target column, so no locks are taken. Interruption
 is checked with `RcppThread::checkUserInterrupt()` on every fifth index
 (`src/impute_knn_brute.cpp`: `if (i % 5 == 0)`), which RcppThread routes to the

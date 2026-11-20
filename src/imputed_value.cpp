@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <limits>
 #include <string>
-#include <utility>
 #include <vector>
 
 // -----------------------------------------------------------------------------
@@ -21,12 +20,10 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
                        const GroupLayout &layout,
                        const std::vector<int> &n_col_valid,
                        std::vector<std::size_t> &col_offsets,
-                       std::vector<std::vector<int>> &rows_to_impute,
                        Rcpp::IntegerMatrix &loc, Rcpp::NumericVector &value) {
   const int n_imp = layout.n_imp;
 
   col_offsets.clear();
-  rows_to_impute.clear();
   loc = Rcpp::IntegerMatrix(0, 2);
   value = Rcpp::NumericVector(0);
 
@@ -34,7 +31,6 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
     return;
   }
 
-  std::vector<int> n_col_miss(n_imp);
   col_offsets.assign(static_cast<std::size_t>(n_imp) + 1, 0);
 
   // at most n_imp * n_rows, so a size_t sum cannot overflow
@@ -42,7 +38,6 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
 
   for (int i = 0; i < n_imp; ++i) {
     const int n_miss_i = n_rows - n_col_valid[i];
-    n_col_miss[i] = n_miss_i;
     sum_missing += static_cast<std::size_t>(n_miss_i);
     col_offsets[i + 1] = sum_missing;
   }
@@ -65,32 +60,19 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
   int *loc_row = loc.begin();
   int *loc_col = loc.begin() + n_total;
 
-  rows_to_impute.resize(n_imp);
-
   for (int i = 0; i < n_imp; ++i) {
     const MaskByte *mask_col = col_ptr(nmiss_masked.data(), i, n_rows);
-    const int n_miss_i = n_col_miss[i];
-
-    std::vector<int> rows(n_miss_i);
-    int w = 0;
+    const int orig_col_1based = grp_impute[i] + 1;
+    std::size_t w = col_offsets[i];
 
     // copy_with_mask counted the ones of this mask column into n_col_valid,
-    // so it holds exactly n_miss_i zeros.
+    // so it holds exactly as many zeros as its slice of the result has rows.
     for (int r = 0; r < n_rows; ++r) {
       if (mask_col[r] == 0) {
-        rows[w++] = r;
+        loc_row[w] = r + 1;           // 1-based row
+        loc_col[w] = orig_col_1based; // original 1-based column
+        ++w;
       }
-    }
-
-    rows_to_impute[i] = std::move(rows);
-
-    const std::vector<int> &rows_ref = rows_to_impute[i];
-    const int orig_col_1based = grp_impute[i] + 1;
-    const std::size_t offset = col_offsets[i];
-
-    for (int r = 0; r < n_miss_i; ++r) {
-      loc_row[offset + r] = rows_ref[r] + 1; // 1-based row
-      loc_col[offset + r] = orig_col_1based; // original 1-based column
     }
   }
 }
@@ -111,9 +93,8 @@ void impute_column_values(double *out, const double *obj_masked,
                           const GroupLayout &layout,
                           const std::vector<int> &nn_columns,
                           const std::vector<double> &nn_weights,
-                          const std::vector<int> &rows_to_impute,
+                          const int *loc_rows, const int n_miss,
                           const double *obj, const int *grp_complete) {
-  const int n_miss = static_cast<int>(rows_to_impute.size());
   if (n_miss == 0) {
     return;
   }
@@ -147,8 +128,8 @@ void impute_column_values(double *out, const double *obj_masked,
     const MaskByte *nmiss_col = col_ptr(nmiss_masked, local, n_rows);
 
     for (int r = 0; r < n_miss; ++r) {
-      const int row_idx = rows_to_impute[r];
-      double valid = nmiss_col[row_idx]; // uint8 -> double: exact 0.0/1.0
+      const int row_idx = loc_rows[r] - 1; // loc holds 1-based rows
+      double valid = nmiss_col[row_idx];   // uint8 -> double: exact 0.0/1.0
       double weight = w * valid;
       ws_ptr[r] += weight * obj_col[row_idx];
       wt_ptr[r] += weight;
@@ -165,7 +146,7 @@ void impute_column_values(double *out, const double *obj_masked,
     const double *obj_col = col_ptr(obj, grp_complete[c], n_rows);
 
     for (int r = 0; r < n_miss; ++r) {
-      ws_ptr[r] += w * obj_col[rows_to_impute[r]];
+      ws_ptr[r] += w * obj_col[loc_rows[r] - 1];
     }
     total_complete_w += w;
   }

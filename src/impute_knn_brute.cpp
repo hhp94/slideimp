@@ -391,11 +391,10 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
 
   // early exit after group 1. Shouldn't really reach this from R.
   std::vector<std::size_t> col_offsets;
-  std::vector<std::vector<int>> rows_to_impute;
   Rcpp::IntegerMatrix loc;
   Rcpp::NumericVector value;
   initialize_result(nmiss_masked, n_rows, grp_impute, layout, n_col_valid,
-                    col_offsets, rows_to_impute, loc, value);
+                    col_offsets, loc, value);
 
   if (value.size() == 0) {
     return Rcpp::List::create(Rcpp::Named("loc") = loc,
@@ -419,6 +418,7 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
   const double *obj_masked_ptr = obj_masked.data();
   const MaskByte *nmiss_masked_ptr = nmiss_masked.data();
   double *value_ptr = value.begin();
+  const int *loc_row_ptr = loc.begin();
 
   // parallelFor setup
   cores = std::max(1, cores);
@@ -434,8 +434,8 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
   par_for(
       0, static_cast<std::size_t>(layout.n_imp),
       [obj_masked_ptr, nmiss_masked_ptr, n_rows, &layout, k, &n_valid_vec,
-       method, obj_ptr, grp_complete_ptr, dist_pow, value_ptr, &col_offsets,
-       &rows_to_impute, pb, &bar](std::size_t i) {
+       method, obj_ptr, grp_complete_ptr, dist_pow, value_ptr, loc_row_ptr,
+       &col_offsets, pb, &bar](std::size_t i) {
         if (i % 5 == 0) {
           RcppThread::checkUserInterrupt();
         }
@@ -454,10 +454,12 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
             nn_columns[jj] = top_k[jj].index;
           }
           const std::vector<double> weights = knn_weights(top_k, dist_pow);
-          impute_column_values(value_ptr + col_offsets[i], obj_masked_ptr,
+          const std::size_t offset = col_offsets[i];
+          impute_column_values(value_ptr + offset, obj_masked_ptr,
                                nmiss_masked_ptr, n_rows, layout, nn_columns,
-                               weights, rows_to_impute[i], obj_ptr,
-                               grp_complete_ptr);
+                               weights, loc_row_ptr + offset,
+                               static_cast<int>(col_offsets[i + 1] - offset),
+                               obj_ptr, grp_complete_ptr);
         }
         if (pb) {
           ++(*bar);
