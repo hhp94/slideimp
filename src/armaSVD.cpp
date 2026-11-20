@@ -473,18 +473,17 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
           col_ptr(objp, static_cast<std::size_t>(eligible_idx_perm[jp]), nrX);
       double *dst = col_ptr(Xhat.data(), jp, nrX);
 
-      const bool has_miss = (jp >= n_fixed);
-      const std::size_t cidx = has_miss ? (jp - n_fixed) : 0;
-      std::size_t p = has_miss ? miss_rows_offsets[cidx] : 0;
+      // pass1_count_missing read this column: a complete one (jp < n_fixed)
+      // has no NaN, and a changing one has as many as its slice of
+      // miss_rows_flat holds.
+      std::size_t p = (jp >= n_fixed) ? miss_rows_offsets[jp - n_fixed] : 0;
 
       // pass A: observed weight, raw weighted sum, missing-row indices.
       double d_acc = 0.0, ws_acc = 0.0;
       for (std::size_t i = 0; i < nrX; ++i) {
         const double v = src[i];
         if (std::isnan(v)) {
-          if (has_miss) {
-            miss_rows_flat[p++] = static_cast<int>(i);
-          }
+          miss_rows_flat[p++] = static_cast<int>(i);
         } else {
           const double wi = wptr[i];
           d_acc += wi;
