@@ -34,8 +34,8 @@ using MaskByte = std::uint8_t;
 // imputed.
 //
 // complete_start() is a "virtual" index: there is no physical column at that
-// position in obj_masked. It's used as a tag in nn_columns to mark
-// "this neighbor came from group 3, offset (local - complete_start()) into
+// position in obj_masked. It's used as a tag in a neighbor's index to mark
+// "this neighbor came from group 3, offset (index - complete_start()) into
 // grp_complete".
 //
 // The groups are disjoint and in range (validate_knn_inputs), so every count
@@ -48,6 +48,19 @@ struct GroupLayout {
   int n_masked() const { return n_imp + n_mni; }
   int complete_start() const { return n_imp + n_mni; }
   int n_working() const { return n_imp + n_mni + n_complete; }
+};
+
+// What the workers read: plain pointers and counts, never an Rcpp object.
+// Built once by the entry point, after the masked copy, and passed by const
+// reference from there down.
+struct KnnData {
+  const double *obj_masked;     // groups 1+2, column-major, 0 where missing
+  const MaskByte *nmiss_masked; // same shape, 1 where observed
+  const int *n_col_valid;       // observed count of each masked column
+  const double *obj;            // the R matrix; group 3 is read from it
+  const int *grp_complete;      // group 3's columns of obj
+  int n_rows;
+  GroupLayout layout;
 };
 
 void validate_knn_inputs(const Rcpp::NumericMatrix &obj, const int k,
@@ -293,18 +306,20 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k,
 // Runs in a worker, so it reads plain pointers only.
 // -----------------------------------------------------------------------------
 template <typename Metric>
-std::vector<NeighborInfo>
-distance_vector_impl(const double *obj_masked, const MaskByte *nmiss_masked,
-                     const int n_rows, const GroupLayout &layout,
-                     const int index, const int k,
-                     const std::vector<double> &n_valid_vec, const double *obj,
-                     const int *grp_complete) {
+std::vector<NeighborInfo> distance_vector_impl(const KnnData &d,
+                                               const int index, const int k) {
+  const double *obj_masked = d.obj_masked;
+  const MaskByte *nmiss_masked = d.nmiss_masked;
+  const double *obj = d.obj;
+  const int *grp_complete = d.grp_complete;
+  const int n_rows = d.n_rows;
+  const GroupLayout &layout = d.layout;
   const int n_masked = layout.n_masked();
   const int complete_start = layout.complete_start();
   const std::size_t k_size = static_cast<std::size_t>(k);
   const double *target_ptr = col_ptr(obj_masked, index, n_rows);
   const MaskByte *target_nmiss_ptr = col_ptr(nmiss_masked, index, n_rows);
-  const double target_n_valid = n_valid_vec[index];
+  const double target_n_valid = static_cast<double>(d.n_col_valid[index]);
 
   // A target with no observed row shares no row with any candidate, so by
   // the rule above it has no neighbors at all. calc_distance_raw() reaches
@@ -393,19 +408,12 @@ distance_vector_impl(const double *obj_masked, const MaskByte *nmiss_masked,
 }
 
 // dispatch once per target column, then the whole body is monomorphized.
-std::vector<NeighborInfo>
-distance_vector(const double *obj_masked, const MaskByte *nmiss_masked,
-                const int n_rows, const GroupLayout &layout, const int index,
-                const int k, const std::vector<double> &n_valid_vec,
-                const int method, const double *obj, const int *grp_complete) {
+std::vector<NeighborInfo> distance_vector(const KnnData &d, const int index,
+                                          const int k, const int method) {
   if (method == 0) {
-    return distance_vector_impl<EuclideanMetric>(
-        obj_masked, nmiss_masked, n_rows, layout, index, k, n_valid_vec, obj,
-        grp_complete);
+    return distance_vector_impl<EuclideanMetric>(d, index, k);
   } else {
-    return distance_vector_impl<ManhattanMetric>(
-        obj_masked, nmiss_masked, n_rows, layout, index, k, n_valid_vec, obj,
-        grp_complete);
+    return distance_vector_impl<ManhattanMetric>(d, index, k);
   }
 }
 
@@ -460,26 +468,30 @@ std::vector<double> knn_weights(const std::vector<NeighborInfo> &top_k,
 // `loc` holds its 1-based row and original 1-based column, `value` holds NA
 // until impute_column_values() writes it. col_offsets[i] is where column i's
 // entries start, and col_offsets[n_imp] is their total.
-// n_col_valid holds the observed count of each masked column, taken during
-// the copy-with-mask pass, so the missing counts need no second pass over
-// the mask. Only entries [0, layout.n_imp) are read here.
-void initialize_result(const std::vector<MaskByte> &nmiss_masked,
-                       const int n_rows, const Rcpp::IntegerVector &grp_impute,
-                       const GroupLayout &layout,
-                       const std::vector<int> &n_col_valid,
-                       std::vector<std::size_t> &col_offsets,
-                       Rcpp::IntegerMatrix &loc, Rcpp::NumericVector &value) {
-  const int n_imp = layout.n_imp;
+struct KnnResult {
+  std::vector<std::size_t> col_offsets;
+  Rcpp::IntegerMatrix loc;
+  Rcpp::NumericVector value;
+};
 
-  col_offsets.clear();
-  loc = Rcpp::IntegerMatrix(0, 2);
-  value = Rcpp::NumericVector(0);
+// Lays the result out for the columns of grp_impute, the first columns of
+// the masked copy. n_col_valid holds the observed count of each masked
+// column, taken during the copy-with-mask pass, so the missing counts need
+// no second pass over the mask. Only its first grp_impute.size() entries
+// are read. With nothing to impute, `loc` has no rows and `value` no
+// entries.
+KnnResult initialize_result(const std::vector<MaskByte> &nmiss_masked,
+                            const int n_rows,
+                            const Rcpp::IntegerVector &grp_impute,
+                            const std::vector<int> &n_col_valid) {
+  const int n_imp = static_cast<int>(grp_impute.size());
+  KnnResult res{{}, Rcpp::IntegerMatrix(0, 2), Rcpp::NumericVector(0)};
 
   if (n_imp == 0) {
-    return;
+    return res;
   }
 
-  col_offsets.assign(static_cast<std::size_t>(n_imp) + 1, 0);
+  res.col_offsets.assign(static_cast<std::size_t>(n_imp) + 1, 0);
 
   // at most n_imp * n_rows, so a size_t sum cannot overflow
   std::size_t sum_missing = 0;
@@ -487,11 +499,11 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
   for (int i = 0; i < n_imp; ++i) {
     const int n_miss_i = n_rows - n_col_valid[i];
     sum_missing += static_cast<std::size_t>(n_miss_i);
-    col_offsets[i + 1] = sum_missing;
+    res.col_offsets[i + 1] = sum_missing;
   }
 
   if (sum_missing == 0) {
-    return;
+    return res;
   }
 
   // `loc` is an R matrix, whose dims are int.
@@ -503,15 +515,15 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
   }
 
   const int n_total = static_cast<int>(sum_missing);
-  loc = Rcpp::IntegerMatrix(Rcpp::no_init_matrix(n_total, 2));
-  value = Rcpp::NumericVector(n_total, NA_REAL);
-  int *loc_row = loc.begin();
-  int *loc_col = loc.begin() + n_total;
+  res.loc = Rcpp::IntegerMatrix(Rcpp::no_init_matrix(n_total, 2));
+  res.value = Rcpp::NumericVector(n_total, NA_REAL);
+  int *loc_row = res.loc.begin();
+  int *loc_col = res.loc.begin() + n_total;
 
   for (int i = 0; i < n_imp; ++i) {
     const MaskByte *mask_col = col_ptr(nmiss_masked.data(), i, n_rows);
     const int orig_col_1based = grp_impute[i] + 1;
-    std::size_t w = col_offsets[i];
+    std::size_t w = res.col_offsets[i];
 
     // copy_with_mask counted the ones of this mask column into n_col_valid,
     // so it holds exactly as many zeros as its slice of the result has rows.
@@ -523,32 +535,31 @@ void initialize_result(const std::vector<MaskByte> &nmiss_masked,
       }
     }
   }
+
+  return res;
 }
 
 // Runs in a worker: plain pointers and std containers only, never an Rcpp
 // object. `out` is this column's slice of the result values, and loc_rows
 // the same slice of the first column of `loc`: the n_miss 1-based rows the
-// values stand for.
+// values stand for. top_k and nn_weights are this column's neighbors and
+// their weights, in the same order.
 //
-// nn_columns holds tagged positions: values < layout.complete_start() index
-// directly into obj_masked/nmiss_masked; values >= layout.complete_start()
-// must be de-tagged via (nn_columns[j] - complete_start()) and looked up
-// through grp_complete into obj.
+// A neighbor's index is tagged: below layout.complete_start() it is a
+// column of obj_masked/nmiss_masked (groups 1+2); from there up it is a
+// group-3 column, index - complete_start() into grp_complete, read from obj.
 //
-// Neighbors are split into masked (groups 1+2) and unmasked (group 3) buckets
-// before accumulation. Each bucket gets its own clean inner loop.
+// The masked neighbors are accumulated first and the complete ones after,
+// each in the order of top_k, so each kind gets its own inner loop.
 //
-// Unmasked simplification: every row is valid, so wt_ptr[r] += w for every r,
-// every unmasked neighbor collapses to a single "total_unmasked_w" added to
-// every row once at the end. The ws_ptr accumulation still varies per row
-// (different obj values).
-void impute_column_values(double *out, const double *obj_masked,
-                          const MaskByte *nmiss_masked, const int n_rows,
-                          const GroupLayout &layout,
-                          const std::vector<int> &nn_columns,
+// Complete simplification: every row is valid, so wt_ptr[r] += w for every
+// r, and the complete neighbors collapse to a single total_complete_w added
+// to every row once at the end. The ws_ptr accumulation still varies per
+// row (different obj values).
+void impute_column_values(double *out, const KnnData &d,
+                          const std::vector<NeighborInfo> &top_k,
                           const std::vector<double> &nn_weights,
-                          const int *loc_rows, const int n_miss,
-                          const double *obj, const int *grp_complete) {
+                          const int *loc_rows, const int n_miss) {
   if (n_miss == 0) {
     return;
   }
@@ -559,27 +570,18 @@ void impute_column_values(double *out, const double *obj_masked,
   double *ws_ptr = weighted_sums.data();
   double *wt_ptr = weight_totals.data();
 
-  const int complete_start = layout.complete_start();
-
-  std::vector<std::size_t> masked_j;
-  std::vector<std::size_t> complete_j;
-  masked_j.reserve(nn_columns.size());
-  complete_j.reserve(nn_columns.size());
-
-  for (std::size_t j = 0; j < nn_columns.size(); ++j) {
-    if (nn_columns[j] < complete_start) {
-      masked_j.push_back(j);
-    } else {
-      complete_j.push_back(j);
-    }
-  }
+  const int n_rows = d.n_rows;
+  const int complete_start = d.layout.complete_start();
 
   // masked neighbors (groups 1+2) ----
-  for (std::size_t j : masked_j) {
+  for (std::size_t j = 0; j < top_k.size(); ++j) {
+    const int local = top_k[j].index;
+    if (local >= complete_start) {
+      continue;
+    }
     const double w = nn_weights[j];
-    const int local = nn_columns[j];
-    const double *obj_col = col_ptr(obj_masked, local, n_rows);
-    const MaskByte *nmiss_col = col_ptr(nmiss_masked, local, n_rows);
+    const double *obj_col = col_ptr(d.obj_masked, local, n_rows);
+    const MaskByte *nmiss_col = col_ptr(d.nmiss_masked, local, n_rows);
 
     for (int r = 0; r < n_miss; ++r) {
       const int row_idx = loc_rows[r] - 1; // loc holds 1-based rows
@@ -594,10 +596,13 @@ void impute_column_values(double *out, const double *obj_masked,
   // valid == 1 for every row, so weight == w uniformly across rows.
   double total_complete_w = 0.0;
 
-  for (std::size_t j : complete_j) {
+  for (std::size_t j = 0; j < top_k.size(); ++j) {
+    if (top_k[j].index < complete_start) {
+      continue;
+    }
     const double w = nn_weights[j];
-    const int c = nn_columns[j] - complete_start;
-    const double *obj_col = col_ptr(obj, grp_complete[c], n_rows);
+    const int c = top_k[j].index - complete_start;
+    const double *obj_col = col_ptr(d.obj, d.grp_complete[c], n_rows);
 
     for (int r = 0; r < n_miss; ++r) {
       ws_ptr[r] += w * obj_col[loc_rows[r] - 1];
@@ -677,15 +682,12 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
   }
 
   // early exit after group 1. Shouldn't really reach this from R.
-  std::vector<std::size_t> col_offsets;
-  Rcpp::IntegerMatrix loc;
-  Rcpp::NumericVector value;
-  initialize_result(nmiss_masked, n_rows, grp_impute, layout, n_col_valid,
-                    col_offsets, loc, value);
+  KnnResult res =
+      initialize_result(nmiss_masked, n_rows, grp_impute, n_col_valid);
 
-  if (value.size() == 0) {
-    return Rcpp::List::create(Rcpp::Named("loc") = loc,
-                              Rcpp::Named("value") = value);
+  if (res.value.size() == 0) {
+    return Rcpp::List::create(Rcpp::Named("loc") = res.loc,
+                              Rcpp::Named("value") = res.value);
   }
 
   // group 2
@@ -694,18 +696,19 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
   }
 
   // group 3: read directly from obj via grp_complete - no copy.
-  // n_valid_vec built directly from the group-1 portion of n_col_valid
-  std::vector<double> n_valid_vec(layout.n_imp);
-  for (int i = 0; i < layout.n_imp; ++i) {
-    n_valid_vec[i] = static_cast<double>(n_col_valid[i]);
-  }
 
   // The workers get plain pointers and std containers, captured by name, so
   // none can reach an Rcpp object.
-  const double *obj_masked_ptr = obj_masked.data();
-  const MaskByte *nmiss_masked_ptr = nmiss_masked.data();
-  double *value_ptr = value.begin();
-  const int *loc_row_ptr = loc.begin();
+  const KnnData data{obj_masked.data(),
+                     nmiss_masked.data(),
+                     n_col_valid.data(),
+                     obj_ptr,
+                     grp_complete_ptr,
+                     n_rows,
+                     layout};
+  const std::vector<std::size_t> &col_offsets = res.col_offsets;
+  double *value_ptr = res.value.begin();
+  const int *loc_row_ptr = res.loc.begin();
 
   // parallelFor setup
   cores = std::max(1, cores);
@@ -720,33 +723,23 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
 
   par_for(
       0, static_cast<std::size_t>(layout.n_imp),
-      [obj_masked_ptr, nmiss_masked_ptr, n_rows, &layout, k, &n_valid_vec,
-       method, obj_ptr, grp_complete_ptr, dist_pow, value_ptr, loc_row_ptr,
-       &col_offsets, pb, &bar](std::size_t i) {
+      [&data, k, method, dist_pow, value_ptr, loc_row_ptr, &col_offsets, pb,
+       &bar](std::size_t i) {
         if (i % 5 == 0) {
           RcppThread::checkUserInterrupt();
         }
         // LOC_TIMER_SCOPED(knn_tm, "neighbor_search");
-        std::vector<NeighborInfo> top_k =
-            distance_vector(obj_masked_ptr, nmiss_masked_ptr, n_rows, layout,
-                            static_cast<int>(i), k, n_valid_vec, method,
-                            obj_ptr, grp_complete_ptr);
-        const std::size_t n_neighbors = top_k.size();
+        const std::vector<NeighborInfo> top_k =
+            distance_vector(data, static_cast<int>(i), k, method);
         // With no neighbor (no candidate shares an observed row with this
         // column), its result values keep the NA they were initialized
         // with; the column still counts towards the progress bar.
-        if (n_neighbors > 0) {
-          std::vector<int> nn_columns(n_neighbors);
-          for (std::size_t jj = 0; jj < n_neighbors; ++jj) {
-            nn_columns[jj] = top_k[jj].index;
-          }
+        if (!top_k.empty()) {
           const std::vector<double> weights = knn_weights(top_k, dist_pow);
           const std::size_t offset = col_offsets[i];
-          impute_column_values(value_ptr + offset, obj_masked_ptr,
-                               nmiss_masked_ptr, n_rows, layout, nn_columns,
-                               weights, loc_row_ptr + offset,
-                               static_cast<int>(col_offsets[i + 1] - offset),
-                               obj_ptr, grp_complete_ptr);
+          impute_column_values(value_ptr + offset, data, top_k, weights,
+                               loc_row_ptr + offset,
+                               static_cast<int>(col_offsets[i + 1] - offset));
         }
         if (pb) {
           ++(*bar);
@@ -756,6 +749,6 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
 
   LOC_TOC(knn_tm, "impute_total");
   LOC_TIMER_DUMP_RAW(knn_tm, "knn_tm_raw");
-  return Rcpp::List::create(Rcpp::Named("loc") = loc,
-                            Rcpp::Named("value") = value);
+  return Rcpp::List::create(Rcpp::Named("loc") = res.loc,
+                            Rcpp::Named("value") = res.value);
 }

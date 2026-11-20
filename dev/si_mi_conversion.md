@@ -893,7 +893,7 @@ Decided in discussion (maintainer, 2026-11-18):
   `dev/to-do.md` gains the NEWS line.
 - The kernel fills those cells itself. It leaves a cell in two ways: a whole
   column, when no candidate shares an observed row with it, so the worker
-  skips it (`src/knn_kernel.cpp`: `if (n_neighbors > 0)`), and a single cell,
+  skips it (`src/knn_kernel.cpp`: `if (!top_k.empty())`), and a single cell,
   when none of the chosen neighbors is observed at that row, so its weight
   total is 0 and no value is written
   (`src/knn_kernel.cpp`: `out[r] = ws_ptr[r] / wt_ptr[r];`).

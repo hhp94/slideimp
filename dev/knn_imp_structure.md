@@ -178,7 +178,7 @@ wrappers), `src/knn_kernel.cpp` (the whole K-NN kernel) and
 `src/knn_kernel.cpp` has no header of its own. It defines `MaskByte`,
 `GroupLayout`, `validate_knn_inputs()`, the distance and neighbor code, the
 weights, the result layout and the accumulation loop
-(`src/knn_kernel.cpp`: `void initialize_result(`,
+(`src/knn_kernel.cpp`: `KnnResult initialize_result(`,
 `void impute_column_values(`) in one anonymous namespace, so the exported
 `impute_knn_brute()` at the end of the file is the only name it gives the
 linker.
@@ -263,9 +263,9 @@ indexes correctly, and so are the result offsets (`src/knn_kernel.cpp`:
    `grp_complete` (`src/knn_kernel.cpp`: `group 3: read directly from obj`),
    and in the lambdas (`src/knn_kernel.cpp`: `auto complete_dist_unbounded`).
 5. `initialize_result()` (`src/knn_kernel.cpp`:
-   `void initialize_result(`) runs between the group-1 and group-2
+   `KnnResult initialize_result(`) runs between the group-1 and group-2
    copies so the call can bail early when there is nothing to impute
-   (`src/knn_kernel.cpp`: `if (value.size() == 0)`).
+   (`src/knn_kernel.cpp`: `if (res.value.size() == 0)`).
 
 **Result skeleton.** The return value is `list(loc, value)`: `loc` an integer
 matrix of 1-based row and original 1-based column, one row per missing cell
@@ -353,7 +353,7 @@ callers of the kernel; one is a test (`tests/testthat/test-knn_imp.R`:
   common with the target) sit at the tail and are popped before returning. The
   caller can therefore receive fewer than `k` neighbors, or none at all; when
   none, the column's entries of `value` keep their initial `NA`
-  (`src/knn_kernel.cpp`: `if (n_neighbors > 0)`), and the column still
+  (`src/knn_kernel.cpp`: `if (!top_k.empty())`), and the column still
   advances the progress bar.
 
 The structure is therefore a sorted fixed-size array with insertion, not a heap
@@ -426,11 +426,12 @@ reference by a test (`tests/testthat/test-knn_imp.R`:
 `dist_pow` values, and two candidate layouts.
 
 **Accumulation.** `impute_column_values()` (`src/knn_kernel.cpp`:
-`void impute_column_values(`) splits the neighbor ids into a masked bucket and a
-complete bucket by comparing against `complete_start()`
-(`src/knn_kernel.cpp`: `if (nn_columns[j] < complete_start)`). Masked
+`void impute_column_values(`) takes the neighbors as the search returned
+them and goes over them twice, the masked ones first and the complete ones
+after, telling them apart by comparing the id against `complete_start()`
+(`src/knn_kernel.cpp`: `if (local >= complete_start)`). Masked
 neighbors contribute `w * nmiss[row]` to both the weighted sum and the weight
-total (`src/knn_kernel.cpp`: `for (std::size_t j : masked_j)`), so a neighbor
+total (`src/knn_kernel.cpp`: `double weight = w * valid;`), so a neighbor
 that is itself missing in a given row drops out for that row only. Complete
 neighbors add `w * value` per row and a single shared `total_complete_w` to
 every row's weight total. The final value is `weighted_sum / weight_total`
@@ -508,8 +509,8 @@ fall back to `mean_imp_col()`.
   `loc_row[w] = r + 1;`).
 - Per-thread scratch is small and local: `top_k` (`src/knn_kernel.cpp`:
   `std::vector<NeighborInfo> top_k;`), whatever temporary buffer
-  `std::stable_sort` takes for it, `nn_columns` and `weights`
-  (`src/knn_kernel.cpp`: `std::vector<int> nn_columns(n_neighbors);`), and the
+  `std::stable_sort` takes for it, `weights`
+  (`src/knn_kernel.cpp`: `weights = knn_weights(top_k, dist_pow);`), and the
   two accumulators in `impute_column_values` (`src/knn_kernel.cpp`:
   `std::vector<double> weighted_sums(`). Past its door's copy, `mean_imp_col()`
   allocates in proportion to the columns it fills: `fallback_part()` copies
@@ -529,11 +530,12 @@ instead, for the reason given in Layer 3.
 A worker never touches an Rcpp object or the R API: Rcpp's `operator[]` can
 call R's `warning()` on an index past the end (Rcpp's `vector/traits.h`,
 `check_index`), and R is single-threaded. The loop body's lambda therefore
-captures by name only plain pointers taken before the loop, `std` containers
-and scalars (`src/knn_kernel.cpp`:
-`[obj_masked_ptr, nmiss_masked_ptr, n_rows, &layout, k, &n_valid_vec,`), so a
+captures by name only plain pointers taken before the loop, `std` containers,
+scalars and `data`, a `KnnData` holding the pointers and counts the kernel
+reads (`src/knn_kernel.cpp`: `struct KnnData {`,
+`[&data, k, method, dist_pow, value_ptr, loc_row_ptr, &col_offsets, pb,`), so a
 use of `obj`, `grp_complete` or `value` inside it would not compile; the
-functions it calls take the same pointers.
+functions it calls take the same struct.
 
 All threads read `obj`, `obj_masked`, `nmiss_masked`, `grp_complete` and the
 first column of `loc` without writing them, and each writes only entries `[col_offsets[i], col_offsets[i+1])`
