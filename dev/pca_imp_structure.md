@@ -713,7 +713,13 @@ The rest differ in nothing that reaches a result, or by design:
 stays as it is (maintainer, 2026-11-20); none of the alternatives was built or measured.
 
 - Two symmetric eigensolvers. dsyevd keeps the Rayleigh-Ritz solve of LOBPCG, its one use;
-  the alternative was `syevr_range` over the full range, one routine fewer. `syevr_range`
+  the alternative was `syevr_range` over the full range, one routine fewer. The reason, from
+  the LAPACK literature and NOT MEASURED in this chain: divide and conquer keeps its
+  eigenvectors orthogonal better than dstemr does, on clustered eigenvalues above all, and
+  here that matters more than on the exact path. The Ritz vectors rotate the basis
+  (`src/lobpcg_warm.h`: `X = mul(X, V);`), which the next iteration takes as orthonormal,
+  so a loss carries over and adds up, and converged Ritz values are clustered as a rule.
+  The exact path uses its vectors once and forms the Gram anew. `syevr_range`
   keeps `range = 'I'` and asks dsyevr for its workspace on every call (maintainer,
   2026-11-19).
 - The values-only SVD stays: only the diagnostics build compiles it.
