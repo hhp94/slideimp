@@ -709,6 +709,18 @@ The rest differ in nothing that reaches a result, or by design:
   and no test that it fits `int`.
 - `uplo`: R gives dsyevr `'L'`, the chain `'U'`, the triangle dsyrk wrote.
 
+**The routines as chosen.** Each was gone through once more after the conversion, and the set
+stays as it is (maintainer, 2026-11-20); none of the alternatives was built or measured.
+
+- Two symmetric eigensolvers. dsyevd keeps the Rayleigh-Ritz solve of LOBPCG, its one use;
+  the alternative was `syevr_range` over the full range, one routine fewer. `syevr_range`
+  keeps `range = 'I'` and asks dsyevr for its workspace on every call (maintainer,
+  2026-11-19).
+- The values-only SVD stays: only the diagnostics build compiles it.
+- No product is left that dsyrk could form. The Gram goes through it; the small Grams of
+  LOBPCG, symmetric by construction, are each the product of two different blocks
+  (`src/lobpcg_warm.h`: `const Block XAX_s = tmul(X, AX);`), which dsyrk does not express.
+
 **Sums outside the wrappers.** The chain's other reductions call no BLAS. Each is a plain loop
 in order; `dev/CPP.md` bans the multi-accumulator form some of them once had, and
 `dev/eigen_conversion.md` has what each moved when it took this form ("Not wrapped" for the
