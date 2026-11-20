@@ -2234,8 +2234,8 @@ it now stands NOT RUN.
   12; the other 8 expectations pass. `dev/to-do.md` has the reminder line.
 
 **Rulings on the last items** (maintainer, 2026-11-19: "agree all" to the
-author's recommendations). Recorded here; the first is carried out below,
-"`Block` off Armadillo's names".
+author's recommendations). Recorded here; the first two are carried out
+below, "`Block` off Armadillo's names" and "The wrapper layer's own test".
 
 - `lobpcg_detail::Block` is renamed off Armadillo's member names. The
   updates that alias their own operand stay as they are until a profile
@@ -2280,6 +2280,75 @@ what it does, and no helper was merged or removed.
   builds on one machine, so it is not affected; a stored capture compared
   across the two machines would be. The captures of those entries, `aa1ceee`
   among them, are in `dev/ref/` on the first machine only.
+
+**The wrapper layer's own test** (the second ruling above).
+`dev/si_lapack_test.R` compiles `dev/si_lapack_test.cpp` beside
+`src/si_lapack.h` and `src/si_lapack.cpp` through `Rcpp::sourceCpp()` and
+checks every function of the header against what its comment says it does.
+Run by hand from the package root, like the oracle; nothing under `R/`,
+`src/` or `tests/` changes, and nothing is exported for it.
+
+- The references are R's own: products from R's own loops
+  (`options(matprod = "internal")`, which calls no BLAS), `eigen()`,
+  `svd()`, `qr()`, `backsolve()` and `forwardsolve()`. Armadillo is not
+  loaded. Eigenvectors are checked by their residual and orthonormality,
+  since a range that cuts a group of equal eigenvalues has no unique
+  answer, and `r` of `qr_econ` up to the sign of each row.
+- Checked with `identical()`: 16 guard cells after every buffer a wrapper
+  writes, and n more after the eigenvalues and eigenvectors of
+  `syevr_range`; the rows past the last of an output with a larger leading
+  dimension; the triangle `syrk` does not name; and every output of a call
+  that is refused or writes nothing. A size past `int` is asked for with a
+  buffer of one cell, which the wrapper must refuse before it reads one.
+- Both units are compiled with `-DPCA_IMP_DIAGNOSTICS=1`, so `svd_values`
+  is tested too, and linked with `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)` as
+  the package is. Without RcppArmadillo's plugin nothing else adds them: the
+  first build failed to link.
+- A probe in the same file calls dsyevr as `syevr_range` does, with W given
+  n cells, and counts what it wrote past `iu - il + 1`, so the guard cells
+  after `w` are shown to have something to catch. The run fails if no case
+  makes it write any.
+- Measured on the second machine (R 4.6.2, R's BLAS and LAPACK replaced by
+  OpenBLAS 0.3.34), on the source at `2bc9d59`: 238 cases, all passing
+  (`gemm` 40, `gemv` 20, `syrk` 40, `syevr_range` 61, `syevd` 29,
+  `qr_econ` 11, `solve_tri` 23, `svd_values` 14). Worst absolute
+  difference over its scale 5.8e-15 (`syevr_range`, order 300), worst
+  relative 6.7e-13 over the cells above 1e-6 of the scale (`gemm`, 40 x
+  30), worst residual or orthonormality 8.3e-15. The bounds are 1e-12,
+  1e-7 and 1e-12: the first and last about a hundredfold above the
+  reading, the relative one set by its floor, where one unit in the last
+  place of the scale is 2.2e-10. `svd_values` is bitwise on all 9 values,
+  R's `svd()` calling dgesdd too. dsyevr wrote past `iu - il + 1` in 10 of
+  the 12 ranges that cut a group, 39 cells in all.
+- Shown to fail: `dev/si_lapack_selftest.R` breaks one wrapper at a time
+  in a copy, 24 ways, and the test named the routine aimed at each time,
+  and no other; it passes on the unbroken source. The ruling's case:
+  `syevr_range` handing dsyevr the caller's `w` and copying nothing, as the
+  chain did before step 3 of Phase 2, fails on exactly those 10 ranges and
+  on the guard cells after `w` alone, the first `iu - il + 1` cells being
+  right. The others: the other triangle in `syevr_range`, `syevd`, `syrk`
+  and `solve_tri`; the NaN scan dropped, or made to read the other
+  triangle; one eigenvalue too few copied; `il > iu` let through; alpha
+  where beta belongs in `gemm` and `gemv`; C or y left alone where an
+  empty product must scale it; `syrk` scaling whole columns when `k` is 0;
+  `ldc`, or `lda` of a transposed operand, unchecked; `m < n` let through
+  in `qr_econ`; ones below the diagonal of `r`; the transpose solved; a
+  zero pivot reported as success; the sign of a singular value; the wrong
+  refusal code; `'C'` taken as a transpose. Where an argument check was
+  dropped, OpenBLAS returned at once without a word, so dgemm left a
+  status of 0 and LAPACK its negative info; under R's own BLAS and LAPACK
+  xerbla raises an R error, which the test records as a failing case (not
+  run).
+- Not covered. `err_count` and `err_alloc`: no input reaches them. A size
+  check let through is not among the mutations: the size cases hand the
+  wrapper one cell, so a broken copy crashes the child instead of failing.
+  A workspace that ignores LAPACK's answer, or a nonzero abstol, leaves the
+  eigenpairs right to the tolerance; the oracle caught both by comparing
+  bits with the chain's own dsyevr call, which no longer exists apart from
+  the wrapper, so nothing here does.
+- Not run on the first machine or on R's own BLAS, and under one
+  RcppEigen only: nothing in either file includes Eigen. The oracle stays
+  until the next ruling removes it.
 
 ## Not settled yet
 

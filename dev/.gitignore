@@ -72,6 +72,9 @@
 !review_p2_suite.R
 !review_p2_suite.sh
 !review_p2_tag.sh
+!si_lapack_selftest.R
+!si_lapack_test.R
+!si_lapack_test.cpp
 !si_mi_conversion.md
 !test_mirai_with_dev_install.R
 !to-do.md
