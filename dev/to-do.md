@@ -235,52 +235,43 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
 - **Comment trim pass over `src/`.** Comments that narrate history, repeat
   the code, or explain the Armadillo version a file no longer uses go;
   what stays says why the code is as it is, true for the code as written.
-- **Kernel hygiene pass over `src/`.** Hoist loop-invariant work, and move
-  checks, allocations and branches that do not depend on the loop index out
-  of hot paths. Measure each change against the reference capture and the
-  timing driver; no hand unrolling or OpenMP (`dev/CPP.md`). Candidates
-  seen in the K-NN kernel while converting it, none measured yet:
-  `obj_masked` and `nmiss_masked` are zero-filled by `std::vector`
-  before every cell is written. Seen in the PCA kernel
-  (`src/armaSVD.cpp`), none measured apart: `Xhat`, `X_work`, `AA_NxN`, `U`,
-  `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`
-  before every cell that is read is written, where only `fittedX` needs its
-  zeros. Profile first: after
-  the second half of step 4 of Phase 2, `sim_pca_lobpcg` took about 1.5%
-  longer than at `ff0e394` over 11 repetitions of the step 4 timing (a
-  0.483-0.491 s, b 0.490-0.501 s), and chr21 showed nothing measurable.
-  Not profiled. Suspected, an assumption until profiled: the zero-fill of
-  every new `Block` in `src/lobpcg_warm.h` and the gathered sub-blocks.
-  The copies in
-  and out of Armadillo were removed in step 5 and timed 1.003 against step
-  4, so they do not account for it, to the driver's resolution of about
-  half a percent. Deferred to this pass by the maintainer, 2026-11-18,
-  with any `/simplify` calls.
-  Profiled 2026-11-20 by the kernels' phase timers on a release build
-  (`bash dev/profile_run.sh <scratch> prep|install|run`, which runs
-  `dev/profile_install.R` and `dev/profile_phases.R`): one run on one
-  machine, R 4.6.2, `-O3`, BLAS threads at their default, one untimed call
-  and then 5 calls of `pca_imp(ncp = 5)` on chr21 (71 x 8503) and on
-  `sim_mat(200, 5000)`. Shares of the kernel's own total, as the range
-  over exact and LOBPCG on both data sets:
-  - The eigensolver 41% to 60%, forming the Gram 16% to 25%; the whole
-    `svd` phase 69% to 81%.
-  - The ten solve buffers, in a phase of their own (`src/armaSVD.cpp`:
-    `LOC_TIC(pca_imp_gram, "alloc_solve_buffers");`): 0.04% to 0.20%,
-    0.05 to 0.10 ms a call. Dropping their zero-fill cannot be seen by
-    the timing driver.
-  - What no phase covers, 1.0% to 2.9% (0.9 to 2.3 ms a call): the
-    argument checks, `row_w`, the allocation of `Xhat` and `fittedX`, and
-    the centering and scaling of `Xhat`, not told apart.
-  - On sim the eigensolver takes 126 ms a call under LOBPCG against 53 ms
-    under the exact solver, 23 outer iterations each; on chr21 14 ms
+- **Kernel hygiene pass over `src/`: what is left.** The pass ran
+  2026-11-20; what it changed is a8d0827, 28a151e, 37a4c53 and 26702a1.
+  - Looked at and kept: the zero-fill by `std::vector` of `obj_masked` and
+    `nmiss_masked` in the K-NN kernel, of `Xhat`, `X_work`, `AA_NxN`, `U`,
+    `V`, `Vn` and the eigenpair buffers in `src/armaSVD.cpp`, and of each
+    new `Block` in `src/lobpcg_warm.h`. An uninitialized buffer would make
+    the code less simple, and the ten solve buffers cost 0.04% to 0.20% of
+    a call (profile below).
+  - Open: after the second half of step 4 of Phase 2, `sim_pca_lobpcg`
+    took about 1.5% longer than at `ff0e394` over 11 repetitions of the
+    step 4 timing (a 0.483-0.491 s, b 0.490-0.501 s), and chr21 showed
+    nothing measurable. Suspected, an assumption until measured: the
+    zero-fill of every new `Block` in `src/lobpcg_warm.h` and the gathered
+    sub-blocks, which no phase of the profile isolates. The copies in and
+    out of Armadillo were removed in step 5 and timed 1.003 against step 4,
+    so they do not account for it, to the driver's resolution of about half
+    a percent.
+  - Open: on sim the eigensolver takes 126 ms a call under LOBPCG against
+    53 ms under the exact solver, 23 outer iterations each; on chr21 14 ms
     against 29 ms, 73 iterations each. Not looked into.
-  - K-NN, `knn_imp(k = 10)`: the parallel loop is 88% of the call on chr21
-    (110 of 125 ms) and 99.2% on sim (1993 of 2008 ms). The rest, 15 ms a
-    call on both, is the R side and the kernel's setup together; the
+  - The profile, 2026-11-20, by the kernels' phase timers on a release
+    build (`bash dev/profile_run.sh <scratch> prep|install|run`, which runs
+    `dev/profile_install.R` and `dev/profile_phases.R`): one run on one
+    machine, R 4.6.2, `-O3`, BLAS threads at their default, one untimed
+    call and then 5 calls of `pca_imp(ncp = 5)` on chr21 (71 x 8503) and on
+    `sim_mat(200, 5000)`. Shares of the kernel's own total, as the range
+    over exact and LOBPCG on both data sets: the eigensolver 41% to 60%,
+    forming the Gram 16% to 25%, the whole `svd` phase 69% to 81%; the ten
+    solve buffers, in a phase of their own (`src/armaSVD.cpp`:
+    `LOC_TIC(pca_imp_gram, "alloc_solve_buffers");`), 0.04% to 0.20%, 0.05
+    to 0.10 ms a call; what no phase covers 1.0% to 2.9% (0.9 to 2.3 ms a
+    call): the argument checks, `row_w`, the allocation of `Xhat` and
+    `fittedX`, and the centering and scaling of `Xhat`, not told apart.
+    K-NN, `knn_imp(k = 10)`: the parallel loop is 88% of the call on chr21
+    (110 of 125 ms) and 99.2% on sim (1993 of 2008 ms); the rest, 15 ms a
+    call on both, is the R side and the kernel's setup together, since the
     kernel has no timer before its loop.
-  - NOT MEASURED: the zero-fill of each new `Block` inside LOBPCG, which
-    no phase isolates.
 - **The R callers, now that the return types can change.** Whether the R
   sides of `pca_imp()` and `knn_imp()` are tidied to what the kernels can
   return without Armadillo. Not decided.
