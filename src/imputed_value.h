@@ -1,5 +1,5 @@
-#ifndef IMPUTED_VALUE_H
-#define IMPUTED_VALUE_H
+#ifndef SLIDEIMP_IMPUTED_VALUE_H
+#define SLIDEIMP_IMPUTED_VALUE_H
 
 #include <Rcpp.h>
 #include <cmath>
@@ -10,7 +10,7 @@
 #include "matrix_checks.h"
 
 // single source of truth for the mask storage type
-using mask_t = uint8_t;
+using MaskByte = std::uint8_t;
 
 // GroupLayout: single source of truth for group boundaries.
 // Groups 1+2 (imputed + missing-no-impute) share identical kernel treatment
@@ -73,7 +73,7 @@ validate_knn_inputs(const Rcpp::NumericMatrix &obj, const int k,
   // when it tags a group-3 neighbor by its offset into grp_complete, and a
   // column listed twice would appear as its own neighbor at distance zero
   // and take the whole weight, so the partition is checked, not assumed.
-  std::vector<mask_t> seen(n_cols, 0);
+  std::vector<MaskByte> seen(n_cols, 0);
   auto claim_group = [&](const Rcpp::IntegerVector &g, const char *name) {
     for (R_xlen_t i = 0; i < g.size(); ++i) {
       if (seen[g[i]]) {
@@ -131,7 +131,7 @@ validate_knn_inputs(const Rcpp::NumericMatrix &obj, const int k,
 // n_col_valid holds the observed count of each masked column, taken during
 // the copy-with-mask pass, so the missing counts need no second pass over
 // the mask. Only entries [0, layout.n_imp) are read here.
-void initialize_result(const std::vector<mask_t> &nmiss_masked,
+void initialize_result(const std::vector<MaskByte> &nmiss_masked,
                        const int n_rows, const Rcpp::IntegerVector &grp_impute,
                        const GroupLayout &layout,
                        const std::vector<int> &n_col_valid,
@@ -147,7 +147,7 @@ void initialize_result(const std::vector<mask_t> &nmiss_masked,
 // must be de-tagged via (nn_columns[j] - complete_start()) and looked up
 // through grp_complete into obj.
 void impute_column_values(double *out, const double *obj_masked,
-                          const mask_t *nmiss_masked, const int n_rows,
+                          const MaskByte *nmiss_masked, const int n_rows,
                           const GroupLayout &layout,
                           const std::vector<int> &nn_columns,
                           const std::vector<double> &nn_weights,

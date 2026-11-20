@@ -16,7 +16,7 @@
 // n_col_valid is computed once during the copy-with-mask pass so we never
 // sum the byte mask.
 // -----------------------------------------------------------------------------
-void initialize_result(const std::vector<mask_t> &nmiss_masked,
+void initialize_result(const std::vector<MaskByte> &nmiss_masked,
                        const int n_rows, const Rcpp::IntegerVector &grp_impute,
                        const GroupLayout &layout,
                        const std::vector<int> &n_col_valid,
@@ -94,7 +94,7 @@ void initialize_result(const std::vector<mask_t> &nmiss_masked,
   rows_to_impute.resize(n_imp);
 
   for (int i = 0; i < n_imp; ++i) {
-    const mask_t *mask_col = col_ptr(nmiss_masked.data(), i, n_rows);
+    const MaskByte *mask_col = col_ptr(nmiss_masked.data(), i, n_rows);
     const int n_miss_i = n_col_miss[i];
 
     std::vector<int> rows(n_miss_i);
@@ -146,7 +146,7 @@ void initialize_result(const std::vector<mask_t> &nmiss_masked,
 // (different obj values).
 // -----------------------------------------------------------------------------
 void impute_column_values(double *out, const double *obj_masked,
-                          const mask_t *nmiss_masked, const int n_rows,
+                          const MaskByte *nmiss_masked, const int n_rows,
                           const GroupLayout &layout,
                           const std::vector<int> &nn_columns,
                           const std::vector<double> &nn_weights,
@@ -160,8 +160,8 @@ void impute_column_values(double *out, const double *obj_masked,
   std::vector<double> weighted_sums(n_miss, 0.0);
   std::vector<double> weight_totals(n_miss, 0.0);
 
-  double *__restrict__ ws_ptr = weighted_sums.data();
-  double *__restrict__ wt_ptr = weight_totals.data();
+  double *ws_ptr = weighted_sums.data();
+  double *wt_ptr = weight_totals.data();
 
   const int complete_start = layout.complete_start();
 
@@ -183,7 +183,7 @@ void impute_column_values(double *out, const double *obj_masked,
     const double w = nn_weights[j];
     const int local = nn_columns[j];
     const double *obj_col = col_ptr(obj_masked, local, n_rows);
-    const mask_t *nmiss_col = col_ptr(nmiss_masked, local, n_rows);
+    const MaskByte *nmiss_col = col_ptr(nmiss_masked, local, n_rows);
 
     for (int r = 0; r < n_miss; ++r) {
       const int row_idx = rows_to_impute[r];

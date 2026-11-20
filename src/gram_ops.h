@@ -1,5 +1,5 @@
-#ifndef GRAM_OPS_H
-#define GRAM_OPS_H
+#ifndef SLIDEIMP_GRAM_OPS_H
+#define SLIDEIMP_GRAM_OPS_H
 
 // The weighted Gram of the PCA chain, formed with R's BLAS through
 // src/si_lapack.h. Matrices are raw column-major buffers with std::size_t
@@ -250,4 +250,4 @@ form_weighted_gram(const double *Xhat, const double *sw, const bool tall,
   return true;
 }
 
-#endif // GRAM_OPS_H
+#endif // SLIDEIMP_GRAM_OPS_H

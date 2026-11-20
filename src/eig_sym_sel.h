@@ -1,5 +1,5 @@
-#ifndef EIG_SYM_SEL_H
-#define EIG_SYM_SEL_H
+#ifndef SLIDEIMP_EIG_SYM_SEL_H
+#define SLIDEIMP_EIG_SYM_SEL_H
 
 #include <algorithm>
 #include <cstddef>
@@ -73,4 +73,4 @@ struct EigSymRange {
   return si_la::ok;
 }
 
-#endif // EIG_SYM_SEL_H
+#endif // SLIDEIMP_EIG_SYM_SEL_H

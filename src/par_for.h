@@ -1,5 +1,5 @@
-#ifndef PAR_FOR_H
-#define PAR_FOR_H
+#ifndef SLIDEIMP_PAR_FOR_H
+#define SLIDEIMP_PAR_FOR_H
 
 #include <RcppThread.h>
 

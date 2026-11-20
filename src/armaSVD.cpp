@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iomanip>
+#include <ios>
 #include <limits>
 #include <string>
 #include <vector>
@@ -353,14 +354,13 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
     // only apply this guard when the requested solver can actually use
     // LOBPCG (lobpcg_maxiter >= 1 was already enforced above).
     if (lobpcg_requested) {
-      const long double rr_dim = 3.0L * static_cast<long double>(k);
-      const long double dsyevd_lwork =
-          1.0L + 6.0L * rr_dim + 2.0L * rr_dim * rr_dim;
-      const long double dsyevd_liwork = 3.0L + 5.0L * rr_dim;
+      const double rr_dim = 3.0 * static_cast<double>(k);
+      const double dsyevd_lwork = 1.0 + 6.0 * rr_dim + 2.0 * rr_dim * rr_dim;
+      const double dsyevd_liwork = 3.0 + 5.0 * rr_dim;
 
-      if (rr_dim > static_cast<long double>(int_max) ||
-          dsyevd_lwork > static_cast<long double>(int_max) ||
-          dsyevd_liwork > static_cast<long double>(int_max)) {
+      if (rr_dim > static_cast<double>(int_max) ||
+          dsyevd_lwork > static_cast<double>(int_max) ||
+          dsyevd_liwork > static_cast<double>(int_max)) {
         Rcpp::stop("'ncp' is too large for the LAPACK workspace of LOBPCG");
       }
     }

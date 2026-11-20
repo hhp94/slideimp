@@ -179,7 +179,7 @@ wrappers), `src/impute_knn_brute.cpp` (K-NN kernel and entry point),
 Project headers reached, following the `#include` graph:
 
 - `src/imputed_value.h` -- included by `src/impute_knn_brute.cpp` and
-  `src/imputed_value.cpp`. Defines `mask_t`, `GroupLayout`, the
+  `src/imputed_value.cpp`. Defines `MaskByte`, `GroupLayout`, the
   header-inline `validate_knn_inputs()`, and the two out-of-line declarations
   (`src/imputed_value.h`: `void initialize_result(`,
   `void impute_column_values(`).
@@ -252,7 +252,7 @@ indexes correctly, and so are the result offsets (`src/imputed_value.cpp`:
    allocated (`src/impute_knn_brute.cpp`: `std::vector<double> obj_masked(n_cells);`) and filled by
    `copy_with_mask`, which calls `std::isnan` once per cell and reuses the
    result as the mask byte, the count increment, and the zeroing test
-   (`src/impute_knn_brute.cpp`: `mask_t finite = !std::isnan(v);`). Missing
+   (`src/impute_knn_brute.cpp`: `MaskByte finite = !std::isnan(v);`). Missing
    cells therefore hold a literal `0.0` in `obj_masked` and are excluded by the
    mask, never by a branch in the distance loop.
 4. Groups 1 and 2 are copied (`src/impute_knn_brute.cpp`:
@@ -489,8 +489,8 @@ fall back to `mean_imp_col()`.
   nothing is still missing.
 - Groups 1 and 2 are materialized a second time into `obj_masked` /
   `nmiss_masked` (`src/impute_knn_brute.cpp`: `std::vector<double> obj_masked(n_cells);`)
-  with NaNs zeroed and a parallel byte mask; `nmiss_masked` holds `mask_t`
-  (`src/imputed_value.h`: `using mask_t = uint8_t;`), one byte per cell.
+  with NaNs zeroed and a parallel byte mask; `nmiss_masked` holds `MaskByte`
+  (`src/imputed_value.h`: `using MaskByte = std::uint8_t;`), one byte per cell.
   Both are zero-filled by `std::vector` before `copy_with_mask` writes every
   cell. Group 3 is read in place from `obj`, so a matrix dominated by
   complete columns pays no second copy.

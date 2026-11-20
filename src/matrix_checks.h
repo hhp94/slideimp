@@ -1,5 +1,5 @@
-#ifndef MATRIX_CHECKS_H
-#define MATRIX_CHECKS_H
+#ifndef SLIDEIMP_MATRIX_CHECKS_H
+#define SLIDEIMP_MATRIX_CHECKS_H
 
 #include <Rcpp.h>
 #include <cmath>
@@ -67,4 +67,4 @@ static inline void stop_on_inf(const Rcpp::NumericMatrix &obj) {
   }
 }
 
-#endif // MATRIX_CHECKS_H
+#endif // SLIDEIMP_MATRIX_CHECKS_H

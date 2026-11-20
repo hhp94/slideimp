@@ -1,5 +1,5 @@
-#ifndef PCA_LINALG_UTILS_H
-#define PCA_LINALG_UTILS_H
+#ifndef SLIDEIMP_PCA_LINALG_UTILS_H
+#define SLIDEIMP_PCA_LINALG_UTILS_H
 
 // Small dense helpers of the PCA chain, over column-major buffers with
 // std::size_t dimensions. The two products go to dgemm through
@@ -106,4 +106,4 @@ gemm_tn_block(const double *A, const std::size_t a_rows,
 
 } // namespace pca_detail
 
-#endif // PCA_LINALG_UTILS_H
+#endif // SLIDEIMP_PCA_LINALG_UTILS_H

@@ -144,6 +144,10 @@ Easy to miss in the diff, noted so the draft does not:
   "All NA/NaN column detected" in 1.2.0, reads "'obj' has a column with no
   observed value, only NA or NaN. Remove that column before imputation".
   A caller matching the old text breaks.
+- **Breaking:** `Depends` is `R (>= 4.4.0)`, raised from 4.3.0. The C++
+  needs C++17, which *Writing R Extensions* makes the default from R 4.4.0
+  (`dev/eigen_conversion.md`, "The rest of the *Writing R Extensions*
+  pass").
 
 ## Parts for the other imputers
 
@@ -223,6 +227,14 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
   `V`, `Vn` and the eigenpair buffers are zero-filled by `std::vector`
   before every cell that is read is written, where only `fittedX` needs its
   zeros; and `row_w` is copied before it is checked.
+- **Symbol visibility.** The DLL exports 433 names, where registration
+  with `R_useDynamicSymbols(dll, FALSE)` leaves R needing only
+  `R_init_slideimp` (*Writing R Extensions*, "Controlling visibility").
+  `PKG_CXXFLAGS = $(CXX_VISIBILITY)` in `src/Makevars` hides the rest on
+  Linux and macOS; on Windows `$(CXX_VISIBILITY)` is empty, and the
+  manual's route is a `.def` file in `src/` exporting `R_init_slideimp`
+  alone. Advice, not a requirement (maintainer, 2026-11-19: fine as it is,
+  otherwise for this pass). What it changes on Linux is not measured.
 
 ## Phase 4 of the Eigen conversion: what is left
 
@@ -233,10 +245,6 @@ carried out".
   should be `NA` whenever the objective is below `threshold`, which also
   covers a rounding criterion that lands below it. Today it is `NA` only
   when the criterion itself is not below `threshold`.
-- **Ruled, partly carried out,** its own commit with the gate: the pass
-  through *Writing R Extensions* against `src/`. Done: the messages of
-  slideimp's own C++ in the 1.7 form, "Diagnostic messages". Owed: the rest
-  of the manual read against `src/`.
 
 ## Test suite: cleanup and tiers for local and CRAN runs
 
@@ -301,6 +309,8 @@ part of `dev/eigen_conversion.md`. No entry for it existed before this one.
   "Errors and messages go through cli" in `.claude/CLAUDE.md`, which has to
   change first; and the tests that pin wording.
 - The NEWS entry above gains a line for whatever wording or class changes.
+- `rlang` goes in the same pass (maintainer, 2026-11-19). `R CMD check`
+  notes it in `Imports` but never imported.
 
 ## Release condition: pass on the RcppEigen candidate
 
@@ -379,9 +389,9 @@ Owed:
   but neither defines `USE_FC_LEN_T` before its first R header, and neither
   falls back with `#ifndef FCONE`, as *Writing R Extensions*, "Fortran
   character strings", writes the call (`dev/r_manual/R-exts.md`). The
-  manual notes that `USE_FC_LEN_T` is the default from R 4.3.0, the oldest R
-  the package supports, so the lengths are passed today; that the calls are
-  right on R 4.3.0 itself is not measured here. Ruled 2026-11-18: a file
+  manual notes that `USE_FC_LEN_T` is the default from R 4.3.0, older than
+  the oldest R the package supports (4.4.0), so the lengths are passed
+  today. Ruled 2026-11-18: a file
   that disagrees with the manual is a bug to fix, not a model.
   `src/si_lapack.cpp` has the manual's form. Fixed upstream in `b44a3b5`,
   after the last copy; the next copy brings it and deletes this item.

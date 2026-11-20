@@ -1,5 +1,5 @@
-#ifndef SVD_TRIPLET_H
-#define SVD_TRIPLET_H
+#ifndef SLIDEIMP_SVD_TRIPLET_H
+#define SLIDEIMP_SVD_TRIPLET_H
 
 #include <Rcpp.h>
 #include <cmath>
@@ -156,4 +156,4 @@ inline void SVD_triplet(const double *Xhat, const double *sw,
   LOC_TOC(timer, "recover_factors");
 }
 
-#endif // SVD_TRIPLET_H
+#endif // SLIDEIMP_SVD_TRIPLET_H

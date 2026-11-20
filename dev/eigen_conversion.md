@@ -176,8 +176,10 @@ the wrappers:
   `R_ext/BLAS.h` and `R_ext/Lapack.h` are not part of the official API,
   though unlikely to change, and routines have been added to them (most
   recently in R 4.5.0). A wrapper calls only a routine that R's headers
-  declare in every R the package supports (`DESCRIPTION` says `R (>= 4.3.0)`),
-  checked against R's NEWS, never one reached by declaring it ourselves.
+  declare in every R the package supports (`DESCRIPTION` said
+  `R (>= 4.3.0)` then, and says `R (>= 4.4.0)` since the pass through the
+  manual in Phase 4), checked against R's NEWS, never one reached by
+  declaring it ourselves.
 
 Where the manual, the installed headers and this plan disagree, the work
 stops and says so.
@@ -2409,6 +2411,153 @@ longer say the flags are there.
 - The sampler's draws are not in the capture, so whether Eigen's product
   on one thread changes their bits is not measured here. The suite's
   sampler tests pass.
+
+**The rest of the *Writing R Extensions* pass** (the fifth ruling above).
+Read at `571d176`, after the messages, against the manual's sections on
+`Makevars`, OpenMP and pthreads, C++ code, portable C and C++ code, 1.6's
+list for compiled code, registration, interfacing C++, garbage collection
+and storage, memory allocation, error signaling, random numbers, printing,
+interrupts, C stack checking, visibility, header files, C API compliance
+and threading. The vendored files were read only for findings
+(`dev/vendored.md`). The read changed nothing under `src/`; each item
+under "Proposed" was put to the maintainer, and what was ruled is under
+"Ruled".
+
+Measured, on the second machine, R 4.6.2, GCC 14.2.0:
+
+- `R CMD check` of a clone of `571d176`, with no tests, manual or vignettes,
+  compiled at `-std=gnu++20`: "checking compiled code" OK, so no non-API
+  entry point and no call to `abort`, `exit` or `printf`; the compilation
+  flags in `Makevars`, GNU extensions in Makefiles, the portable use of
+  `$(BLAS_LIBS)` and `$(LAPACK_LIBS)`, and the use of `PKG_*FLAGS` are all
+  OK. The one WARNING, undocumented sampler exports, is the "Roxygen" item
+  of `dev/to-do.md`. The one NOTE, `rlang` in `Imports` but never imported,
+  is outside `src/`.
+- The install printed 512 compiler warnings, each from RcppEigen's headers
+  reached through `src/mipca.cpp`, all `-Wignored-attributes` but one
+  `-Wmaybe-uninitialized`. None comes from slideimp's own files.
+- Each of slideimp's own eight `.cpp` files, compiled alone at
+  `-std=gnu++17 -Wall -Wextra -pedantic`, gives no warning or error from its
+  own code. A file with a deliberate syntax error fails the same command.
+- The DLL exports 433 names. With registration and
+  `R_useDynamicSymbols(dll, FALSE)`, R needs only `R_init_slideimp`.
+
+Met, and where:
+
+- Registration (5.4): `src/RcppExports.cpp` registers every routine in
+  `R_init_slideimp()`, declared `extern "C" attribute_visible` through
+  `RcppExport`, and turns dynamic lookup off. `NAMESPACE` has
+  `useDynLib(slideimp, .registration = TRUE)` and no `exportPattern`.
+- Printing (5.6, 6.5, 1.6): the one output is the trace in
+  `src/armaSVD.cpp`, through `Rcpp::Rcout`, whose buffer writes with
+  `Rprintf`. Every line ends with `std::endl`.
+- Garbage collection and allocation (5.9, 6.1): no `PROTECT`, `R_alloc`,
+  `malloc` or `new[]`; R objects are Rcpp's and scratch is `std::vector`. A
+  `std::bad_alloc` is caught at the wrapper's `END_RCPP`.
+- Errors (6.2): `Rcpp::stop()` throws, and the wrapper turns it into an R
+  error after the destructors have run. No `Rf_error` or `Rf_warning`, and
+  every format is a literal. Why the PCA loop does not warn is in its
+  comment (`src/armaSVD.cpp`: `// deliberately silent.`).
+- Random numbers (6.3, 1.6): `src/sample_each_rep_cpp.cpp` draws
+  `R::runif(0, 1)` under the `RNGScope` that `src/RcppExports.cpp` places in
+  every wrapper. No `<random>`, `rand` or other generator.
+- Interrupts (6.14): the PCA outer loop calls `Rcpp::checkUserInterrupt()`
+  every 5 iterations, which throws rather than jumps; the K-NN kernel calls
+  `RcppThread::checkUserInterrupt()` every 5 columns, which is safe from a
+  worker.
+- Threads (1.2.1.1, 8.1.5): the K-NN workers get plain pointers and std
+  containers, never an Rcpp object
+  (`src/impute_knn_brute.cpp`: `none can reach an Rcpp object`). slideimp's
+  own PCA code starts no thread.
+- Portable C++ (1.6.4): no C header such as `math.h`, nothing under `bits/`,
+  no `using namespace std`, package headers in quotes, `std::` on every math
+  call, no `INFINITY` or `NAN`, no `sprintf`, no `register`, no
+  `reinterpret_cast`, no `assert`; `-DNDEBUG` is on the compile line.
+- `Makevars` (1.2.1): linker input in `PKG_LIBS` only, in the order
+  `$(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)`. `src/Makevars` calls
+  `"$(R_HOME)/bin/Rscript"`; the manual's `$(R_ARCH_BIN)` is "only needed
+  currently on Windows", which reads `src/Makevars.win`.
+- C API compliance (6.23): the check reports none.
+
+Proposed, each for a ruling:
+
+1. **The C++ standard against the oldest R.** slideimp's own code needs
+   C++17: `if constexpr` in `src/armaSVD.cpp`, `inline constexpr` in
+   `src/gram_ops.h` and `src/eig_sym_sel.h`, `[[nodiscard]]` and
+   `[[maybe_unused]]`. The manual makes C++17 the default in R 4.4.0, and
+   `DESCRIPTION` says `R (>= 4.3.0)` with no `CXX_STD` and no C++
+   requirement. What R 4.3's default is, and whether the package builds
+   there, is not measured. Either `CXX_STD = CXX17` in both Makevars, which
+   1.2.4 allows, or `R (>= 4.4.0)`.
+2. **`mask_t`** in `src/imputed_value.h`: POSIX reserves names ending in
+   `_t` (1.6.4), and the `uint8_t` behind it is not qualified with `std::`.
+   A rename, 18 uses, and `std::uint8_t`; the capture stays bitwise.
+3. **`__restrict__`** in `src/impute_knn_brute.cpp` and
+   `src/imputed_value.cpp`: a GNU extension, which 1.6.4 asks code to avoid;
+   `restrict` is not C++. GCC and clang accept it. Dropping it may cost
+   vectorization in the distance kernel, so it is timed first. Not timed.
+4. **`long double`** in the LOBPCG workspace guard of `src/armaSVD.cpp`:
+   1.6 says long doubles "may not be available", and where they are not,
+   they are doubles. Double is enough here, and `src/si_lapack.cpp` already
+   makes the same test in double. Results do not change; the guard moves
+   only within rounding of `INT_MAX`.
+5. **Header guards without a prefix.** 10 of slideimp's 11 headers guard on
+   a bare name such as `PAR_FOR_H`; `src/si_lapack.h` alone has `SLIDEIMP_`.
+   1.6.4 asks for a package prefix on all-caps macros, and a header from a
+   `LinkingTo` package with the same guard would be dropped silently. Not
+   for `src/loc_timer.h`, if its guard counts among the names it keeps.
+6. **R headers before standard ones** in `src/si_lapack.cpp`: 6.21 asks for
+   the standard headers first or `R_NO_REMAP`. Under R 4.6.2 these headers
+   remap nothing, because `R_ext/RS.h` no longer includes `R_ext/Error.h`
+   (read). Under R 4.3 and 4.4 this is not measured, and is an assumption:
+   that `R_ext/RS.h` included `R_ext/Error.h`, which defines `error` and
+   `warning` without `R_NO_REMAP`. Either define `R_NO_REMAP` behind
+   `#ifndef`, as the manual writes it, or move the standard headers up.
+7. **Two headers reached only through others** (1.6.4): `std::vector` in
+   `src/hybrid_topk_eig.h` without `<vector>`, `std::streamsize` in
+   `src/armaSVD.cpp` without `<ios>`.
+8. **Visibility** (6.19, advice only): `PKG_CXXFLAGS = $(CXX_VISIBILITY)`
+   in `src/Makevars` hides everything except `R_init_slideimp` on Linux and
+   macOS. On Windows `$(CXX_VISIBILITY)` is empty, and the manual's route is
+   a `.def` file in `src/` that exports `R_init_slideimp` alone. What it
+   changes on Linux is not measurable on this machine.
+9. **Interrupts in `sample_each_rep_cpp()`**: its retry loop over
+   `max_attempts` never checks. How long it runs is not measured.
+
+Ruled (maintainer, 2026-11-19), and carried out in one change:
+
+1. `Depends` is `R (>= 4.4.0)`; no `CXX_STD`. A line for the NEWS draft is
+   in `dev/to-do.md`.
+2. `mask_t` is `MaskByte`, over `std::uint8_t`, in all 18 places.
+3. `__restrict__` is dropped from both files, without a timing, as ruled.
+   Whether the K-NN kernel is slower without it is not measured.
+4. The guard computes in `double`.
+5. The nine unprefixed guards take `SLIDEIMP_`. `src/loc_timer.h` keeps
+   `LOC_TIMER_H`, under the ruling that it keeps its macro names.
+6. As the manual has it: `src/si_lapack.cpp` includes the standard
+   headers before R's, and its header comment names the rule. Rcpp and
+   RcppThread define `R_NO_REMAP` before they include R's headers
+   (`Rcpp/r/headers.h`, `RcppThread/RMonitor.hpp`, read), so every other
+   file already meets it.
+7. `<vector>` and `<ios>` are included where they are used.
+8. Not now: a cleanup item in `dev/to-do.md`, "Kernel cleanup after the
+   Eigen conversion".
+9. Not done.
+
+The gate, `dev/eigen_p4_gate.sh`, stages capture and suite, with `base` at
+`571d176` and `p4` the change (read in each clone: `p4` has `MaskByte` and
+`R (>= 4.4.0)` and no `__restrict__` or `long double`, `base` the reverse):
+at tolerance 0, 71 cases, 0 failed and 0 not bitwise, under CRAN's
+RcppEigen and the candidate. The suite with manual tests, under each: 279
+tests, 0 failed, 0 skipped, 2857 expectations.
+
+Findings in vendored files, for upstream (`hhp94/test`):
+
+- `src/mipca.cpp` draws with dqrng. 1.6 says compiled code should use R's
+  RNG and no "third-party random number generators". That dqrng seeds
+  itself from R's generator is not read here.
+- The 512 warnings above come from Eigen's headers, so they change only
+  with RcppEigen, not with the sampler's code.
 
 ## Not settled yet
 

@@ -1,5 +1,5 @@
-#ifndef LOBPCG_WARM_H
-#define LOBPCG_WARM_H
+#ifndef SLIDEIMP_LOBPCG_WARM_H
+#define SLIDEIMP_LOBPCG_WARM_H
 //
 // Warm-start-only LOBPCG for the top-k eigenpairs of a real symmetric matrix.
 //
@@ -878,4 +878,4 @@ inline LOBPCGResult lobpcg_solve(const double *a, const std::size_t a_rows,
   return out;
 }
 
-#endif // LOBPCG_WARM_H
+#endif // SLIDEIMP_LOBPCG_WARM_H

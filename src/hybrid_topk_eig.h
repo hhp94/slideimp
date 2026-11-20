@@ -1,5 +1,5 @@
-#ifndef HYBRID_TOPK_EIG_H
-#define HYBRID_TOPK_EIG_H
+#ifndef SLIDEIMP_HYBRID_TOPK_EIG_H
+#define SLIDEIMP_HYBRID_TOPK_EIG_H
 //
 // Hybrid top-k symmetric eigensolver.
 //
@@ -15,6 +15,7 @@
 #include <limits>
 #include <algorithm>
 #include <utility>
+#include <vector>
 #include "eig_sym_sel.h"
 #include "lobpcg_warm.h"
 
@@ -386,4 +387,4 @@ inline int hybrid_topk_eig_impl(double *eigvals, double *eigvecs, double *A,
   return st;
 }
 
-#endif // HYBRID_TOPK_EIG_H
+#endif // SLIDEIMP_HYBRID_TOPK_EIG_H

@@ -47,12 +47,10 @@ constexpr double DIST_INF = std::numeric_limits<double>::infinity();
 // Bound = true caller that has no worst distance yet.
 // -----------------------------------------------------------------------------
 template <typename Metric, bool Bound>
-inline double calc_distance_raw(const double *__restrict__ target_ptr,
-                                const mask_t *__restrict__ target_nmiss,
-                                const double *__restrict__ other_ptr,
-                                const mask_t *__restrict__ other_nmiss,
-                                const int n_rows,
-                                const double worst_dist = DIST_INF) {
+inline double
+calc_distance_raw(const double *target_ptr, const MaskByte *target_nmiss,
+                  const double *other_ptr, const MaskByte *other_nmiss,
+                  const int n_rows, const double worst_dist = DIST_INF) {
   double dist = 0.0;
   double n_valid = 0.0;
   const int n_full = n_rows / GRAIN;
@@ -95,12 +93,11 @@ inline double calc_distance_raw(const double *__restrict__ target_ptr,
 // then final_dist / n_valid > worst_dist, and we can prune.
 // -----------------------------------------------------------------------------
 template <typename Metric, bool Bound>
-inline double
-calc_distance_raw_complete(const double *__restrict__ target_ptr,
-                           const mask_t *__restrict__ target_nmiss,
-                           const double *__restrict__ other_ptr,
-                           const int n_rows, const double n_valid,
-                           const double worst_dist = DIST_INF) {
+inline double calc_distance_raw_complete(const double *target_ptr,
+                                         const MaskByte *target_nmiss,
+                                         const double *other_ptr,
+                                         const int n_rows, const double n_valid,
+                                         const double worst_dist = DIST_INF) {
   double dist = 0.0;
   [[maybe_unused]] double unnorm_bound = 0.0;
   if constexpr (Bound) {
@@ -177,7 +174,7 @@ inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k,
 // -----------------------------------------------------------------------------
 template <typename Metric>
 std::vector<NeighborInfo>
-distance_vector_impl(const double *obj_masked, const mask_t *nmiss_masked,
+distance_vector_impl(const double *obj_masked, const MaskByte *nmiss_masked,
                      const int n_rows, const GroupLayout &layout,
                      const int index, const int k,
                      const std::vector<double> &n_valid_vec, const double *obj,
@@ -186,7 +183,7 @@ distance_vector_impl(const double *obj_masked, const mask_t *nmiss_masked,
   const int complete_start = layout.complete_start();
   const std::size_t k_size = static_cast<std::size_t>(k);
   const double *target_ptr = col_ptr(obj_masked, index, n_rows);
-  const mask_t *target_nmiss_ptr = col_ptr(nmiss_masked, index, n_rows);
+  const MaskByte *target_nmiss_ptr = col_ptr(nmiss_masked, index, n_rows);
   const double target_n_valid = n_valid_vec[index];
 
   // A target with no observed row shares no row with any candidate, so by
@@ -277,7 +274,7 @@ distance_vector_impl(const double *obj_masked, const mask_t *nmiss_masked,
 
 // dispatch once per target column, then the whole body is monomorphized.
 std::vector<NeighborInfo>
-distance_vector(const double *obj_masked, const mask_t *nmiss_masked,
+distance_vector(const double *obj_masked, const MaskByte *nmiss_masked,
                 const int n_rows, const GroupLayout &layout, const int index,
                 const int k, const std::vector<double> &n_valid_vec,
                 const int method, const double *obj, const int *grp_complete) {
@@ -366,20 +363,20 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
   const std::size_t n_cells =
       static_cast<std::size_t>(n_rows) * static_cast<std::size_t>(n_masked);
   std::vector<double> obj_masked(n_cells);
-  std::vector<mask_t> nmiss_masked(n_cells);
+  std::vector<MaskByte> nmiss_masked(n_cells);
   std::vector<int> n_col_valid(n_masked, 0);
 
   auto copy_with_mask = [&](int local_pos, int orig_pos) {
     const double *src = col_ptr(obj_ptr, orig_pos, n_rows);
     double *dst = col_ptr(obj_masked.data(), local_pos, n_rows);
-    mask_t *mask_dst = col_ptr(nmiss_masked.data(), local_pos, n_rows);
+    MaskByte *mask_dst = col_ptr(nmiss_masked.data(), local_pos, n_rows);
     int valid_count = 0;
     for (int r = 0; r < n_rows; ++r) {
       double v = src[r];
       // `finite` is 1 when observed, 0 when NaN. Single isnan call, used
       // directly as both the mask byte and the count increment. The
       // ternary zero out the NaN for kernel math.
-      mask_t finite = !std::isnan(v);
+      MaskByte finite = !std::isnan(v);
       dst[r] = finite ? v : 0.0;
       mask_dst[r] = finite;
       valid_count += finite;
@@ -420,7 +417,7 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
   // The workers get plain pointers and std containers, captured by name, so
   // none can reach an Rcpp object.
   const double *obj_masked_ptr = obj_masked.data();
-  const mask_t *nmiss_masked_ptr = nmiss_masked.data();
+  const MaskByte *nmiss_masked_ptr = nmiss_masked.data();
   double *value_ptr = value.begin();
 
   // parallelFor setup

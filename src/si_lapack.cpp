@@ -1,6 +1,6 @@
 // R's BLAS and LAPACK for the PCA chain; src/si_lapack.h is the interface.
 //
-// Writing R Extensions binds this file in four places:
+// Writing R Extensions binds this file in five places:
 //
 // - "Fortran character strings": USE_FC_LEN_T is defined before any R header
 //   is included, so R_ext/BLAS.h and R_ext/Lapack.h declare the hidden length
@@ -15,6 +15,8 @@
 // - "Portable C and C++ code": a standard header is included for everything
 //   used from it, every standard name carries std::, the package's header is
 //   included in quotes, and no R header sits inside an extern "C" block.
+// - "Organization of header files": the standard headers come before R's,
+//   as the manual asks of C++ that does not define R_NO_REMAP.
 //
 // This file includes nothing of Rcpp, Armadillo or Eigen, and R headers only
 // for those declarations: no function here calls the R API.
@@ -22,6 +24,14 @@
 #ifndef USE_FC_LEN_T
 # define USE_FC_LEN_T
 #endif
+
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <exception>
+#include <limits>
+#include <vector>
+
 #include <Rconfig.h>
 #include <R_ext/BLAS.h>
 #include <R_ext/Lapack.h>
@@ -30,13 +40,6 @@
 #endif
 
 #include "si_lapack.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
-#include <exception>
-#include <limits>
-#include <vector>
 
 namespace {
 
