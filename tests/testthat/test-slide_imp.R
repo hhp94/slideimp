@@ -874,7 +874,8 @@ test_that("slide_imp scans the union of covered columns, not window by window", 
   inf_mat[3, 12] <- Inf
   expect_error(
     suppressMessages(do.call(slide_imp, c(list(inf_mat), args))),
-    "Infinite"
+    "holds an infinite value",
+    fixed = TRUE
   )
 
   # so is an all-NA column, including one sitting in an overlap region
@@ -882,7 +883,8 @@ test_that("slide_imp scans the union of covered columns, not window by window", 
   na_mat[, 8] <- NA
   expect_error(
     suppressMessages(do.call(slide_imp, c(list(na_mat), args))),
-    "All NA/NaN"
+    "has a column with no observed value",
+    fixed = TRUE
   )
 })
 
@@ -915,7 +917,8 @@ test_that("slide_imp scopes the all-NA check to covered columns but Inf to all",
   covered_na[, 25] <- NA
   expect_error(
     suppressMessages(do.call(slide_imp, c(list(covered_na), args))),
-    "All NA/NaN"
+    "has a column with no observed value",
+    fixed = TRUE
   )
 
   # Inf is refused wherever it sits, and the reported position refers to the

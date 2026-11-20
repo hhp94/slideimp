@@ -20,13 +20,13 @@
 // for those declarations: no function here calls the R API.
 
 #ifndef USE_FC_LEN_T
-#define USE_FC_LEN_T
+# define USE_FC_LEN_T
 #endif
 #include <Rconfig.h>
 #include <R_ext/BLAS.h>
 #include <R_ext/Lapack.h>
 #ifndef FCONE
-#define FCONE
+# define FCONE
 #endif
 
 #include "si_lapack.h"
@@ -38,591 +38,477 @@
 #include <limits>
 #include <vector>
 
-namespace
-{
+namespace {
 
-  constexpr std::size_t int_max =
-      static_cast<std::size_t>(std::numeric_limits<int>::max());
+constexpr std::size_t int_max =
+    static_cast<std::size_t>(std::numeric_limits<int>::max());
 
-  bool to_int(const std::size_t v, int &out)
-  {
-    if (v > int_max)
-    {
+bool to_int(const std::size_t v, int &out) {
+  if (v > int_max) {
+    return false;
+  }
+  out = static_cast<int>(v);
+  return true;
+}
+
+// Whether a length computed in double fits int. A routine's documented
+// minimum is tested with this before the routine is asked for its optimum:
+// past int, LAPACK's own arithmetic for the answer has already wrapped.
+bool fits_int(const double len) { return len <= static_cast<double>(int_max); }
+
+// The length of a workspace: what the routine's query reported, raised to
+// the documented minimum. false when that does not fit int. A query that
+// reported nothing usable (0, a negative value, NaN) leaves the minimum.
+bool work_len(const double queried, const double minimum, int &out) {
+  double len = (minimum > 1.0) ? minimum : 1.0;
+  if (queried > len) {
+    len = queried;
+  }
+  if (!fits_int(len)) {
+    return false;
+  }
+  out = static_cast<int>(len);
+  return true;
+}
+
+template <typename T> bool alloc(std::vector<T> &v, const std::size_t len) {
+  try {
+    v.resize(len);
+  } catch (const std::exception &) {
+    return false;
+  }
+  return true;
+}
+
+bool all_finite(const double *x, const std::size_t len) {
+  for (std::size_t i = 0; i < len; ++i) {
+    if (!std::isfinite(x[i])) {
       return false;
     }
-    out = static_cast<int>(v);
-    return true;
   }
+  return true;
+}
 
-  // Whether a length computed in double fits int. A routine's documented
-  // minimum is tested with this before the routine is asked for its optimum:
-  // past int, LAPACK's own arithmetic for the answer has already wrapped.
-  bool fits_int(const double len)
-  {
-    return len <= static_cast<double>(int_max);
-  }
-
-  // The length of a workspace: what the routine's query reported, raised to
-  // the documented minimum. false when that does not fit int. A query that
-  // reported nothing usable (0, a negative value, NaN) leaves the minimum.
-  bool work_len(const double queried, const double minimum, int &out)
-  {
-    double len = (minimum > 1.0) ? minimum : 1.0;
-    if (queried > len)
-    {
-      len = queried;
-    }
-    if (!fits_int(len))
-    {
+// Whether the uplo triangle of the n x n matrix a, diagonal included, holds
+// only finite values. The other triangle is not looked at: LAPACK does not
+// read it, and a caller may leave it unset.
+bool tri_finite(const char uplo, const std::size_t n, const double *a) {
+  for (std::size_t j = 0; j < n; ++j) {
+    const std::size_t first = (uplo == 'U') ? 0 : j;
+    const std::size_t len = (uplo == 'U') ? j + 1 : n - j;
+    if (!all_finite(a + j * n + first, len)) {
       return false;
     }
-    out = static_cast<int>(len);
-    return true;
   }
+  return true;
+}
 
-  template <typename T>
-  bool alloc(std::vector<T> &v, const std::size_t len)
-  {
-    try
-    {
-      v.resize(len);
-    }
-    catch (const std::exception &)
-    {
-      return false;
-    }
-    return true;
-  }
+bool is_nt(const char c) { return c == 'N' || c == 'T'; }
 
-  bool all_finite(const double *x, const std::size_t len)
-  {
-    for (std::size_t i = 0; i < len; ++i)
-    {
-      if (!std::isfinite(x[i]))
-      {
-        return false;
-      }
-    }
-    return true;
-  }
+bool is_ul(const char c) { return c == 'U' || c == 'L'; }
 
-  // Whether the uplo triangle of the n x n matrix a, diagonal included, holds
-  // only finite values. The other triangle is not looked at: LAPACK does not
-  // read it, and a caller may leave it unset.
-  bool tri_finite(const char uplo, const std::size_t n, const double *a)
-  {
-    for (std::size_t j = 0; j < n; ++j)
-    {
-      const std::size_t first = (uplo == 'U') ? 0 : j;
-      const std::size_t len = (uplo == 'U') ? j + 1 : n - j;
-      if (!all_finite(a + j * n + first, len))
-      {
-        return false;
-      }
-    }
-    return true;
+// x = beta * x the way BLAS scales a result: beta = 0 assigns 0, so a NaN
+// or Inf already in x does not survive, and beta = 1 leaves x alone.
+void scale_range(double *x, const std::size_t len, const double beta) {
+  if (beta == 1.0) {
+    return;
   }
-
-  bool is_nt(const char c)
-  {
-    return c == 'N' || c == 'T';
+  if (beta == 0.0) {
+    std::fill(x, x + len, 0.0);
+    return;
   }
-
-  bool is_ul(const char c)
-  {
-    return c == 'U' || c == 'L';
+  for (std::size_t i = 0; i < len; ++i) {
+    x[i] *= beta;
   }
-
-  // x = beta * x the way BLAS scales a result: beta = 0 assigns 0, so a NaN
-  // or Inf already in x does not survive, and beta = 1 leaves x alone.
-  void scale_range(double *x, const std::size_t len, const double beta)
-  {
-    if (beta == 1.0)
-    {
-      return;
-    }
-    if (beta == 0.0)
-    {
-      std::fill(x, x + len, 0.0);
-      return;
-    }
-    for (std::size_t i = 0; i < len; ++i)
-    {
-      x[i] *= beta;
-    }
-  }
+}
 } // namespace
 
-namespace si_la
-{
+namespace si_la {
 
-  int gemm(const char trans_a, const char trans_b,
-           const std::size_t m, const std::size_t n, const std::size_t k,
-           const double alpha,
-           const double *a, const std::size_t lda,
-           const double *b, const std::size_t ldb,
-           const double beta,
-           double *c, const std::size_t ldc)
-  {
-    if (!is_nt(trans_a) || !is_nt(trans_b))
-    {
-      return err_arg;
+int gemm(const char trans_a, const char trans_b, const std::size_t m,
+         const std::size_t n, const std::size_t k, const double alpha,
+         const double *a, const std::size_t lda, const double *b,
+         const std::size_t ldb, const double beta, double *c,
+         const std::size_t ldc) {
+  if (!is_nt(trans_a) || !is_nt(trans_b)) {
+    return err_arg;
+  }
+  if (m == 0 || n == 0) {
+    return ok;
+  }
+  if (ldc < m) {
+    return err_arg;
+  }
+  if (k == 0) {
+    for (std::size_t j = 0; j < n; ++j) {
+      scale_range(c + j * ldc, m, beta);
     }
-    if (m == 0 || n == 0)
-    {
-      return ok;
-    }
-    if (ldc < m)
-    {
-      return err_arg;
-    }
-    if (k == 0)
-    {
-      for (std::size_t j = 0; j < n; ++j)
-      {
-        scale_range(c + j * ldc, m, beta);
+    return ok;
+  }
+  const std::size_t a_rows = (trans_a == 'N') ? m : k;
+  const std::size_t b_rows = (trans_b == 'N') ? k : n;
+  if (lda < a_rows || ldb < b_rows) {
+    return err_arg;
+  }
+  int m_i, n_i, k_i, lda_i, ldb_i, ldc_i;
+  if (!to_int(m, m_i) || !to_int(n, n_i) || !to_int(k, k_i) ||
+      !to_int(lda, lda_i) || !to_int(ldb, ldb_i) || !to_int(ldc, ldc_i)) {
+    return err_size;
+  }
+  F77_CALL(dgemm)(&trans_a, &trans_b, &m_i, &n_i, &k_i, &alpha, a, &lda_i, b,
+                  &ldb_i, &beta, c, &ldc_i FCONE FCONE);
+  return ok;
+}
+
+int gemv(const char trans, const std::size_t m, const std::size_t n,
+         const double alpha, const double *a, const std::size_t lda,
+         const double *x, const double beta, double *y) {
+  if (!is_nt(trans)) {
+    return err_arg;
+  }
+  const std::size_t len_x = (trans == 'N') ? n : m;
+  const std::size_t len_y = (trans == 'N') ? m : n;
+  if (len_y == 0) {
+    return ok;
+  }
+  if (len_x == 0) {
+    scale_range(y, len_y, beta);
+    return ok;
+  }
+  if (lda < m) {
+    return err_arg;
+  }
+  int m_i, n_i, lda_i;
+  if (!to_int(m, m_i) || !to_int(n, n_i) || !to_int(lda, lda_i)) {
+    return err_size;
+  }
+  const int inc = 1;
+  F77_CALL(dgemv)(&trans, &m_i, &n_i, &alpha, a, &lda_i, x, &inc, &beta, y,
+                  &inc FCONE);
+  return ok;
+}
+
+int syrk(const char uplo, const char trans, const std::size_t n,
+         const std::size_t k, const double alpha, const double *a,
+         const std::size_t lda, const double beta, double *c,
+         const std::size_t ldc) {
+  if (!is_ul(uplo) || !is_nt(trans)) {
+    return err_arg;
+  }
+  if (n == 0) {
+    return ok;
+  }
+  if (ldc < n) {
+    return err_arg;
+  }
+  if (k == 0) {
+    for (std::size_t j = 0; j < n; ++j) {
+      if (uplo == 'U') {
+        scale_range(c + j * ldc, j + 1, beta);
+      } else {
+        scale_range(c + j * ldc + j, n - j, beta);
       }
-      return ok;
     }
-    const std::size_t a_rows = (trans_a == 'N') ? m : k;
-    const std::size_t b_rows = (trans_b == 'N') ? k : n;
-    if (lda < a_rows || ldb < b_rows)
-    {
-      return err_arg;
-    }
-    int m_i, n_i, k_i, lda_i, ldb_i, ldc_i;
-    if (!to_int(m, m_i) || !to_int(n, n_i) || !to_int(k, k_i) ||
-        !to_int(lda, lda_i) || !to_int(ldb, ldb_i) || !to_int(ldc, ldc_i))
-    {
-      return err_size;
-    }
-    F77_CALL(dgemm)(&trans_a, &trans_b, &m_i, &n_i, &k_i, &alpha,
-                    a, &lda_i, b, &ldb_i, &beta, c, &ldc_i FCONE FCONE);
     return ok;
   }
+  const std::size_t a_rows = (trans == 'N') ? n : k;
+  if (lda < a_rows) {
+    return err_arg;
+  }
+  int n_i, k_i, lda_i, ldc_i;
+  if (!to_int(n, n_i) || !to_int(k, k_i) || !to_int(lda, lda_i) ||
+      !to_int(ldc, ldc_i)) {
+    return err_size;
+  }
+  F77_CALL(dsyrk)(&uplo, &trans, &n_i, &k_i, &alpha, a, &lda_i, &beta, c,
+                  &ldc_i FCONE FCONE);
+  return ok;
+}
 
-  int gemv(const char trans,
-           const std::size_t m, const std::size_t n,
-           const double alpha,
-           const double *a, const std::size_t lda,
-           const double *x,
-           const double beta,
-           double *y)
-  {
-    if (!is_nt(trans))
-    {
-      return err_arg;
-    }
-    const std::size_t len_x = (trans == 'N') ? n : m;
-    const std::size_t len_y = (trans == 'N') ? m : n;
-    if (len_y == 0)
-    {
-      return ok;
-    }
-    if (len_x == 0)
-    {
-      scale_range(y, len_y, beta);
-      return ok;
-    }
-    if (lda < m)
-    {
-      return err_arg;
-    }
-    int m_i, n_i, lda_i;
-    if (!to_int(m, m_i) || !to_int(n, n_i) || !to_int(lda, lda_i))
-    {
-      return err_size;
-    }
-    const int inc = 1;
-    F77_CALL(dgemv)(&trans, &m_i, &n_i, &alpha, a, &lda_i, x, &inc,
-                    &beta, y, &inc FCONE);
-    return ok;
+int syevr_range(const char uplo, const std::size_t n, const std::size_t il,
+                const std::size_t iu, double *a, double *w, double *z) {
+  if (!is_ul(uplo)) {
+    return err_arg;
+  }
+  if (il < 1 || il > iu || iu > n) {
+    return err_arg;
+  }
+  int n_i, il_i, iu_i;
+  if (!to_int(n, n_i) || !to_int(il, il_i) || !to_int(iu, iu_i)) {
+    return err_size;
+  }
+  const std::size_t count = iu - il + 1;
+
+  // dsyevr documents 26 n and 10 n as the least it accepts.
+  const double lwork_min = 26.0 * static_cast<double>(n);
+  const double liwork_min = 10.0 * static_cast<double>(n);
+  if (!fits_int(lwork_min)) {
+    return err_size;
   }
 
-  int syrk(const char uplo, const char trans,
-           const std::size_t n, const std::size_t k,
-           const double alpha,
-           const double *a, const std::size_t lda,
-           const double beta,
-           double *c, const std::size_t ldc)
-  {
-    if (!is_ul(uplo) || !is_nt(trans))
-    {
-      return err_arg;
-    }
-    if (n == 0)
-    {
-      return ok;
-    }
-    if (ldc < n)
-    {
-      return err_arg;
-    }
-    if (k == 0)
-    {
-      for (std::size_t j = 0; j < n; ++j)
-      {
-        if (uplo == 'U')
-        {
-          scale_range(c + j * ldc, j + 1, beta);
-        }
-        else
-        {
-          scale_range(c + j * ldc + j, n - j, beta);
-        }
-      }
-      return ok;
-    }
-    const std::size_t a_rows = (trans == 'N') ? n : k;
-    if (lda < a_rows)
-    {
-      return err_arg;
-    }
-    int n_i, k_i, lda_i, ldc_i;
-    if (!to_int(n, n_i) || !to_int(k, k_i) ||
-        !to_int(lda, lda_i) || !to_int(ldc, ldc_i))
-    {
-      return err_size;
-    }
-    F77_CALL(dsyrk)(&uplo, &trans, &n_i, &k_i, &alpha, a, &lda_i,
-                    &beta, c, &ldc_i FCONE FCONE);
-    return ok;
+  // dsyevr does not refuse NaN or Inf: asked for every eigenpair it may not
+  // return, and otherwise it may report success with NaN in the result.
+  if (!tri_finite(uplo, n, a)) {
+    return err_nonfinite;
   }
 
-  int syevr_range(const char uplo, const std::size_t n,
-                  const std::size_t il, const std::size_t iu,
-                  double *a, double *w, double *z)
-  {
-    if (!is_ul(uplo))
-    {
-      return err_arg;
-    }
-    if (il < 1 || il > iu || iu > n)
-    {
-      return err_arg;
-    }
-    int n_i, il_i, iu_i;
-    if (!to_int(n, n_i) || !to_int(il, il_i) || !to_int(iu, iu_i))
-    {
-      return err_size;
-    }
-    const std::size_t count = iu - il + 1;
-
-    // dsyevr documents 26 n and 10 n as the least it accepts.
-    const double lwork_min = 26.0 * static_cast<double>(n);
-    const double liwork_min = 10.0 * static_cast<double>(n);
-    if (!fits_int(lwork_min))
-    {
-      return err_size;
-    }
-
-    // dsyevr does not refuse NaN or Inf: asked for every eigenpair it may not
-    // return, and otherwise it may report success with NaN in the result.
-    if (!tri_finite(uplo, n, a))
-    {
-      return err_nonfinite;
-    }
-
-    // dsyevr documents W as n cells whatever the range. For a proper subset
-    // it first stores every eigenvalue its search interval holds and then
-    // drops those outside il..iu, so a range that cuts a group of equal
-    // eigenvalues writes more than count of them. The caller's w has count
-    // cells; the n cells are held here.
-    std::vector<int> isuppz;
-    std::vector<double> w_all;
-    if (!alloc(isuppz, 2 * count) || !alloc(w_all, n))
-    {
-      return err_alloc;
-    }
-
-    const char jobz = 'V';
-    const char range = 'I';
-    const double vl = 0.0;
-    const double vu = 0.0;
-    const double abstol = 0.0;
-    int m_out = 0;
-    int info = 0;
-
-    double work_q = 0.0;
-    int iwork_q = 0;
-    const int lwork_query = -1;
-    const int liwork_query = -1;
-    F77_CALL(dsyevr)(&jobz, &range, &uplo, &n_i, a, &n_i, &vl, &vu,
-                     &il_i, &iu_i, &abstol, &m_out, w_all.data(), z, &n_i,
-                     isuppz.data(), &work_q, &lwork_query,
-                     &iwork_q, &liwork_query, &info FCONE FCONE FCONE);
-    if (info != 0)
-    {
-      return info;
-    }
-
-    int lwork, liwork;
-    if (!work_len(work_q, lwork_min, lwork) ||
-        !work_len(static_cast<double>(iwork_q), liwork_min, liwork))
-    {
-      return err_size;
-    }
-    std::vector<double> work;
-    std::vector<int> iwork;
-    if (!alloc(work, static_cast<std::size_t>(lwork)) ||
-        !alloc(iwork, static_cast<std::size_t>(liwork)))
-    {
-      return err_alloc;
-    }
-
-    F77_CALL(dsyevr)(&jobz, &range, &uplo, &n_i, a, &n_i, &vl, &vu,
-                     &il_i, &iu_i, &abstol, &m_out, w_all.data(), z, &n_i,
-                     isuppz.data(), work.data(), &lwork,
-                     iwork.data(), &liwork, &info FCONE FCONE FCONE);
-    if (info != 0)
-    {
-      return info;
-    }
-    if (m_out < 0 || static_cast<std::size_t>(m_out) != count)
-    {
-      return err_count;
-    }
-    std::copy(w_all.begin(), w_all.begin() + count, w);
-    return ok;
+  // dsyevr documents W as n cells whatever the range. For a proper subset
+  // it first stores every eigenvalue its search interval holds and then
+  // drops those outside il..iu, so a range that cuts a group of equal
+  // eigenvalues writes more than count of them. The caller's w has count
+  // cells; the n cells are held here.
+  std::vector<int> isuppz;
+  std::vector<double> w_all;
+  if (!alloc(isuppz, 2 * count) || !alloc(w_all, n)) {
+    return err_alloc;
   }
 
-  int syevd(const char uplo, const std::size_t n, double *a, double *w)
-  {
-    if (!is_ul(uplo))
-    {
-      return err_arg;
-    }
-    if (n == 0)
-    {
-      return ok;
-    }
-    int n_i;
-    if (!to_int(n, n_i))
-    {
-      return err_size;
-    }
+  const char jobz = 'V';
+  const char range = 'I';
+  const double vl = 0.0;
+  const double vu = 0.0;
+  const double abstol = 0.0;
+  int m_out = 0;
+  int info = 0;
 
-    // dsyevd documents these for jobz 'V'. In double, since 2 n^2 leaves int
-    // long before n does.
-    const double nd = static_cast<double>(n);
-    const double lwork_min = 1.0 + 6.0 * nd + 2.0 * nd * nd;
-    const double liwork_min = 3.0 + 5.0 * nd;
-    if (!fits_int(lwork_min))
-    {
-      return err_size;
-    }
-
-    // dsyevd does not refuse NaN or Inf: it may report success with NaN in
-    // the result.
-    if (!tri_finite(uplo, n, a))
-    {
-      return err_nonfinite;
-    }
-
-    const char jobz = 'V';
-    int info = 0;
-
-    double work_q = 0.0;
-    int iwork_q = 0;
-    const int lwork_query = -1;
-    const int liwork_query = -1;
-    F77_CALL(dsyevd)(&jobz, &uplo, &n_i, a, &n_i, w, &work_q, &lwork_query,
-                     &iwork_q, &liwork_query, &info FCONE FCONE);
-    if (info != 0)
-    {
-      return info;
-    }
-
-    int lwork, liwork;
-    if (!work_len(work_q, lwork_min, lwork) ||
-        !work_len(static_cast<double>(iwork_q), liwork_min, liwork))
-    {
-      return err_size;
-    }
-    std::vector<double> work;
-    std::vector<int> iwork;
-    if (!alloc(work, static_cast<std::size_t>(lwork)) ||
-        !alloc(iwork, static_cast<std::size_t>(liwork)))
-    {
-      return err_alloc;
-    }
-
-    F77_CALL(dsyevd)(&jobz, &uplo, &n_i, a, &n_i, w, work.data(), &lwork,
-                     iwork.data(), &liwork, &info FCONE FCONE);
+  double work_q = 0.0;
+  int iwork_q = 0;
+  const int lwork_query = -1;
+  const int liwork_query = -1;
+  F77_CALL(dsyevr)(&jobz, &range, &uplo, &n_i, a, &n_i, &vl, &vu, &il_i, &iu_i,
+                   &abstol, &m_out, w_all.data(), z, &n_i, isuppz.data(),
+                   &work_q, &lwork_query, &iwork_q, &liwork_query,
+                   &info FCONE FCONE FCONE);
+  if (info != 0) {
     return info;
   }
 
-  int qr_econ(const std::size_t m, const std::size_t n, const double *x,
-              double *q, double *r)
-  {
-    if (m < n)
-    {
-      return err_arg;
-    }
-    if (n == 0)
-    {
-      return ok;
-    }
-    int m_i, n_i;
-    if (!to_int(m, m_i) || !to_int(n, n_i))
-    {
-      return err_size;
-    }
+  int lwork, liwork;
+  if (!work_len(work_q, lwork_min, lwork) ||
+      !work_len(static_cast<double>(iwork_q), liwork_min, liwork)) {
+    return err_size;
+  }
+  std::vector<double> work;
+  std::vector<int> iwork;
+  if (!alloc(work, static_cast<std::size_t>(lwork)) ||
+      !alloc(iwork, static_cast<std::size_t>(liwork))) {
+    return err_alloc;
+  }
 
-    // dgeqrf and dorgqr both work in q, which has x's shape.
-    std::copy(x, x + m * n, q);
+  F77_CALL(dsyevr)(&jobz, &range, &uplo, &n_i, a, &n_i, &vl, &vu, &il_i, &iu_i,
+                   &abstol, &m_out, w_all.data(), z, &n_i, isuppz.data(),
+                   work.data(), &lwork, iwork.data(), &liwork,
+                   &info FCONE FCONE FCONE);
+  if (info != 0) {
+    return info;
+  }
+  if (m_out < 0 || static_cast<std::size_t>(m_out) != count) {
+    return err_count;
+  }
+  std::copy(w_all.begin(), w_all.begin() + count, w);
+  return ok;
+}
 
-    std::vector<double> tau;
-    if (!alloc(tau, n))
-    {
-      return err_alloc;
-    }
+int syevd(const char uplo, const std::size_t n, double *a, double *w) {
+  if (!is_ul(uplo)) {
+    return err_arg;
+  }
+  if (n == 0) {
+    return ok;
+  }
+  int n_i;
+  if (!to_int(n, n_i)) {
+    return err_size;
+  }
 
-    // Each routine is asked for its own workspace. Both document max(1, n)
-    // as the least they accept.
-    const double lwork_min = static_cast<double>(n);
-    const int lwork_query = -1;
-    int info = 0;
-    double work_q = 0.0;
-    int lwork;
-    std::vector<double> work;
+  // dsyevd documents these for jobz 'V'. In double, since 2 n^2 leaves int
+  // long before n does.
+  const double nd = static_cast<double>(n);
+  const double lwork_min = 1.0 + 6.0 * nd + 2.0 * nd * nd;
+  const double liwork_min = 3.0 + 5.0 * nd;
+  if (!fits_int(lwork_min)) {
+    return err_size;
+  }
 
-    F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), &work_q,
-                     &lwork_query, &info);
-    if (info != 0)
-    {
-      return info;
-    }
-    if (!work_len(work_q, lwork_min, lwork))
-    {
-      return err_size;
-    }
-    if (!alloc(work, static_cast<std::size_t>(lwork)))
-    {
-      return err_alloc;
-    }
-    F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), work.data(), &lwork,
-                     &info);
-    if (info != 0)
-    {
-      return info;
-    }
+  // dsyevd does not refuse NaN or Inf: it may report success with NaN in
+  // the result.
+  if (!tri_finite(uplo, n, a)) {
+    return err_nonfinite;
+  }
 
-    // r is n x n: the upper triangle dgeqrf left in q, zero below it.
-    for (std::size_t j = 0; j < n; ++j)
-    {
-      std::copy(q + j * m, q + j * m + j + 1, r + j * n);
-      std::fill(r + j * n + j + 1, r + j * n + n, 0.0);
-    }
+  const char jobz = 'V';
+  int info = 0;
 
-    work_q = 0.0;
-    F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), &work_q,
-                     &lwork_query, &info);
-    if (info != 0)
-    {
-      return info;
-    }
-    if (!work_len(work_q, lwork_min, lwork))
-    {
-      return err_size;
-    }
-    if (!alloc(work, static_cast<std::size_t>(lwork)))
-    {
-      return err_alloc;
-    }
-    F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), work.data(),
-                     &lwork, &info);
+  double work_q = 0.0;
+  int iwork_q = 0;
+  const int lwork_query = -1;
+  const int liwork_query = -1;
+  F77_CALL(dsyevd)(&jobz, &uplo, &n_i, a, &n_i, w, &work_q, &lwork_query,
+                   &iwork_q, &liwork_query, &info FCONE FCONE);
+  if (info != 0) {
     return info;
   }
 
-  int solve_tri(const char uplo, const std::size_t n, const std::size_t nrhs,
-                const double *a, double *b)
-  {
-    if (!is_ul(uplo))
-    {
-      return err_arg;
-    }
-    if (n == 0 || nrhs == 0)
-    {
-      return ok;
-    }
-    int n_i, nrhs_i;
-    if (!to_int(n, n_i) || !to_int(nrhs, nrhs_i))
-    {
-      return err_size;
-    }
-    const char trans = 'N';
-    const char diag = 'N';
-    int info = 0;
-    F77_CALL(dtrtrs)(&uplo, &trans, &diag, &n_i, &nrhs_i, a, &n_i, b, &n_i,
-                     &info FCONE FCONE FCONE);
+  int lwork, liwork;
+  if (!work_len(work_q, lwork_min, lwork) ||
+      !work_len(static_cast<double>(iwork_q), liwork_min, liwork)) {
+    return err_size;
+  }
+  std::vector<double> work;
+  std::vector<int> iwork;
+  if (!alloc(work, static_cast<std::size_t>(lwork)) ||
+      !alloc(iwork, static_cast<std::size_t>(liwork))) {
+    return err_alloc;
+  }
+
+  F77_CALL(dsyevd)(&jobz, &uplo, &n_i, a, &n_i, w, work.data(), &lwork,
+                   iwork.data(), &liwork, &info FCONE FCONE);
+  return info;
+}
+
+int qr_econ(const std::size_t m, const std::size_t n, const double *x,
+            double *q, double *r) {
+  if (m < n) {
+    return err_arg;
+  }
+  if (n == 0) {
+    return ok;
+  }
+  int m_i, n_i;
+  if (!to_int(m, m_i) || !to_int(n, n_i)) {
+    return err_size;
+  }
+
+  // dgeqrf and dorgqr both work in q, which has x's shape.
+  std::copy(x, x + m * n, q);
+
+  std::vector<double> tau;
+  if (!alloc(tau, n)) {
+    return err_alloc;
+  }
+
+  // Each routine is asked for its own workspace. Both document max(1, n)
+  // as the least they accept.
+  const double lwork_min = static_cast<double>(n);
+  const int lwork_query = -1;
+  int info = 0;
+  double work_q = 0.0;
+  int lwork;
+  std::vector<double> work;
+
+  F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), &work_q, &lwork_query,
+                   &info);
+  if (info != 0) {
     return info;
   }
+  if (!work_len(work_q, lwork_min, lwork)) {
+    return err_size;
+  }
+  if (!alloc(work, static_cast<std::size_t>(lwork))) {
+    return err_alloc;
+  }
+  F77_CALL(dgeqrf)(&m_i, &n_i, q, &m_i, tau.data(), work.data(), &lwork, &info);
+  if (info != 0) {
+    return info;
+  }
+
+  // r is n x n: the upper triangle dgeqrf left in q, zero below it.
+  for (std::size_t j = 0; j < n; ++j) {
+    std::copy(q + j * m, q + j * m + j + 1, r + j * n);
+    std::fill(r + j * n + j + 1, r + j * n + n, 0.0);
+  }
+
+  work_q = 0.0;
+  F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), &work_q, &lwork_query,
+                   &info);
+  if (info != 0) {
+    return info;
+  }
+  if (!work_len(work_q, lwork_min, lwork)) {
+    return err_size;
+  }
+  if (!alloc(work, static_cast<std::size_t>(lwork))) {
+    return err_alloc;
+  }
+  F77_CALL(dorgqr)(&m_i, &n_i, &n_i, q, &m_i, tau.data(), work.data(), &lwork,
+                   &info);
+  return info;
+}
+
+int solve_tri(const char uplo, const std::size_t n, const std::size_t nrhs,
+              const double *a, double *b) {
+  if (!is_ul(uplo)) {
+    return err_arg;
+  }
+  if (n == 0 || nrhs == 0) {
+    return ok;
+  }
+  int n_i, nrhs_i;
+  if (!to_int(n, n_i) || !to_int(nrhs, nrhs_i)) {
+    return err_size;
+  }
+  const char trans = 'N';
+  const char diag = 'N';
+  int info = 0;
+  F77_CALL(dtrtrs)(&uplo, &trans, &diag, &n_i, &nrhs_i, a, &n_i, b, &n_i,
+                   &info FCONE FCONE FCONE);
+  return info;
+}
 
 #if PCA_IMP_DIAGNOSTICS
-  int svd_values(const std::size_t m, const std::size_t n, double *a, double *s)
-  {
-    const std::size_t p = std::min(m, n);
-    if (p == 0)
-    {
-      return ok;
-    }
-    int m_i, n_i;
-    if (!to_int(m, m_i) || !to_int(n, n_i))
-    {
-      return err_size;
-    }
-    if (!all_finite(a, m * n))
-    {
-      return err_nonfinite;
-    }
+int svd_values(const std::size_t m, const std::size_t n, double *a, double *s) {
+  const std::size_t p = std::min(m, n);
+  if (p == 0) {
+    return ok;
+  }
+  int m_i, n_i;
+  if (!to_int(m, m_i) || !to_int(n, n_i)) {
+    return err_size;
+  }
+  if (!all_finite(a, m * n)) {
+    return err_nonfinite;
+  }
 
-    // dgesdd documents these for jobz 'N'.
-    const double pd = static_cast<double>(p);
-    const double lwork_min =
-        3.0 * pd + std::max(static_cast<double>(std::max(m, n)), 7.0 * pd);
-    if (!fits_int(lwork_min))
-    {
-      return err_size;
-    }
-    std::vector<int> iwork;
-    if (!alloc(iwork, 8 * p))
-    {
-      return err_alloc;
-    }
+  // dgesdd documents these for jobz 'N'.
+  const double pd = static_cast<double>(p);
+  const double lwork_min =
+      3.0 * pd + std::max(static_cast<double>(std::max(m, n)), 7.0 * pd);
+  if (!fits_int(lwork_min)) {
+    return err_size;
+  }
+  std::vector<int> iwork;
+  if (!alloc(iwork, 8 * p)) {
+    return err_alloc;
+  }
 
-    // jobz 'N' reads neither u nor vt, but each needs a leading dimension of
-    // at least 1.
-    const char jobz = 'N';
-    double u = 0.0;
-    double vt = 0.0;
-    const int ld_one = 1;
-    int info = 0;
+  // jobz 'N' reads neither u nor vt, but each needs a leading dimension of
+  // at least 1.
+  const char jobz = 'N';
+  double u = 0.0;
+  double vt = 0.0;
+  const int ld_one = 1;
+  int info = 0;
 
-    double work_q = 0.0;
-    const int lwork_query = -1;
-    F77_CALL(dgesdd)(&jobz, &m_i, &n_i, a, &m_i, s, &u, &ld_one, &vt,
-                     &ld_one, &work_q, &lwork_query, iwork.data(),
-                     &info FCONE);
-    if (info != 0)
-    {
-      return info;
-    }
-    int lwork;
-    if (!work_len(work_q, lwork_min, lwork))
-    {
-      return err_size;
-    }
-    std::vector<double> work;
-    if (!alloc(work, static_cast<std::size_t>(lwork)))
-    {
-      return err_alloc;
-    }
-
-    F77_CALL(dgesdd)(&jobz, &m_i, &n_i, a, &m_i, s, &u, &ld_one, &vt,
-                     &ld_one, work.data(), &lwork, iwork.data(), &info FCONE);
+  double work_q = 0.0;
+  const int lwork_query = -1;
+  F77_CALL(dgesdd)(&jobz, &m_i, &n_i, a, &m_i, s, &u, &ld_one, &vt, &ld_one,
+                   &work_q, &lwork_query, iwork.data(), &info FCONE);
+  if (info != 0) {
     return info;
   }
+  int lwork;
+  if (!work_len(work_q, lwork_min, lwork)) {
+    return err_size;
+  }
+  std::vector<double> work;
+  if (!alloc(work, static_cast<std::size_t>(lwork))) {
+    return err_alloc;
+  }
+
+  F77_CALL(dgesdd)(&jobz, &m_i, &n_i, a, &m_i, s, &u, &ld_one, &vt, &ld_one,
+                   work.data(), &lwork, iwork.data(), &info FCONE);
+  return info;
+}
 #endif // PCA_IMP_DIAGNOSTICS
 
 } // namespace si_la

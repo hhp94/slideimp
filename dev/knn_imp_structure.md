@@ -65,15 +65,15 @@ Signature (`R/knn_imp.R`: `knn_imp <- function(`). Validation block, in order
 flags. All but two go through `checkmate` with an explicit `.var.name`, so a
 rejection names the user's argument. The exceptions are `method`, matched with
 `match.arg()`, and `check_finite()`, which raises from C++ through `Rcpp::stop`
-(`src/mat_stats.cpp`: `Infinite value found at row`). A test pins the
+(`src/mat_stats.cpp`: `holds an infinite value at row %d`). A test pins the
 `checkmate` path for `dist_pow` (`tests/testthat/test-knn_imp.R`:
 `dist_pow is validated by name`).
 
 Missing-value gating is delegated to C++. `check_finite()`
 (`src/mat_stats.cpp`: `void check_finite(`) makes one pass per column and
 refuses twice: any `Inf`/`-Inf` aborts with the row and column of the offender
-(`src/mat_stats.cpp`: `Infinite value found at row`), and a column ending the
-pass with no finite cell aborts with "All NA/NaN column detected". `check_inf()`
+(`src/mat_stats.cpp`: `holds an infinite value at row %d`), and a column ending the
+pass with no finite cell aborts with "'obj' has a column with no observed value". `check_inf()`
 (`src/mat_stats.cpp`: `void check_inf(`) is the weaker Inf-only variant, called
 from `mean_imp_col()` (`R/mean_imp_col.R`: `check_inf(obj)`) but not from
 `knn_imp()`. Both are declared in `R/RcppExports.R`. `NA` and `NaN` are
@@ -219,11 +219,11 @@ a column into a buffer is taken in `size_t` by `col_ptr()`
 indexes correctly, and so are the result offsets (`src/imputed_value.cpp`:
 `std::size_t sum_missing = 0;`). The result is an R matrix, whose dims are
 `int`, so more than `2^31 - 1` missing cells in `grp_impute` is refused
-(`src/imputed_value.cpp`: `the result has a row for each`).
+(`src/imputed_value.cpp`: `has a row for each and an R matrix holds at most %d rows`).
 
 ## Layer 4 -- kernel setup and result skeleton
 
-1. `validate_knn_inputs()` (`src/imputed_value.h`: `void validate_knn_inputs(`)
+1. `validate_knn_inputs()` (`src/imputed_value.h`: `validate_knn_inputs(const Rcpp::NumericMatrix &obj, const int k,`)
    re-checks most of what R already checked, so the kernel is safe when called
    directly. All-`NA` columns are left to the zero-`n_valid` guard
    (`src/impute_knn_brute.cpp`: `if (target_n_valid == 0.0)`), `cores` is
@@ -459,7 +459,7 @@ dying. `knn_imp()` has exactly two sites:
 
 Everything else that aborts here is a plain error, not `slideimp_infeasible`:
 `check_finite()` for `Inf` and all-`NA` columns (`tests/testthat/test-knn_imp.R`:
-`Throw on Inf`, `"All NA/NaN"`), plus the C++ guards in `validate_knn_inputs()`
+`Throw on Inf`, `"has a column with no observed value"`), plus the C++ guards in `validate_knn_inputs()`
 (`tests/testthat/test-knn_imp.R`: `the kernel checks the invariants`) and
 `initialize_result_matrix()`. Catch sites are in the
 wrappers only (next section); each switches on `on_infeasible` to abort (both raise a
@@ -536,8 +536,8 @@ main thread to unwind the pool. The optional progress bar is an
 `RcppThread::ProgressBar` in a `unique_ptr` created only when `pb` is true and
 incremented from the workers (`src/impute_knn_brute.cpp`: `++(*bar);`).
 
-`src/Makevars` adds the OpenMP flags and links `RcppThread::LdFlags()`;
-`src/Makevars.win` omits the RcppThread link line. The K-NN kernel is the
+`src/Makevars` links `RcppThread::LdFlags()`; `src/Makevars.win` omits
+that link line. Neither passes the OpenMP flags. The K-NN kernel is the
 only caller of `par_for()`; the column statistics in `src/mat_stats.cpp`
 run on one thread.
 

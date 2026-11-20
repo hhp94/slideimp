@@ -16,32 +16,23 @@
 // Vn. dst and Vn are n x ncp.
 // ---------------------------------------------------------------------------
 static inline void split_eigvec_block(const double *eigvecs,
-                                      const std::size_t n,
-                                      double *dst,
-                                      double *Vn,
-                                      const double *d_inv,
+                                      const std::size_t n, double *dst,
+                                      double *Vn, const double *d_inv,
                                       const double *row_scale,
-                                      const std::size_t ncp)
-{
-  for (std::size_t j = 0; j < ncp; ++j)
-  {
+                                      const std::size_t ncp) {
+  for (std::size_t j = 0; j < ncp; ++j) {
     const double dj = d_inv[j];
     const double *ecol = eigvecs + j * n;
     double *dcol = dst + j * n;
     double *ncol = Vn + j * n;
-    if (row_scale)
-    {
-      for (std::size_t i = 0; i < n; ++i)
-      {
+    if (row_scale) {
+      for (std::size_t i = 0; i < n; ++i) {
         const double e = ecol[i];
         dcol[i] = e;
         ncol[i] = e * dj * row_scale[i];
       }
-    }
-    else
-    {
-      for (std::size_t i = 0; i < n; ++i)
-      {
+    } else {
+      for (std::size_t i = 0; i < n; ++i) {
         const double e = ecol[i];
         dcol[i] = e;
         ncol[i] = e * dj;
@@ -53,11 +44,9 @@ static inline void split_eigvec_block(const double *eigvecs,
 // ---------------------------------------------------------------------------
 // the sum of the diagonal of the n x n A, in order
 // ---------------------------------------------------------------------------
-static inline double gram_trace(const double *A, const std::size_t n)
-{
+static inline double gram_trace(const double *A, const std::size_t n) {
   double trace = 0.0;
-  for (std::size_t i = 0; i < n; ++i)
-  {
+  for (std::size_t i = 0; i < n; ++i) {
     trace += A[i + i * n];
   }
   return trace;
@@ -83,36 +72,23 @@ inline constexpr char GRAM_NOT_FINITE_MSG[] =
 // nc x ncp; Vn n x ncp; eigvecs n x topk; eigvals and vs_top topk; d_inv
 // ncp.
 // ---------------------------------------------------------------------------
-inline void SVD_triplet(const double *Xhat,
-                        const double *sw,
-                        const std::size_t ncp,
-                        const bool tall,
-                        double *vs_top,
-                        double &trace_val,
-                        double *U,
-                        double *V,
-                        const double *X_work,
-                        double *AA_NxN,
-                        double *d_inv,
-                        double *Vn,
-                        double *eigvals,
-                        double *eigvecs,
+inline void SVD_triplet(const double *Xhat, const double *sw,
+                        const std::size_t ncp, const bool tall, double *vs_top,
+                        double &trace_val, double *U, double *V,
+                        const double *X_work, double *AA_NxN, double *d_inv,
+                        double *Vn, double *eigvals, double *eigvecs,
                         const GramWorkspace &gram_ws,
-                        const GramCache &gram_cache,
-                        HybridEigContext &hyb_ctx,
-                        int outer_iter
-                            LOC_TIMER_PARAM(timer))
-{
+                        const GramCache &gram_cache, HybridEigContext &hyb_ctx,
+                        int outer_iter LOC_TIMER_PARAM(timer)) {
   const std::size_t nr = gram_ws.nr;
   const std::size_t nc = gram_ws.nc;
   const std::size_t n = gram_ws.n;
 
   LOC_TIC(timer, "form_gram");
-  const int gram_st = form_weighted_gram(Xhat, sw, tall, X_work, AA_NxN,
-                                         gram_ws, gram_cache);
+  const int gram_st =
+      form_weighted_gram(Xhat, sw, tall, X_work, AA_NxN, gram_ws, gram_cache);
   LOC_TOC(timer, "form_gram");
-  if (gram_st != si_la::ok)
-  {
+  if (gram_st != si_la::ok) {
     Rcpp::stop("internal error: dsyrk or dgemm refused its arguments "
                "(status %d)",
                gram_st);
@@ -120,8 +96,7 @@ inline void SVD_triplet(const double *Xhat,
 
   // The one test for NaN and Inf in the chain's linear algebra, before
   // either solver sees the Gram.
-  if (!gram_upper_finite(AA_NxN, n))
-  {
+  if (!gram_upper_finite(AA_NxN, n)) {
     Rcpp::stop(GRAM_NOT_FINITE_MSG);
   }
 
@@ -131,50 +106,40 @@ inline void SVD_triplet(const double *Xhat,
   const int eig_st =
       hybrid_topk_eig(eigvals, eigvecs, AA_NxN, n, n, hyb_ctx, outer_iter);
   LOC_TOC(timer, "eig");
-  if (eig_st > 0)
-  {
+  if (eig_st > 0) {
     Rcpp::stop("the symmetric eigensolver failed (LAPACK dsyevr, info = %d)",
                eig_st);
   }
-  if (eig_st == si_la::err_nonfinite)
-  {
+  if (eig_st == si_la::err_nonfinite) {
     // The Gram passed the test above, so this is a value that became NaN or
     // Inf between it and dsyevr.
     Rcpp::stop(GRAM_NOT_FINITE_MSG);
   }
-  if (eig_st == si_la::err_alloc)
-  {
+  if (eig_st == si_la::err_alloc) {
     Rcpp::stop("could not allocate the workspace of dsyevr");
   }
-  if (eig_st != si_la::ok)
-  {
+  if (eig_st != si_la::ok) {
     Rcpp::stop("internal error: the symmetric eigensolver returned status %d",
                eig_st);
   }
 
   const std::size_t ke = hyb_ctx.eig_range->topk;
-  for (std::size_t i = 0; i < ke; ++i)
-  {
+  for (std::size_t i = 0; i < ke; ++i) {
     const double e = eigvals[i];
     vs_top[i] = (e > 0.0) ? std::sqrt(e) : 0.0;
   }
-  for (std::size_t i = 0; i < ncp; ++i)
-  {
+  for (std::size_t i = 0; i < ncp; ++i) {
     d_inv[i] = (vs_top[i] > PCA_TOL) ? (1.0 / vs_top[i]) : 0.0;
   }
 
   LOC_TIC(timer, "recover_factors");
-  if (tall)
-  {
+  if (tall) {
     split_eigvec_block(eigvecs, n, V, Vn, d_inv, nullptr, ncp);
     const int st = pca_detail::gemm_nn(X_work, nr, nc, Vn, n, ncp, U);
-    if (st != si_la::ok)
-    {
+    if (st != si_la::ok) {
       Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
     }
-  }
-  else
-  {
+  } else {
     split_eigvec_block(eigvecs, n, U, Vn, d_inv, sw, ncp);
     // inside the EM loop only the changing columns' rows of V are read, and
     // the permutation keeps those columns in the tail block of Xhat, so one
@@ -184,8 +149,7 @@ inline void SVD_triplet(const double *Xhat,
     const std::size_t n_fixed = gram_cache.n_fixed;
     const int st = pca_detail::gemm_tn_block(Xhat, nr, nc, n_fixed,
                                              nc - n_fixed, Vn, n, ncp, V);
-    if (st != si_la::ok)
-    {
+    if (st != si_la::ok) {
       Rcpp::stop("internal error: dgemm refused its arguments (status %d)", st);
     }
   }

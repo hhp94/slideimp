@@ -111,7 +111,11 @@ test_that("Behavior with extreme missing columns and rows", {
   expect_true(!anyNA(knn_imp(to_test, k = 3, post_imp = TRUE)))
 
   to_test[, 1] <- NA
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "All NA/NaN")
+  expect_error(
+    knn_imp(to_test, k = 3, post_imp = FALSE),
+    "has a column with no observed value",
+    fixed = TRUE
+  )
 
   # not admissible
   mat <- matrix(NA, nrow = 20, ncol = 20)
@@ -448,23 +452,35 @@ test_that("the kernel checks the invariants it relies on", {
   for (bad in list(-1L, 5L, NA_integer_)) {
     out <- base
     out$grp_complete <- c(1:3, bad)
-    expect_error(do.call(impute_knn_brute, out), "outside the columns of obj")
+    expect_error(
+      do.call(impute_knn_brute, out),
+      "outside the columns of",
+      fixed = TRUE
+    )
   }
   for (bad in list(0L, NA_integer_)) {
     out <- base
     out$k <- bad
-    expect_error(do.call(impute_knn_brute, out), "k must be >= 1")
+    expect_error(
+      do.call(impute_knn_brute, out),
+      "'k' must be >= 1",
+      fixed = TRUE
+    )
   }
 
   # a column claimed by two groups would be its own neighbor at distance zero
   overlap <- base
   overlap$grp_complete <- 0:3
-  expect_error(do.call(impute_knn_brute, overlap), "disjoint")
+  expect_error(do.call(impute_knn_brute, overlap), "disjoint", fixed = TRUE)
 
   # group 3 is read unmasked, so a missing value there is never excluded
   nan_complete <- base
   nan_complete$obj[2, 3] <- NA
-  expect_error(do.call(impute_knn_brute, nan_complete), "fully observed")
+  expect_error(
+    do.call(impute_knn_brute, nan_complete),
+    "fully observed",
+    fixed = TRUE
+  )
 
   # a target with no observed row overlaps nothing, so it has no neighbors
   # and its cells stay missing rather than being filled from a NaN distance
@@ -609,7 +625,15 @@ test_that("Throw on Inf", {
   set.seed(1234)
   to_test <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
   to_test[1, 1] <- Inf
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
+  expect_error(
+    knn_imp(to_test, k = 3, post_imp = FALSE),
+    "holds an infinite value",
+    fixed = TRUE
+  )
   to_test[1, 1] <- -Inf
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
+  expect_error(
+    knn_imp(to_test, k = 3, post_imp = FALSE),
+    "holds an infinite value",
+    fixed = TRUE
+  )
 })

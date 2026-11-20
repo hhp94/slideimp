@@ -30,28 +30,18 @@
 // Anything called from `f` must still obey the rule that the R API is off
 // limits, since the parallel path is the one that decides what is legal.
 template <typename F>
-inline void par_for(
-    const std::size_t begin,
-    const std::size_t end,
-    F f,
-    const std::size_t n_threads,
-    const std::size_t n_batches = 0)
-{
-    if (n_threads <= 1)
-    {
-        for (std::size_t i = begin; i < end; ++i)
-        {
-            f(i);
-        }
-        return;
+inline void par_for(const std::size_t begin, const std::size_t end, F f,
+                    const std::size_t n_threads,
+                    const std::size_t n_batches = 0) {
+  if (n_threads <= 1) {
+    for (std::size_t i = begin; i < end; ++i) {
+      f(i);
     }
+    return;
+  }
 
-    RcppThread::parallelFor(
-        static_cast<int>(begin),
-        static_cast<int>(end),
-        f,
-        n_threads,
-        n_batches);
+  RcppThread::parallelFor(static_cast<int>(begin), static_cast<int>(end), f,
+                          n_threads, n_batches);
 }
 
 #endif

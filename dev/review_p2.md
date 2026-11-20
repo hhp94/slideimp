@@ -185,7 +185,7 @@ here); which status the wrapper returned in finding 3.
 ### 1. The overrun step 3 ended kills the R process, and the notes say it does not
 
 Step 3 moved `eig_sym_sel()` onto the wrapper
-(`src/eig_sym_sel.h`: `const int st = si_la::syevr_range(PEIG_UPLO, rng.n, rng.il, rng.iu, A,`),
+(`src/eig_sym_sel.h`: `si_la::syevr_range(PEIG_UPLO, rng.n, rng.il, rng.iu, A, eigvals, eigvecs);`),
 which holds the `n` eigenvalue cells dsyevr documents. Before it, the chain
 gave dsyevr `topk` cells, and dsyevr writes past them when the range cuts a
 group of equal eigenvalues. The plan treats that as an overrun nobody has
@@ -401,7 +401,7 @@ that entry has no line for either of these:
   reason for no line. If so the plan should say that such a change needs
   none.
 - More than `INT_MAX` missing cells among the eligible columns
-  (`src/armaSVD.cpp`: `" missing values; the result has a row for each, and an R "`),
+  (`src/armaSVD.cpp`: `has a row for each and an R matrix holds at most %d rows`),
   a new error. Not raised here. Before the range the same input reached
   Rcpp's conversion of a matrix with that many rows; what that did is not
   read.

@@ -2252,9 +2252,10 @@ below, "`Block` off Armadillo's names", "The wrapper layer's own test" and
 - `syevr_range` goes on asking dsyevr for its workspace on every call.
 - The pass through *Writing R Extensions* against the finished `src/` is
   its own item. `src/loc_timer.h` keeps its macro names.
-- Not ruled: whether the OpenMP flag stays in `src/Makevars`. The author
-  gave no recommendation. `dev/to-do.md`, "Sampler port: what is still
-  owed", has the entry that covers it, with a measurement owed first.
+- Not ruled at first: whether the OpenMP flag stays in `src/Makevars`. The
+  author gave no recommendation. Ruled since (maintainer, 2026-11-19,
+  confirming the ruling of 2026-11-14 recorded upstream): both Makevars drop
+  it. Carried out below, "The OpenMP flag dropped".
 
 **`Block` off Armadillo's names** (the first ruling above). In
 `src/lobpcg_warm.h` the members of `lobpcg_detail::Block` are `nrow`,
@@ -2387,6 +2388,27 @@ the one line under `src/` that changes is a comment.
 - What the oracle checked and nothing checks now, from "The wrapper
   layer's own test": a workspace that ignores LAPACK's answer, and a
   nonzero `abstol`.
+
+**The OpenMP flag dropped** (the last ruling above). `src/Makevars` and
+`src/Makevars.win` no longer pass `$(SHLIB_OPENMP_CXXFLAGS)`, in
+`PKG_CXXFLAGS` or in `PKG_LIBS`. The two entries in `dev/to-do.md` that
+covered it are deleted, and `dev/CPP.md` and `dev/knn_imp_structure.md` no
+longer say the flags are there.
+
+- What the flag still reached, read with Rtools' `nm` on the gate's two
+  builds (second machine, R 4.6.2): before the change, `mipca.o` alone
+  calls the OpenMP runtime (`GOMP_parallel`, `omp_get_max_threads`,
+  `omp_get_num_threads`, `omp_get_thread_num`), from Eigen's threaded
+  matrix product, and the DLL holds 122 `GOMP_` and `omp_` symbols. After
+  it, no object and no DLL symbol names either. With Armadillo gone,
+  slideimp's own code reached none of it.
+- `dev/eigen_p4_gate.sh`, stages capture and suite: at tolerance 0, 71
+  cases, 0 failed and 0 not bitwise, under CRAN's RcppEigen and the
+  candidate. The suite with manual tests, under each: 279 tests, 0 failed,
+  0 skipped, 2856 expectations.
+- The sampler's draws are not in the capture, so whether Eigen's product
+  on one thread changes their bits is not measured here. The suite's
+  sampler tests pass.
 
 ## Not settled yet
 

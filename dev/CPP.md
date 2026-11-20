@@ -30,9 +30,10 @@ work the loop does, it stays.
 OpenMP is banned as a parallelism mechanism, hint pragmas included (`#pragma
 omp parallel`, `for`, `simd`, and friends). Parallelism is spent at the chain
 level through RcppThread and mirai, where cores scale near 1:1, and a pragma's
-effect is flag-shaped build state that no source file records. The OpenMP
-flags in `src/Makevars` are there because the link line wants them, not as a
-license to add pragmas. Accepted cost, stated so it is not relitigated per
+effect is flag-shaped build state that no source file records. Neither
+`src/Makevars` nor `src/Makevars.win` passes the OpenMP flags, so `_OPENMP`
+is not defined and no header compiles its OpenMP path, Eigen's included.
+Accepted cost, stated so it is not relitigated per
 loop: a strict-fp serial reduction may stay serial; that is the portable
 answer, and a measured hotspot earns a BLAS call or a cleaner algorithm, not
 an unroll.

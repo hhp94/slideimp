@@ -26,31 +26,32 @@
 // fixes the positions.
 
 // [[Rcpp::export]]
-Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
-                                        const Rcpp::IntegerVector &pool_idx_in, // 0-based column indices available for sampling
-                                        const Rcpp::IntegerVector &na_per_col,  // how many NAs to place in each needed column, ascending
-                                        const Rcpp::IntegerVector &row_room,    // per-row budget: max additional NAs allowed
-                                        const Rcpp::IntegerVector &pool_cap,    // per-pool-column budget: max NAs the column can take
-                                        const int max_attempts)
-{
+Rcpp::IntegerMatrix sample_each_rep_cpp(
+    const Rcpp::NumericMatrix &obj,
+    const Rcpp::IntegerVector
+        &pool_idx_in, // 0-based column indices available for sampling
+    const Rcpp::IntegerVector
+        &na_per_col, // how many NAs to place in each needed column, ascending
+    const Rcpp::IntegerVector
+        &row_room, // per-row budget: max additional NAs allowed
+    const Rcpp::IntegerVector
+        &pool_cap, // per-pool-column budget: max NAs the column can take
+    const int max_attempts) {
   LOC_TIMER_OBJ(sample_each_rep);
   LOC_TIC(sample_each_rep, "sample_each_rep_total");
 
   const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
 
   // The kernel indexes with these values, so it checks them, not the caller.
-  if (row_room.size() != obj.nrow())
-  {
-    Rcpp::stop("row_room has length " + std::to_string(row_room.size()) +
-               "; obj has " + std::to_string(obj.nrow()) + " rows.");
+  if (row_room.size() != obj.nrow()) {
+    Rcpp::stop("'row_room' has length %d, but 'obj' has %d rows",
+               row_room.size(), obj.nrow());
   }
-  if (pool_cap.size() != pool_idx_in.size())
-  {
-    Rcpp::stop("pool_cap and pool_idx_in differ in length.");
+  if (pool_cap.size() != pool_idx_in.size()) {
+    Rcpp::stop("'pool_cap' and 'pool_idx_in' differ in length");
   }
-  if (max_attempts < 0)
-  {
-    Rcpp::stop("max_attempts must be 0 or more.");
+  if (max_attempts < 0) {
+    Rcpp::stop("'max_attempts' must be 0 or more");
   }
   stop_on_bad_col_index(pool_idx_in, obj.ncol(), "pool_idx_in");
   stop_on_negative(na_per_col, "na_per_col");
@@ -60,12 +61,10 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
   // column, returning one (row, col) twice.
   {
     std::vector<unsigned char> seen(static_cast<std::size_t>(obj.ncol()), 0);
-    for (R_xlen_t i = 0; i < pool_idx_in.size(); ++i)
-    {
-      if (seen[pool_idx_in[i]])
-      {
-        Rcpp::stop("pool_idx_in holds column index " +
-                   std::to_string(pool_idx_in[i]) + " more than once.");
+    for (R_xlen_t i = 0; i < pool_idx_in.size(); ++i) {
+      if (seen[pool_idx_in[i]]) {
+        Rcpp::stop("'pool_idx_in' holds column index %d more than once",
+                   pool_idx_in[i]);
       }
       seen[pool_idx_in[i]] = 1;
     }
@@ -81,13 +80,11 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
   // total NA cells to place: at most one per cell of `obj`, but summed in
   // std::size_t so a caller's error cannot overflow it before it is refused
   std::size_t total_na = 0;
-  for (std::size_t i = 0; i < n_cols_needed; ++i)
-  {
+  for (std::size_t i = 0; i < n_cols_needed; ++i) {
     total_na += static_cast<std::size_t>(need[i]);
   }
-  if (total_na > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-  {
-    Rcpp::stop("na_per_col sums past the rows an R matrix can hold.");
+  if (total_na > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    Rcpp::stop("'na_per_col' sums past the rows an R matrix can hold");
   }
 
   // reusable allocations across attempts
@@ -101,20 +98,16 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
   // attempts: a uniform shuffle of any arrangement is uniform. An attempt
   // therefore costs the columns it visits, not the size of the pool.
   std::vector<std::size_t> order(n_pool);
-  for (std::size_t i = 0; i < n_pool; ++i)
-  {
+  for (std::size_t i = 0; i < n_pool; ++i) {
     order[i] = i;
   }
 
-  for (int attempt = 0; attempt < max_attempts; ++attempt)
-  {
+  for (int attempt = 0; attempt < max_attempts; ++attempt) {
     std::copy(row_room.begin(), row_room.end(), attempt_row_room.begin());
     std::size_t written = 0;
     std::size_t slot = 0; // number of columns successfully filled so far
-    for (std::size_t i = 0; i < n_pool; ++i)
-    {
-      if (slot >= n_cols_needed)
-      {
+    for (std::size_t i = 0; i < n_pool; ++i) {
+      if (slot >= n_cols_needed) {
         break; // all columns filled, stop scanning available pool
       }
 
@@ -128,8 +121,7 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
       // NAs required for the current slot
       const std::size_t needed = static_cast<std::size_t>(need[slot]);
       // skip column if its budget can't accommodate the needed count
-      if (static_cast<std::size_t>(cap[pos]) < needed)
-      {
+      if (static_cast<std::size_t>(cap[pos]) < needed) {
         continue;
       }
 
@@ -145,24 +137,17 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
       bool fixed_any = false;
       bool fixed_two = false;
       double fixed_val = 0.0;
-      for (std::size_t r = 0; r < n_rows; ++r)
-      {
+      for (std::size_t r = 0; r < n_rows; ++r) {
         const double v = candidate[r];
-        if (!std::isfinite(v))
-        {
+        if (!std::isfinite(v)) {
           continue;
         }
-        if (attempt_row_room[r] > 0)
-        {
+        if (attempt_row_room[r] > 0) {
           left_temp[L++] = r;
-        }
-        else if (!fixed_any)
-        {
+        } else if (!fixed_any) {
           fixed_any = true;
           fixed_val = v;
-        }
-        else if (v != fixed_val)
-        {
+        } else if (v != fixed_val) {
           fixed_two = true;
         }
       }
@@ -173,48 +158,39 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
       // row that could take an NA spends a cell the column may need. Rows
       // protected out of `left_temp` are removed from it.
       LOC_TIC(sample_each_rep, "protect_pair");
-      if (!fixed_two)
-      {
+      if (!fixed_two) {
         double v0 = fixed_val;
-        if (!fixed_any)
-        {
-          if (L == 0)
-          {
+        if (!fixed_any) {
+          if (L == 0) {
             LOC_TOC(sample_each_rep, "protect_pair");
             continue; // no observed value at all
           }
           // first protected row: uniform over the observed rows
-          const std::size_t p0 = std::min(
-              L - 1, (std::size_t)(R::runif(0, 1) * L));
+          const std::size_t p0 =
+              std::min(L - 1, (std::size_t)(R::runif(0, 1) * L));
           v0 = candidate[left_temp[p0]];
           left_temp[p0] = left_temp[L - 1];
           --L;
         }
         // second protected row: uniform over the rows whose value differs
         std::size_t n_diff = 0;
-        for (std::size_t j = 0; j < L; ++j)
-        {
-          if (candidate[left_temp[j]] != v0)
-          {
+        for (std::size_t j = 0; j < L; ++j) {
+          if (candidate[left_temp[j]] != v0) {
             ++n_diff;
           }
         }
-        if (n_diff == 0)
-        {
+        if (n_diff == 0) {
           LOC_TOC(sample_each_rep, "protect_pair");
           continue; // every observed value is identical
         }
-        const std::size_t pick = std::min(
-            n_diff - 1, (std::size_t)(R::runif(0, 1) * n_diff));
+        const std::size_t pick =
+            std::min(n_diff - 1, (std::size_t)(R::runif(0, 1) * n_diff));
         std::size_t seen = 0;
-        for (std::size_t j = 0; j < L; ++j)
-        {
-          if (candidate[left_temp[j]] == v0)
-          {
+        for (std::size_t j = 0; j < L; ++j) {
+          if (candidate[left_temp[j]] == v0) {
             continue;
           }
-          if (seen == pick)
-          {
+          if (seen == pick) {
             left_temp[j] = left_temp[L - 1];
             --L;
             break;
@@ -230,15 +206,13 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
       //  1. k <- j + runif{0, ..., L-j-1} // uniform in [j, L-1]
       //  2. swap(left_temp[j], left_temp[k])
       //  3. commit left_temp[j] as the selected row
-      if (L < needed)
-      {
+      if (L < needed) {
         continue;
       }
       LOC_TIC(sample_each_rep, "commit");
-      for (std::size_t j = 0; j < needed; ++j)
-      {
-        const std::size_t k2 = std::min(
-            L - 1, j + (std::size_t)(R::runif(0, 1) * (L - j)));
+      for (std::size_t j = 0; j < needed; ++j) {
+        const std::size_t k2 =
+            std::min(L - 1, j + (std::size_t)(R::runif(0, 1) * (L - j)));
         std::swap(left_temp[j], left_temp[k2]);
         const std::size_t r = left_temp[j];
         row_out[written + j] = static_cast<int>(r);
@@ -250,13 +224,11 @@ Rcpp::IntegerMatrix sample_each_rep_cpp(const Rcpp::NumericMatrix &obj,
       LOC_TOC(sample_each_rep, "commit");
     }
 
-    if (slot == n_cols_needed)
-    {
-      Rcpp::IntegerMatrix result(Rcpp::no_init_matrix(
-          static_cast<int>(total_na), 2));
+    if (slot == n_cols_needed) {
+      Rcpp::IntegerMatrix result(
+          Rcpp::no_init_matrix(static_cast<int>(total_na), 2));
       int *res = result.begin();
-      for (std::size_t j = 0; j < total_na; ++j)
-      {
+      for (std::size_t j = 0; j < total_na; ++j) {
         res[j] = row_out[j] + 1; // 1-based for R
         res[total_na + j] = col_out[j] + 1;
       }

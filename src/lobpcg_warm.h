@@ -41,16 +41,14 @@
 #include "pca_linalg_utils.h"
 #include "si_lapack.h"
 
-struct LOBPCGOptions
-{
+struct LOBPCGOptions {
   double tol = 1e-8;
   int maxiter = 15;
   int stall_window = 5;
   double qr_rel_tol = 1e-12;
 };
 
-enum LOBPCGStatus
-{
+enum LOBPCGStatus {
   LOBPCG_NOT_RUN = -1,
   LOBPCG_CONVERGED = 0,
   LOBPCG_INITIAL_RR_FAILED = 1,
@@ -62,56 +60,47 @@ enum LOBPCGStatus
   LOBPCG_BAD_SEED = 7
 };
 
-namespace lobpcg_detail
-{
+namespace lobpcg_detail {
 
-  // A column-major matrix of doubles, nrow x ncol, unpadded, zero-filled when
-  // sized; a vector is one column. data() is the first cell, as for a
-  // std::vector, and the leading dimension is nrow.
-  struct Block
-  {
-    std::size_t nrow = 0;
-    std::size_t ncol = 0;
-    std::vector<double> cells;
+// A column-major matrix of doubles, nrow x ncol, unpadded, zero-filled when
+// sized; a vector is one column. data() is the first cell, as for a
+// std::vector, and the leading dimension is nrow.
+struct Block {
+  std::size_t nrow = 0;
+  std::size_t ncol = 0;
+  std::vector<double> cells;
 
-    Block() = default;
-    Block(const std::size_t rows, const std::size_t cols)
-        : nrow(rows), ncol(cols), cells(rows * cols, 0.0)
-    {
-    }
+  Block() = default;
+  Block(const std::size_t rows, const std::size_t cols)
+      : nrow(rows), ncol(cols), cells(rows * cols, 0.0) {}
 
-    double *data() { return cells.data(); }
-    const double *data() const { return cells.data(); }
-    double &operator()(const std::size_t i, const std::size_t j)
-    {
-      return cells[i + j * nrow];
-    }
-    double operator()(const std::size_t i, const std::size_t j) const
-    {
-      return cells[i + j * nrow];
-    }
-    bool empty() const { return cells.empty(); }
-    void clear()
-    {
-      nrow = 0;
-      ncol = 0;
-      cells.clear();
-    }
-  };
-
-  // A copy of the rows x cols buffer at src, as a new block.
-  inline Block copy_of(const double *src, const std::size_t rows,
-                       const std::size_t cols)
-  {
-    Block B(rows, cols);
-    std::copy(src, src + rows * cols, B.data());
-    return B;
+  double *data() { return cells.data(); }
+  const double *data() const { return cells.data(); }
+  double &operator()(const std::size_t i, const std::size_t j) {
+    return cells[i + j * nrow];
   }
+  double operator()(const std::size_t i, const std::size_t j) const {
+    return cells[i + j * nrow];
+  }
+  bool empty() const { return cells.empty(); }
+  void clear() {
+    nrow = 0;
+    ncol = 0;
+    cells.clear();
+  }
+};
+
+// A copy of the rows x cols buffer at src, as a new block.
+inline Block copy_of(const double *src, const std::size_t rows,
+                     const std::size_t cols) {
+  Block B(rows, cols);
+  std::copy(src, src + rows * cols, B.data());
+  return B;
+}
 
 } // namespace lobpcg_detail
 
-struct LOBPCGResult
-{
+struct LOBPCGResult {
   std::vector<double> eigvals;
   int iterations = 0;
   bool converged = false;
@@ -120,541 +109,448 @@ struct LOBPCGResult
   int fail_iter = -1;
 };
 
-struct LOBPCGState
-{
+struct LOBPCGState {
   lobpcg_detail::Block X;
   lobpcg_detail::Block P;
 
-  bool seeded() const
-  {
-    return !X.empty() && !P.empty() &&
-           X.nrow == P.nrow && X.ncol == P.ncol;
+  bool seeded() const {
+    return !X.empty() && !P.empty() && X.nrow == P.nrow && X.ncol == P.ncol;
   }
 };
 
-namespace lobpcg_detail
-{
+namespace lobpcg_detail {
 
-  // Whether a si_la status is a numerical failure of the factorization; false
-  // is success. A positive status is LAPACK's own info, and err_nonfinite is
-  // the wrapper refusing a matrix that holds NaN or Inf: each call site
-  // treats both as the factorization failing. The rest are not the matrix's
-  // doing, and stop: err_alloc is memory, and err_arg and err_size cannot
-  // come from a call here, since kernel setup refuses dimensions past int.
-  inline bool la_failed(const int status, const char *routine)
-  {
-    if (status == si_la::ok)
-    {
+// Whether a si_la status is a numerical failure of the factorization; false
+// is success. A positive status is LAPACK's own info, and err_nonfinite is
+// the wrapper refusing a matrix that holds NaN or Inf: each call site
+// treats both as the factorization failing. The rest are not the matrix's
+// doing, and stop: err_alloc is memory, and err_arg and err_size cannot
+// come from a call here, since kernel setup refuses dimensions past int.
+inline bool la_failed(const int status, const char *routine) {
+  if (status == si_la::ok) {
+    return false;
+  }
+  if (status > 0 || status == si_la::err_nonfinite) {
+    return true;
+  }
+  if (status == si_la::err_alloc) {
+    Rcpp::stop("lobpcg_solve: could not allocate the workspace of %s", routine);
+  }
+  Rcpp::stop("internal error: %s refused its arguments", routine);
+}
+
+// C = alpha * op(A) * B + beta * C, where op(A) is A' when trans_a and A
+// is the a_rows x a_cols buffer at a. A block B of one column is a
+// vector, and the product is dgemv; any other is dgemm. Operands that do
+// not conform are an error here; no call passes them.
+inline void product_into(const bool trans_a, const double alpha,
+                         const double *a, const std::size_t a_rows,
+                         const std::size_t a_cols, const Block &B,
+                         const double beta, Block &C) {
+  const std::size_t c_rows = trans_a ? a_cols : a_rows;
+  const std::size_t inner = trans_a ? a_rows : a_cols;
+  if (B.nrow != inner || C.nrow != c_rows || C.ncol != B.ncol) {
+    Rcpp::stop("internal error: a product of blocks that do not conform");
+  }
+  const char trans = trans_a ? 'T' : 'N';
+  const int st = (B.ncol == 1) ? si_la::gemv(trans, a_rows, a_cols, alpha, a,
+                                             a_rows, B.data(), beta, C.data())
+                               : si_la::gemm(trans, 'N', c_rows, B.ncol, inner,
+                                             alpha, a, a_rows, B.data(), B.nrow,
+                                             beta, C.data(), c_rows);
+  if (st != si_la::ok) {
+    Rcpp::stop("internal error: dgemm or dgemv refused its arguments");
+  }
+}
+
+// A * B into a new block, A the a_rows x a_cols buffer at a: the Gram,
+// read in place.
+inline Block mul(const double *a, const std::size_t a_rows,
+                 const std::size_t a_cols, const Block &B) {
+  Block C(a_rows, B.ncol);
+  product_into(false, 1.0, a, a_rows, a_cols, B, 0.0, C);
+  return C;
+}
+
+inline Block mul(const Block &A, const Block &B) {
+  return mul(A.data(), A.nrow, A.ncol, B);
+}
+
+// A' * B into a new block.
+inline Block tmul(const Block &A, const Block &B) {
+  Block C(A.ncol, B.ncol);
+  product_into(true, 1.0, A.data(), A.nrow, A.ncol, B, 0.0, C);
+  return C;
+}
+
+// C -= A * B as one BLAS call with alpha = -1 and beta = 1, which is what
+// Armadillo's -= of a product does when C is not inside the product
+// (glue_times::apply_inplace_plus()). When it is, as in V -= X * (X' V),
+// Armadillo forms the product first and subtracts it cell by cell, and
+// the caller writes sub_cells(V, mul(X, tmul(X, V))) instead.
+inline void sub_mul(Block &C, const Block &A, const Block &B) {
+  product_into(false, -1.0, A.data(), A.nrow, A.ncol, B, 1.0, C);
+}
+
+// C -= D and C += D, cell by cell: how Armadillo adds a product inside a
+// sum or difference, which it forms first.
+inline void sub_cells(Block &C, const Block &D) {
+  if (C.nrow != D.nrow || C.ncol != D.ncol) {
+    Rcpp::stop("internal error: LOBPCG blocks differ in size");
+  }
+  for (std::size_t i = 0; i < C.cells.size(); ++i) {
+    C.cells[i] -= D.cells[i];
+  }
+}
+
+inline void add_cells(Block &C, const Block &D) {
+  if (C.nrow != D.nrow || C.ncol != D.ncol) {
+    Rcpp::stop("internal error: LOBPCG blocks differ in size");
+  }
+  for (std::size_t i = 0; i < C.cells.size(); ++i) {
+    C.cells[i] += D.cells[i];
+  }
+}
+
+// A * B + C, the product formed first.
+inline Block mul_plus(const Block &A, const Block &B, const Block &C) {
+  Block D = mul(A, B);
+  add_cells(D, C);
+  return D;
+}
+
+inline Block transpose(const Block &A) {
+  Block T(A.ncol, A.nrow);
+  for (std::size_t j = 0; j < A.ncol; ++j) {
+    for (std::size_t i = 0; i < A.nrow; ++i) {
+      T(j, i) = A(i, j);
+    }
+  }
+  return T;
+}
+
+// Rows r0 .. r0 + nr - 1 of the first nc columns of A, as a new block.
+inline Block block_rows(const Block &A, const std::size_t r0,
+                        const std::size_t nr, const std::size_t nc) {
+  if (r0 > A.nrow || nr > A.nrow - r0 || nc > A.ncol) {
+    Rcpp::stop("internal error: LOBPCG block out of range");
+  }
+  Block B(nr, nc);
+  for (std::size_t j = 0; j < nc; ++j) {
+    for (std::size_t i = 0; i < nr; ++i) {
+      B(i, j) = A(r0 + i, j);
+    }
+  }
+  return B;
+}
+
+// Write A, or with put_block_t its transpose, into C with its first cell
+// at (r0, c0).
+inline void put_block(Block &C, const std::size_t r0, const std::size_t c0,
+                      const Block &A) {
+  if (r0 > C.nrow || A.nrow > C.nrow - r0 || c0 > C.ncol ||
+      A.ncol > C.ncol - c0) {
+    Rcpp::stop("internal error: LOBPCG block out of range");
+  }
+  for (std::size_t j = 0; j < A.ncol; ++j) {
+    for (std::size_t i = 0; i < A.nrow; ++i) {
+      C(r0 + i, c0 + j) = A(i, j);
+    }
+  }
+}
+
+inline void put_block_t(Block &C, const std::size_t r0, const std::size_t c0,
+                        const Block &A) {
+  put_block(C, r0, c0, transpose(A));
+}
+
+// The Frobenius norm as a plain sum of squares. arma::norm(, "fro") was
+// dnrm2, which scales as it sums, so the last bits can differ; the value
+// only feeds a threshold test, and the block is a projection of
+// orthonormal columns, so the sum cannot overflow (dev/eigen_conversion.md,
+// "The wrapper layer and the oracle, as written", "Not wrapped").
+inline double frobenius_norm(const Block &A) {
+  double ss = 0.0;
+  for (const double v : A.cells) {
+    ss += v * v;
+  }
+  return std::sqrt(ss);
+}
+
+inline bool all_finite(const std::vector<double> &x) {
+  for (const double v : x) {
+    if (!std::isfinite(v)) {
       return false;
     }
-    if (status > 0 || status == si_la::err_nonfinite)
-    {
-      return true;
-    }
-    if (status == si_la::err_alloc)
-    {
-      Rcpp::stop("lobpcg_solve: could not allocate the workspace of %s",
-                 routine);
-    }
-    Rcpp::stop("internal error: %s refused its arguments", routine);
   }
+  return true;
+}
 
-  // C = alpha * op(A) * B + beta * C, where op(A) is A' when trans_a and A
-  // is the a_rows x a_cols buffer at a. A block B of one column is a
-  // vector, and the product is dgemv; any other is dgemm. Operands that do
-  // not conform are an error here; no call passes them.
-  inline void product_into(const bool trans_a, const double alpha,
-                           const double *a, const std::size_t a_rows,
-                           const std::size_t a_cols, const Block &B,
-                           const double beta, Block &C)
-  {
-    const std::size_t c_rows = trans_a ? a_cols : a_rows;
-    const std::size_t inner = trans_a ? a_rows : a_cols;
-    if (B.nrow != inner || C.nrow != c_rows || C.ncol != B.ncol)
-    {
-      Rcpp::stop("internal error: a product of blocks that do not conform");
-    }
-    const char trans = trans_a ? 'T' : 'N';
-    const int st =
-        (B.ncol == 1)
-            ? si_la::gemv(trans, a_rows, a_cols, alpha, a, a_rows, B.data(),
-                          beta, C.data())
-            : si_la::gemm(trans, 'N', c_rows, B.ncol, inner, alpha, a,
-                          a_rows, B.data(), B.nrow, beta, C.data(),
-                          c_rows);
-    if (st != si_la::ok)
-    {
-      Rcpp::stop("internal error: dgemm or dgemv refused its arguments");
+// The largest of n values, taken as Armadillo's max() takes it
+// (op_max::direct_max()): from -Inf with a > that NaN never passes, so NaN
+// is skipped and n values of NaN give -Inf.
+inline double max_skip_nan(const double *x, const std::size_t n) {
+  double best = -std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < n; ++i) {
+    if (x[i] > best) {
+      best = x[i];
     }
   }
+  return best;
+}
 
-  // A * B into a new block, A the a_rows x a_cols buffer at a: the Gram,
-  // read in place.
-  inline Block mul(const double *a, const std::size_t a_rows,
-                   const std::size_t a_cols, const Block &B)
-  {
-    Block C(a_rows, B.ncol);
-    product_into(false, 1.0, a, a_rows, a_cols, B, 0.0, C);
-    return C;
-  }
-
-  inline Block mul(const Block &A, const Block &B)
-  {
-    return mul(A.data(), A.nrow, A.ncol, B);
-  }
-
-  // A' * B into a new block.
-  inline Block tmul(const Block &A, const Block &B)
-  {
-    Block C(A.ncol, B.ncol);
-    product_into(true, 1.0, A.data(), A.nrow, A.ncol, B, 0.0, C);
-    return C;
-  }
-
-  // C -= A * B as one BLAS call with alpha = -1 and beta = 1, which is what
-  // Armadillo's -= of a product does when C is not inside the product
-  // (glue_times::apply_inplace_plus()). When it is, as in V -= X * (X' V),
-  // Armadillo forms the product first and subtracts it cell by cell, and
-  // the caller writes sub_cells(V, mul(X, tmul(X, V))) instead.
-  inline void sub_mul(Block &C, const Block &A, const Block &B)
-  {
-    product_into(false, -1.0, A.data(), A.nrow, A.ncol, B, 1.0, C);
-  }
-
-  // C -= D and C += D, cell by cell: how Armadillo adds a product inside a
-  // sum or difference, which it forms first.
-  inline void sub_cells(Block &C, const Block &D)
-  {
-    if (C.nrow != D.nrow || C.ncol != D.ncol)
-    {
-      Rcpp::stop("internal error: LOBPCG blocks differ in size");
-    }
-    for (std::size_t i = 0; i < C.cells.size(); ++i)
-    {
-      C.cells[i] -= D.cells[i];
+// ||A||_inf of the a_rows x a_cols buffer at a, as arma::norm(A, "inf"):
+// max(sum(abs(A), 1)), each row sum added in column order (op_sum,
+// dim = 1), and the largest taken by max_skip_nan(). No BLAS.
+inline double norm_inf(const double *a, const std::size_t a_rows,
+                       const std::size_t a_cols) {
+  std::vector<double> row_sum(a_rows, 0.0);
+  for (std::size_t j = 0; j < a_cols; ++j) {
+    const double *col = a + j * a_rows;
+    for (std::size_t i = 0; i < a_rows; ++i) {
+      row_sum[i] += std::abs(col[i]);
     }
   }
+  return max_skip_nan(row_sum.data(), a_rows);
+}
 
-  inline void add_cells(Block &C, const Block &D)
-  {
-    if (C.nrow != D.nrow || C.ncol != D.ncol)
-    {
-      Rcpp::stop("internal error: LOBPCG blocks differ in size");
-    }
-    for (std::size_t i = 0; i < C.cells.size(); ++i)
-    {
-      C.cells[i] += D.cells[i];
-    }
-  }
-
-  // A * B + C, the product formed first.
-  inline Block mul_plus(const Block &A, const Block &B, const Block &C)
-  {
-    Block D = mul(A, B);
-    add_cells(D, C);
-    return D;
-  }
-
-  inline Block transpose(const Block &A)
-  {
-    Block T(A.ncol, A.nrow);
-    for (std::size_t j = 0; j < A.ncol; ++j)
-    {
-      for (std::size_t i = 0; i < A.nrow; ++i)
-      {
-        T(j, i) = A(i, j);
-      }
-    }
-    return T;
-  }
-
-  // Rows r0 .. r0 + nr - 1 of the first nc columns of A, as a new block.
-  inline Block block_rows(const Block &A, const std::size_t r0,
-                          const std::size_t nr, const std::size_t nc)
-  {
-    if (r0 > A.nrow || nr > A.nrow - r0 || nc > A.ncol)
-    {
-      Rcpp::stop("internal error: LOBPCG block out of range");
-    }
-    Block B(nr, nc);
-    for (std::size_t j = 0; j < nc; ++j)
-    {
-      for (std::size_t i = 0; i < nr; ++i)
-      {
-        B(i, j) = A(r0 + i, j);
-      }
-    }
-    return B;
-  }
-
-  // Write A, or with put_block_t its transpose, into C with its first cell
-  // at (r0, c0).
-  inline void put_block(Block &C, const std::size_t r0, const std::size_t c0,
-                        const Block &A)
-  {
-    if (r0 > C.nrow || A.nrow > C.nrow - r0 || c0 > C.ncol ||
-        A.ncol > C.ncol - c0)
-    {
-      Rcpp::stop("internal error: LOBPCG block out of range");
-    }
-    for (std::size_t j = 0; j < A.ncol; ++j)
-    {
-      for (std::size_t i = 0; i < A.nrow; ++i)
-      {
-        C(r0 + i, c0 + j) = A(i, j);
-      }
-    }
-  }
-
-  inline void put_block_t(Block &C, const std::size_t r0,
-                          const std::size_t c0, const Block &A)
-  {
-    put_block(C, r0, c0, transpose(A));
-  }
-
-  // The Frobenius norm as a plain sum of squares. arma::norm(, "fro") was
-  // dnrm2, which scales as it sums, so the last bits can differ; the value
-  // only feeds a threshold test, and the block is a projection of
-  // orthonormal columns, so the sum cannot overflow (dev/eigen_conversion.md,
-  // "The wrapper layer and the oracle, as written", "Not wrapped").
-  inline double frobenius_norm(const Block &A)
-  {
+// The 2-norm of each column of R, as a plain sum of squares. Armadillo's
+// sqrt(sum(square(R), 0)) took each sum with op_dot::direct_dot(), which
+// is two partial sums up to 32 rows and ddot above, so the last bits can
+// differ, as for frobenius_norm(); the norms only feed the tests of the
+// iteration and max_rel_res.
+inline std::vector<double> column_norms(const Block &R) {
+  std::vector<double> rn(R.ncol);
+  for (std::size_t j = 0; j < R.ncol; ++j) {
+    const double *col = R.data() + j * R.nrow;
     double ss = 0.0;
-    for (const double v : A.cells)
-    {
-      ss += v * v;
+    for (std::size_t i = 0; i < R.nrow; ++i) {
+      ss += col[i] * col[i];
     }
-    return std::sqrt(ss);
+    rn[j] = std::sqrt(ss);
+  }
+  return rn;
+}
+
+inline std::size_t qr_orthonormalize(Block &V, double rel_tol,
+                                     Block *R_out = nullptr) {
+  if (V.ncol == 0) {
+    return 0;
+  }
+  // Every block here has at most k columns and n rows, k <= n. With more
+  // columns than rows R would have fewer diagonal cells than the loop
+  // below reads.
+  if (V.ncol > V.nrow) {
+    Rcpp::stop("internal error: a LOBPCG block has more columns than rows");
+  }
+  // si_la::qr_econ takes Q as v_rows x p and R as p x v_cols, and writes
+  // every cell of both.
+  const std::size_t v_rows = V.nrow;
+  const std::size_t v_cols = V.ncol;
+  const std::size_t p = std::min(v_rows, v_cols);
+  Block Q(v_rows, p);
+  Block R(p, v_cols);
+  if (la_failed(si_la::qr_econ(v_rows, v_cols, V.data(), Q.data(), R.data()),
+                "dgeqrf or dorgqr")) {
+    V.clear();
+    return 0;
+  }
+  const std::size_t m = R.ncol;
+  std::size_t r = m;
+  const double r00 = std::abs(R(0, 0));
+  if (r00 == 0.0) {
+    V.clear();
+    return 0;
+  }
+  for (std::size_t i = 0; i < m; ++i) {
+    if (std::abs(R(i, i)) < rel_tol * r00) {
+      r = i;
+      break;
+    }
+  }
+  // p == m here, so Q is v_rows x m and R is m x m: keep the first r
+  // columns of Q, which lead its buffer, and the leading r x r of R.
+  if (R_out) {
+    *R_out = (r < m) ? block_rows(R, 0, r, r) : std::move(R);
+  }
+  Q.cells.resize(v_rows * r);
+  Q.ncol = r;
+  V = std::move(Q);
+  return r;
+}
+
+// QR-orthonormalize V, project it out of span(X), and QR again to tighten
+// orthogonality. required_cols > 0 additionally demands V keep that many
+// columns through both passes. On failure V may hold a partial result;
+// callers reset it as needed.
+inline bool qr_project_out_qr(Block &V, const Block &X, double rel_tol,
+                              std::size_t required_cols) {
+  if (qr_orthonormalize(V, rel_tol) == 0 ||
+      (required_cols > 0 && V.ncol != required_cols)) {
+    return false;
   }
 
-  inline bool all_finite(const std::vector<double> &x)
-  {
-    for (const double v : x)
-    {
-      if (!std::isfinite(v))
-      {
-        return false;
-      }
+  // V -= X * (X' V): V is inside the product (sub_mul()).
+  sub_cells(V, mul(X, tmul(X, V)));
+
+  if (qr_orthonormalize(V, rel_tol) == 0 ||
+      (required_cols > 0 && V.ncol != required_cols)) {
+    return false;
+  }
+
+  return true;
+}
+
+inline bool build_momentum_P(Block &P, const Block &X_curr, const Block &X_prev,
+                             const LOBPCGOptions &opt,
+                             double min_projected_fro_norm = -1.0) {
+  if (X_prev.nrow != X_curr.nrow || X_prev.ncol != X_curr.ncol) {
+    P.clear();
+    return false;
+  }
+
+  // P = X_prev - X_curr * (X_curr' X_prev)
+  P = X_prev;
+  sub_cells(P, mul(X_curr, tmul(X_curr, X_prev)));
+
+  if (min_projected_fro_norm >= 0.0 &&
+      !(frobenius_norm(P) > min_projected_fro_norm)) {
+    P.clear();
+    return false;
+  }
+
+  if (!qr_project_out_qr(P, X_curr, opt.qr_rel_tol, X_curr.ncol)) {
+    P.clear();
+    return false;
+  }
+
+  return true;
+}
+
+// A is the n x n Gram, read in place.
+inline bool qr_orthonormalize_update_matvec(Block &Q, Block &AQ,
+                                            const double *A,
+                                            const std::size_t n,
+                                            double rel_tol) {
+  const std::size_t old_cols = Q.ncol;
+
+  Block R;
+  const std::size_t r = qr_orthonormalize(Q, rel_tol, &R);
+
+  if (r == 0) return false;
+
+  if (r == old_cols) {
+    // Q_old = Q_new * R, so A*Q_new = A*Q_old * inv(R): solve R' Y = AQ'
+    // for Y = (A*Q_new)', with the two transposes written out.
+    if (AQ.ncol != old_cols) {
+      Rcpp::stop("internal error: A*Q and Q differ in columns");
     }
+    const Block Rt = transpose(R);
+    Block Y = transpose(AQ);
+    // A zero on the diagonal of R is the block collapsing, as a QR that
+    // drops every column is.
+    if (la_failed(si_la::solve_tri('L', Rt.nrow, Y.ncol, Rt.data(), Y.data()),
+                  "dtrtrs")) {
+      return false;
+    }
+    AQ = transpose(Y);
+  } else {
+    // QR dropped columns, so the old AQ cannot be transformed dimensionally.
+    AQ = mul(A, n, n, Q);
+  }
+
+  return true;
+}
+
+// All eigenpairs of the small symmetric M, descending, by dsyevd through
+// si_la::syevd. M is symmetrized and then destroyed. false when dsyevd
+// fails or M holds NaN or Inf, which the wrapper refuses before LAPACK;
+// the caller then reports a failed Rayleigh-Ritz.
+inline bool small_eig_desc(Block &M, Block &w, Block &Z) {
+  const std::size_t n = M.nrow;
+  if (n == 0) {
+    w.clear();
+    Z.clear();
     return true;
   }
-
-  // The largest of n values, taken as Armadillo's max() takes it
-  // (op_max::direct_max()): from -Inf with a > that NaN never passes, so NaN
-  // is skipped and n values of NaN give -Inf.
-  inline double max_skip_nan(const double *x, const std::size_t n)
-  {
-    double best = -std::numeric_limits<double>::infinity();
-    for (std::size_t i = 0; i < n; ++i)
-    {
-      if (x[i] > best)
-      {
-        best = x[i];
-      }
-    }
-    return best;
+  if (M.ncol != n) {
+    Rcpp::stop("internal error: a Rayleigh-Ritz Gram is not square");
   }
-
-  // ||A||_inf of the a_rows x a_cols buffer at a, as arma::norm(A, "inf"):
-  // max(sum(abs(A), 1)), each row sum added in column order (op_sum,
-  // dim = 1), and the largest taken by max_skip_nan(). No BLAS.
-  inline double norm_inf(const double *a, const std::size_t a_rows,
-                         const std::size_t a_cols)
-  {
-    std::vector<double> row_sum(a_rows, 0.0);
-    for (std::size_t j = 0; j < a_cols; ++j)
-    {
-      const double *col = a + j * a_rows;
-      for (std::size_t i = 0; i < a_rows; ++i)
-      {
-        row_sum[i] += std::abs(col[i]);
-      }
-    }
-    return max_skip_nan(row_sum.data(), a_rows);
-  }
-
-  // The 2-norm of each column of R, as a plain sum of squares. Armadillo's
-  // sqrt(sum(square(R), 0)) took each sum with op_dot::direct_dot(), which
-  // is two partial sums up to 32 rows and ddot above, so the last bits can
-  // differ, as for frobenius_norm(); the norms only feed the tests of the
-  // iteration and max_rel_res.
-  inline std::vector<double> column_norms(const Block &R)
-  {
-    std::vector<double> rn(R.ncol);
-    for (std::size_t j = 0; j < R.ncol; ++j)
-    {
-      const double *col = R.data() + j * R.nrow;
-      double ss = 0.0;
-      for (std::size_t i = 0; i < R.nrow; ++i)
-      {
-        ss += col[i] * col[i];
-      }
-      rn[j] = std::sqrt(ss);
-    }
-    return rn;
-  }
-
-  inline std::size_t qr_orthonormalize(Block &V, double rel_tol,
-                                       Block *R_out = nullptr)
-  {
-    if (V.ncol == 0)
-    {
-      return 0;
-    }
-    // Every block here has at most k columns and n rows, k <= n. With more
-    // columns than rows R would have fewer diagonal cells than the loop
-    // below reads.
-    if (V.ncol > V.nrow)
-    {
-      Rcpp::stop("internal error: a LOBPCG block has more columns than rows");
-    }
-    // si_la::qr_econ takes Q as v_rows x p and R as p x v_cols, and writes
-    // every cell of both.
-    const std::size_t v_rows = V.nrow;
-    const std::size_t v_cols = V.ncol;
-    const std::size_t p = std::min(v_rows, v_cols);
-    Block Q(v_rows, p);
-    Block R(p, v_cols);
-    if (la_failed(si_la::qr_econ(v_rows, v_cols, V.data(), Q.data(),
-                                 R.data()),
-                  "dgeqrf or dorgqr"))
-    {
-      V.clear();
-      return 0;
-    }
-    const std::size_t m = R.ncol;
-    std::size_t r = m;
-    const double r00 = std::abs(R(0, 0));
-    if (r00 == 0.0)
-    {
-      V.clear();
-      return 0;
-    }
-    for (std::size_t i = 0; i < m; ++i)
-    {
-      if (std::abs(R(i, i)) < rel_tol * r00)
-      {
-        r = i;
-        break;
-      }
-    }
-    // p == m here, so Q is v_rows x m and R is m x m: keep the first r
-    // columns of Q, which lead its buffer, and the leading r x r of R.
-    if (R_out)
-    {
-      *R_out = (r < m) ? block_rows(R, 0, r, r) : std::move(R);
-    }
-    Q.cells.resize(v_rows * r);
-    Q.ncol = r;
-    V = std::move(Q);
-    return r;
-  }
-
-  // QR-orthonormalize V, project it out of span(X), and QR again to tighten
-  // orthogonality. required_cols > 0 additionally demands V keep that many
-  // columns through both passes. On failure V may hold a partial result;
-  // callers reset it as needed.
-  inline bool qr_project_out_qr(Block &V, const Block &X,
-                                double rel_tol, std::size_t required_cols)
-  {
-    if (qr_orthonormalize(V, rel_tol) == 0 ||
-        (required_cols > 0 && V.ncol != required_cols))
-    {
-      return false;
-    }
-
-    // V -= X * (X' V): V is inside the product (sub_mul()).
-    sub_cells(V, mul(X, tmul(X, V)));
-
-    if (qr_orthonormalize(V, rel_tol) == 0 ||
-        (required_cols > 0 && V.ncol != required_cols))
-    {
-      return false;
-    }
-
-    return true;
-  }
-
-  inline bool build_momentum_P(Block &P,
-                               const Block &X_curr,
-                               const Block &X_prev,
-                               const LOBPCGOptions &opt,
-                               double min_projected_fro_norm = -1.0)
-  {
-    if (X_prev.nrow != X_curr.nrow ||
-        X_prev.ncol != X_curr.ncol)
-    {
-      P.clear();
-      return false;
-    }
-
-    // P = X_prev - X_curr * (X_curr' X_prev)
-    P = X_prev;
-    sub_cells(P, mul(X_curr, tmul(X_curr, X_prev)));
-
-    if (min_projected_fro_norm >= 0.0 &&
-        !(frobenius_norm(P) > min_projected_fro_norm))
-    {
-      P.clear();
-      return false;
-    }
-
-    if (!qr_project_out_qr(P, X_curr, opt.qr_rel_tol, X_curr.ncol))
-    {
-      P.clear();
-      return false;
-    }
-
-    return true;
-  }
-
-  // A is the n x n Gram, read in place.
-  inline bool qr_orthonormalize_update_matvec(Block &Q,
-                                              Block &AQ,
-                                              const double *A,
-                                              const std::size_t n,
-                                              double rel_tol)
-  {
-    const std::size_t old_cols = Q.ncol;
-
-    Block R;
-    const std::size_t r = qr_orthonormalize(Q, rel_tol, &R);
-
-    if (r == 0)
-      return false;
-
-    if (r == old_cols)
-    {
-      // Q_old = Q_new * R, so A*Q_new = A*Q_old * inv(R): solve R' Y = AQ'
-      // for Y = (A*Q_new)', with the two transposes written out.
-      if (AQ.ncol != old_cols)
-      {
-        Rcpp::stop("internal error: A*Q and Q differ in columns");
-      }
-      const Block Rt = transpose(R);
-      Block Y = transpose(AQ);
-      // A zero on the diagonal of R is the block collapsing, as a QR that
-      // drops every column is.
-      if (la_failed(si_la::solve_tri('L', Rt.nrow, Y.ncol, Rt.data(),
-                                     Y.data()),
-                    "dtrtrs"))
-      {
-        return false;
-      }
-      AQ = transpose(Y);
-    }
-    else
-    {
-      // QR dropped columns, so the old AQ cannot be transformed dimensionally.
-      AQ = mul(A, n, n, Q);
-    }
-
-    return true;
-  }
-
-  // All eigenpairs of the small symmetric M, descending, by dsyevd through
-  // si_la::syevd. M is symmetrized and then destroyed. false when dsyevd
-  // fails or M holds NaN or Inf, which the wrapper refuses before LAPACK;
-  // the caller then reports a failed Rayleigh-Ritz.
-  inline bool small_eig_desc(Block &M, Block &w, Block &Z)
-  {
-    const std::size_t n = M.nrow;
-    if (n == 0)
-    {
-      w.clear();
-      Z.clear();
-      return true;
-    }
-    if (M.ncol != n)
-    {
-      Rcpp::stop("internal error: a Rayleigh-Ritz Gram is not square");
-    }
-    // M = 0.5 * (M + M'), every cell from M as it was.
-    Block S(n, n);
-    for (std::size_t j = 0; j < n; ++j)
-    {
-      for (std::size_t i = 0; i < n; ++i)
-      {
-        S(i, j) = (M(i, j) + M(j, i)) * 0.5;
-      }
-    }
-    M = std::move(S);
-    w = Block(n, 1);
-    if (la_failed(si_la::syevd('U', n, M.data(), w.data()), "dsyevd"))
-    {
-      return false;
-    }
-
-    // dsyevd's order is ascending: reverse the columns and the values.
-    Z = Block(n, n);
-    for (std::size_t j = 0; j < n; ++j)
-    {
-      std::copy(M.data() + (n - 1 - j) * n, M.data() + (n - j) * n,
-                Z.data() + j * n);
-    }
-    std::reverse(w.cells.begin(), w.cells.end());
-    return true;
-  }
-
-  inline void residual(const Block &AX, const Block &X,
-                       const Block &lam, Block &R)
-  {
-    if (R.nrow != AX.nrow || R.ncol != AX.ncol)
-    {
-      R = Block(AX.nrow, AX.ncol);
-    }
-    const std::size_t n = AX.nrow, k = AX.ncol;
-    const double *ax = AX.data();
-    const double *x = X.data();
-    const double *l = lam.data();
-    double *r = R.data();
-    for (std::size_t j = 0; j < k; ++j)
-    {
-      const double lj = l[j];
-      for (std::size_t i = 0; i < n; ++i)
-      {
-        r[i + j * n] = ax[i + j * n] - lj * x[i + j * n];
-      }
+  // M = 0.5 * (M + M'), every cell from M as it was.
+  Block S(n, n);
+  for (std::size_t j = 0; j < n; ++j) {
+    for (std::size_t i = 0; i < n; ++i) {
+      S(i, j) = (M(i, j) + M(j, i)) * 0.5;
     }
   }
-
-  // Rayleigh-Ritz over the joint basis [X, B]. small_eig_desc symmetrizes
-  // the assembled Gram, so the diagonal blocks need no pre-symmetrization.
-  // On success X/AX are updated in place and (pp, app) hold the B-part of
-  // the update (B*VB, AB*VB) for callers that commit it as the next P.
-  inline bool rr_two_block(Block &X, Block &AX,
-                           const Block &B, const Block &AB,
-                           const std::size_t k, Block &lam,
-                           Block &pp, Block &app)
-  {
-    const Block XAX = tmul(X, AX);
-    const Block XAB = tmul(X, AB);
-    const Block BAB = tmul(B, AB);
-
-    const std::size_t sX = X.ncol, sB = B.ncol;
-    const std::size_t sT = sX + sB;
-    Block gramA(sT, sT);
-    put_block(gramA, 0, 0, XAX);
-    put_block(gramA, 0, sX, XAB);
-    put_block_t(gramA, sX, 0, XAB);
-    put_block(gramA, sX, sX, BAB);
-
-    Block lam_s;
-    Block V_s;
-    if (!small_eig_desc(gramA, lam_s, V_s))
-    {
-      return false;
-    }
-    lam = block_rows(lam_s, 0, k, 1);
-    const Block VX = block_rows(V_s, 0, sX, k);
-    const Block VB = block_rows(V_s, sX, sB, k);
-
-    pp = mul(B, VB);
-    app = mul(AB, VB);
-    X = mul_plus(X, VX, pp);
-    AX = mul_plus(AX, VX, app);
-    return true;
+  M = std::move(S);
+  w = Block(n, 1);
+  if (la_failed(si_la::syevd('U', n, M.data(), w.data()), "dsyevd")) {
+    return false;
   }
+
+  // dsyevd's order is ascending: reverse the columns and the values.
+  Z = Block(n, n);
+  for (std::size_t j = 0; j < n; ++j) {
+    std::copy(M.data() + (n - 1 - j) * n, M.data() + (n - j) * n,
+              Z.data() + j * n);
+  }
+  std::reverse(w.cells.begin(), w.cells.end());
+  return true;
+}
+
+inline void residual(const Block &AX, const Block &X, const Block &lam,
+                     Block &R) {
+  if (R.nrow != AX.nrow || R.ncol != AX.ncol) {
+    R = Block(AX.nrow, AX.ncol);
+  }
+  const std::size_t n = AX.nrow, k = AX.ncol;
+  const double *ax = AX.data();
+  const double *x = X.data();
+  const double *l = lam.data();
+  double *r = R.data();
+  for (std::size_t j = 0; j < k; ++j) {
+    const double lj = l[j];
+    for (std::size_t i = 0; i < n; ++i) {
+      r[i + j * n] = ax[i + j * n] - lj * x[i + j * n];
+    }
+  }
+}
+
+// Rayleigh-Ritz over the joint basis [X, B]. small_eig_desc symmetrizes
+// the assembled Gram, so the diagonal blocks need no pre-symmetrization.
+// On success X/AX are updated in place and (pp, app) hold the B-part of
+// the update (B*VB, AB*VB) for callers that commit it as the next P.
+inline bool rr_two_block(Block &X, Block &AX, const Block &B, const Block &AB,
+                         const std::size_t k, Block &lam, Block &pp,
+                         Block &app) {
+  const Block XAX = tmul(X, AX);
+  const Block XAB = tmul(X, AB);
+  const Block BAB = tmul(B, AB);
+
+  const std::size_t sX = X.ncol, sB = B.ncol;
+  const std::size_t sT = sX + sB;
+  Block gramA(sT, sT);
+  put_block(gramA, 0, 0, XAX);
+  put_block(gramA, 0, sX, XAB);
+  put_block_t(gramA, sX, 0, XAB);
+  put_block(gramA, sX, sX, BAB);
+
+  Block lam_s;
+  Block V_s;
+  if (!small_eig_desc(gramA, lam_s, V_s)) {
+    return false;
+  }
+  lam = block_rows(lam_s, 0, k, 1);
+  const Block VX = block_rows(V_s, 0, sX, k);
+  const Block VB = block_rows(V_s, sX, sB, k);
+
+  pp = mul(B, VB);
+  app = mul(AB, VB);
+  X = mul_plus(X, VX, pp);
+  AX = mul_plus(AX, VX, app);
+  return true;
+}
 
 } // namespace lobpcg_detail
 
@@ -665,8 +561,7 @@ namespace lobpcg_detail
 inline void seed_lobpcg_state(LOBPCGState &state,
                               const lobpcg_detail::Block &X_curr,
                               const lobpcg_detail::Block &X_prev,
-                              const LOBPCGOptions &opt = LOBPCGOptions())
-{
+                              const LOBPCGOptions &opt = LOBPCGOptions()) {
   state.X = X_curr;
 
   lobpcg_detail::Block P;
@@ -674,8 +569,7 @@ inline void seed_lobpcg_state(LOBPCGState &state,
   const double no_min_temporal_norm = -1.0;
 
   if (!lobpcg_detail::build_momentum_P(P, X_curr, X_prev, opt,
-                                       no_min_temporal_norm))
-  {
+                                       no_min_temporal_norm)) {
     state.P.clear();
     return;
   }
@@ -692,15 +586,13 @@ inline void seed_lobpcg_state(LOBPCGState &state,
 inline void refresh_momentum_P(LOBPCGState &state,
                                const lobpcg_detail::Block &X_curr,
                                const lobpcg_detail::Block &X_prev,
-                               const LOBPCGOptions &opt = LOBPCGOptions())
-{
+                               const LOBPCGOptions &opt = LOBPCGOptions()) {
   const double min_temporal_norm =
       1e-10 * std::sqrt(static_cast<double>(X_curr.ncol));
 
   lobpcg_detail::Block P;
   if (lobpcg_detail::build_momentum_P(P, X_curr, X_prev, opt,
-                                      min_temporal_norm))
-  {
+                                      min_temporal_norm)) {
     state.P = std::move(P);
   }
 }
@@ -713,22 +605,19 @@ inline void refresh_momentum_P(LOBPCGState &state,
 // a is the a_rows x a_cols Gram, column-major, both triangles valid; it is
 // read in place, never copied or written.
 // ---------------------------------------------------------------------------
-inline LOBPCGResult lobpcg_solve(const double *a,
-                                 const std::size_t a_rows,
-                                 const std::size_t a_cols,
-                                 LOBPCGState &state,
-                                 const LOBPCGOptions &opt = LOBPCGOptions())
-{
+inline LOBPCGResult lobpcg_solve(const double *a, const std::size_t a_rows,
+                                 const std::size_t a_cols, LOBPCGState &state,
+                                 const LOBPCGOptions &opt = LOBPCGOptions()) {
   using namespace lobpcg_detail;
   LOBPCGResult out;
   out.status = LOBPCG_MAXITER;
 
   if (!state.seeded())
-    Rcpp::stop("lobpcg_solve: state not seeded with (X, P)");
+    Rcpp::stop("internal error: lobpcg_solve: state not seeded with (X, P)");
   const std::size_t n = a_rows;
   const std::size_t k = state.X.ncol;
   if (a_cols != n || state.X.nrow != n)
-    Rcpp::stop("lobpcg_solve: dimension mismatch");
+    Rcpp::stop("internal error: lobpcg_solve: dimension mismatch");
 
   // work on local copies; state is committed only on success.
   Block X = state.X;
@@ -740,15 +629,13 @@ inline LOBPCGResult lobpcg_solve(const double *a,
   // out X, then orthonormalize: P -= X * (X' P), P inside the product.
   sub_cells(P, mul(X, tmul(X, P)));
   bool have_P = qr_project_out_qr(P, X, opt.qr_rel_tol, k);
-  if (!have_P)
-  {
+  if (!have_P) {
     P.clear();
   }
   // fresh matvecs: A has changed since the last call.
   Block AX = mul(a, n, n, X);
   Block AP;
-  if (have_P)
-  {
+  if (have_P) {
     AP = mul(a, n, n, P);
   }
 
@@ -770,24 +657,19 @@ inline LOBPCGResult lobpcg_solve(const double *a,
   Block lam;
   Block rr_pp, rr_app; // B-part outputs of rr_two_block
   // initial RR over the JOINT basis [X, P] (not span(X) alone)
-  if (have_P)
-  {
-    if (!rr_two_block(X, AX, P, AP, k, lam, rr_pp, rr_app))
-    {
+  if (have_P) {
+    if (!rr_two_block(X, AX, P, AP, k, lam, rr_pp, rr_app)) {
       out.converged = false;
       out.status = LOBPCG_INITIAL_RR_FAILED;
       out.fail_iter = 0;
       return out;
     }
     // P, AP intentionally not rotated; loop's [X,R]-vs-P projection handles it.
-  }
-  else
-  {
+  } else {
     // no usable P this call; fall back to X-only initial RR.
     Block XAX = tmul(X, AX);
     Block V;
-    if (!small_eig_desc(XAX, lam, V))
-    {
+    if (!small_eig_desc(XAX, lam, V)) {
       out.converged = false;
       out.status = LOBPCG_INITIAL_RR_FAILED;
       out.fail_iter = 0;
@@ -806,8 +688,7 @@ inline LOBPCGResult lobpcg_solve(const double *a,
   int stall = 0;
   int it = 0;
 
-  for (; it < opt.maxiter; ++it)
-  {
+  for (; it < opt.maxiter; ++it) {
 
     residual(AX, X, lam, R);
     const std::vector<double> rn = column_norms(R);
@@ -817,15 +698,13 @@ inline LOBPCGResult lobpcg_solve(const double *a,
     // A residual norm that is NaN or Inf is the iterate diverging, whatever
     // the largest finite norm says: max_skip_nan() passes over NaN, so
     // without this a block of NaN would pass the convergence test below.
-    if (!lobpcg_detail::all_finite(rn))
-    {
+    if (!lobpcg_detail::all_finite(rn)) {
       out.status = LOBPCG_BAD_SEED;
       out.fail_iter = it;
       break;
     }
 
-    if (max_res <= rel_tol_abs)
-    {
+    if (max_res <= rel_tol_abs) {
       out.converged = true;
       ++it;
       break;
@@ -836,20 +715,16 @@ inline LOBPCGResult lobpcg_solve(const double *a,
     // for any unit-norm x, so anything >> 2 means the iterate has lost
     // orthonormality and is amplifying. 10 leave headroom for
     // pathological mid-iteration excursions while still catching divergence.
-    if (out.max_rel_res > 10.0)
-    {
+    if (out.max_rel_res > 10.0) {
       out.status = LOBPCG_BAD_SEED;
       out.fail_iter = it;
       break;
     }
 
-    if (max_res < smallest_res)
-    {
+    if (max_res < smallest_res) {
       smallest_res = max_res;
       stall = 0;
-    }
-    else if (++stall >= opt.stall_window)
-    {
+    } else if (++stall >= opt.stall_window) {
       out.status = LOBPCG_STALLED;
       out.fail_iter = it;
       break;
@@ -858,31 +733,25 @@ inline LOBPCGResult lobpcg_solve(const double *a,
     // the active residuals: the columns whose norm is above the tolerance,
     // in order.
     std::vector<std::size_t> act_idx;
-    for (std::size_t j = 0; j < rn.size(); ++j)
-    {
-      if (rn[j] > rel_tol_abs)
-      {
+    for (std::size_t j = 0; j < rn.size(); ++j) {
+      if (rn[j] > rel_tol_abs) {
         act_idx.push_back(j);
       }
     }
-    if (act_idx.empty())
-    {
+    if (act_idx.empty()) {
       out.converged = true;
       ++it;
       break;
     }
     Block Ract(R.nrow, act_idx.size());
-    for (std::size_t c = 0; c < act_idx.size(); ++c)
-    {
+    for (std::size_t c = 0; c < act_idx.size(); ++c) {
       std::copy(R.data() + act_idx[c] * R.nrow,
-                R.data() + (act_idx[c] + 1) * R.nrow,
-                Ract.data() + c * R.nrow);
+                R.data() + (act_idx[c] + 1) * R.nrow, Ract.data() + c * R.nrow);
     }
 
     // Ract -= X * (X' Ract), Ract inside the product.
     sub_cells(Ract, mul(X, tmul(X, Ract)));
-    if (!qr_project_out_qr(Ract, X, opt.qr_rel_tol, 0))
-    {
+    if (!qr_project_out_qr(Ract, X, opt.qr_rel_tol, 0)) {
       out.status = LOBPCG_RESIDUAL_COLLAPSED;
       out.fail_iter = it;
       break;
@@ -890,10 +759,8 @@ inline LOBPCGResult lobpcg_solve(const double *a,
 
     Block ARact = mul(a, n, n, Ract);
     // if we have no P this iteration, do RR on [X, Ract] only.
-    if (!have_P)
-    {
-      if (!rr_two_block(X, AX, Ract, ARact, k, lam, rr_pp, rr_app))
-      {
+    if (!have_P) {
+      if (!rr_two_block(X, AX, Ract, ARact, k, lam, rr_pp, rr_app)) {
         out.status = LOBPCG_RR_FAILED;
         out.fail_iter = it;
         break;
@@ -901,8 +768,7 @@ inline LOBPCGResult lobpcg_solve(const double *a,
       P = std::move(rr_pp);
       AP = std::move(rr_app);
       have_P = (P.ncol > 0);
-      if (((it + 1) % MATVEC_REFRESH) == 0)
-      {
+      if (((it + 1) % MATVEC_REFRESH) == 0) {
         AX = mul(a, n, n, X);
         AP = mul(a, n, n, P);
       }
@@ -925,8 +791,7 @@ inline LOBPCGResult lobpcg_solve(const double *a,
       sub_cells(APact, mul(AX, XtP));
       sub_cells(APact, mul(ARact, RtP));
 
-      if (!qr_orthonormalize_update_matvec(Pact, APact, a, n, opt.qr_rel_tol))
-      {
+      if (!qr_orthonormalize_update_matvec(Pact, APact, a, n, opt.qr_rel_tol)) {
         out.status = LOBPCG_P_COLLAPSED;
         out.fail_iter = it;
         break;
@@ -940,8 +805,7 @@ inline LOBPCGResult lobpcg_solve(const double *a,
       sub_mul(Pact, Ract, RtP2);
       sub_mul(APact, ARact, RtP2);
 
-      if (!qr_orthonormalize_update_matvec(Pact, APact, a, n, opt.qr_rel_tol))
-      {
+      if (!qr_orthonormalize_update_matvec(Pact, APact, a, n, opt.qr_rel_tol)) {
         out.status = LOBPCG_P_COLLAPSED;
         out.fail_iter = it;
         break;
@@ -973,8 +837,7 @@ inline LOBPCGResult lobpcg_solve(const double *a,
 
     Block lam_s;
     Block V_s;
-    if (!small_eig_desc(gramA, lam_s, V_s))
-    {
+    if (!small_eig_desc(gramA, lam_s, V_s)) {
       out.status = LOBPCG_RR_FAILED;
       out.fail_iter = it;
       break;
@@ -996,8 +859,7 @@ inline LOBPCGResult lobpcg_solve(const double *a,
     AX = mul_plus(AX, VX, app);
     P = std::move(pp);
     AP = std::move(app);
-    if (((it + 1) % MATVEC_REFRESH) == 0)
-    {
+    if (((it + 1) % MATVEC_REFRESH) == 0) {
       AX = mul(a, n, n, X);
       AP = mul(a, n, n, P);
     }
@@ -1006,8 +868,7 @@ inline LOBPCGResult lobpcg_solve(const double *a,
   out.iterations = it;
   out.eigvals = std::move(lam.cells);
 
-  if (out.converged)
-  {
+  if (out.converged) {
     out.status = LOBPCG_CONVERGED;
     pca_detail::canonicalize_signs(X.data(), X.nrow, X.ncol);
     state.X = std::move(X);

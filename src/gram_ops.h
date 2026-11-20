@@ -22,8 +22,7 @@ inline constexpr double SYRK_BETA = 0.0;
 // the Gram is n x n with leading dimension ldc, n = nc (tall, A'A) or nr
 // (wide, AA').
 // ---------------------------------------------------------------------------
-struct GramWorkspace
-{
+struct GramWorkspace {
   char trans = 'N';
   std::size_t nr = 0;
   std::size_t nc = 0;
@@ -33,8 +32,7 @@ struct GramWorkspace
   std::size_t ldc = 0;
 
   void init(const std::size_t nrows_A, const std::size_t ncols_A,
-            const bool tall)
-  {
+            const bool tall) {
     nr = nrows_A;
     nc = ncols_A;
     trans = tall ? 'T' : 'N';
@@ -53,8 +51,7 @@ struct GramWorkspace
 //                 cached only, empty otherwise
 // Both are empty while the cache is inactive.
 // ---------------------------------------------------------------------------
-struct GramCache
-{
+struct GramCache {
   std::size_t n_fixed = 0;
   bool active = false;
   std::vector<double> Gram_fixed;
@@ -66,8 +63,7 @@ struct GramCache
 // dimensions of ws.
 // ---------------------------------------------------------------------------
 [[nodiscard]] inline int syrk_upper(const double *A, double *C,
-                                    const GramWorkspace &ws)
-{
+                                    const GramWorkspace &ws) {
   return si_la::syrk('U', ws.trans, ws.n, ws.k, SYRK_ALPHA, A, ws.lda,
                      SYRK_BETA, C, ws.ldc);
 }
@@ -77,27 +73,20 @@ struct GramCache
 // fixed columns first. In the tall case X_work (nrX x (n_fixed + n_mc))
 // receives the sw-scaled fixed columns; the wide case does not touch it.
 // ---------------------------------------------------------------------------
-[[nodiscard]] inline int gram_cache_init(GramCache &cache,
-                                         const double *Xhat_perm,
-                                         const double *sw,
-                                         const std::size_t nrX,
-                                         const std::size_t n_fixed,
-                                         const std::size_t n_mc,
-                                         const bool tall,
-                                         double *X_work)
-{
+[[nodiscard]] inline int
+gram_cache_init(GramCache &cache, const double *Xhat_perm, const double *sw,
+                const std::size_t nrX, const std::size_t n_fixed,
+                const std::size_t n_mc, const bool tall, double *X_work) {
   cache.n_fixed = n_fixed;
   cache.active = (n_fixed > 0);
-  if (n_fixed == 0)
-  {
+  if (n_fixed == 0) {
     return si_la::ok;
   }
 
   GramWorkspace fixed_ws;
   fixed_ws.init(nrX, n_fixed, tall);
 
-  if (tall)
-  {
+  if (tall) {
     pca_detail::copy_scale_rows(X_work, Xhat_perm, sw, nrX, n_fixed);
 
     // zero-fill so the lower triangle is well-defined. dsyrk only writes the
@@ -126,23 +115,17 @@ struct GramCache
 //   wide, cached:    the compact GramCache::X_chg_scaled block
 //   wide, non-cached: nowhere (form_weighted_gram scales the Gram instead)
 // ---------------------------------------------------------------------------
-inline double *gram_changing_block(GramCache &cache,
-                                   double *X_work,
+inline double *gram_changing_block(GramCache &cache, double *X_work,
                                    const std::size_t nrX,
                                    const std::size_t n_fixed,
-                                   const std::size_t n_mc,
-                                   const bool tall)
-{
-  if (n_mc == 0)
-  {
+                                   const std::size_t n_mc, const bool tall) {
+  if (n_mc == 0) {
     return nullptr;
   }
-  if (tall)
-  {
+  if (tall) {
     return X_work + n_fixed * nrX;
   }
-  if (cache.active)
-  {
+  if (cache.active) {
     return cache.X_chg_scaled.data();
   }
   return nullptr;
@@ -154,10 +137,8 @@ inline double *gram_changing_block(GramCache &cache,
 // ---------------------------------------------------------------------------
 inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
                             const double *src, const std::size_t ld_src,
-                            const std::size_t ncols)
-{
-  for (std::size_t j = 0; j < ncols; ++j)
-  {
+                            const std::size_t ncols) {
+  for (std::size_t j = 0; j < ncols; ++j) {
     std::memcpy(dst + j * ld_dst, src + j * ld_src, (j + 1) * sizeof(double));
   }
 }
@@ -177,26 +158,20 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
 // Xhat and X_work are gram_ws.nr x gram_ws.nc; X_work is read in the tall
 // case only, Xhat in the wide non-cached case only.
 // ---------------------------------------------------------------------------
-[[nodiscard]] inline int form_weighted_gram(const double *Xhat,
-                                            const double *sw,
-                                            const bool tall,
-                                            const double *X_work,
-                                            double *AA_NxN,
-                                            const GramWorkspace &gram_ws,
-                                            const GramCache &gram_cache)
-{
+[[nodiscard]] inline int
+form_weighted_gram(const double *Xhat, const double *sw, const bool tall,
+                   const double *X_work, double *AA_NxN,
+                   const GramWorkspace &gram_ws, const GramCache &gram_cache) {
   const std::size_t nr = gram_ws.nr;
   const std::size_t nc = gram_ws.nc;
   const std::size_t n_fixed = gram_cache.n_fixed;
   const std::size_t n_mc = nc - n_fixed;
   const bool use_cache = gram_cache.active;
-  if (tall)
-  {
+  if (tall) {
     // X_work already contains sw * Xhat.
     // fixed columns initialized in cache init.
     // changing columns maintained by impute_restandardize().
-    if (!use_cache)
-    {
+    if (!use_cache) {
       return syrk_upper(X_work, AA_NxN, gram_ws);
     }
 
@@ -206,8 +181,7 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
     copy_upper_cols(AA_NxN, ldAA, gram_cache.Gram_fixed.data(), n_fixed,
                     n_fixed);
 
-    if (n_mc == 0)
-    {
+    if (n_mc == 0) {
       return si_la::ok;
     }
 
@@ -215,11 +189,9 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
     double *AA_chg_cols = AA_NxN + n_fixed * ldAA;
 
     // fixed-changing cross block
-    const int st = si_la::gemm('T', 'N', n_fixed, n_mc, nr, SYRK_ALPHA,
-                               X_work, lda, X_chg, lda, SYRK_BETA,
-                               AA_chg_cols, ldAA);
-    if (st != si_la::ok)
-    {
+    const int st = si_la::gemm('T', 'N', n_fixed, n_mc, nr, SYRK_ALPHA, X_work,
+                               lda, X_chg, lda, SYRK_BETA, AA_chg_cols, ldAA);
+    if (st != si_la::ok) {
       return st;
     }
 
@@ -228,13 +200,11 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
                        AA_chg_cols + n_fixed, ldAA);
   }
 
-  if (use_cache)
-  {
+  if (use_cache) {
     // gram_cache.X_chg_scaled already contains sw * X_changing.
     copy_upper_cols(AA_NxN, gram_ws.ldc, gram_cache.Gram_fixed.data(), nr, nr);
 
-    if (n_mc == 0)
-    {
+    if (n_mc == 0) {
       return si_la::ok;
     }
 
@@ -245,20 +215,17 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
   }
 
   const int st = syrk_upper(Xhat, AA_NxN, gram_ws);
-  if (st != si_la::ok)
-  {
+  if (st != si_la::ok) {
     return st;
   }
 
   const std::size_t ng = gram_ws.n;
 
-  for (std::size_t j = 0; j < ng; ++j)
-  {
+  for (std::size_t j = 0; j < ng; ++j) {
     const double sj = sw[j];
     double *col = AA_NxN + j * gram_ws.ldc;
 
-    for (std::size_t i = 0; i <= j; ++i)
-    {
+    for (std::size_t i = 0; i <= j; ++i) {
       col[i] *= sw[i] * sj;
     }
   }
@@ -271,15 +238,11 @@ inline void copy_upper_cols(double *dst, const std::size_t ld_dst,
 // finite, so a NaN or Inf here is a cross-product that overflowed.
 // ---------------------------------------------------------------------------
 [[nodiscard]] inline bool gram_upper_finite(const double *A,
-                                            const std::size_t n)
-{
-  for (std::size_t j = 0; j < n; ++j)
-  {
+                                            const std::size_t n) {
+  for (std::size_t j = 0; j < n; ++j) {
     const double *col = A + j * n;
-    for (std::size_t i = 0; i <= j; ++i)
-    {
-      if (!std::isfinite(col[i]))
-      {
+    for (std::size_t i = 0; i <= j; ++i) {
+      if (!std::isfinite(col[i])) {
         return false;
       }
     }

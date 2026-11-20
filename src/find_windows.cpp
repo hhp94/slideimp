@@ -4,8 +4,7 @@
 using namespace Rcpp;
 
 // [[Rcpp::export]]
-List find_windows(const NumericVector x, double window, double overlap = 0.0)
-{
+List find_windows(const NumericVector x, double window, double overlap = 0.0) {
   const int n = x.size();
 
   // preconditions guaranteed by the R wrapper:
@@ -22,11 +21,9 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
   // - if window is very small, singleton windows are valid output.
   //   R-side feasibility checks decide whether those windows are usable
 
-  if (n == 0)
-  {
-    return List::create(
-        Named("start") = IntegerVector(0),
-        Named("end") = IntegerVector(0));
+  if (n == 0) {
+    return List::create(Named("start") = IntegerVector(0),
+                        Named("end") = IntegerVector(0));
   }
 
   // starts/ends have size at most n
@@ -36,18 +33,17 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
   int k = 0;
   int i = 0;
 
-  while (i < n)
-  {
+  while (i < n) {
     // current threshold is starting value + window
     // half-open interval: [x[i], x[i] + window)
     const double threshold = x[i] + window;
 
     // last index whose value is < threshold
     // lower_bound gives the first value >= threshold, so subtract 1
-    const int j =
-        static_cast<int>(
-            std::lower_bound(x.begin() + i + 1, x.begin() + n, threshold) - x.begin()) -
-        1;
+    const int j = static_cast<int>(std::lower_bound(x.begin() + i + 1,
+                                                    x.begin() + n, threshold) -
+                                   x.begin()) -
+                  1;
 
     // note down start/end values, converting to R's 1-based indexing
     starts[k] = i + 1;
@@ -55,8 +51,7 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
     ++k;
 
     // if this window already covers the last element, we're done
-    if (j == n - 1)
-      break;
+    if (j == n - 1) break;
 
     // find next start: first index past i whose value >= cutoff.
     //
@@ -68,15 +63,15 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
     const double cutoff = threshold - overlap;
 
     int next = static_cast<int>(
-        std::lower_bound(x.begin() + i + 1, x.begin() + j + 1, cutoff) - x.begin());
+        std::lower_bound(x.begin() + i + 1, x.begin() + j + 1, cutoff) -
+        x.begin());
 
     // a start inside the current window is only worth a window if that window
     // reaches past j. When the coordinate after j is at least a full window
     // away from the candidate start, the candidate's window would stop at the
     // same j: a strict subset of the window just emitted, adding no column.
     // Start after j instead. j + 1 < n here, because j == n - 1 broke out above.
-    if (next <= j && x[j + 1] >= x[next] + window)
-    {
+    if (next <= j && x[j + 1] >= x[next] + window) {
       next = j + 1;
     }
 
@@ -87,7 +82,5 @@ List find_windows(const NumericVector x, double window, double overlap = 0.0)
   starts = starts[Range(0, k - 1)];
   ends = ends[Range(0, k - 1)];
 
-  return List::create(
-      Named("start") = starts,
-      Named("end") = ends);
+  return List::create(Named("start") = starts, Named("end") = ends);
 }

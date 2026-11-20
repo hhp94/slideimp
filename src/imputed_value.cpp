@@ -16,159 +16,122 @@
 // n_col_valid is computed once during the copy-with-mask pass so we never
 // sum the byte mask.
 // -----------------------------------------------------------------------------
-void initialize_result(
-    const std::vector<mask_t> &nmiss_masked,
-    const int n_rows,
-    const Rcpp::IntegerVector &grp_impute,
-    const GroupLayout &layout,
-    const std::vector<int> &n_col_valid,
-    std::vector<std::size_t> &col_offsets,
-    std::vector<std::vector<int>> &rows_to_impute,
-    Rcpp::IntegerMatrix &loc,
-    Rcpp::NumericVector &value)
-{
-    const int n_imp = layout.n_imp;
+void initialize_result(const std::vector<mask_t> &nmiss_masked,
+                       const int n_rows, const Rcpp::IntegerVector &grp_impute,
+                       const GroupLayout &layout,
+                       const std::vector<int> &n_col_valid,
+                       std::vector<std::size_t> &col_offsets,
+                       std::vector<std::vector<int>> &rows_to_impute,
+                       Rcpp::IntegerMatrix &loc, Rcpp::NumericVector &value) {
+  const int n_imp = layout.n_imp;
 
-    col_offsets.clear();
-    rows_to_impute.clear();
-    loc = Rcpp::IntegerMatrix(0, 2);
-    value = Rcpp::NumericVector(0);
+  col_offsets.clear();
+  rows_to_impute.clear();
+  loc = Rcpp::IntegerMatrix(0, 2);
+  value = Rcpp::NumericVector(0);
 
-    if (n_imp == 0)
-    {
-        return;
+  if (n_imp == 0) {
+    return;
+  }
+
+  // basic shape checks before any column access.
+  if (nmiss_masked.size() <
+      static_cast<std::size_t>(n_imp) * static_cast<std::size_t>(n_rows)) {
+    Rcpp::stop("internal error: initialize_result: nmiss_masked holds fewer "
+               "than %d columns",
+               n_imp);
+  }
+
+  if (grp_impute.size() < n_imp) {
+    Rcpp::stop("internal error: initialize_result: grp_impute has too few "
+               "elements. Expected at least %d, got %d",
+               n_imp, grp_impute.size());
+  }
+
+  if (n_col_valid.size() < static_cast<std::size_t>(n_imp)) {
+    Rcpp::stop("internal error: initialize_result: n_col_valid has too few "
+               "elements. Expected at least %d, got %d",
+               n_imp, n_col_valid.size());
+  }
+
+  std::vector<int> n_col_miss(n_imp);
+  col_offsets.assign(static_cast<std::size_t>(n_imp) + 1, 0);
+
+  // at most n_imp * n_rows, so a size_t sum cannot overflow
+  std::size_t sum_missing = 0;
+
+  for (int i = 0; i < n_imp; ++i) {
+    if (n_col_valid[i] > n_rows) {
+      Rcpp::stop("internal error: initialize_result: n_col_valid exceeds the "
+                 "number of rows at column %d. n_col_valid = %d, n_rows = %d",
+                 i, n_col_valid[i], n_rows);
     }
 
-    // basic shape checks before any column access.
-    if (nmiss_masked.size() <
-        static_cast<std::size_t>(n_imp) * static_cast<std::size_t>(n_rows))
-    {
-        Rcpp::stop(
-            std::string("initialize_result: nmiss_masked holds fewer than ") +
-            std::to_string(n_imp) +
-            " columns.");
-    }
+    const int n_miss_i = n_rows - n_col_valid[i];
+    n_col_miss[i] = n_miss_i;
+    sum_missing += static_cast<std::size_t>(n_miss_i);
+    col_offsets[i + 1] = sum_missing;
+  }
 
-    if (grp_impute.size() < n_imp)
-    {
-        Rcpp::stop(
-            std::string("initialize_result: grp_impute has too few elements. Expected at least ") +
-            std::to_string(n_imp) +
-            ", got " +
-            std::to_string(grp_impute.size()) +
-            ".");
-    }
+  if (sum_missing == 0) {
+    return;
+  }
 
-    if (n_col_valid.size() < static_cast<std::size_t>(n_imp))
-    {
-        Rcpp::stop(
-            std::string("initialize_result: n_col_valid has too few elements. Expected at least ") +
-            std::to_string(n_imp) +
-            ", got " +
-            std::to_string(n_col_valid.size()) +
-            ".");
-    }
+  // `loc` is an R matrix, whose dims are int.
+  if (sum_missing > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    Rcpp::stop("the columns to impute hold %d missing values, but the result "
+               "has a row for each and an R matrix holds at most %d rows. "
+               "Impute fewer columns at a time with 'subset'",
+               sum_missing, std::numeric_limits<int>::max());
+  }
 
-    std::vector<int> n_col_miss(n_imp);
-    col_offsets.assign(static_cast<std::size_t>(n_imp) + 1, 0);
+  const int n_total = static_cast<int>(sum_missing);
+  loc = Rcpp::IntegerMatrix(Rcpp::no_init_matrix(n_total, 2));
+  value = Rcpp::NumericVector(n_total, NA_REAL);
+  int *loc_row = loc.begin();
+  int *loc_col = loc.begin() + n_total;
 
-    // at most n_imp * n_rows, so a size_t sum cannot overflow
-    std::size_t sum_missing = 0;
+  rows_to_impute.resize(n_imp);
 
-    for (int i = 0; i < n_imp; ++i)
-    {
-        if (n_col_valid[i] > n_rows)
-        {
-            Rcpp::stop(
-                std::string("initialize_result: n_col_valid exceeds number of rows at column ") +
-                std::to_string(i) +
-                ". n_col_valid = " +
-                std::to_string(n_col_valid[i]) +
-                ", n_rows = " +
-                std::to_string(n_rows) +
-                ".");
+  for (int i = 0; i < n_imp; ++i) {
+    const mask_t *mask_col = col_ptr(nmiss_masked.data(), i, n_rows);
+    const int n_miss_i = n_col_miss[i];
+
+    std::vector<int> rows(n_miss_i);
+    int w = 0;
+
+    for (int r = 0; r < n_rows; ++r) {
+      if (mask_col[r] == 0) {
+        // critical safety check: do not write past rows.
+        if (w >= n_miss_i) {
+          Rcpp::stop("internal error: initialize_result: n_col_valid "
+                     "inconsistent with nmiss_masked at column %d. More "
+                     "missing rows found than expected",
+                     i);
         }
 
-        const int n_miss_i = n_rows - n_col_valid[i];
-        n_col_miss[i] = n_miss_i;
-        sum_missing += static_cast<std::size_t>(n_miss_i);
-        col_offsets[i + 1] = sum_missing;
+        rows[w++] = r;
+      }
     }
 
-    if (sum_missing == 0)
-    {
-        return;
+    if (w != n_miss_i) {
+      Rcpp::stop("internal error: initialize_result: n_col_valid inconsistent "
+                 "with nmiss_masked at column %d. Expected %d missing rows, "
+                 "found %d",
+                 i, n_miss_i, w);
     }
 
-    // `loc` is an R matrix, whose dims are int.
-    if (sum_missing > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    {
-        Rcpp::stop(
-            std::string("The columns to impute hold ") +
-            std::to_string(sum_missing) +
-            " missing values; the result has a row for each, and an R "
-            "matrix has at most " +
-            std::to_string(std::numeric_limits<int>::max()) +
-            " rows.");
+    rows_to_impute[i] = std::move(rows);
+
+    const std::vector<int> &rows_ref = rows_to_impute[i];
+    const int orig_col_1based = grp_impute[i] + 1;
+    const std::size_t offset = col_offsets[i];
+
+    for (int r = 0; r < n_miss_i; ++r) {
+      loc_row[offset + r] = rows_ref[r] + 1; // 1-based row
+      loc_col[offset + r] = orig_col_1based; // original 1-based column
     }
-
-    const int n_total = static_cast<int>(sum_missing);
-    loc = Rcpp::IntegerMatrix(Rcpp::no_init_matrix(n_total, 2));
-    value = Rcpp::NumericVector(n_total, NA_REAL);
-    int *loc_row = loc.begin();
-    int *loc_col = loc.begin() + n_total;
-
-    rows_to_impute.resize(n_imp);
-
-    for (int i = 0; i < n_imp; ++i)
-    {
-        const mask_t *mask_col = col_ptr(nmiss_masked.data(), i, n_rows);
-        const int n_miss_i = n_col_miss[i];
-
-        std::vector<int> rows(n_miss_i);
-        int w = 0;
-
-        for (int r = 0; r < n_rows; ++r)
-        {
-            if (mask_col[r] == 0)
-            {
-                // critical safety check: do not write past rows.
-                if (w >= n_miss_i)
-                {
-                    Rcpp::stop(
-                        std::string("initialize_result: n_col_valid inconsistent with nmiss_masked at column ") +
-                        std::to_string(i) +
-                        ". More missing rows found than expected.");
-                }
-
-                rows[w++] = r;
-            }
-        }
-
-        if (w != n_miss_i)
-        {
-            Rcpp::stop(
-                std::string("initialize_result: n_col_valid inconsistent with nmiss_masked at column ") +
-                std::to_string(i) +
-                ". Expected " +
-                std::to_string(n_miss_i) +
-                " missing rows, found " +
-                std::to_string(w) +
-                ".");
-        }
-
-        rows_to_impute[i] = std::move(rows);
-
-        const std::vector<int> &rows_ref = rows_to_impute[i];
-        const int orig_col_1based = grp_impute[i] + 1;
-        const std::size_t offset = col_offsets[i];
-
-        for (int r = 0; r < n_miss_i; ++r)
-        {
-            loc_row[offset + r] = rows_ref[r] + 1; // 1-based row
-            loc_col[offset + r] = orig_col_1based; // original 1-based column
-        }
-    }
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -182,99 +145,81 @@ void initialize_result(
 // every row once at the end. The ws_ptr accumulation still varies per row
 // (different obj values).
 // -----------------------------------------------------------------------------
-void impute_column_values(
-    double *out,
-    const double *obj_masked,
-    const mask_t *nmiss_masked,
-    const int n_rows,
-    const GroupLayout &layout,
-    const std::vector<int> &nn_columns,
-    const std::vector<double> &nn_weights,
-    const std::vector<int> &rows_to_impute,
-    const double *obj,
-    const int *grp_complete)
-{
-    const int n_miss = static_cast<int>(rows_to_impute.size());
-    if (n_miss == 0)
-    {
-        return;
+void impute_column_values(double *out, const double *obj_masked,
+                          const mask_t *nmiss_masked, const int n_rows,
+                          const GroupLayout &layout,
+                          const std::vector<int> &nn_columns,
+                          const std::vector<double> &nn_weights,
+                          const std::vector<int> &rows_to_impute,
+                          const double *obj, const int *grp_complete) {
+  const int n_miss = static_cast<int>(rows_to_impute.size());
+  if (n_miss == 0) {
+    return;
+  }
+
+  std::vector<double> weighted_sums(n_miss, 0.0);
+  std::vector<double> weight_totals(n_miss, 0.0);
+
+  double *__restrict__ ws_ptr = weighted_sums.data();
+  double *__restrict__ wt_ptr = weight_totals.data();
+
+  const int complete_start = layout.complete_start();
+
+  std::vector<std::size_t> masked_j;
+  std::vector<std::size_t> complete_j;
+  masked_j.reserve(nn_columns.size());
+  complete_j.reserve(nn_columns.size());
+
+  for (std::size_t j = 0; j < nn_columns.size(); ++j) {
+    if (nn_columns[j] < complete_start) {
+      masked_j.push_back(j);
+    } else {
+      complete_j.push_back(j);
     }
+  }
 
-    std::vector<double> weighted_sums(n_miss, 0.0);
-    std::vector<double> weight_totals(n_miss, 0.0);
+  // masked neighbors (groups 1+2) ----
+  for (std::size_t j : masked_j) {
+    const double w = nn_weights[j];
+    const int local = nn_columns[j];
+    const double *obj_col = col_ptr(obj_masked, local, n_rows);
+    const mask_t *nmiss_col = col_ptr(nmiss_masked, local, n_rows);
 
-    double *__restrict__ ws_ptr = weighted_sums.data();
-    double *__restrict__ wt_ptr = weight_totals.data();
-
-    const int complete_start = layout.complete_start();
-
-    std::vector<std::size_t> masked_j;
-    std::vector<std::size_t> complete_j;
-    masked_j.reserve(nn_columns.size());
-    complete_j.reserve(nn_columns.size());
-
-    for (std::size_t j = 0; j < nn_columns.size(); ++j)
-    {
-        if (nn_columns[j] < complete_start)
-        {
-            masked_j.push_back(j);
-        }
-        else
-        {
-            complete_j.push_back(j);
-        }
+    for (int r = 0; r < n_miss; ++r) {
+      const int row_idx = rows_to_impute[r];
+      double valid = nmiss_col[row_idx]; // uint8 -> double: exact 0.0/1.0
+      double weight = w * valid;
+      ws_ptr[r] += weight * obj_col[row_idx];
+      wt_ptr[r] += weight;
     }
+  }
 
-    // masked neighbors (groups 1+2) ----
-    for (std::size_t j : masked_j)
-    {
-        const double w = nn_weights[j];
-        const int local = nn_columns[j];
-        const double *obj_col = col_ptr(obj_masked, local, n_rows);
-        const mask_t *nmiss_col = col_ptr(nmiss_masked, local, n_rows);
+  // complete neighbors (group 3) ----
+  // valid == 1 for every row, so weight == w uniformly across rows.
+  double total_complete_w = 0.0;
 
-        for (int r = 0; r < n_miss; ++r)
-        {
-            const int row_idx = rows_to_impute[r];
-            double valid = nmiss_col[row_idx]; // uint8 -> double: exact 0.0/1.0
-            double weight = w * valid;
-            ws_ptr[r] += weight * obj_col[row_idx];
-            wt_ptr[r] += weight;
-        }
+  for (std::size_t j : complete_j) {
+    const double w = nn_weights[j];
+    const int c = nn_columns[j] - complete_start;
+    const double *obj_col = col_ptr(obj, grp_complete[c], n_rows);
+
+    for (int r = 0; r < n_miss; ++r) {
+      ws_ptr[r] += w * obj_col[rows_to_impute[r]];
     }
+    total_complete_w += w;
+  }
 
-    // complete neighbors (group 3) ----
-    // valid == 1 for every row, so weight == w uniformly across rows.
-    double total_complete_w = 0.0;
-
-    for (std::size_t j : complete_j)
-    {
-        const double w = nn_weights[j];
-        const int c = nn_columns[j] - complete_start;
-        const double *obj_col = col_ptr(obj, grp_complete[c], n_rows);
-
-        for (int r = 0; r < n_miss; ++r)
-        {
-            ws_ptr[r] += w * obj_col[rows_to_impute[r]];
-        }
-        total_complete_w += w;
+  if (total_complete_w > 0.0) {
+    for (int r = 0; r < n_miss; ++r) {
+      wt_ptr[r] += total_complete_w;
     }
+  }
 
-    if (total_complete_w > 0.0)
-    {
-        for (int r = 0; r < n_miss; ++r)
-        {
-            wt_ptr[r] += total_complete_w;
-        }
+  // a row where none of the chosen neighbors is observed keeps the NA
+  // initialize_result() wrote.
+  for (int r = 0; r < n_miss; ++r) {
+    if (wt_ptr[r] > 0.0) {
+      out[r] = ws_ptr[r] / wt_ptr[r];
     }
-
-    // a row where none of the chosen neighbors is observed keeps the NA
-    // initialize_result() wrote.
-    for (int r = 0; r < n_miss; ++r)
-    {
-        if (wt_ptr[r] > 0.0)
-        {
-            out[r] = ws_ptr[r] / wt_ptr[r];
-        }
-    }
+  }
 }

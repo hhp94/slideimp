@@ -1,4 +1,4 @@
-# Writing rules: roxygen prose and cli messages
+# Writing rules: roxygen prose and messages
 
 **This is the single source for how user-facing text is written in this package.** It is
 self-contained on purpose: an agent picking up one batch of topics should need this file and
@@ -8,7 +8,7 @@ self-contained on purpose: an agent picking up one batch of topics should need t
 everywhere, errors through cli, input validation through checkmate with an explicit `.var.name`,
 and the fact that the exported API, the error surface and the documentation are public and pinned
 by callers. Everything about how the text itself is written -- R1 to R9, the cli mechanics, the
-roxygen template -- lives here.
+form of text that is not cli, the roxygen template -- lives here.
 
 ---
 
@@ -54,20 +54,69 @@ git grep -nE '(^|[^_.a-z])(stop|warning|message)\(' -- R ':!R/RcppExports.R'
 ```
 
 Converting one is a change to the error surface (section 0), so it is proposed, not done in passing.
+The sampler's files are the ruled exception: they stay plain `stop()`, `warning()` and `message()`
+(`dev/to-do.md`, "Sampler port: what is still owed").
+
+### Which rules bind which text
+
+| text | R1 to R9 (section 2) | the 1.7 form (below) |
+|---|---|---|
+| a cli message | yes | no: cli writes sentences |
+| a C++ message a caller can reach | yes | yes |
+| a C++ check on what R has already checked | no | yes |
+| a defect message, in R or C++ | no | yes |
+| roxygen, vignettes and `README.Rmd` | yes | no |
+| `print()` and `summary()` output | yes | no: not a diagnostic |
+| a dependency's own message (`checkmate`, LAPACK) | no | no: its text, not ours |
+| code comments | no | no |
+
+**The sampler's messages are written upstream.** The files in `dev/vendored.md` follow upstream's
+own `dev/WRITING.md`, which is R1 to R9 and the 1.7 form for a plain-`stop()` package. A change to
+one of their messages is made there. slideimp's tests that match their text follow the last bullet
+below.
+
+### The form of text that is not cli: "Writing R Extensions" 1.7
+
+*Writing R Extensions*, 1.7, "Diagnostic messages" (`dev/r_manual/R-exts.md`), as upstream applied
+it to the sampler (maintainer, 2026-11-19). It binds the rows marked so in the table above.
+
+- **A message is a sentence fragment: no capital on the first word and no final period** or other
+  final punctuation. A message that opens with code keeps the code's case (`'ncp' must be ...`,
+  `pca_imp() cannot ...`). An `internal error:` message already starts lowercase and loses only its
+  final period.
+- **A cause and its fix stay two sentences: the inner period stays, the final one goes.** R1's one
+  instruction per sentence holds inside the message, and 1.7 governs only how it starts and ends. A
+  message with one clause is one fragment.
+- **Quotes, as 1.7 gives them.** An argument name or setting in single quotes: `'ncp' must be at
+  least 1`. An R character string or a class in double quotes: `'method' must be "euclidean" or
+  "manhattan"`. Plain ASCII `'` and `"`, never `sQuote()` or `dQuote()`, which can print directional
+  quotes and break the ASCII rule.
+- **C++: one format string holds every English word of a message.** `Rcpp::stop("... %d ...", x)`,
+  never a message built by concatenation. The fixed wording comes first and the values after, so a
+  pasted bug report can be found with a grep.
+- **R: no `paste()` or `paste0()` to build a message.** Pass the pieces as `stop()`'s own arguments.
+  A value built elsewhere and passed in whole (`fmt_trunc(bad, 8)`, a number from `format()`) is
+  fine. `gettextf()` and `ngettext()` are not used: 1.7 asks for them so that a message can be
+  translated, and this package has no translations. 1.7's real point still holds: write "3 columns
+  have no observed cell", not a sentence glued from a singular and a plural fragment.
+- **Tests match a short fragment of the wording** with `fixed = TRUE`. A fragment never includes the
+  final character, so it survives a change of final punctuation.
 
 ---
 
 ## 2. The English: R1 to R9
 
 These bind **every word a user can see**: cli message text, roxygen prose, `vignettes/*.Rmd`,
-`vignettes/articles/*.Rmd`, and `README.Rmd`. They do **not** bind code comments, `stop()` text
-aimed at developers, or `dev/` docs. In those, ASCII `--` is still required and these rules do not
+`vignettes/articles/*.Rmd`, `README.Rmd`, and a C++ message a caller can reach. They do **not** bind
+code comments, defect messages and other text aimed at developers, or `dev/` docs (section 1 has the
+table). In those, ASCII `--` is still required and these rules do not
 apply.
 
 - **R1. ASD-STE100 Simplified Technical English.** One instruction per sentence. About 20 words for
   an instruction, 25 for a description. The simple word over the elaborate one. One word for one
   meaning. Articles present. No noun cluster longer than three words. No ambiguous `-ing` form.
-- **R2. No first person and no "please". No contractions.** Prefer the data or the object as the
+- **R2. No first person and no "please". No contractions** (1.7: no colloquialisms such as "can't"
+  and "don't"). Prefer the data or the object as the
   subject over a bare passive. A function name is allowed as a grammatical subject (`group_imp()`
   splits `obj` ...). Second person is allowed where the user really is the actor.
 - **R3. No `--` and no `;` in user-facing text.** Period, comma, colon, and a single spaced hyphen.
@@ -86,7 +135,8 @@ apply.
   true total belongs in the lead line (`{length(bad)} column{?s} ...`), so the truncated list does
   not have to carry it. Where the cost is upstream of the render, cap the input, not the output.
 - **R6. Every R language object in prose carries markup.** cli `{.arg}` / `{.fn}` / `{.val}` /
-  `{.code}` / `{.cls}` / `{.path}` / `{.field}`; roxygen backticks and `[fn()]` links. **Only R
+  `{.code}` / `{.cls}` / `{.path}` / `{.field}`; roxygen backticks and `[fn()]` links; quotes in
+  text that is not cli (section 1). **Only R
   language objects.** Domain and platform terms -- K-NN, PCA, LOBPCG, EPIC, 450K, WGBS, CpG, "beta
   value" -- stay plain prose.
 - **R7. Keep a marked span short.** Mark the identifier, not the surrounding phrase and not a whole
@@ -346,6 +396,8 @@ Everything in this section is intended. Reporting one of these as a defect is a 
    real finding.
 3. **`--` and `;` are required in this file and banned in package messages.** The R3 ban is scoped
    to text a user can see.
+4. **A C++ message or a plain `stop()` with no capital and no final period is the 1.7 form**
+   (section 1), not a cli message that lost its punctuation.
 
 ### What an auditor should actually check
 

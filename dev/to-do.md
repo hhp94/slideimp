@@ -136,6 +136,14 @@ Easy to miss in the diff, noted so the draft does not:
 - `pca_imp()`'s `criterion_final` is `NA` when the fit converged on its
   objective alone; it was NaN, Inf or a number made by rounding
   (`dev/eigen_conversion.md`, "Phase 4, as carried out").
+- The errors raised from C++ are reworded to the *Writing R Extensions* 1.7
+  form (`dev/WRITING.md`, section 1): lowercase, no final period, argument
+  names in single quotes. Two reach every imputer and `tune_imp()`: an
+  infinite value now reads "'obj' holds an infinite value at row <r>,
+  column <c>. Infinite values are not supported", and an all-`NA` column,
+  "All NA/NaN column detected" in 1.2.0, reads "'obj' has a column with no
+  observed value, only NA or NaN. Remove that column before imputation".
+  A caller matching the old text breaks.
 
 ## Parts for the other imputers
 
@@ -221,14 +229,14 @@ its own change. Vendored files (`dev/vendored.md`) are out of scope.
 State on 2026-11-19; the record is `dev/eigen_conversion.md`, "Phase 4, as
 carried out".
 
-- **`criterion_final` as `NA`.** Done, test run and passing. Deferred by
-  the maintainer (2026-11-19): whether it should be `NA` whenever the
-  objective is below `threshold`, which also covers a rounding criterion
-  that lands below it.
-- **Ruled, not carried out,** its own commit with the gate: the pass
-  through *Writing R Extensions* against `src/`.
-- **Not ruled:** the OpenMP flag in `src/Makevars` (see "Sampler port: what
-  is still owed").
+- **Deferred by the maintainer** (2026-11-19): whether `criterion_final`
+  should be `NA` whenever the objective is below `threshold`, which also
+  covers a rounding criterion that lands below it. Today it is `NA` only
+  when the criterion itself is not below `threshold`.
+- **Ruled, partly carried out,** its own commit with the gate: the pass
+  through *Writing R Extensions* against `src/`. Done: the messages of
+  slideimp's own C++ in the 1.7 form, "Diagnostic messages". Owed: the rest
+  of the manual read against `src/`.
 
 ## Test suite: cleanup and tiers for local and CRAN runs
 
@@ -366,12 +374,6 @@ Owed:
   use the patch route in upstream's brief (its vendor-to-do, "The next
   port, step by step"), which carries changes since the recorded sha
   without overwriting the roxygen.
-- **Makevars: drop OpenMP.** Ruled upstream 2026-11-14: `src/Makevars` and
-  `src/Makevars.win` drop `$(SHLIB_OPENMP_CXXFLAGS)` from `PKG_CXXFLAGS` and
-  `PKG_LIBS`, since the sampler no longer uses it. This also turns off
-  Armadillo's OpenMP in slideimp's own PCA and K-NN code, a cost not yet
-  measured here. Measure it on those paths before making the change, as its
-  own commit.
 - **`USE_FC_LEN_T` before the R headers.** `src/mipca.cpp` and
   `src/mipca_crps.cpp` call BLAS through `R_ext/BLAS.h` and pass `FCONE`,
   but neither defines `USE_FC_LEN_T` before its first R header, and neither
@@ -381,7 +383,8 @@ Owed:
   the package supports, so the lengths are passed today; that the calls are
   right on R 4.3.0 itself is not measured here. Ruled 2026-11-18: a file
   that disagrees with the manual is a bug to fix, not a model.
-  `src/si_lapack.cpp` has the manual's form. Upstream.
+  `src/si_lapack.cpp` has the manual's form. Fixed upstream in `b44a3b5`,
+  after the last copy; the next copy brings it and deletes this item.
 - **The Spectra licence notice.** `src/Spectra/` is vendored, and its
   copyright holders are in `Authors@R`, but no notice file ships its
   licence: `inst/LICENSE.note` covers only the code adapted from carrier.

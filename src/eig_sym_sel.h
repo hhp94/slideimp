@@ -16,18 +16,15 @@ inline constexpr char PEIG_UPLO = 'U';
 // si_la::syevr_range asks dsyevr for its workspace and allocates it on every
 // call, so nothing else is kept here.
 // ---------------------------------------------------------------------------
-struct EigSymRange
-{
+struct EigSymRange {
   std::size_t n = 0;
   std::size_t topk = 0;
   std::size_t il = 0;
   std::size_t iu = 0;
 
   [[nodiscard]] bool init(const std::size_t dim_n,
-                          const std::size_t topk_request)
-  {
-    if (topk_request == 0 || topk_request > dim_n)
-    {
+                          const std::size_t topk_request) {
+    if (topk_request == 0 || topk_request > dim_n) {
       return false;
     }
     n = dim_n;
@@ -51,28 +48,22 @@ struct EigSymRange
 // destroys A: dsyevr overwrites the upper triangle it reads, so callers must
 // pass a matrix they can discard (the Gram is rebuilt every outer iteration).
 // ---------------------------------------------------------------------------
-[[nodiscard]] inline int eig_sym_sel(double *eigvals,
-                                     double *eigvecs,
-                                     double *A,
-                                     const std::size_t a_rows,
+[[nodiscard]] inline int eig_sym_sel(double *eigvals, double *eigvecs,
+                                     double *A, const std::size_t a_rows,
                                      const std::size_t a_cols,
-                                     const EigSymRange &rng)
-{
-  if (a_rows != rng.n || a_cols != rng.n)
-  {
+                                     const EigSymRange &rng) {
+  if (a_rows != rng.n || a_cols != rng.n) {
     return si_la::err_arg;
   }
 
-  const int st = si_la::syevr_range(PEIG_UPLO, rng.n, rng.il, rng.iu, A,
-                                    eigvals, eigvecs);
-  if (st != si_la::ok)
-  {
+  const int st =
+      si_la::syevr_range(PEIG_UPLO, rng.n, rng.il, rng.iu, A, eigvals, eigvecs);
+  if (st != si_la::ok) {
     return st;
   }
 
   // flip ascending -> descending in place.
-  for (std::size_t i = 0, j = rng.topk - 1; i < j; ++i, --j)
-  {
+  for (std::size_t i = 0, j = rng.topk - 1; i < j; ++i, --j) {
     std::swap(eigvals[i], eigvals[j]);
     std::swap_ranges(eigvecs + i * rng.n, eigvecs + (i + 1) * rng.n,
                      eigvecs + j * rng.n);

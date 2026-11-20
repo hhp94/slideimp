@@ -25,15 +25,23 @@ test_that("`mean_imp_col` refuses Inf, including when subset resolves to NULL", 
   to_test <- sim_mat(20, 10, perc_total_na = 0.2)$input
   to_test[3, 4] <- Inf
 
-  expect_error(mean_imp_col(to_test), "Infinite")
-  expect_error(mean_imp_col(to_test, subset = 4), "Infinite")
+  expect_error(mean_imp_col(to_test), "holds an infinite value", fixed = TRUE)
+  expect_error(
+    mean_imp_col(to_test, subset = 4),
+    "holds an infinite value",
+    fixed = TRUE
+  )
 
   # the Inf sits in a column that is not selected, and the selected columns
   # have no missingness, so `subset` resolves to NULL and the old code path
   # returned the input unchanged with the Inf still in it.
   complete <- sim_mat(20, 10, perc_total_na = 0)$input
   complete[3, 4] <- Inf
-  expect_error(mean_imp_col(complete, subset = 1), "Infinite")
+  expect_error(
+    mean_imp_col(complete, subset = 1),
+    "holds an infinite value",
+    fixed = TRUE
+  )
 })
 
 # A 6 x 5 input: column 1 with two holes, column 2 complete, column 3 all NA,

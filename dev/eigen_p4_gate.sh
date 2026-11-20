@@ -63,10 +63,19 @@ prep)
   git clone --quiet "$repo" "$base"
   git clone --quiet "$repo" "$p4"
   echo "== clones of $(git -C "$base" rev-parse --short HEAD)"
+  # a file the working tree deleted is listed too: it is removed from `p4`,
+  # not copied
   git -C "$repo" diff --name-only HEAD | while read -r f; do
-    cp "$repo/$f" "$p4/$f"
-    echo "   copied $f"
-  done
+    if [ ! -e "$repo/$f" ]; then
+      rm -f "$p4/$f"
+      echo "   removed $f"
+    elif mkdir -p "$(dirname "$p4/$f")" && cp "$repo/$f" "$p4/$f"; then
+      echo "   copied $f"
+    else
+      echo "   FAILED to copy $f"
+      exit 1
+    fi
+  done || exit 1
   for f in $(git -C "$repo" ls-files --others --exclude-standard); do
     mkdir -p "$(dirname "$p4/$f")"
     cp "$repo/$f" "$p4/$f"

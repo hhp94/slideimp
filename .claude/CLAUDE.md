@@ -71,6 +71,17 @@ parallelism at the chain level through RcppThread and mirai. No thread
 pinning from C++: pin from R with RhpcBLASctl, best-effort, and verify a pin
 by CPU time over wall time, never by asking the library.
 
+**Run `clang-format -i src/*.cpp src/*.h` after every change to C++ under
+`src/`, before calling the work done.** Run it from the repository root, in
+the same change as the edit, with clang-format 23.1.5 (`uv tool install
+clang-format==23.1.5`): the repository does not pin it, and another release
+lays code out differently. `.clang-format` holds the layout and
+`.clang-format-ignore` the files it leaves alone: `src/RcppExports.cpp`,
+`src/Spectra/`, and the vendored C++, whose layout is upstream's. Like air,
+it splits and joins lines, so run the citation checker after it. A diff from
+it that changes more than whitespace is a bug to report, not to commit; a
+wrong layout is fixed in `.clang-format`, agreed with the maintainer.
+
 **Reach for the solution a dependency publishes; no low-level hacks.** When a
 dependency has a designed, documented answer - RcppThread for thread-safe
 interruption and stop, R's own APIs for anything touching R, collapse's

@@ -1,8 +1,10 @@
 // Review of the wrapper layer (dev/review_eigen_wrappers.md): direct calls of
 // src/si_lapack.h that dev/oracle_pairs.cpp does not make (removed after
 // 141a9d0; git show 79cce0f:dev/oracle_pairs.cpp prints the version under
-// review). Plain Rcpp, no Armadillo. dev/review_eigen_wrappers_probe.R stages this file in one
-// folder with src/si_lapack.h and src/si_lapack.cpp and compiles it with
+// review). It calls si_la::matmul and si_la::solve_tri with its two outputs,
+// both gone since Phase 4, so it compiles only against src/si_lapack.h of
+// 79cce0f, in a clone of that commit. Plain Rcpp, no Armadillo.
+// dev/review_eigen_wrappers_probe.R stages this file in one folder with src/si_lapack.h and src/si_lapack.cpp and compiles it with
 // Rcpp::sourceCpp(), which builds si_lapack.cpp as a unit of its own.
 // Nothing here decides anything; the R script prints what comes back.
 //

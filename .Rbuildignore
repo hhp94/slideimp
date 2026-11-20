@@ -19,3 +19,5 @@
 ^vignettes/articles$
 ^[.]?air[.]toml$
 ^local$
+^\.clang-format$
+^\.clang-format-ignore$

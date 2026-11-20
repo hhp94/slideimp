@@ -571,9 +571,17 @@ test_that("Throw on Inf", {
   set.seed(1234)
   to_test <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
   to_test[1, 1] <- Inf
-  expect_error(pca_imp(to_test, ncp = 3), "Infinite")
+  expect_error(
+    pca_imp(to_test, ncp = 3),
+    "holds an infinite value",
+    fixed = TRUE
+  )
   to_test[1, 1] <- -Inf
-  expect_error(pca_imp(to_test, ncp = 3), "Infinite")
+  expect_error(
+    pca_imp(to_test, ncp = 3),
+    "holds an infinite value",
+    fixed = TRUE
+  )
 })
 
 test_that("Inf is refused ahead of the paths that used to hide it", {
@@ -583,17 +591,29 @@ test_that("Inf is refused ahead of the paths that used to hide it", {
   # the matrix back with the Inf still in it.
   complete <- sim_mat(20, 20, perc_total_na = 0)$input
   complete[3, 4] <- Inf
-  expect_error(pca_imp(complete, ncp = 2), "Infinite")
+  expect_error(
+    pca_imp(complete, ncp = 2),
+    "holds an infinite value",
+    fixed = TRUE
+  )
 
   # otherwise infeasible: the infeasibility abort used to win the race and
   # report eligible columns without ever mentioning the Inf.
   infeasible <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
   infeasible[3, 4] <- Inf
   infeasible[, 6:20] <- 1
-  expect_error(pca_imp(infeasible, ncp = 8), "Infinite")
+  expect_error(
+    pca_imp(infeasible, ncp = 8),
+    "holds an infinite value",
+    fixed = TRUE
+  )
 
   # and the Inf scan runs once, not once per `nb.init`
-  expect_error(pca_imp(complete, ncp = 2, nb.init = 3), "Infinite")
+  expect_error(
+    pca_imp(complete, ncp = 2, nb.init = 3),
+    "holds an infinite value",
+    fixed = TRUE
+  )
 })
 
 test_that("the no-missing-values return has the shape of the main path", {
@@ -1066,16 +1086,30 @@ test_that("criterion_final is NA when the objective alone stopped the fit", {
   base6 <- sim_mat(n = 6, p = 80, perc_total_na = 0.1, perc_col_na = 0.5)$input
   x <- base6[rep(seq_len(6), times = 5), ]
   rownames(x) <- sprintf("s%02d", seq_len(nrow(x)))
-  for (ncp in c(5L, 6L, 7L, 12L)) {
+  ncps <- c(5L, 6L, 7L, 12L)
+  crits <- rep(NaN, length(ncps))
+  for (i in seq_along(ncps)) {
+    ncp <- ncps[i]
     set.seed(1)
     res <- pca_imp(x, ncp = ncp)
     crit <- attr(res, "criterion_final")
+    crits[i] <- crit
     expect_true(attr(res, "converged"), label = sprintf("ncp = %d", ncp))
     expect_true(
       identical(crit, NA_real_) || isTRUE(crit < 1e-6),
       label = sprintf("ncp = %d, criterion_final %s", ncp, format(crit))
     )
   }
+  # Each fit alone may report a rounding criterion, so the NA branch is
+  # required of the four together: without this the loop passes on a build
+  # that never reports NA.
+  expect_true(
+    any(is.na(crits) & !is.nan(crits)),
+    label = sprintf(
+      "NA at one ncp or more, criterion_final %s",
+      paste(format(crits), collapse = " ")
+    )
+  )
 
   # A fit the criterion stopped still reports it, below the threshold.
   set.seed(4)
@@ -1462,35 +1496,48 @@ test_that("the PCA kernel returns integers and refuses what it cannot count with
   bad <- function(...) {
     do.call(pca_imp_internal_cpp, utils::modifyList(args, list(...)))
   }
-  expect_error(bad(maxiter = 0L), "maxiter must be >= 1")
-  expect_error(bad(maxiter = NA_integer_), "maxiter must be >= 1")
-  expect_error(bad(miniter = -1L), "miniter must be >= 0")
-  expect_error(bad(miniter = 21L), "miniter must be <= maxiter")
-  expect_error(bad(ncp = 0L), "ncp must be >= 1")
-  expect_error(bad(ncp = NA_integer_), "ncp must be >= 1")
-  expect_error(bad(init = -1L), "init must be >= 0")
-  expect_error(bad(trace_iter = -1L), "trace_iter must be >= 0")
+  expect_error(bad(maxiter = 0L), "'maxiter' must be >= ", fixed = TRUE)
+  expect_error(
+    bad(maxiter = NA_integer_),
+    "'maxiter' must be >= ",
+    fixed = TRUE
+  )
+  expect_error(bad(miniter = -1L), "'miniter' must be >= ", fixed = TRUE)
+  expect_error(bad(miniter = 21L), "'miniter' must be <= ", fixed = TRUE)
+  expect_error(bad(ncp = 0L), "'ncp' must be >= ", fixed = TRUE)
+  expect_error(bad(ncp = NA_integer_), "'ncp' must be >= ", fixed = TRUE)
+  expect_error(bad(init = -1L), "'init' must be >= ", fixed = TRUE)
+  expect_error(bad(trace_iter = -1L), "'trace_iter' must be >= ", fixed = TRUE)
   expect_error(
     bad(solver = 1L, lobpcg_maxiter = 0L),
-    "lobpcg_maxiter must be >= 1"
+    "'lobpcg_maxiter' must be >= 1 when",
+    fixed = TRUE
   )
   expect_error(
     bad(solver = 1L, warmup_iters = -1L),
-    "warmup_iters must be >= 0"
+    "'warmup_iters' must be >= 0 when",
+    fixed = TRUE
   )
 
   # a column index outside the matrix, NA included
   expect_error(
     bad(eligible_idx = c(0L, ncol(x))),
-    "eligible_idx holds 12 at position 2"
+    "eligible_idx' holds 12 at position 2",
+    fixed = TRUE
   )
   expect_error(
     bad(eligible_idx = c(0L, NA_integer_)),
-    "eligible_idx holds NA at position 2"
+    "eligible_idx' holds NA at position 2",
+    fixed = TRUE
   )
   expect_error(
     bad(eligible_idx = c(-1L, 0L)),
-    "eligible_idx holds -1 at position 1"
+    "eligible_idx' holds -1 at position 1",
+    fixed = TRUE
   )
-  expect_error(bad(row_w = rep(1, nrow(x) - 1L)), "row_w length must equal")
+  expect_error(
+    bad(row_w = rep(1, nrow(x) - 1L)),
+    "'row_w' length must equal",
+    fixed = TRUE
+  )
 })

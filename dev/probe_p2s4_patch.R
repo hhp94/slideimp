@@ -190,7 +190,9 @@ solve_line <- if (gram_arma) solve_arma else solve_raw
 gram_cell <- if (gram_arma) "A(0, 0)" else "A[0]"
 ## The exact solver made to report LAPACK's info = 1. Phase 4 made the call
 ## return its status; before, it was tested in place. Files older than the
-## raw-buffer Gram do not get this injection.
+## raw-buffer Gram do not get this injection; a file with the raw-buffer
+## Gram that holds neither form of the call stops here, so the eiginfo
+## cases never run as plain repeats on a file this script should know.
 exact_status <- "  const int exact_st = eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng);"
 exact_flag <- "  if (eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng) != si_la::ok)"
 exact_ed <- if (grepl(exact_status, hybrid_txt, fixed = TRUE)) {
@@ -211,8 +213,10 @@ exact_ed <- if (grepl(exact_status, hybrid_txt, fixed = TRUE)) {
       "      eig_sym_sel(eigvals, eigvecs, A, a_rows, a_cols, rng) != si_la::ok)"
     )
   ))
-} else {
+} else if (gram_arma) {
   list()
+} else {
+  stop("src/hybrid_topk_eig.h holds neither form of the eig_sym_sel() call")
 }
 patch_file(
   "src/hybrid_topk_eig.h",

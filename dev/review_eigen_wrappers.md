@@ -152,7 +152,8 @@ result measured here:
 The header says `w` receives `iu - il + 1` eigenvalues
 (`src/si_lapack.h`: `w receives iu - il + 1 eigenvalues, ascending`), and
 the wrapper passes the caller's `w` straight to dsyevr
-(`src/si_lapack.cpp`: `isuppz.data(), work.data(), &lwork,`). LAPACK's own
+(the line "isuppz.data(), work.data(), &lwork," of `src/si_lapack.cpp` at
+`79cce0f`; the fix of finding 1 replaced it). LAPACK's own
 description of dsyevr gives `W` the dimension `N`, with the first `M`
 elements holding the answer (from the comment block of dsyevr in reference
 LAPACK, which is not in this repository). For `range = 'I'` on a proper

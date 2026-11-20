@@ -215,7 +215,7 @@ argument through `Rcpp::traits::input_parameter<>`. An
 `Rcpp::RNGScope` makes `Rcpp::rnorm()` inside the kernel use R's RNG stream.
 Registration is in `CallEntries` (`src/RcppExports.cpp`: `{"_slideimp_pca_imp_internal_cpp"`),
 with `R_init_slideimp` and `R_useDynamicSymbols(dll, FALSE)`. The C++ entry symbol is
-`pca_imp_internal_cpp` (`src/armaSVD.cpp`: `Rcpp::List pca_imp_internal_cpp(`), marked
+`pca_imp_internal_cpp` (`src/armaSVD.cpp`: `pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,`), marked
 `// [[Rcpp::export]]`.
 
 The kernel takes what R holds (`dev/eigen_conversion.md`, "Rules that apply to every
@@ -243,7 +243,7 @@ such as `j * nrX` is computed in `std::size_t`; a row or column index of `obj` i
   the `int` range of the `26 * n` dsyevr workspace minimum and of the `~3k` Rayleigh-Ritz
   dsyevd workspace LOBPCG would need; the dimensions themselves fit an `int`, being R's.
   More missing cells than an R matrix has rows is refused once they are counted
-  (`src/armaSVD.cpp`: `The eligible columns hold`), since `loc` has a row for each.
+  (`src/armaSVD.cpp`: `has a row for each and an R matrix holds at most %d rows`), since `loc` has a row for each.
 - Orientation: `tall = (nrX >= n_elig)`; `k = regularized ? ncp + 1 : ncp`
   eigenpairs are requested; `n_gram = tall ? n_elig : nrX`, so the eigenproblem is always
   over the smaller dimension.
@@ -366,7 +366,7 @@ through `si_la::gemm` (`src/svd_triplet.h`: `LOC_TIC(timer, "recover_factors")`)
 eigenvectors as `V` and `U = X_work * Vn` (`gemm_nn`, dgemm whatever the shape, never dgemv);
 wide gives them as `U` and forms only the changing rows of `V`,
 `V[n_fixed.., ] = Xhat[, n_fixed..]' * Vn`, as one strided-block dgemm in
-`gemm_tn_block()` (`src/pca_linalg_utils.h`: `inline int gemm_tn_block(`), reading `n_fixed`
+`gemm_tn_block()` (`src/pca_linalg_utils.h`: `gemm_tn_block(const double *A, const std::size_t a_rows,`), reading `n_fixed`
 from the
 Gram cache the way `form_weighted_gram()` does. Both helpers take raw buffers and their
 dimensions, refuse operands whose dimensions do not fit, and return the wrapper's status; a
@@ -380,7 +380,7 @@ So `V`'s fixed rows stay unwritten until postprocessing fills them from the same
 (Layer 4). `split_eigvec_block()` writes the plain and `d_inv`-scaled copies in a single
 pass.
 
-`form_weighted_gram()` (`src/gram_ops.h`: `inline int form_weighted_gram(`) has four branches,
+`form_weighted_gram()` (`src/gram_ops.h`: `form_weighted_gram(const double *Xhat, const double *sw, const bool tall,`) has four branches,
 each entering BLAS through `si_la::syrk` and `si_la::gemm` with the arguments it passed to
 `arma::dsyrk_` and `arma::dgemm_`:
 
@@ -522,7 +522,7 @@ its status means.
 | --- | --- | --- |
 | dsyrk, through `si_la::syrk` | `syrk_upper()`, `form_weighted_gram()` (`src/gram_ops.h`) | Gram formation |
 | dgemm, through `si_la::gemm` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
-| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `Xhat.data(), nrX, n_elig, 0, n_fixed, Vn.data(),`) |
+| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/armaSVD.cpp`: `pca_detail::gemm_tn_block(Xhat.data(), nrX, n_elig, 0, n_fixed,`) |
 | dgemm, through `si_la::gemm` | `reconstruct_cols()` (`src/armaSVD.cpp`) | `reconstruct_cols`, strided column block |
 | dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
 | dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |

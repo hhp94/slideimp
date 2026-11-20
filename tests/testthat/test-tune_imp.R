@@ -259,7 +259,8 @@ test_that("a non-finite cell is reported as Inf, not as zero variance", {
   expect_true(is.nan(col_vars(m)[4]))
   expect_error(
     sample_na_loc(m, n_cols = 4, n_rows = 1, na_col_subset = 1:5),
-    "Infinite"
+    "holds an infinite value",
+    fixed = TRUE
   )
 })
 
@@ -1743,34 +1744,55 @@ test_that("the sampler checks the indices it relies on", {
 
   bad <- base
   bad$pool_idx_in <- c(0L, 2L)
-  expect_error(do.call(sample_each_rep_cpp, bad), "pool_idx_in holds 2")
+  expect_error(
+    do.call(sample_each_rep_cpp, bad),
+    "pool_idx_in' holds 2",
+    fixed = TRUE
+  )
 
   bad <- base
   bad$row_room <- c(1L, NA, 1L)
-  expect_error(do.call(sample_each_rep_cpp, bad), "row_room holds NA")
+  expect_error(
+    do.call(sample_each_rep_cpp, bad),
+    "row_room' holds NA",
+    fixed = TRUE
+  )
 
   bad <- base
   bad$row_room <- 1L
-  expect_error(do.call(sample_each_rep_cpp, bad), "row_room has length 1")
+  expect_error(
+    do.call(sample_each_rep_cpp, bad),
+    "row_room' has length 1",
+    fixed = TRUE
+  )
 
   bad <- base
   bad$pool_cap <- 1L
-  expect_error(do.call(sample_each_rep_cpp, bad), "differ in length")
+  expect_error(
+    do.call(sample_each_rep_cpp, bad),
+    "differ in length",
+    fixed = TRUE
+  )
 
   bad <- base
   bad$na_per_col <- -1L
-  expect_error(do.call(sample_each_rep_cpp, bad), "na_per_col holds -1")
+  expect_error(
+    do.call(sample_each_rep_cpp, bad),
+    "na_per_col' holds -1",
+    fixed = TRUE
+  )
 
   bad <- base
   bad$max_attempts <- NA_integer_
-  expect_error(do.call(sample_each_rep_cpp, bad), "max_attempts")
+  expect_error(do.call(sample_each_rep_cpp, bad), "max_attempts", fixed = TRUE)
 
   # a repeated column could fill two slots and return one cell twice
   bad <- base
   bad$pool_idx_in <- c(1L, 1L)
   expect_error(
     do.call(sample_each_rep_cpp, bad),
-    "pool_idx_in holds column index 1 more than once"
+    "pool_idx_in' holds column index 1 more than once",
+    fixed = TRUE
   )
 })
 

@@ -31,7 +31,8 @@ here. The house rule in `.claude/CLAUDE.md` says what that means for a pass over
 package.
 
 A file added to or removed from the copy is added to or removed from this
-list in the port commit that brings it.
+list in the port commit that brings it, and a C++ file also from
+`.clang-format-ignore`, since its layout is upstream's.
 
 ## Spectra
 
