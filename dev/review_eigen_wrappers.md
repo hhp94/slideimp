@@ -7,7 +7,13 @@ on `si-mi` (one commit, `79cce0f`), working tree clean at the start.
 that wrote the wrappers audits this note.
 
 `dev/eigen_conversion.md` was deleted when its last phase landed; read it
-with `git show 4f2b669:dev/eigen_conversion.md`.
+with `git show 4f2b669:dev/eigen_conversion.md`. The scripts this review
+ran were retired once that plan closed; read them with
+`git show aea6898:dev/review_eigen_wrappers_run.R`,
+`git show aea6898:dev/review_eigen_wrappers_procs.R`,
+`git show aea6898:dev/review_eigen_wrappers_probe.R`,
+`git show aea6898:dev/review_eigen_wrappers_probe.cpp` and
+`git show aea6898:dev/review_eigen_wrappers_mutants.R`.
 
 Nothing under `src/` and no oracle file was edited, nothing was committed,
 and nothing was built in the working tree: every build was staged in a

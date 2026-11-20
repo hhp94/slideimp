@@ -1,7 +1,8 @@
 # Review of Phase 2 (dev/review_p2.md): the suite gate of the plan, rerun on
 # a clone. Run from the ROOT OF A CLONE of the commit under test, never from
 # the working tree, with R_LIBS naming an empty library, set before R starts
-# so that the mirai daemons inherit it (dev/review_p2_suite.sh does both):
+# so that the mirai daemons inherit it (dev/review_p2_suite.sh at aea6898 does
+# both):
 #   R_LIBS=<empty dir> Rscript dev/review_p2_suite.R --in-scratch-clone
 # It installs the clone into that library, checks that a daemon loads that
 # copy, then runs the whole suite, manual-gated tests included, against

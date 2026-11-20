@@ -4,7 +4,8 @@
 # of those three calls fail; this runs what it leaves out:
 #
 # - LOBPCG with 12 to 41 eigenpairs, where the Rayleigh-Ritz problems reach
-#   orders 34 to 79 (dev/probe_p2s4_syevd_lwork.R says why that range);
+#   orders 34 to 79 (dev/probe_p2s4_syevd_lwork.R at aea6898 says why that
+#   range);
 # - samples and columns that are copies of each other, with more components
 #   than the data has rank;
 # - LOBPCG settings that stall it or stop it early;
@@ -18,8 +19,8 @@
 # Run from the package root of a build, with a label naming the capture:
 #   Rscript dev/eigen_p2s4_edges.R <label>
 # It writes dev/ref/<label>/ in dev/ref_capture.R's format, so two builds'
-# captures are compared with dev/ref_compare.R. dev/probe_p2s4_run.sh runs
-# it on an instrumented clone of each build.
+# captures are compared with dev/ref_compare.R. dev/probe_p2s4_run.sh at aea6898
+# runs it on an instrumented clone of each build.
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 1L || !nzchar(args[[1]])) {

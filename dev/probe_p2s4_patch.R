@@ -1,6 +1,6 @@
 # Step 4 of Phase 2 (dev/eigen_conversion.md at 4f2b669): instrument the LOBPCG
-# path in a scratch clone, never in the working tree. dev/probe_p2s4_run.sh
-# copies this into a clone and runs it from the clone's root:
+# path in a scratch clone, never in the working tree. dev/probe_p2s4_run.sh at
+# aea6898 copies this into a clone and runs it from the clone's root:
 #   Rscript dev/probe_p2s4_patch.R --in-scratch-clone old
 #   Rscript dev/probe_p2s4_patch.R --in-scratch-clone new
 # The patch is chosen by what src/lobpcg_warm.h holds, not by the mode, which

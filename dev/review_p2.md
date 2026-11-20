@@ -7,7 +7,23 @@ under review: `59920f4..597d28e` on `si-mi`, the seven commits of steps 1 to
 one session, no verify pass.
 
 `dev/eigen_conversion.md` was deleted when its last phase landed; read it
-with `git show 4f2b669:dev/eigen_conversion.md`.
+with `git show 4f2b669:dev/eigen_conversion.md`. Most scripts this review
+ran were retired once that plan closed; read them with
+`git show aea6898:dev/review_p2_run.sh`,
+`git show aea6898:dev/review_p2_cases.R`,
+`git show aea6898:dev/review_p2_compare.R`,
+`git show aea6898:dev/review_p2_show.R`,
+`git show aea6898:dev/review_p2_tag.sh`,
+`git show aea6898:dev/review_p2_suite.sh`,
+`git show aea6898:dev/review_p2_fix_check.R`,
+`git show aea6898:dev/review_p2_fix_check.sh`,
+`git show aea6898:dev/review_p2_fix_suite.R`,
+`git show aea6898:dev/review_p2_crash_events.ps1`,
+`git show aea6898:dev/probe_p2s4_run.sh`,
+`git show aea6898:dev/probe_p2s6_run.sh`,
+`git show aea6898:dev/probe_p2s6_niter.R` and
+`git show aea6898:dev/audit_eigen_wrappers_chain.sh`. The suite they drove,
+`dev/review_p2_suite.R`, stays: `dev/eigen_p4_gate.sh` runs it.
 
 Not a fresh session. The plan asks for one; the maintainer pasted the
 command into the session that wrote step 6 and the failure-path half of

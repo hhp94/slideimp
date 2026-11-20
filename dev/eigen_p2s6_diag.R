@@ -13,8 +13,8 @@
 #   past the 32 values up to which Armadillo summed the leading singular
 #   values itself;
 # - the SVD made to fail. Those cases set SLIDEIMP_P2S6_FAIL, which only a
-#   build instrumented by dev/probe_p2s6_patch.R reads: on any other build
-#   they are plain repeats of the same call.
+#   build instrumented by dev/probe_p2s6_patch.R at aea6898 reads: on any
+#   other build they are plain repeats of the same call.
 #
 # Each result is reduced to a form both versions of the kernel can give:
 # the imputed cells as an n x 3 double matrix (row, col, value), counts and
@@ -24,8 +24,8 @@
 # Run from the package root of a build, with a label naming the capture:
 #   Rscript dev/eigen_p2s6_diag.R <label>
 # It writes dev/ref/<label>/ in dev/ref_capture.R's format, so two builds'
-# captures are compared with dev/ref_compare.R. dev/probe_p2s6_run.sh runs
-# it on an instrumented clone of each build.
+# captures are compared with dev/ref_compare.R. dev/probe_p2s6_run.sh at aea6898
+# runs it on an instrumented clone of each build.
 
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 1L || !nzchar(args[[1]])) {

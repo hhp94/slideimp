@@ -7,7 +7,9 @@ of `pca_imp()`. `uv run dev/check_map_anchors.py` checks every citation, and its
 the citation forms. When this file and the code disagree, the code is right.
 
 `dev/eigen_conversion.md`, the plan that took Armadillo out of the chain, was deleted when
-its last phase landed; read it with `git show 4f2b669:dev/eigen_conversion.md`.
+its last phase landed; read it with `git show 4f2b669:dev/eigen_conversion.md`. Two probes
+this file cites were retired with that plan's other finished scripts: read them with
+`git show aea6898:dev/probe_p2s4_syevd_lwork.R` and `git show aea6898:dev/probe_p2s6_run.sh`.
 
 ## Call chain overview
 
