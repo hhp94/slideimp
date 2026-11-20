@@ -245,15 +245,15 @@ Rcpp::List t_qr_econ(const double m, const double n,
 }
 
 // [[Rcpp::export]]
-Rcpp::List t_solve_tri(const std::string &uplo, const double n,
-                       const double nrhs,
-                       const Rcpp::NumericVector &a,
-                       const Rcpp::NumericVector &b)
+Rcpp::List t_solve_tri_right(const std::string &uplo, const double m,
+                             const double n,
+                             const Rcpp::NumericVector &a,
+                             const Rcpp::NumericVector &b)
 {
   Out b_out(b, n_guard);
-  const int status = si_la::solve_tri(as_char(uplo), as_size(n),
-                                      as_size(nrhs), a.begin(),
-                                      b_out.data());
+  const int status = si_la::solve_tri_right(as_char(uplo), as_size(m),
+                                            as_size(n), a.begin(),
+                                            b_out.data());
   return Rcpp::List::create(Rcpp::Named("status") = status,
                             Rcpp::Named("b") = b_out.cells(),
                             Rcpp::Named("guard_b") = b_out.intact());

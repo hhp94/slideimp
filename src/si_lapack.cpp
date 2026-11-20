@@ -438,24 +438,33 @@ int qr_econ(const std::size_t m, const std::size_t n, const double *x,
   return info;
 }
 
-int solve_tri(const char uplo, const std::size_t n, const std::size_t nrhs,
-              const double *a, double *b) {
+int solve_tri_right(const char uplo, const std::size_t m, const std::size_t n,
+                    const double *a, double *b) {
   if (!is_ul(uplo)) {
     return err_arg;
   }
-  if (n == 0 || nrhs == 0) {
+  if (m == 0 || n == 0) {
     return ok;
   }
-  int n_i, nrhs_i;
-  if (!to_int(n, n_i) || !to_int(nrhs, nrhs_i)) {
+  int m_i, n_i;
+  if (!to_int(m, m_i) || !to_int(n, n_i)) {
     return err_size;
   }
+  // dtrsm divides by the diagonal and has no info to report a zero in:
+  // test for one first, as do_backsolve() in R's array.c does before its
+  // dtrsm.
+  for (std::size_t i = 0; i < n; ++i) {
+    if (a[i * (n + 1)] == 0.0) {
+      return static_cast<int>(i + 1);
+    }
+  }
+  const char side = 'R';
   const char trans = 'N';
   const char diag = 'N';
-  int info = 0;
-  F77_CALL(dtrtrs)(&uplo, &trans, &diag, &n_i, &nrhs_i, a, &n_i, b, &n_i,
-                   &info FCONE FCONE FCONE);
-  return info;
+  const double one = 1.0;
+  F77_CALL(dtrsm)(&side, &uplo, &trans, &diag, &m_i, &n_i, &one, a, &n_i, b,
+                  &m_i FCONE FCONE FCONE FCONE);
+  return ok;
 }
 
 #if PCA_IMP_DIAGNOSTICS

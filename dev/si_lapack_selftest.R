@@ -208,27 +208,24 @@ mutations <- list(
   ),
   list(
     name = "solve_triangle",
-    what = "solve_tri solves with the other triangle",
-    expect = "solve_tri",
+    what = "solve_tri_right solves with the other triangle",
+    expect = "solve_tri_right",
     edits = list(edit(
-      "F77_CALL(dtrtrs)(&uplo, &trans, &diag,",
-      paste0("F77_CALL(dtrtrs)(", flip, ", &trans, &diag,")
+      "F77_CALL(dtrsm)(&side, &uplo, &trans, &diag,",
+      paste0("F77_CALL(dtrsm)(&side, ", flip, ", &trans, &diag,")
     ))
   ),
   list(
     name = "solve_trans",
-    what = "solve_tri solves with the transpose",
-    expect = "solve_tri",
+    what = "solve_tri_right solves with the transpose",
+    expect = "solve_tri_right",
     edits = list(edit("const char trans = 'N';", "const char trans = 'T';"))
   ),
   list(
     name = "solve_info",
-    what = "solve_tri reports success on a zero pivot",
-    expect = "solve_tri",
-    edits = list(edit(
-      "&info FCONE FCONE FCONE);\n    return info;",
-      "&info FCONE FCONE FCONE);\n    return info > 0 ? 0 : info;"
-    ))
+    what = "solve_tri_right reports success on a zero pivot",
+    expect = "solve_tri_right",
+    edits = list(edit("return static_cast<int>(i + 1);", "return ok;"))
   ),
   list(
     name = "svd_sign",

@@ -1028,13 +1028,15 @@ run(
   }
 )
 
-# -- solve_tri -----------------------------------------------------------------
+# -- solve_tri_right -----------------------------------------------------------
 
-## A triangle well away from singular: a diagonal of either sign and
-## magnitude above n, unit-variance entries elsewhere. The triangle not named
-## holds NaN, which the wrapper must not read. A zero pivot at `zero_at`
-## makes dtrtrs return its index and leave b alone.
-solve_case <- function(uplo, n, nrhs, tag, zero_at = 0L, b_nan = FALSE) {
+## X with X * tri(A) = B, B of m rows and n columns. A triangle well away
+## from singular: a diagonal of either sign and magnitude above n,
+## unit-variance entries elsewhere. The triangle not named holds NaN, which
+## the wrapper must not read. A zero pivot at `zero_at` makes the wrapper
+## return its index and leave b alone. The reference solves the transposed
+## system, t(tri) %*% t(X) = t(B), with forwardsolve() or backsolve().
+solve_case <- function(uplo, m, n, tag, zero_at = 0L, b_nan = FALSE) {
   A <- rmat(n, n)
   diag(A) <- sample(c(-1, 1), n, replace = TRUE) * (n + abs(rnorm(n)))
   other <- other_tri(if (uplo == "U") "U" else "L", n)
@@ -1045,61 +1047,76 @@ solve_case <- function(uplo, n, nrhs, tag, zero_at = 0L, b_nan = FALSE) {
     A[zero_at, zero_at] <- 0
     tri[zero_at, zero_at] <- 0
   }
-  B <- rmat(n, nrhs)
+  B <- rmat(m, n)
   if (b_nan) {
     B[1, 1] <- NaN
   }
   expect <- if (zero_at > 0L) zero_at else "ok"
-  case <- trimws(sprintf("%s n %d, nrhs %d %s", uplo, n, nrhs, tag))
-  run("solve_tri", case, env$t_solve_tri(uplo, n, nrhs, A, B), function(out) {
-    checks <- c("the cells after b are as they were" = out$guard_b)
-    values <- list()
-    if (zero_at > 0L || n == 0 || nrhs == 0) {
-      checks <- c(checks, "b is as it was" = identical(out$b, as.vector(B)))
-    } else {
-      X <- matrix(out$b, n, nrhs)
-      ref <- if (uplo == "U") backsolve(tri, B) else forwardsolve(tri, B)
-      values$x <- compare(X, ref)
-      if (!b_nan) {
-        values$residual <- compare(tri %*% X, B)
+  case <- trimws(sprintf("%s m %d, n %d %s", uplo, m, n, tag))
+  run(
+    "solve_tri_right",
+    case,
+    env$t_solve_tri_right(uplo, m, n, A, B),
+    function(out) {
+      checks <- c("the cells after b are as they were" = out$guard_b)
+      values <- list()
+      if (zero_at > 0L || m == 0 || n == 0) {
+        checks <- c(checks, "b is as it was" = identical(out$b, as.vector(B)))
+      } else {
+        X <- matrix(out$b, m, n)
+        ref <- if (uplo == "U") {
+          t(forwardsolve(t(tri), t(B)))
+        } else {
+          t(backsolve(t(tri), t(B)))
+        }
+        values$x <- compare(X, ref)
+        if (!b_nan) {
+          values$residual <- compare(X %*% tri, B)
+        }
       }
+      record("solve_tri_right", case, out$status, expect, values, checks)
     }
-    record("solve_tri", case, out$status, expect, values, checks)
-  })
+  )
 }
 
 for (ul in c("U", "L")) {
-  solve_case(ul, 6, 1, "")
-  solve_case(ul, 6, 4, "")
+  solve_case(ul, 1, 6, "")
+  solve_case(ul, 4, 6, "")
   solve_case(ul, 1, 1, "")
-  solve_case(ul, 40, 3, "")
-  solve_case(ul, 6, 2, "zero pivot 3", zero_at = 3L)
-  solve_case(ul, 6, 2, "zero pivot 1", zero_at = 1L)
-  solve_case(ul, 6, 2, "zero pivot 6", zero_at = 6L)
-  solve_case(ul, 6, 2, "NaN in b, not refused", b_nan = TRUE)
-  solve_case(ul, 0, 2, "")
-  solve_case(ul, 4, 0, "")
+  solve_case(ul, 3, 40, "")
+  solve_case(ul, 200, 6, "")
+  solve_case(ul, 2, 6, "zero pivot 3", zero_at = 3L)
+  solve_case(ul, 2, 6, "zero pivot 1", zero_at = 1L)
+  solve_case(ul, 2, 6, "zero pivot 6", zero_at = 6L)
+  solve_case(ul, 2, 6, "NaN in b, not refused", b_nan = TRUE)
+  solve_case(ul, 2, 0, "")
+  solve_case(ul, 0, 4, "")
 }
 
-solve_refused <- function(case, expect, uplo, n, nrhs) {
+solve_refused <- function(case, expect, uplo, m, n) {
   a <- rep(1, 12)
   b0 <- rep(3, 12)
-  run("solve_tri", case, env$t_solve_tri(uplo, n, nrhs, a, b0), function(out) {
-    record(
-      "solve_tri",
-      case,
-      out$status,
-      expect,
-      checks = c(
-        "b is as it was" = identical(out$b, b0),
-        "the cells after b are as they were" = out$guard_b
+  run(
+    "solve_tri_right",
+    case,
+    env$t_solve_tri_right(uplo, m, n, a, b0),
+    function(out) {
+      record(
+        "solve_tri_right",
+        case,
+        out$status,
+        expect,
+        checks = c(
+          "b is as it was" = identical(out$b, b0),
+          "the cells after b are as they were" = out$guard_b
+        )
       )
-    )
-  })
+    }
+  )
 }
 solve_refused("uplo 'X'", "err_arg", "X", 2, 2)
-solve_refused("n past int", "err_size", "U", big, 1)
-solve_refused("nrhs past int", "err_size", "U", 1, big)
+solve_refused("m past int", "err_size", "U", big, 1)
+solve_refused("n past int", "err_size", "U", 1, big)
 
 # -- svd_values ----------------------------------------------------------------
 

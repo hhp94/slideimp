@@ -121,6 +121,20 @@ Easy to miss in the diff, noted so the draft does not:
   between dgemv and dgemm (`dev/eigen_conversion.md`, "Phase 4, as carried
   out"). Measured worst on the Phase 0 capture: 9.25e-11 absolute, 3.3e-9
   relative on the imputed values. The exact solver is not affected.
+- `pca_imp()` under `solver = "lobpcg"`, and `"auto"` where it picks
+  LOBPCG, returns values that differ from the build before, and its
+  `n_exact`, `n_lobpcg_ok` and `n_lobpcg_bad` attributes can differ:
+  `A * Q` is carried through a QR by one dtrsm from the right
+  (`si_la::solve_tri_right`), where it was dtrtrs on the transposed
+  operands (`dev/pca_imp_structure.md`, "What the wrappers do"). Measured
+  on the reference capture, the same under CRAN's RcppEigen and the
+  candidate: 5 of 70 cases move, all LOBPCG; worst on the imputed values
+  9.26e-10 absolute, 2.88e-8 relative; `criterion_final` by up to 1.07e-5
+  relative; no solver count changes. On
+  `pca_imp(sim_mat(200, 5000)$input, ncp = 5, solver = "lobpcg")` under
+  `set.seed(1)`: 1.2e-8 absolute, 4.4e-8 relative, and one outer iteration
+  that went to the exact solver no longer does (`n_exact` 11 to 10,
+  `n_lobpcg_bad` 1 to 0).
 - `pca_imp()` under either solver returns values that differ in their last
   digits from the build before: the trace of the cross-product, the sum of
   the squared singular values and the sum of the row weights are plain sums,
@@ -240,8 +254,8 @@ maintainer before it is made; nothing here licenses a hand-rolled kernel
   longer than at `ff0e394` over 11 repetitions of the step 4 timing (a
   0.483-0.491 s, b 0.490-0.501 s), and chr21 showed nothing measurable.
   Not profiled. Suspected, an assumption until profiled: the zero-fill of
-  every new `Block` in `src/lobpcg_warm.h`, the gathered sub-blocks, and
-  the transposes written out around the triangular solve. The copies in
+  every new `Block` in `src/lobpcg_warm.h` and the gathered sub-blocks.
+  The copies in
   and out of Armadillo were removed in step 5 and timed 1.003 against step
   4, so they do not account for it, to the driver's resolution of about
   half a percent. Deferred to this pass by the maintainer, 2026-11-18,

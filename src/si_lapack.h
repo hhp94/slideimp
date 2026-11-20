@@ -102,14 +102,15 @@ int syevd(char uplo, std::size_t n, double *a, double *w);
 int qr_econ(std::size_t m, std::size_t n, const double *x, double *q,
             double *r);
 
-// dtrtrs, trans 'N', diag 'N': X with tri(A) * X = B, where tri(A) is the
-// uplo triangle ('U' or 'L') of the n x n matrix a and the other triangle
-// is not read. b is n x nrhs and is overwritten with X. A positive status
-// i is dtrtrs's: diagonal element i of tri(A) is exactly zero, and b is as
-// it was given. Nothing estimates the condition of tri(A), and NaN or Inf
-// in either operand is not refused: it goes through to X.
-int solve_tri(char uplo, std::size_t n, std::size_t nrhs, const double *a,
-              double *b);
+// dtrsm, side 'R', trans 'N', diag 'N', alpha 1: X with X * tri(A) = B,
+// where tri(A) is the uplo triangle ('U' or 'L') of the n x n matrix a and
+// the other triangle is not read. b is m x n and is overwritten with X. A
+// positive status i is the wrapper's, since dtrsm reports nothing:
+// diagonal element i of tri(A), counted from 1, is exactly zero, and b is
+// as it was given. Nothing estimates the condition of tri(A), and NaN or
+// Inf in either operand is not refused: it goes through to X.
+int solve_tri_right(char uplo, std::size_t m, std::size_t n, const double *a,
+                    double *b);
 
 // dgesdd, jobz 'N': the min(m, n) singular values of the m x n matrix a,
 // descending, into s. a is destroyed. An empty matrix succeeds and writes

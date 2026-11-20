@@ -121,8 +121,9 @@ struct LOBPCGState {
 namespace lobpcg_detail {
 
 // Whether a si_la status is a numerical failure of the factorization; false
-// is success. A positive status is LAPACK's own info, and err_nonfinite is
-// the wrapper refusing a matrix that holds NaN or Inf: each call site
+// is success. A positive status is LAPACK's own info, or from
+// si_la::solve_tri_right a zero on the diagonal, and err_nonfinite is the
+// wrapper refusing a matrix that holds NaN or Inf: each call site
 // treats both as the factorization failing. The rest are not the matrix's
 // doing, and stop: err_alloc is memory, and err_arg and err_size cannot
 // come from a call here, since kernel setup refuses dimensions past int.
@@ -440,20 +441,18 @@ inline bool qr_orthonormalize_update_matvec(Block &Q, Block &AQ,
   if (r == 0) return false;
 
   if (r == old_cols) {
-    // Q_old = Q_new * R, so A*Q_new = A*Q_old * inv(R): solve R' Y = AQ'
-    // for Y = (A*Q_new)', with the two transposes written out.
+    // Q_old = Q_new * R, so A*Q_new = A*Q_old * inv(R): solve X * R = AQ
+    // for X = A*Q_new, in place.
     if (AQ.ncol != old_cols) {
       Rcpp::stop("internal error: A*Q and Q differ in columns");
     }
-    const Block Rt = transpose(R);
-    Block Y = transpose(AQ);
     // A zero on the diagonal of R is the block collapsing, as a QR that
     // drops every column is.
-    if (la_failed(si_la::solve_tri('L', Rt.nrow, Y.ncol, Rt.data(), Y.data()),
-                  "dtrtrs")) {
+    if (la_failed(
+            si_la::solve_tri_right('U', AQ.nrow, AQ.ncol, R.data(), AQ.data()),
+            "dtrsm")) {
       return false;
     }
-    AQ = transpose(Y);
   } else {
     // QR dropped columns, so the old AQ cannot be transformed dimensionally.
     AQ = mul(A, n, n, Q);

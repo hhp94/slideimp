@@ -504,7 +504,8 @@ or refreshes the state and then becomes `X_prev`.
 
 **Where a factorization can fail on the LOBPCG path.** Three calls return a
 `si_la` status, and `la_failed()` (`src/lobpcg_warm.h`: `inline bool la_failed(`)
-sorts it for all three. A positive status, which is LAPACK's `info`, and
+sorts it for all three. A positive status, which is LAPACK's `info` or,
+from `si_la::solve_tri_right`, the position of a zero on the diagonal, and
 `err_nonfinite` are numerical failures and take the path below. `err_alloc`
 stops with "could not allocate the workspace", and `err_arg` and `err_size`,
 which no call here can produce once kernel setup has refused dimensions past
@@ -513,7 +514,7 @@ which no call here can produce once kernel setup has refused dimensions past
 | site | call | a numerical failure leads to |
 | --- | --- | --- |
 | `qr_orthonormalize()` | `si_la::qr_econ` | `V` reset and a rank of 0, the same as a block whose first pivot is 0. The caller decides: at entry, `have_P` is false and the first Rayleigh-Ritz is over `X` alone; on the active residuals, `LOBPCG_RESIDUAL_COLLAPSED`; on `P_active`, `LOBPCG_P_COLLAPSED`; in `build_momentum_P()`, no `P`, so the state is left unseeded after an exact solve, or the post-RR `P` is kept after a LOBPCG success |
-| `qr_orthonormalize_update_matvec()` | `si_la::solve_tri` | false, which both callers turn into `LOBPCG_P_COLLAPSED`. The one numerical failure of plain dtrtrs is a zero on the diagonal of `R`, which the pivot test of `qr_orthonormalize()` has already ruled out for a block that kept every column, so no input is known to reach it. Nothing estimates the condition of `R`: a triangle singular to working precision is solved as it is |
+| `qr_orthonormalize_update_matvec()` | `si_la::solve_tri_right` | false, which both callers turn into `LOBPCG_P_COLLAPSED`. dtrsm reports nothing, so the one numerical failure is the wrapper's own test before it: a zero on the diagonal of `R`, which the pivot test of `qr_orthonormalize()` has already ruled out for a block that kept every column, so no input is known to reach it. Nothing estimates the condition of `R`: a triangle singular to working precision is solved as it is |
 | `small_eig_desc()` | `si_la::syevd` | false. From `rr_two_block()` or the `X`-only form before the loop, `LOBPCG_INITIAL_RR_FAILED`; inside the loop, `LOBPCG_RR_FAILED` |
 
 Every `LOBPCG_*` status but `LOBPCG_CONVERGED` leaves the state untouched and
@@ -532,7 +533,7 @@ its status means.
 | dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
 | dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
 | dgeqrf and dorgqr, through `si_la::qr_econ` | `qr_orthonormalize()` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization |
-| dtrtrs, through `si_la::solve_tri` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
+| dtrsm, through `si_la::solve_tri_right` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
 | dgemm through `si_la::gemm`, or dgemv through `si_la::gemv` for a block of one column | `product_into()` (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
 
 The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` problem. The
@@ -546,7 +547,7 @@ functions over `double*`, `std::size_t` dimensions and an int status. The header
 comment has the conventions and each function's comment what it computes; this section has
 what each does around its routine, and why. `src/pca_linalg_utils.h` calls `si_la::gemm`,
 `src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, `src/eig_sym_sel.h` calls
-`si_la::syevr_range`, `src/lobpcg_warm.h` calls `si_la::qr_econ`, `si_la::solve_tri`,
+`si_la::syevr_range`, `src/lobpcg_warm.h` calls `si_la::qr_econ`, `si_la::solve_tri_right`,
 `si_la::syevd`, `si_la::gemm` and `si_la::gemv`, and `src/armaSVD.cpp` calls `si_la::gemm`,
 and `si_la::svd_values` in the diagnostics build; Layer 6 has where each site enters BLAS and
 LAPACK and what it does with a status. `dev/si_lapack_test.R` tests every function against
@@ -563,7 +564,8 @@ from inside the library and unwinds no C++ frame. A dimension past `int` is `err
 narrowed, and so is a workspace whose documented minimum is past `int`, tested before the
 routine is asked for its optimum, since LAPACK's own arithmetic for that answer has wrapped by
 then (`src/si_lapack.cpp`: `bool fits_int(const double len)`). A failed allocation is
-`err_alloc`. A positive status is the routine's own `info`, passed on. Nothing in the file
+`err_alloc`. A positive status is the routine's own `info`, passed on, or, from
+`solve_tri_right`, whose routine has none, the wrapper's own. Nothing in the file
 calls the R API, prints or throws: each call site raises its own error.
 
 | wrapper | routine and options | refused before the routine, beyond the options | calls no routine when |
@@ -574,7 +576,7 @@ calls the R API, prints or throws: each call site raises its own error.
 | `si_la::syevr_range` | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | not `1 <= il <= iu <= n`; NaN or Inf in the `uplo` triangle (`err_nonfinite`) | never: `n = 0` has no range |
 | `si_la::syevd` | dsyevd, `jobz = 'V'` | NaN or Inf in the `uplo` triangle (`err_nonfinite`) | `n` is 0 |
 | `si_la::qr_econ` | dgeqrf, then dorgqr with `k = n` | `m < n` | `n` is 0 |
-| `si_la::solve_tri` | dtrtrs, `trans = 'N'`, `diag = 'N'` | nothing | `n` or `nrhs` is 0 |
+| `si_la::solve_tri_right` | dtrsm, `side = 'R'`, `trans = 'N'`, `diag = 'N'`, `alpha = 1` | nothing; an exact zero on the diagonal of the triangle is a positive status, not a refusal | `m` or `n` is 0; the diagonal holds an exact zero |
 | `si_la::svd_values` | dgesdd, `jobz = 'N'`; compiled only when `PCA_IMP_DIAGNOSTICS` is set | NaN or Inf anywhere in `a` (`err_nonfinite`) | `min(m, n)` is 0 |
 
 Where a wrapper scales instead of calling, it scales as BLAS defines the result: `beta = 0`
@@ -609,7 +611,7 @@ and another number of eigenpairs than asked, and dsyevd can return `info = 0` wi
 eigenvalues. So `syevr_range` and `syevd` test the triangle LAPACK reads, and only that one,
 before the routine is entered (`src/si_lapack.cpp`:
 `bool tri_finite(const char uplo, const std::size_t n, const double *a)`), and `svd_values`
-tests all of `a`. `qr_econ` and `solve_tri` test nothing, and NaN or Inf goes through to their
+tests all of `a`. `qr_econ` and `solve_tri_right` test nothing, and NaN or Inf goes through to their
 output. In the chain, `pca_imp()` refuses NaN and Inf in its input (`R/pca_imp.R`:
 `check_finite(obj)`), and the Gram is tested where it is formed (Layer 5), so finite input
 whose squares overflow, unscaled values near 1e160 or near 1e200 with `scale = TRUE`
@@ -656,13 +658,18 @@ made positive. `m < n` is `err_arg`, a shape the one call site stops on before t
 (`src/lobpcg_warm.h`: `if (la_failed(si_la::qr_econ(v_rows, v_cols, V.data(), Q.data(),`)
 and what a failure there leads to are in Layer 6.
 
-**`solve_tri`.** dtrtrs alone, which is how R's own `qr.coef()` solves a triangle (READ:
-`qr_coef_real` in R's `Lapack.c`, dtrtrs with `info != 0` an error). A positive status `i` is
-dtrtrs's: diagonal element `i` of the triangle is exactly zero, and `b` is as it was given.
-Nothing estimates the condition of the triangle, so one singular to working precision is
-solved as it is, and NaN or Inf in either operand goes through to the answer. The one call
-site solves `R' Y = (A Q)'` with the two transposes written out (`src/lobpcg_warm.h`:
-`if (la_failed(si_la::solve_tri('L', Rt.nrow, Y.ncol, Rt.data(),`).
+**`solve_tri_right`.** One dtrsm with `side = 'R'`: `X * tri(A) = B`, solved on `B` in
+place. It is the form the one call site has, `A * Q` being `n x k` and `R` `k x k`; a solve
+from the left, which is all dtrtrs offers, would take the transpose of both operands and of
+the answer. It is how R's own `backsolve()` solves a triangle (READ: `do_backsolve` in R's
+`array.c`, which tests the diagonal for an exact zero, an error there, and then calls dtrsm,
+with `side = 'L'`). dtrsm has no `info` and divides by the diagonal, so the wrapper makes
+that test before the routine (`src/si_lapack.cpp`: `if (a[i * (n + 1)] == 0.0) {`): a
+positive status `i` is the wrapper's own, diagonal element `i` of the triangle, counted from
+1, is exactly zero, and `b` is as it was given. Nothing estimates the condition of the
+triangle, so one singular to working precision is solved as it is, and NaN or Inf in either
+operand goes through to the answer. The one call site solves `X R = A Q` on `A Q` in place
+(`src/lobpcg_warm.h`: `si_la::solve_tri_right('U', AQ.nrow, AQ.ncol, R.data(), AQ.data()),`).
 
 **`svd_values`.** The diagnostics build only: it is compiled when `PCA_IMP_DIAGNOSTICS` is
 set, so the package as shipped does not reference dgesdd. Its one caller forms `V_prev' V_new`
