@@ -4,44 +4,12 @@
 
 #include <cmath>
 #include <cstddef>
-#include <limits>
 #include <string>
 
 // Column and row statistics over a numeric matrix, read in place. Each export
 // takes the matrix as `obj` and returns the R type its value naturally has:
 // counts as an integer vector, statistics as a double vector. Indices and
 // offsets follow src/matrix_checks.h.
-
-// Row 1 the column minima, row 2 the maxima. Comparisons skip NaN.
-// [[Rcpp::export]]
-Rcpp::NumericMatrix col_min_max(const Rcpp::NumericMatrix &obj) {
-  const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
-  const std::size_t n_cols = static_cast<std::size_t>(obj.ncol());
-
-  if (n_rows == 0) {
-    Rcpp::stop("'obj' has no rows, so its columns have no minimum or maximum");
-  }
-
-  const double *x = obj.begin();
-  Rcpp::NumericMatrix out(2, obj.ncol());
-  double *o = out.begin();
-
-  for (std::size_t j = 0; j < n_cols; ++j) {
-    const double *col = col_ptr(x, j, n_rows);
-    double lo = std::numeric_limits<double>::infinity();
-    double hi = -std::numeric_limits<double>::infinity();
-
-    for (std::size_t i = 0; i < n_rows; ++i) {
-      const double v = col[i];
-      if (v < lo) lo = v;
-      if (v > hi) hi = v;
-    }
-
-    o[2 * j] = lo;
-    o[2 * j + 1] = hi;
-  }
-  return out;
-}
 
 // Sample variance of each column, by Welford's update.
 // [[Rcpp::export]]

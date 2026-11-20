@@ -134,7 +134,11 @@ Easy to miss in the diff, noted so the draft does not:
   `pca_imp(sim_mat(200, 5000)$input, ncp = 5, solver = "lobpcg")` under
   `set.seed(1)`: 1.2e-8 absolute, 4.4e-8 relative, and one outer iteration
   that went to the exact solver no longer does (`n_exact` 11 to 10,
-  `n_lobpcg_bad` 1 to 0).
+  `n_lobpcg_bad` 1 to 0). On the 68 edge cases of
+  `dev/eigen_p2s4_edges.R`, which ask LOBPCG for up to 41 eigenpairs: 51
+  not bitwise, worst on the imputed values 4.12e-8 absolute, 1.27e-6
+  relative; `criterion_final` by up to 1.25e-4 relative; the solver counts
+  differ in 7 cases.
 - `pca_imp()` under either solver returns values that differ in their last
   digits from the build before: the trace of the cross-product, the sum of
   the squared singular values and the sum of the row weights are plain sums,
@@ -228,12 +232,6 @@ candidate. Each finding is a proposal with a measurement, put to the
 maintainer before it is made; nothing here licenses a hand-rolled kernel
 (`dev/CPP.md`) or a call that R's headers do not declare.
 
-- **Investigate dropping `col_min_max()`.** Its one caller is `sim_mat()`,
-  rescaling `rnorm()` output to [0, 1] when `beta = TRUE`. Measure whether
-  R's own column minima and maxima (`matrixStats` is not a dependency, so
-  base R or collapse) cost anything that matters at `sim_mat()`'s sizes,
-  and whether the output stays the same under a fixed seed; drop the
-  kernel if neither stands in the way.
 - **Comment trim pass over `src/`.** Comments that narrate history, repeat
   the code, or explain the Armadillo version a file no longer uses go;
   what stays says why the code is as it is, true for the code as written.

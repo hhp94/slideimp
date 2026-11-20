@@ -87,9 +87,8 @@ sim_mat <- function(
 
   # re scale
   if (beta) {
-    mm <- col_min_max(d)
-    mins <- mm[1, ]
-    ranges <- mm[2, ] - mins
+    mins <- collapse::fmin(d)
+    ranges <- collapse::fmax(d) - mins
     ranges[ranges == 0] <- 1
     d <- sweep(d, 2, mins, "-")
     d <- sweep(d, 2, ranges, "/")

@@ -1,6 +1,3 @@
-# Regression: a fully missing column ran silently with every draw of that
-# column NaN.
-
 test_that("a fully missing column is refused, not silently returned as NaN", {
   set.seed(42)
   n <- 30L
@@ -19,9 +16,7 @@ test_that("a fully missing column is refused, not silently returned as NaN", {
     )
   }
 
-  # Non-vacuity: the fixture must fit with finite draws before the refusal.
   fit <- run(X)
-  ## [[1L]]: on the per-chain list these two checks would pass vacuously.
   d <- fit$draws[[1L]]
   expect_gt(length(d), 0L)
   expect_false(anyNA(d))

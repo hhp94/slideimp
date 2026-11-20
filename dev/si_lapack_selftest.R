@@ -62,7 +62,7 @@ mutations <- list(
         "&abstol, &m_out, w, z, &n_i,",
         2L
       ),
-      edit("    std::copy(w_all.begin(), w_all.begin() + count, w);\n", "")
+      edit("  std::copy(w_all.begin(), w_all.begin() + count, w);\n", "")
     )
   ),
   list(
@@ -80,8 +80,8 @@ mutations <- list(
     what = "syevr_range does not refuse NaN or Inf",
     expect = "syevr_range",
     edits = list(edit(
-      "with NaN in the result.\n    if (!tri_finite(uplo, n, a))",
-      "with NaN in the result.\n    if (false)"
+      "with NaN in the result.\n  if (!tri_finite(uplo, n, a))",
+      "with NaN in the result.\n  if (false)"
     ))
   ),
   list(
@@ -117,8 +117,8 @@ mutations <- list(
     what = "syevd does not refuse NaN or Inf",
     expect = "syevd",
     edits = list(edit(
-      "// the result.\n    if (!tri_finite(uplo, n, a))",
-      "// the result.\n    if (false)"
+      "// the result.\n  if (!tri_finite(uplo, n, a))",
+      "// the result.\n  if (false)"
     ))
   ),
   list(
@@ -135,8 +135,8 @@ mutations <- list(
     what = "gemm passes alpha where beta belongs",
     expect = "gemm",
     edits = list(edit(
-      "b, &ldb_i, &beta, c, &ldc_i FCONE FCONE);",
-      "b, &ldb_i, &alpha, c, &ldc_i FCONE FCONE);"
+      "&ldb_i, &beta, c, &ldc_i FCONE FCONE);",
+      "&ldb_i, &alpha, c, &ldc_i FCONE FCONE);"
     ))
   ),
   list(
@@ -164,7 +164,7 @@ mutations <- list(
     name = "gemv_beta",
     what = "gemv passes alpha where beta belongs",
     expect = "gemv",
-    edits = list(edit("&beta, y, &inc FCONE);", "&alpha, y, &inc FCONE);"))
+    edits = list(edit("x, &inc, &beta, y,", "x, &inc, &alpha, y,"))
   ),
   list(
     name = "gemv_x_empty",
@@ -232,8 +232,8 @@ mutations <- list(
     what = "svd_values flips the sign of the largest singular value",
     expect = "svd_values",
     edits = list(edit(
-      "iwork.data(), &info FCONE);\n    return info;",
-      "iwork.data(), &info FCONE);\n    s[0] = -s[0];\n    return info;"
+      "iwork.data(), &info FCONE);\n  return info;",
+      "iwork.data(), &info FCONE);\n  s[0] = -s[0];\n  return info;"
     ))
   ),
   list(
@@ -241,8 +241,8 @@ mutations <- list(
     what = "svd_values returns err_arg where it refuses NaN or Inf",
     expect = "svd_values",
     edits = list(edit(
-      "if (!all_finite(a, m * n))\n    {\n      return err_nonfinite;",
-      "if (!all_finite(a, m * n))\n    {\n      return err_arg;"
+      "if (!all_finite(a, m * n)) {\n    return err_nonfinite;",
+      "if (!all_finite(a, m * n)) {\n    return err_arg;"
     ))
   ),
   list(

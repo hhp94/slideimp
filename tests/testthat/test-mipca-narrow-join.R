@@ -1,7 +1,3 @@
-# Narrowed-then-joined fits, the flank driver's shape. The join is narrow,
-# then concatenate; a name is joined once. Five regressions and one smoke
-# test, each named at its test_that().
-
 .nj <- local({
   set.seed(20261001L)
   n <- 30L
@@ -12,7 +8,6 @@
     sprintf("c%02d", seq_len(p))
   )
   X <- Xc
-  # Column 12 stays clean; targets 5 and 6 get their holes by hand.
   other <- setdiff(seq_len(p), c(5L, 6L, 12L))
   X[cbind(sample.int(n, 80L, TRUE), sample(other, 80L, TRUE))] <- NA_real_
   X[c(3L, 11L, 19L, 27L), 5L] <- NA_real_
@@ -33,8 +28,6 @@
 })
 
 test_that("a narrowed chunk does not keep the fit it was finalized from alive", {
-  # Regression: a lazily read `subset` in .tf_narrow() kept the original fit
-  # alive in every chunk. Asked by finalizer, not size (size moves with JIT).
   f <- mipca(
     .nj$X,
     rank = 2L,
@@ -50,7 +43,6 @@ test_that("a narrowed chunk does not keep the fit it was finalized from alive", 
   reg.finalizer(f, function(e) gone <<- TRUE)
   g <- mipca_finalize(f)
   rm(f)
-  # Before any as.matrix(): the first realization forces the leaking promise.
   gc()
   expect_true(gone)
   expect_false(anyNA(as.matrix(g, 1L)))
@@ -60,7 +52,6 @@ test_that("cbind() refuses a column that is already in the join", {
   a <- .nj$fit(.nj$X, "c05")
   b <- .nj$fit(.nj$X, "c06")
   expect_error(cbind(a, a), "repeat 1 column name [c05]", fixed = TRUE)
-  # Regression: a repeated name, also when not side by side.
   expect_error(cbind(a, b, a), "repeat 1 column name [c05]", fixed = TRUE)
 })
 
@@ -71,7 +62,6 @@ test_that("summary() numbers a joined fit's columns as as.matrix() does", {
     .nj$fit(.nj$X, "c06")
   )
   cells <- summary(j)$cells
-  # Regression: chunk-local numbering gave 1 and 1.
   expect_identical(sort(unique(cells$col)), c(1L, 3L))
   expect_identical(colnames(as.matrix(j, 1L))[cells$col], cells$name)
 })
@@ -79,16 +69,13 @@ test_that("summary() numbers a joined fit's columns as as.matrix() does", {
 test_that("a request with nothing to impute returns a fit, and it joins", {
   X <- .nj$X
 
-  # A matrix with no hole at all.
   whole <- .nj$fit(.nj$Xc[, 1:10], NULL)
   expect_identical(as.matrix(whole, 1L), .nj$Xc[, 1:10])
 
-  # A clean column asked of a matrix that has holes elsewhere.
   clean <- .nj$fit(X, "c12")
   expect_identical(nrow(clean$chunks[[1L]]$map), 0L)
   expect_identical(as.matrix(clean, 1L), X[, "c12", drop = FALSE])
 
-  # Smoke: joins between sampled pieces, which realize as they did alone.
   a <- .nj$fit(X, "c05")
   b <- .nj$fit(X, "c06")
   r <- as.matrix(cbind(a, clean, b), 3L)
@@ -102,9 +89,6 @@ test_that("a request with nothing to impute returns a fit, and it joins", {
 })
 
 test_that("a one-draw part built with a double nkeep joins a sampler fit", {
-  # Regression: .si_mi_new() stored `nkeep` as given and the join compares
-  # it with identical(), so a builder outside the sampler passing 1 (double)
-  # was refused against every sampler fit as "kept draws (1 and 1)".
   X <- .nj$X
   obj <- X[, "c05", drop = FALSE]
   map <- which(is.na(obj), arr.ind = TRUE)
@@ -120,7 +104,7 @@ test_that("a one-draw part built with a double nkeep joins a sampler fit", {
       draws = list(matrix(NA_real_, 0L, 1L)),
       p = 1L,
       nms = "c05",
-      prop_diag = .prop_diag_default()
+      prop_diag = 0.5
     ),
     prov = list(seam_state = "never", thin_effective = 1),
     call = NULL

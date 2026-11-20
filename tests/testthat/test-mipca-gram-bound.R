@@ -1,6 +1,3 @@
-# Contract: the rank edge, both sides, at the public door. The Gram-route
-# bound is Spectra's own: rank + 2 <= min(n, p).
-
 test_that("rank min(n, p) - 2 fits and min(n, p) - 1 refuses", {
   set.seed(20261002L)
   n <- 10L
@@ -14,7 +11,6 @@ test_that("rank min(n, p) - 2 fits and min(n, p) - 1 refuses", {
   X[holes] <- NA_real_
   top <- min(n, p) - 2L
 
-  # Non-vacuity: the edge must be one a 2 * (rank + 1) bound would refuse.
   expect_gt(2L * (top + 1L), min(n, p))
 
   fit <- mipca(
@@ -32,7 +28,7 @@ test_that("rank min(n, p) - 2 fits and min(n, p) - 1 refuses", {
 
   expect_error(
     mipca(X, rank = top + 1L, transform = "identity", seed = 1L),
-    "`rank` must be at most the smaller dimension minus two (8 here)",
+    "'rank' must be at most the smaller dimension minus two (8 here",
     fixed = TRUE
   )
 })

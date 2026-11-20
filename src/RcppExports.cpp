@@ -83,17 +83,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// col_min_max
-Rcpp::NumericMatrix col_min_max(const Rcpp::NumericMatrix& obj);
-RcppExport SEXP _slideimp_col_min_max(SEXP objSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< const Rcpp::NumericMatrix& >::type obj(objSEXP);
-    rcpp_result_gen = Rcpp::wrap(col_min_max(obj));
-    return rcpp_result_gen;
-END_RCPP
-}
 // col_vars_internal
 Rcpp::NumericVector col_vars_internal(const Rcpp::NumericMatrix& obj);
 RcppExport SEXP _slideimp_col_vars_internal(SEXP objSEXP) {
@@ -267,7 +256,6 @@ static const R_CallMethodDef CallEntries[] = {
     {"_slideimp_find_windows", (DL_FUNC) &_slideimp_find_windows, 3},
     {"_slideimp_find_windows_flank", (DL_FUNC) &_slideimp_find_windows_flank, 3},
     {"_slideimp_impute_knn_brute", (DL_FUNC) &_slideimp_impute_knn_brute, 9},
-    {"_slideimp_col_min_max", (DL_FUNC) &_slideimp_col_min_max, 1},
     {"_slideimp_col_vars_internal", (DL_FUNC) &_slideimp_col_vars_internal, 1},
     {"_slideimp_check_inf", (DL_FUNC) &_slideimp_check_inf, 1},
     {"_slideimp_check_finite", (DL_FUNC) &_slideimp_check_finite, 1},

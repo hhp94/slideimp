@@ -1,7 +1,3 @@
-# Regression: a one-cell diagnostic sample was refused as an internal error,
-# because a one-row map read comes back NAMED and .diag_sample()'s identical()
-# guard failed on the name. Common for a flank target with one or two holes.
-
 test_that("a fit whose diagnostic sample is one cell finalizes", {
   set.seed(20261001L)
   n <- 30L
@@ -23,7 +19,6 @@ test_that("a fit whose diagnostic sample is one cell finalizes", {
     seed = 1L
   )
 
-  # Non-vacuity: the fit must really be the one-cell shape.
   expect_identical(nrow(fit$chunks[[1L]]$map), 1L)
   cells <- summary(fit)$cells
   expect_identical(nrow(cells), 1L)

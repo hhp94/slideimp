@@ -17,10 +17,6 @@ impute_knn_brute <- function(obj, k, grp_impute, grp_miss_no_imp, grp_complete, 
     .Call(`_slideimp_impute_knn_brute`, obj, k, grp_impute, grp_miss_no_imp, grp_complete, method, dist_pow, cores, pb)
 }
 
-col_min_max <- function(obj) {
-    .Call(`_slideimp_col_min_max`, obj)
-}
-
 col_vars_internal <- function(obj) {
     .Call(`_slideimp_col_vars_internal`, obj)
 }

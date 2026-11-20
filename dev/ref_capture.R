@@ -415,7 +415,6 @@ case(
 
 ## Armadillo-facing internals called directly (dev/eigen_conversion.md at
 ## 4f2b669)
-case("int_col_min_max", col_min_max(x2))
 case("int_col_vars", col_vars_internal(x2))
 case("int_check_inf", check_inf(x2))
 case("int_check_inf_error", check_inf(x2i))

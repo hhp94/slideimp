@@ -1,25 +1,18 @@
-# Regression: after .rebase_subset() the un-narrowed tf_biwhiten backward read
-# the wrong column's scale at every exit, silently. Exact, not a tolerance:
-# `cols` narrows storage only, so the latent draws are bitwise the same.
-
 test_that("mipca_finalize() narrows the transform to match the re-based columns", {
   n <- 20L
   p <- 30L
   set.seed(9)
   Y <- matrix(stats::runif(n * p), n, p)
-  # Wildly different column scales, so a wrong s[col] is unmistakable.
   Y <- sweep(Y, 2L, seq(0.01, 0.99, length.out = p), "*")
   Y[sample(seq_along(Y), 90L)] <- NA
   dimnames(Y) <- list(paste0("r", seq_len(n)), paste0("c", seq_len(p)))
 
   cnt <- colSums(is.na(Y))
   sel <- which(cnt > 0)
-  sel <- sel[sel >= 20L][1:5] # high indices, so re-basing moves them
+  sel <- sel[sel >= 20L][1:5]
 
   hole <- which(is.na(Y[, sel, drop = FALSE]))
 
-  # NON-VACUITY: holes exist, re-basing moves the columns, and the scales at
-  # the two indices differ, or the bug would give the right answer.
   s <- tf_biwhiten(tf_identity())$fit(Y, 2L)$scale
   expect_gt(length(hole), 0L)
   expect_false(identical(as.integer(sel), seq_along(sel)))
@@ -39,7 +32,6 @@ test_that("mipca_finalize() narrows the transform to match the re-based columns"
     )
   }
 
-  # Stateless maps ignore `col`: controls that read zero with or without the bug.
   transforms <- list(
     identity = tf_identity(),
     `whiten(cols only)` = tf_biwhiten(tf_identity(), rows = FALSE),
@@ -53,7 +45,6 @@ test_that("mipca_finalize() narrows the transform to match the re-based columns"
     abs_err <- max(abs(narrowed - full))
     rel_err <- max(abs(narrowed - full) / abs(full))
     expect_equal(abs_err, 0, info = paste(nm, "worst absolute error"))
-    # Over every compared cell; min |expected| is ~1e-2.
     expect_equal(rel_err, 0, info = paste(nm, "worst relative error"))
   }
 })
