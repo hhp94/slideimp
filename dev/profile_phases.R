@@ -145,7 +145,7 @@ profile_knn <- function(label, x) {
     run()
     wall <- wall + as.numeric(difftime(Sys.time(), w0, units = "secs"))
     raw <- get("knn_tm_raw", envir = globalenv())
-    stopifnot(nrow(raw) >= 1L, all(raw$tag == "impute_total"))
+    stopifnot(nrow(raw) >= 1L, all(raw$tag == "parallel_loop"))
     loop <- loop + sum(raw$duration_ns) / 1e9
   }
   cat(sprintf(

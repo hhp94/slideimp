@@ -6,7 +6,7 @@
 #include <Rcpp.h>
 #include <RcppThread.h> // RcppThread::ProgressBar, checkUserInterrupt
 #include "loc_timer.h"
-#include "matrix_checks.h" // col_ptr, stop_on_bad_col_index, stop_on_inf
+#include "matrix_checks.h" // col_ptr, stop_on_bad_col_index
 #include "par_for.h"       // parallelFor with a serial path at one thread
 
 #include <algorithm> // std::max, std::min, std::stable_sort
@@ -46,8 +46,7 @@ struct GroupLayout {
   int n_complete;
   int mni_start() const { return n_imp; }
   int n_masked() const { return n_imp + n_mni; }
-  int complete_start() const { return n_imp + n_mni; }
-  int n_working() const { return n_imp + n_mni + n_complete; }
+  int complete_start() const { return n_masked(); }
 };
 
 // What the workers read: plain pointers and counts, never an Rcpp object.
@@ -167,6 +166,9 @@ constexpr int GRAIN = 16;
 
 constexpr double DIST_INF = std::numeric_limits<double>::infinity();
 
+// a worker asks for a user interrupt once in this many target columns
+constexpr std::size_t INTERRUPT_EVERY = 5;
+
 // -----------------------------------------------------------------------------
 // calc_distance_raw - Groups 1 & 2 (both target and other may have missing)
 // -----------------------------------------------------------------------------
@@ -176,8 +178,8 @@ constexpr double DIST_INF = std::numeric_limits<double>::infinity();
 //   => if partial_dist > worst * (partial_n_valid + remaining), prune.
 // The check sits under `if constexpr (Bound)`, so the fill-phase callers, which
 // instantiate Bound = false, do not run a vacuous comparison - the branch is
-// not compiled into them at all. The `worst_dist = +inf` default only covers a
-// Bound = true caller that has no worst distance yet.
+// not compiled into them at all. Those callers leave worst_dist out: it is
+// never read under Bound = false.
 // -----------------------------------------------------------------------------
 template <typename Metric, bool Bound>
 inline double
@@ -271,12 +273,6 @@ struct NeighborInfo {
   NeighborInfo(double d, int i) : distance(d), index(i) {}
 };
 
-// fill phase: we just need any k neighbors - no ordering yet.
-inline void insert_before_k(std::vector<NeighborInfo> &top_k, double dist,
-                            int idx) {
-  top_k.emplace_back(dist, idx);
-}
-
 // replacement phase: replace worst if new is better, then bubble into place.
 inline void insert_if_better_than_worst(std::vector<NeighborInfo> &top_k,
                                         double dist, int idx) {
@@ -362,15 +358,15 @@ std::vector<NeighborInfo> distance_vector_impl(const KnnData &d,
   int p2 = index + 1;
   int c = 0;
 
-  // fill to k nearest neighbors
+  // fill: any k candidates, in scan order - no ordering yet
   for (; c < layout.n_complete && top_k.size() < k_size; ++c) {
-    insert_before_k(top_k, complete_dist_unbounded(c), complete_start + c);
+    top_k.emplace_back(complete_dist_unbounded(c), complete_start + c);
   }
   for (; p1 < index && top_k.size() < k_size; ++p1) {
-    insert_before_k(top_k, masked_dist_unbounded(p1), p1);
+    top_k.emplace_back(masked_dist_unbounded(p1), p1);
   }
   for (; p2 < n_masked && top_k.size() < k_size; ++p2) {
-    insert_before_k(top_k, masked_dist_unbounded(p2), p2);
+    top_k.emplace_back(masked_dist_unbounded(p2), p2);
   }
 
   // stable_sort, not sort: the fill is in scan order and the replacement
@@ -434,30 +430,29 @@ std::vector<double> knn_weights(const std::vector<NeighborInfo> &top_k,
     const double d = top_k[j].distance;
     if (d <= 0.0) {
       has_zero = true;
-    } else if (std::isfinite(d)) {
+    } else {
       min_pos = std::min(min_pos, d);
     }
   }
 
-  // distance_vector() has already dropped infinite distances, so this means
-  // every neighbor is an exact duplicate (all distances zero): equal weights.
-  if (!std::isfinite(min_pos)) {
+  // distance_vector() has already dropped infinite distances, so min_pos is
+  // still +inf only when every neighbor is an exact duplicate (all distances
+  // zero): equal weights.
+  if (min_pos == DIST_INF) {
     return w;
   }
 
-  if (has_zero) {
-    // exact-duplicate neighbors (d == 0) dominate with weight 1;
-    // positive-distance neighbors get tiny but nonzero weights.
-    const double floor =
-        min_pos * std::sqrt(std::numeric_limits<double>::epsilon());
-    for (std::size_t j = 0; j < n; ++j) {
-      const double d = std::max(top_k[j].distance, floor);
-      w[j] = std::pow(floor / d, dist_pow);
-    }
-  } else {
-    for (std::size_t j = 0; j < n; ++j) {
-      w[j] = std::pow(min_pos / top_k[j].distance, dist_pow);
-    }
+  // The weight is (ref / d) ^ dist_pow, with d raised to ref where it is
+  // below it. With no zero distance ref is min_pos, which no distance is
+  // below, so the nearest neighbor gets weight 1. With one, ref is a floor
+  // far under min_pos: the exact duplicates (d == 0) are raised to it and
+  // dominate with weight 1, and the positive distances get tiny but nonzero
+  // weights.
+  const double ref =
+      has_zero ? min_pos * std::sqrt(std::numeric_limits<double>::epsilon())
+               : min_pos;
+  for (std::size_t j = 0; j < n; ++j) {
+    w[j] = std::pow(ref / std::max(top_k[j].distance, ref), dist_pow);
   }
 
   return w;
@@ -641,9 +636,10 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
                             const Rcpp::IntegerVector &grp_complete,
                             const int method, const double dist_pow,
                             int cores = 1, const bool pb = false) {
+  // No scan for infinite values here: check_finite() in knn_imp() refuses
+  // them before the call.
   validate_knn_inputs(obj, k, grp_impute, grp_miss_no_imp, grp_complete, method,
                       dist_pow);
-  stop_on_inf(obj);
   const GroupLayout layout{static_cast<int>(grp_impute.size()),
                            static_cast<int>(grp_miss_no_imp.size()),
                            static_cast<int>(grp_complete.size())};
@@ -719,16 +715,15 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
     bar = std::make_unique<RcppThread::ProgressBar>(layout.n_imp, 2);
   }
   LOC_TIMER_OBJ(knn_tm);
-  LOC_TIC(knn_tm, "impute_total");
+  LOC_TIC(knn_tm, "parallel_loop");
 
   par_for(
       0, static_cast<std::size_t>(layout.n_imp),
       [&data, k, method, dist_pow, value_ptr, loc_row_ptr, &col_offsets, pb,
        &bar](std::size_t i) {
-        if (i % 5 == 0) {
+        if (i % INTERRUPT_EVERY == 0) {
           RcppThread::checkUserInterrupt();
         }
-        // LOC_TIMER_SCOPED(knn_tm, "neighbor_search");
         const std::vector<NeighborInfo> top_k =
             distance_vector(data, static_cast<int>(i), k, method);
         // With no neighbor (no candidate shares an observed row with this
@@ -747,7 +742,7 @@ Rcpp::List impute_knn_brute(const Rcpp::NumericMatrix &obj, const int k,
       },
       n_threads, n_batches);
 
-  LOC_TOC(knn_tm, "impute_total");
+  LOC_TOC(knn_tm, "parallel_loop");
   LOC_TIMER_DUMP_RAW(knn_tm, "knn_tm_raw");
   return Rcpp::List::create(Rcpp::Named("loc") = res.loc,
                             Rcpp::Named("value") = res.value);

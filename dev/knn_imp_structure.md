@@ -34,7 +34,6 @@ R/knn_imp.R                         knn_imp()  -- user entry, validation, partit
   |    +- src/RcppExports.cpp       _slideimp_impute_knn_brute (SEXP wrapper)
   |         +- src/knn_kernel.cpp        impute_knn_brute()   <-- C++ entry
   |              +- src/knn_kernel.cpp        validate_knn_inputs()
-  |              +- src/matrix_checks.h       stop_on_inf()
   |              +- src/knn_kernel.cpp        copy_with_mask lambda
   |              +- src/knn_kernel.cpp        initialize_result()
   |              +- src/par_for.h             par_for()
@@ -42,7 +41,6 @@ R/knn_imp.R                         knn_imp()  -- user entry, validation, partit
   |                   |    +- src/knn_kernel.cpp        distance_vector_impl<Metric>()
   |                   |         +- src/knn_kernel.cpp        calc_distance_raw<Metric, Bound>()
   |                   |         +- src/knn_kernel.cpp        calc_distance_raw_complete<Metric, Bound>()
-  |                   |         +- src/knn_kernel.cpp        insert_before_k()
   |                   |         +- src/knn_kernel.cpp        insert_if_better_than_worst()
   |                   +- src/knn_kernel.cpp        knn_weights()
   |                   +- src/knn_kernel.cpp        impute_column_values()
@@ -188,8 +186,8 @@ Project headers reached, following the `#include` graph:
 - `src/matrix_checks.h` -- pulled in by `src/knn_kernel.cpp` and
   `src/mat_stats.cpp` and `src/sample_each_rep_cpp.cpp`. Holds `col_ptr()`,
   the column-index refusal `validate_knn_inputs()` and the sampler share,
-  a non-negative-count refusal, and `stop_on_inf()`, which the K-NN kernel
-  and `check_inf()` share.
+  a non-negative-count refusal, and `stop_on_inf()`, which only
+  `check_inf()` calls.
 - `src/par_for.h` -- included by `src/knn_kernel.cpp` only. One
   function template: `par_for()` runs the loop body
   inline when `n_threads <= 1` and hands off to `RcppThread::parallelFor()`
@@ -241,8 +239,9 @@ indexes correctly, and so are the result offsets (`src/knn_kernel.cpp`:
    and produce a missing value with no error, and a column claimed by two groups
    would be its own neighbor at distance zero. A test exercises both, and the
    index and `k` refusals (`tests/testthat/test-knn_imp.R`:
-   `the kernel checks the invariants`). Then `stop_on_inf()` rescans `obj` for
-   infinities (`src/knn_kernel.cpp`: `stop_on_inf(obj);`).
+   `the kernel checks the invariants`). The kernel does not look for
+   infinities: `check_finite()` in `knn_imp()` refuses them before the call
+   (`src/knn_kernel.cpp`: `No scan for infinite values here`).
 2. `GroupLayout layout{...}` in `src/knn_kernel.cpp` is the single
    source of truth for group boundaries: groups 1 and 2 occupy local columns
    `[0, n_masked())` of the working buffers, and `complete_start()`
@@ -319,8 +318,8 @@ prune (`src/knn_kernel.cpp`: `if (dist > worst_dist * (n_valid`,
 `if (dist > unnorm_bound)`), with derivations in the comments
 (`src/knn_kernel.cpp`: `Bound math (conservative but correct)`,
 `Bound math (exact)`). The check sits under `if constexpr (Bound)`, so it is not
-compiled into the `Bound = false` instantiations at all; the `worst_dist = +inf`
-default only covers a `Bound = true` caller with no worst distance yet. The
+compiled into the `Bound = false` instantiations at all; their callers leave
+`worst_dist` out, since it is never read there. The
 pruned and unpruned paths are compared against each other implicitly by a test
 (`tests/testthat/test-knn_imp.R`: `the documented weighting rule reproduces`),
 where the pure-R reference computes every distance unpruned and the kernel
@@ -338,7 +337,7 @@ callers of the kernel; one is a test (`tests/testthat/test-knn_imp.R`:
 `all_na$obj[, 1] <- NA`).
 
 - *Fill* (`src/knn_kernel.cpp`: `c < layout.n_complete && top_k.size() < k`):
-  append the first `k` candidates with no pruning via `insert_before_k`, in the
+  append the first `k` candidates with no pruning, in the
   order group 3, masked columns below the target, masked columns above it. `p2`
   starts at `index + 1` and the `p1` loop stops at `index`, so the target column
   is never its own neighbor. Then one `std::stable_sort` on those `k` entries;
@@ -402,16 +401,17 @@ back out of the imputed value and fails against the `std::sort` build at
 **Weights.** `knn_weights()` (`src/knn_kernel.cpp`:
 `std::vector<double> knn_weights(`) returns a vector of ones when `dist_pow == 0`
 -- the plain unweighted mean of neighbors. Otherwise it finds the smallest
-strictly positive finite distance `min_pos` and notes whether any distance is
+strictly positive distance `min_pos` and notes whether any distance is
 zero. Infinite distances never reach this function (Layer 5 drops them), so
-`min_pos` is non-finite only when every neighbor is an exact duplicate, and
-weights then stay equal (`src/knn_kernel.cpp`:
-`if (!std::isfinite(min_pos))`). Two live branches: when some distance is
-exactly zero (`src/knn_kernel.cpp`: `if (has_zero)`),
-`floor = min_pos * sqrt(DBL_EPSILON)` and
-`w_j = (floor / max(d_j, floor)) ^ dist_pow`, so duplicate columns get
-weight 1 and everything else a tiny positive weight; otherwise
-(`src/knn_kernel.cpp`: `std::pow(min_pos / top_k[j].distance`)
+`min_pos` keeps its starting `+inf` only when every neighbor is an exact
+duplicate, and weights then stay equal (`src/knn_kernel.cpp`:
+`if (min_pos == DIST_INF)`). The rest is one loop with two cases
+(`src/knn_kernel.cpp`: `has_zero ? min_pos * std::sqrt(`,
+`std::pow(ref / std::max(top_k[j].distance, ref), dist_pow)`): when some
+distance is exactly zero, `ref = min_pos * sqrt(DBL_EPSILON)` and
+`w_j = (ref / max(d_j, ref)) ^ dist_pow`, so duplicate columns get
+weight 1 and everything else a tiny positive weight; otherwise `ref = min_pos`,
+which no distance is below, and
 `w_j = (min_pos / d_j) ^ dist_pow`. Either way the largest weight is 1.
 
 The `d_j` here is the Layer 5 quantity, so under `method = "euclidean"` it is a
@@ -540,8 +540,8 @@ functions it calls take the same struct.
 All threads read `obj`, `obj_masked`, `nmiss_masked`, `grp_complete` and the
 first column of `loc` without writing them, and each writes only entries `[col_offsets[i], col_offsets[i+1])`
 of `value`, a disjoint slice per target column, so no locks are taken. Interruption
-is checked with `RcppThread::checkUserInterrupt()` on every fifth index
-(`src/knn_kernel.cpp`: `if (i % 5 == 0)`), which RcppThread routes to the
+is checked with `RcppThread::checkUserInterrupt()` on every fifth index, `INTERRUPT_EVERY`
+(`src/knn_kernel.cpp`: `if (i % INTERRUPT_EVERY == 0)`), which RcppThread routes to the
 main thread to unwind the pool. The optional progress bar is an
 `RcppThread::ProgressBar` in a `unique_ptr` created only when `pb` is true and
 incremented from the workers (`src/knn_kernel.cpp`: `++(*bar);`).
