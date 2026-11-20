@@ -600,6 +600,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   // written through raw pointers; the sizes are the ones its header lists.
   // In the wide case V's fixed rows stay unwritten until postprocessing, and
   // X_work is empty.
+  LOC_TIC(pca_imp_gram, "alloc_solve_buffers");
   std::vector<double> AA_NxN(n_gram * n_gram);
   std::vector<double> X_work(tall ? nrX * n_elig : 0);
   std::vector<double> U(nrX * n_cp);
@@ -610,6 +611,7 @@ pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,
   std::vector<double> vs_top(k);
   std::vector<double> d_inv(n_cp);
   std::vector<double> lambda_shrinked(n_cp);
+  LOC_TOC(pca_imp_gram, "alloc_solve_buffers");
 
   LOC_TIC(pca_imp_gram, "gram_cache_init");
   GramCache gram_cache;

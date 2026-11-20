@@ -26,6 +26,9 @@
 !knn_imp_structure.md
 !pca_imp_structure.md
 !probe_fallback_part.R
+!profile_install.R
+!profile_phases.R
+!profile_run.sh
 !probe_mean_fill_peak.R
 !probe_mean_source.R
 !probe_pca_imp_peak.R
