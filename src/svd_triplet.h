@@ -4,6 +4,7 @@
 #include <Rcpp.h>
 #include <cmath>
 #include <cstddef>
+#include <vector>
 #include "gram_ops.h"
 #include "eig_sym_sel.h"
 #include "hybrid_topk_eig.h"
@@ -55,6 +56,37 @@ inline constexpr char GRAM_NOT_FINITE_MSG[] =
     "when squared, rescale the input";
 
 // ---------------------------------------------------------------------------
+// the buffers SVD_triplet() reads and writes, sized once by the constructor,
+// before the EM loop, and zero-filled; every call reuses them. With nr, nc
+// and n those of the GramDims and topk the number of eigenpairs asked for:
+// AA_NxN n x n; X_work nr x nc in the tall case, empty in the wide case; U
+// nr x ncp; V nc x ncp; Vn n x ncp; eigvecs n x topk; eigvals and vs_top
+// topk; d_inv ncp.
+//
+// In the tall case the caller keeps X_work holding the sw-scaled Xhat
+// (gram_cache_init(), gram_changing_block()). After a call U, V, Vn, vs_top
+// and eigvecs hold its results for the caller; eigvals and d_inv are
+// SVD_triplet()'s own, and the caller does not read them.
+// ---------------------------------------------------------------------------
+struct SolveBuffers {
+  std::vector<double> AA_NxN;
+  std::vector<double> X_work;
+  std::vector<double> U;
+  std::vector<double> V;
+  std::vector<double> Vn;
+  std::vector<double> eigvecs;
+  std::vector<double> eigvals;
+  std::vector<double> vs_top;
+  std::vector<double> d_inv;
+
+  SolveBuffers(const GramDims &dims, const std::size_t ncp,
+               const std::size_t topk)
+      : AA_NxN(dims.n * dims.n), X_work(dims.tall ? dims.nr * dims.nc : 0),
+        U(dims.nr * ncp), V(dims.nc * ncp), Vn(dims.n * ncp),
+        eigvecs(dims.n * topk), eigvals(topk), vs_top(topk), d_inv(ncp) {}
+};
+
+// ---------------------------------------------------------------------------
 // SVD_triplet
 //
 // U is returned in sqrt-row-weight space; the caller removes the weighting
@@ -64,27 +96,32 @@ inline constexpr char GRAM_NOT_FINITE_MSG[] =
 // n_fixed .. n_elig-1; the caller fills the fixed rows once after the EM
 // loop from the same Vn. In the tall case V is complete.
 //
-// Every buffer is the caller's and sized by it, with nr, nc and n those of
-// gram_ws and topk that of hyb_ctx.eig_range: Xhat nr x nc; X_work nr x nc
-// in the tall case, unread in the wide case; AA_NxN n x n; U nr x ncp; V
-// nc x ncp; Vn n x ncp; eigvecs n x topk; eigvals and vs_top topk; d_inv
-// ncp.
+// Xhat is gram_dims.nr x gram_dims.nc, and buf was sized for gram_dims, ncp
+// and the topk of hyb_ctx.eig_range. Returns the trace of the Gram, taken
+// before the eigensolver overwrites it.
 // ---------------------------------------------------------------------------
-inline void SVD_triplet(const double *Xhat, const double *sw,
-                        const std::size_t ncp, const bool tall, double *vs_top,
-                        double &trace_val, double *U, double *V,
-                        const double *X_work, double *AA_NxN, double *d_inv,
-                        double *Vn, double *eigvals, double *eigvecs,
-                        const GramWorkspace &gram_ws,
-                        const GramCache &gram_cache, HybridEigContext &hyb_ctx,
-                        int outer_iter LOC_TIMER_PARAM(timer)) {
-  const std::size_t nr = gram_ws.nr;
-  const std::size_t nc = gram_ws.nc;
-  const std::size_t n = gram_ws.n;
+inline double SVD_triplet(const double *Xhat, const double *sw,
+                          const std::size_t ncp, SolveBuffers &buf,
+                          const GramDims &gram_dims,
+                          const GramCache &gram_cache,
+                          HybridEigContext &hyb_ctx,
+                          int outer_iter LOC_TIMER_PARAM(timer)) {
+  const std::size_t nr = gram_dims.nr;
+  const std::size_t nc = gram_dims.nc;
+  const std::size_t n = gram_dims.n;
+  double *AA_NxN = buf.AA_NxN.data();
+  const double *X_work = buf.X_work.data();
+  double *U = buf.U.data();
+  double *V = buf.V.data();
+  double *Vn = buf.Vn.data();
+  double *eigvecs = buf.eigvecs.data();
+  double *eigvals = buf.eigvals.data();
+  double *vs_top = buf.vs_top.data();
+  double *d_inv = buf.d_inv.data();
 
   LOC_TIC(timer, "form_gram");
   const int gram_st =
-      form_weighted_gram(Xhat, sw, tall, X_work, AA_NxN, gram_ws, gram_cache);
+      form_weighted_gram(Xhat, sw, X_work, AA_NxN, gram_dims, gram_cache);
   LOC_TOC(timer, "form_gram");
   if (gram_st != si_la::ok) {
     Rcpp::stop("internal error: dsyrk or dgemm refused its arguments "
@@ -98,7 +135,7 @@ inline void SVD_triplet(const double *Xhat, const double *sw,
     Rcpp::stop(GRAM_NOT_FINITE_MSG);
   }
 
-  trace_val = gram_trace(AA_NxN, n);
+  const double trace_val = gram_trace(AA_NxN, n);
 
   LOC_TIC(timer, "eig");
   const int eig_st =
@@ -131,7 +168,7 @@ inline void SVD_triplet(const double *Xhat, const double *sw,
   }
 
   LOC_TIC(timer, "recover_factors");
-  if (tall) {
+  if (gram_dims.tall) {
     split_eigvec_block(eigvecs, n, V, Vn, d_inv, nullptr, ncp);
     const int st = pca_detail::gemm_nn(X_work, nr, nc, Vn, n, ncp, U);
     if (st != si_la::ok) {
@@ -152,6 +189,7 @@ inline void SVD_triplet(const double *Xhat, const double *sw,
     }
   }
   LOC_TOC(timer, "recover_factors");
+  return trace_val;
 }
 
 #endif // SLIDEIMP_SVD_TRIPLET_H

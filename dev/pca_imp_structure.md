@@ -31,8 +31,12 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |         +- src/RcppExports.cpp      SEXP wrapper (BEGIN_RCPP/END_RCPP)
   |         +- src/pca_kernel.cpp       pca_imp_internal_cpp()   C++ entry symbol
   |              |
-  |              +- pass 1: per-column NA counts
-  |              +- pass 2: centered moments + Xhat fill
+  |              +- check_arguments()                  src/pca_kernel.cpp
+  |              +- normalized_row_weights()           src/pca_kernel.cpp
+  |              +- count_missing()                    src/pca_kernel.cpp   pass 1: per-column NA counts
+  |              +- lay_out_columns()                  src/pca_kernel.cpp   permutation, ColumnLayout
+  |              +- scan_columns()                     src/pca_kernel.cpp   pass 2: centered moments + Xhat fill
+  |              +- standardize_columns()              src/pca_kernel.cpp
   |              +- initialize_missing_start()         src/pca_kernel.cpp
   |              +- gram_cache_init()                  src/gram_ops.h -> si_la::syrk
   |              +- EM outer loop
@@ -45,8 +49,11 @@ R/pca_imp.R                pca_imp()                       user-facing entry
   |                   |    +- gemm_nn/gemm_tn_block()  src/pca_linalg_utils.h -> si_la::gemm
   |                   +- reconstruct_cols()            src/pca_kernel.cpp -> si_la::gemm
   |                   +- missing_weighted_residual_ss()  src/pca_kernel.cpp
-  |                   +- convergence test
-  |              +- postprocessing, loc and value of the imputed cells
+  |                   +- subspace_cosine()             src/pca_kernel.cpp   diagnostics build only
+  |                   +- convergence test, print_iter()  src/pca_kernel.cpp
+  |              +- complete_fixed_block()             src/pca_kernel.cpp -> si_la::gemm
+  |              +- observed_mse()                     src/pca_kernel.cpp
+  |              +- imputed_cells()                    src/pca_kernel.cpp   loc and value
   |              +- Rcpp::List back to R
   |
   +- R/pca_imp.R           mse guard, per restart
@@ -229,14 +236,20 @@ never copied; `eligible_idx` as an integer vector of 0-based columns; every coun
 setting as `int`, which `pca_imp()` converts at the call where it holds a double
 (`R/pca_imp.R`: `maxiter = as.integer(maxiter),`); and `row_w` as a
 `const Rcpp::NumericVector &`, checked in place and then copied once into the kernel's own vector because the
-kernel normalizes it (`src/pca_kernel.cpp`: `std::vector<double> w(row_w.begin(), row_w.end());`,
+kernel normalizes it, both in `normalized_row_weights()` (`src/pca_kernel.cpp`: `std::vector<double> w(row_w.begin(), row_w.end());`,
 `w[i] /= row_w_sum;`). Inside, a count is held in `std::size_t` once checked, so an offset
 such as `j * nrX` is computed in `std::size_t`; a row or column index of `obj` is `int`
 (`src/pca_kernel.cpp`: `Types, for the whole file.`).
 
 ## Layer 3: kernel setup (`src/pca_kernel.cpp`)
 
-- Argument sanity (`src/pca_kernel.cpp`: `if (maxiter < 1)`): `maxiter >= 1`,
+The entry point reads as the steps below, each a function of the file's anonymous
+namespace with its timer phase, where it has one, around the call in the entry point;
+the EM loop of Layer 4 is written out in it.
+
+- Argument sanity, in `check_arguments()` (`src/pca_kernel.cpp`: `void check_arguments(`),
+  which takes the entry point's arguments by name and returns nothing
+  (`src/pca_kernel.cpp`: `if (maxiter < 1)`): `maxiter >= 1`,
   `0 <= miniter <= maxiter`, `ncp >= 1`, `init >= 0`, `trace_iter >= 0`, `solver` in 0..2,
   and under LOBPCG `lobpcg_maxiter >= 1` and `warmup_iters >= 0`; a non-empty
   `eligible_idx` whose every index is a column of `obj`, refused by
@@ -247,40 +260,57 @@ such as `j * nrX` is computed in `std::size_t`; a row or column index of `obj` i
   guards `nrX * n_elig`. The block (`src/pca_kernel.cpp`: `LAPACK workspace guard`) guards
   the `int` range of the `26 * n` dsyevr workspace minimum and of the `~3k` Rayleigh-Ritz
   dsyevd workspace LOBPCG would need; the dimensions themselves fit an `int`, being R's.
-  More missing cells than an R matrix has rows is refused once they are counted
+  `normalized_row_weights()` then refuses a `row_w` that is not finite, has a negative
+  weight or does not sum to a positive number, in that order and in two loops, and returns
+  the normalized copy; the entry point then refuses `regularized` with too few rows or
+  columns for `ncp` (`src/pca_kernel.cpp`: `if (regularized && !(denom_sigma > 0.0))`).
+  More missing cells than an R matrix has rows is refused once they are counted, in
+  `lay_out_columns()`
   (`src/pca_kernel.cpp`: `has a row for each and an R matrix holds at most %d rows`), since `loc` has a row for each.
+  `check_arguments()` derives the counts its checks need, `n_cp`, `k` and `n_gram` among
+  them, and the entry point derives them again after it returns.
 - Orientation: `tall = (nrX >= n_elig)`; `k = regularized ? ncp + 1 : ncp`
   eigenpairs are requested; `n_gram = tall ? n_elig : nrX`, so the eigenproblem is always
   over the smaller dimension.
-- Pass 1 (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "pass1_count_missing")`) counts NAs per
-  eligible column. The next block (`src/pca_kernel.cpp`: `perm lists the complete columns first`)
+- Pass 1 (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "pass1_count_missing")`), `count_missing()`,
+  counts NAs per
+  eligible column. `lay_out_columns()` (`src/pca_kernel.cpp`: `perm lists the complete columns first`)
   splits eligible columns
   into fixed (no NA) and changing, building `perm` so that after permutation the changing
   columns are exactly positions `[n_fixed, n_elig)`. Every later loop derives its local
   index as `n_fixed + ci`, which is why no column-index vector is threaded through.
-- The block (`src/pca_kernel.cpp`: `std::vector<std::size_t> miss_rows_offsets(n_mc + 1, 0);`)
-  builds a CSR-style pair: `miss_rows_offsets` (length `n_mc + 1`, `std::size_t`) and
-  `miss_rows_flat` (length `n_missing`, `int` row indices). `for_each_missing_in_col()` is the only
-  iterator over them.
-- Pass 2 (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "pass2_scan")`) fills `Xhat` and
-  accumulates per column the observed weight
+- The layout is one `ColumnLayout` (`src/pca_kernel.cpp`: `struct ColumnLayout {`), built
+  once by `lay_out_columns()` (`src/pca_kernel.cpp`: `ColumnLayout layout{nrX,`) and passed
+  by const reference to
+  everything that walks it: `nrX`, `n_fixed`, `n_mc`, `eligible_idx_perm` (the column of `obj`
+  each permuted column holds), and a CSR-style pair, `miss_rows_offsets` (length `n_mc + 1`,
+  `std::size_t`) and `miss_rows_flat` (length `n_missing`, `int` row indices), which pass 2
+  fills. `for_each_missing_in_col()` is the only iterator over the pair.
+- Pass 2 (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "pass2_scan")`), `scan_columns()`, fills `Xhat` and
+  accumulates per column, into one `ColumnMoments` (`src/pca_kernel.cpp`:
+  `struct ColumnMoments {`), the observed weight
   `denom`, the reference mean `mu0`, and centered moments `obs_sum_c` / `obs_sumsq_c`.
   Centering against `mu0` before squaring is what keeps the later variance updates away from
-  `E[x^2] - mu^2` cancellation. A check (`src/pca_kernel.cpp`: `if (!(denom[j] > 0.0))`) rejects
+  `E[x^2] - mu^2` cancellation. `standardize_columns()` first rejects
+  (`src/pca_kernel.cpp`: `if (!(mom.denom[j] > 0.0))`)
   any eligible column with
-  zero observed weight. The kernel then computes `mean_p` and, when `scale`, the per-column
-  scale `et` floored at `PCA_TOL`; it then centers (and scales) `Xhat` in place.
+  zero observed weight, then computes `mean_p` and, when `scale`, the per-column
+  scale `et` floored at `PCA_TOL`, the other two fields of `ColumnMoments`, which
+  `impute_restandardize()` updates every iteration; it then centers (and scales) `Xhat` in place.
   `fittedX` is allocated once, zero-filled, and `initialize_missing_start()`
   writes starting values at missing positions only: zeros for `init == 0`, `Rcpp::rnorm`
   draws otherwise.
 
 Workspaces allocated once, outside the loop: `sqrt_row_w` / `inv_sqrt_row_w`
-(the weighted space is `diag(sqrt(w)) * Xhat`, and `U` comes back in it); `GramWorkspace`
-holding fixed dsyrk/dgemm dimension arguments (`src/gram_ops.h`: `struct GramWorkspace`);
+(the weighted space is `diag(sqrt(w)) * Xhat`, and `U` comes back in it); `GramDims`,
+the dimensions of the Gram and its dsyrk, orientation included, and no storage
+(`src/gram_ops.h`: `struct GramDims {`);
 `EigSymRange`, which holds the range `il..iu` of the top `k` eigenpairs dsyevr is asked
 for (`src/eig_sym_sel.h`: `struct EigSymRange`) and refuses a `k` outside `1..n_gram`, an
-`Rcpp::stop` not expected to be reachable after the argument checks; `AA_NxN` at `n_gram x n_gram`
-and `X_work` at `nrX x n_elig` in the tall case only; `GramCache`, precomputing
+`Rcpp::stop` not expected to be reachable after the argument checks; `SolveBuffers`
+(`src/svd_triplet.h`: `struct SolveBuffers {`), the nine buffers `SVD_triplet()` reads and
+writes, `AA_NxN` at `n_gram x n_gram` and `X_work` at `nrX x n_elig` in the tall case only
+among them, with `lambda_shrinked` beside it; `GramCache`, precomputing
 the fixed-column Gram contribution; and `HybridEigContext`,
 carrying the solver mode, warmup count, LOBPCG options and persistent LOBPCG state across
 all outer iterations.
@@ -321,11 +351,13 @@ once, through `cli::cli_warn()`, for the winning restart only
 (`R/pca_imp.R`: `if (!isTRUE(best_diag$converged)) {`). The loop
 is `for (std::size_t nb_iter = 1;; ++nb_iter)`, whose only exits are in the block
 (`src/pca_kernel.cpp`: `if (stop_now)`).
-`trace_iter > 0` prints on
+`trace_iter > 0` prints, through `start_trace()` and `print_iter()`, on
 iteration 1, every `trace_iter` iterations, and on the last; print precision is
-restored by the `PrecGuard` RAII struct.
+restored by the `PrecGuard` RAII struct (`src/pca_kernel.cpp`: `struct PrecGuard {`).
 
-**Postprocessing** (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "postprocessing")`): in the wide
+**Postprocessing** (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "postprocessing")`) is three
+calls inside that phase: `complete_fixed_block()`, `observed_mse()` and `imputed_cells()`,
+which returns `loc` and `value` as one `ImputedCells`. In the wide
 case `gemm_tn_block()` over columns `0 .. n_fixed-1` of `Xhat` first fills the fixed rows of `V` that
 `SVD_triplet()` leaves unwritten, from the
 last iteration's `Vn` and the fixed columns of `Xhat`, which nothing writes after
@@ -359,12 +391,12 @@ collapses 1 and 4 to "lobpcg" and everything else to "exact"; the string is set 
 
 ## Layer 5: Gram formation and factor recovery
 
-`SVD_triplet()` (`src/svd_triplet.h`: `inline void SVD_triplet(`) never forms an SVD directly.
+`SVD_triplet()` (`src/svd_triplet.h`: `inline double SVD_triplet(`) never forms an SVD directly.
 It builds the
 weighted Gram into `AA_NxN` via `form_weighted_gram()`, stops if its upper triangle
 holds NaN or Inf (`src/svd_triplet.h`: `if (!gram_upper_finite(AA_NxN, n))`), the one
 such test in the chain and the stop that finite input whose squares overflow gets, takes
-the trace of `AA_NxN` for the tail energy (`gram_trace()`), calls `hybrid_topk_eig()`
+the trace of `AA_NxN` (`gram_trace()`), which it returns for the tail energy, calls `hybrid_topk_eig()`
 (a status other than 0 being an `Rcpp::stop`), converts eigenvalues to singular values and
 inverses with a `PCA_TOL` floor, and recovers the other factor with one dgemm
 through `si_la::gemm` (`src/svd_triplet.h`: `LOC_TIC(timer, "recover_factors")`): tall gives
@@ -378,14 +410,18 @@ dimensions, refuse operands whose dimensions do not fit, and return the wrapper'
 non-zero one is an `Rcpp::stop` at the call site
 (`src/svd_triplet.h`: `const int st = pca_detail::gemm_nn(`). Every dimension is checked
 against the `int` range at kernel setup, so that error is not expected to be reachable.
-`SVD_triplet()` takes raw buffers and reads every dimension from `GramWorkspace` and the
-eigenpair range; `src/pca_kernel.cpp` sizes each buffer once, before the EM loop, with the sizes
-the header of `SVD_triplet()` lists (`src/pca_kernel.cpp`: `every buffer SVD_triplet() reads or writes is sized here`).
+`SVD_triplet()` takes its buffers as one `SolveBuffers`, reads every dimension from `GramDims`
+and the eigenpair range, and takes a raw pointer to each buffer at its top, so the code below
+reads the same raw buffers it did when each was a parameter. `SolveBuffers` sizes each buffer
+once, in its constructor, with the sizes its header lists, and `src/pca_kernel.cpp` constructs
+it once, before the EM loop (`src/pca_kernel.cpp`: `every buffer SVD_triplet() reads or writes is sized here`).
 So `V`'s fixed rows stay unwritten until postprocessing fills them from the same `Vn`
-(Layer 4). `split_eigvec_block()` writes the plain and `d_inv`-scaled copies in a single
+(Layer 4). Of the nine buffers the kernel reads `U`, `V`, `Vn`, `vs_top`, `eigvecs` (in the
+diagnostics build) and `X_work` (through the Gram cache); `eigvals` and `d_inv` are read only
+inside `SVD_triplet()`. `split_eigvec_block()` writes the plain and `d_inv`-scaled copies in a single
 pass.
 
-`form_weighted_gram()` (`src/gram_ops.h`: `form_weighted_gram(const double *Xhat, const double *sw, const bool tall,`) has four branches,
+`form_weighted_gram()` (`src/gram_ops.h`: `form_weighted_gram(const double *Xhat, const double *sw, const double *X_work,`) has four branches,
 each entering BLAS through `si_la::syrk` and `si_la::gemm` with the arguments it passed to
 `arma::dsyrk_` and `arma::dgemm_`:
 
@@ -396,7 +432,9 @@ each entering BLAS through `si_la::syrk` and `si_la::gemm` with the arguments it
 | wide, cache active | copy cached fixed Gram, dsyrk with `beta = 1` adding the changing columns |
 | wide, no cache | dsyrk on `Xhat`, then scale entries by `sw[i] * sw[j]` |
 
-`src/gram_ops.h` takes raw buffers and the dimensions `GramWorkspace` holds, as `std::size_t`,
+`src/gram_ops.h` takes raw buffers and the dimensions `GramDims` holds, as `std::size_t`,
+each number under one name: `nr` the rows of `A` and its leading dimension, `n` the order of
+the Gram and its leading dimension, with `tall` the orientation they follow from,
 and `GramCache` keeps the fixed Gram and the wide case's scaled changing columns in
 `std::vector<double>`. `gram_cache_init()` and `form_weighted_gram()` return the wrapper's
 status; a non-zero one is an `Rcpp::stop` at the call site (`src/pca_kernel.cpp`:
@@ -438,8 +476,8 @@ start when `keep_lobpcg_seed_state()` allows.
 `si_la::syevr_range`, which enters dsyevr with `range = 'I'` for eigenpairs `il..iu`, the
 top `k`, asks for the workspace on every call and floors it at the documented
 `26 * n` / `10 * n` minima ("What the wrappers do"). `eigvals` and `eigvecs` are
-`src/pca_kernel.cpp`'s, sized there before the EM loop (`src/pca_kernel.cpp`:
-`std::vector<double> eigvecs(n_gram * k);`). dsyevr returns
+buffers of `SolveBuffers`, sized once before the EM loop (`src/svd_triplet.h`:
+`eigvecs(dims.n * topk), eigvals(topk), vs_top(topk), d_inv(ncp) {}`). dsyevr returns
 ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
 in place, then `canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`)
 applies the sklearn `svd_flip` convention. A non-zero status, from the wrapper or from an
@@ -528,7 +566,7 @@ its status means.
 | --- | --- | --- |
 | dsyrk, through `si_la::syrk` | `syrk_upper()`, `form_weighted_gram()` (`src/gram_ops.h`) | Gram formation |
 | dgemm, through `si_la::gemm` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
-| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/pca_kernel.cpp`: `pca_detail::gemm_tn_block(Xhat.data(), nrX, n_elig, 0, n_fixed,`) |
+| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/pca_kernel.cpp`: `pca_detail::gemm_tn_block(Xhat, nrX, n_elig, 0, n_fixed, buf.Vn.data(),`) |
 | dgemm, through `si_la::gemm` | `reconstruct_cols()` (`src/pca_kernel.cpp`) | `reconstruct_cols`, strided column block |
 | dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
 | dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
@@ -672,7 +710,8 @@ operand goes through to the answer. The one call site solves `X R = A Q` on `A Q
 (`src/lobpcg_warm.h`: `si_la::solve_tri_right('U', AQ.nrow, AQ.ncol, R.data(), AQ.data()),`).
 
 **`svd_values`.** The diagnostics build only: it is compiled when `PCA_IMP_DIAGNOSTICS` is
-set, so the package as shipped does not reference dgesdd. Its one caller forms `V_prev' V_new`
+set, so the package as shipped does not reference dgesdd. Its one caller, `subspace_cosine()`,
+forms `V_prev' V_new`
 with `si_la::gemm`, once per iteration from the second on, and hands it over
 (`src/pca_kernel.cpp`: `st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());`).
 A positive status or `err_nonfinite` is an R error, as an `Rcpp::exception`
@@ -744,7 +783,7 @@ two norms of LOBPCG, "Phase 4, as carried out" for the three sums of the EM loop
 - The largest of a set of norms, `max_skip_nan()`: from `-Inf`, keeping a value only when it
   is `>` the best so far, so NaN is skipped and a set of NaN gives `-Inf`.
 - The sum of the squared leading singular values that the tail energy subtracts from the
-  trace (`src/pca_kernel.cpp`: `sum_top_sq += vs_top[cp] * vs_top[cp];`), and the trace itself
+  trace (`src/pca_kernel.cpp`: `sum_top_sq += buf.vs_top[cp] * buf.vs_top[cp];`), and the trace itself
   (`src/svd_triplet.h`: `inline double gram_trace(`).
 - The sum the row weights are divided by, taken in the loop that tests their sign
   (`src/pca_kernel.cpp`: `row_w_sum += row_w_ptr[i];`).
@@ -771,11 +810,12 @@ two norms of LOBPCG, "Phase 4, as carried out" for the three sums of the EM loop
   exact, only `lobpcg_state.X`, `lobpcg_state.P` and `X_prev` are reset.
 - Every matrix and vector of the kernel is a `std::vector<double>`, column-major and
   unpadded, zero-filled when sized, where `arma::mat` left its cells as allocated.
-- `V` is sized once, before the EM loop (`src/pca_kernel.cpp`: `std::vector<double> V(n_elig * n_cp);`).
+- `V` is sized once, before the EM loop, with the other buffers of `SolveBuffers`
+  (`src/svd_triplet.h`: `U(dims.nr * ncp), V(dims.nc * ncp), Vn(dims.n * ncp),`).
   In the wide case its rows
   `0 .. n_fixed-1` stay zero until postprocessing writes them
-  (`src/pca_kernel.cpp`: `n_gram, n_cp, V.data());`); nothing reads them inside the
-  loop. `Vn` is sized there too (`src/pca_kernel.cpp`: `std::vector<double> Vn(n_gram * n_cp);`), written
+  (`src/pca_kernel.cpp`: `n_gram, n_cp, buf.V.data());`); nothing reads them inside the
+  loop. `Vn` is sized there too, written
   only by `split_eigvec_block()` and read only by the
   factor-recovery
   dgemm calls, which is what lets the post-loop fill reuse the last iteration's copy.
@@ -836,7 +876,8 @@ it they stay empty and
 `log_at()` (`src/hybrid_topk_eig.h`: `auto log_at = [&](`) is a no-op because its bounds check
 fails; the
 history buffers `eigval_hist`, `obj_hist`, `subspace_cos_hist` and their update
-block, which adds the singular values of `V_prev' * V_new` per iteration (`si_la::gemm`, `si_la::svd_values`) to track
+block, which adds the singular values of `V_prev' * V_new` per iteration (`si_la::gemm`, `si_la::svd_values`,
+in `subspace_cosine()`, which the build without diagnostics does not compile) to track
 subspace rotation; and a wider return list. The counters `n_exact`,
 `n_lobpcg_ok`, `n_lobpcg_bad` are always maintained and returned; only the per-iteration
 logs are gated.
