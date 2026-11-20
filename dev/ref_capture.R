@@ -99,6 +99,19 @@ x2[sample.int(nrow(x2), 54L), 8] <- NA
 xa <- x2
 xa[, 9] <- NA
 
+## x1z: x1 with column 1 a copy of column 2, holed on other rows, so the two
+## are at distance zero and the K-NN weights take their zero-distance side.
+x1z <- x1
+z_obs <- which(!is.na(x1[, 2]))
+stopifnot(length(z_obs) >= 20L)
+x1z[, 1] <- x1[, 2]
+x1z[z_obs[seq(1L, length(z_obs), by = 4L)], 1] <- NA
+stopifnot(
+  anyNA(x1z[, 1]),
+  sum(!is.na(x1z[, 1]) & !is.na(x1z[, 2])) >= 10L,
+  identical(x1z[!is.na(x1z[, 1]), 1], x1z[!is.na(x1z[, 1]), 2])
+)
+
 set.seed(3)
 x0 <- sim_mat(n = 40, p = 100, perc_total_na = 0)$input
 stopifnot(!anyNA(x0))
@@ -288,6 +301,8 @@ case("mean_x2i_inf_error", mean_imp_col(x2i))
 case("knn_x1_euc", knn_imp(x1, k = 5))
 case("knn_x1_man", knn_imp(x1, k = 5, method = "manhattan"))
 case("knn_x1_distpow", knn_imp(x1, k = 5, dist_pow = 1))
+case("knn_x1z_zero_distpow", knn_imp(x1z, k = 5, dist_pow = 1))
+case("knn_x1z_zero_distpow0", knn_imp(x1z, k = 5))
 case("knn_x1_subset", knn_imp(x1, k = 5, subset = colnames(x1)[1:50]))
 case("knn_x1_cores2", knn_imp(x1, k = 5, cores = 2))
 case("knn_x2_post", knn_imp(x2, k = 5))
