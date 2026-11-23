@@ -11,7 +11,7 @@ parameter tuning."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.9</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.99</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -23,7 +23,8 @@ parameter tuning."></head><body>
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/multiple-imputation-beta.html">Multiple imputation of a beta matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -56,6 +57,41 @@ parameter tuning.</p>
 
 
     <div class="section level2">
+    <h2 id="column-mean-fill">Column mean fill<a class="anchor" aria-label="anchor" href="#column-mean-fill"></a></h2>
+
+
+
+<p>A column with a proportion of missing values greater than <code>colmax</code> takes no
+part in the imputation. The method neither uses the column to impute other
+columns nor imputes it.</p>
+<p>With <code>post_imp = TRUE</code>, column means replace the missing values that remain
+after the method has run. Two kinds of missing value can remain: the missing
+values of the columns that took no part, and the cells for which the method
+found no value. Each column mean is the mean of the column's observed
+values. With <code>post_imp = FALSE</code>, both kinds stay missing.</p>
+<p>The result records what the column means replaced, in two attributes:</p><ul><li><p><code>mean_filled_cols</code>: an integer vector with the index, in the result, of
+each column that took no part and was filled.</p></li>
+<li><p><code>mean_filled_cells</code>: an integer matrix with the columns <code>row</code> and <code>col</code>,
+one row for each cell that the method could not impute and that was
+filled.</p></li>
+</ul><p>Both attributes are empty when no column mean was used. <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> reports
+them when they are not empty.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="missing-values-and-non-finite-input">Missing values and non-finite input<a class="anchor" aria-label="anchor" href="#missing-values-and-non-finite-input"></a></h2>
+
+
+
+<p><code>obj</code> must be a double matrix. An integer or logical matrix is rejected,
+not converted. Convert one with <code>storage.mode(obj) &lt;- "double"</code>.</p>
+<p><code>NA</code> and <code>NaN</code> are both treated as missing. The package does not
+distinguish between them.</p>
+<p><code>Inf</code> and <code>-Inf</code> are rejected on entry, and so is a column with no
+observed values (every cell <code>NA</code> or <code>NaN</code>). Locate them with
+<code>which(is.infinite(obj), arr.ind = TRUE)</code> and
+<code>which(colSums(!is.na(obj)) == 0)</code>.</p>
+    </div>
+    <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
     <div class="dont-index"><p>Useful links:</p><ul><li><p><a href="https://github.com/hhp94/slideimp" class="external-link">https://github.com/hhp94/slideimp</a></p></li>
 <li><p><a href="https://hhp94.github.io/slideimp/">https://hhp94.github.io/slideimp/</a></p></li>
@@ -66,7 +102,13 @@ parameter tuning.</p>
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
     <p><strong>Maintainer</strong>: Hung Pham <a href="mailto:amser.hoanghung@gmail.com">amser.hoanghung@gmail.com</a> (<a href="https://orcid.org/0000-0002-8271-9355" class="external-link">ORCID</a>) [copyright holder]</p>
 <p>Authors:</p><ul><li><p>Hung Pham <a href="mailto:amser.hoanghung@gmail.com">amser.hoanghung@gmail.com</a> (<a href="https://orcid.org/0000-0002-8271-9355" class="external-link">ORCID</a>) [copyright holder]</p></li>
-</ul><p>Other contributors:</p><ul><li><p>Posit Software, PBC (Copyright holder of code adapted from the 'carrier' package, MIT licensed) [copyright holder]</p></li>
+</ul><p>Other contributors:</p><ul><li><p>Francois Husson (<a href="https://orcid.org/0000-0002-7271-8877" class="external-link">ORCID</a>) ('missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R, src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp) [contributor, copyright holder]</p></li>
+<li><p>Julie Josse (<a href="https://orcid.org/0000-0001-9547-891X" class="external-link">ORCID</a>) ('missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R, src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp) [contributor, copyright holder]</p></li>
+<li><p>Vincent Audigier ('missMDA' MIPCA() Bayesian sampler, reimplemented in R/mi_pca_imp.R and src/mipca.cpp) [contributor, copyright holder]</p></li>
+<li><p>Posit Software, PBC ('carrier' package code, adapted in R/crate.R and tests/testthat/test-crate*.R) [copyright holder]</p></li>
+<li><p>Yixuan Qiu (Spectra library, vendored in src/Spectra) [contributor, copyright holder]</p></li>
+<li><p>Gael Guennebaud (Eigen SelfAdjointEigenSolver code, adapted in src/Spectra/LinAlg/TridiagEigen.h) [contributor, copyright holder]</p></li>
+<li><p>Jitse Niesen (Eigen SelfAdjointEigenSolver code, adapted in src/Spectra/LinAlg/TridiagEigen.h) [contributor, copyright holder]</p></li>
 </ul></div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

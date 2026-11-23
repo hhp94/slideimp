@@ -1,4 +1,4 @@
-# Print a `slideimp_sim` Object
+# Print Method for `slideimp_sim` Objects
 
 Print the output of
 [`sim_mat()`](https://hhp94.github.io/slideimp/reference/sim_mat.md).
@@ -18,11 +18,11 @@ print(x, n = 6L, p = 6L, ...)
 
 - n:
 
-  Number of rows of each component to show.
+  Integer. Number of rows of each component to show.
 
 - p:
 
-  Number of columns of `input` to show.
+  Integer. Number of columns of `input` to show.
 
 - ...:
 
@@ -50,7 +50,7 @@ print(sim_data)
 #> 6 feature6 group2
 #> # Showing 6 of 10 rows
 #> 
-#> $row_group (1 row groups)
+#> $row_group (1 row group)
 #>    sample  group
 #> 1 sample1 group1
 #> 2 sample2 group1

@@ -1,7 +1,7 @@
-# Print a `slideimp_tbl` Object
+# Print Method for `slideimp_tbl` Objects
 
-Print `slideimp_tbl` objects, which inherit from `data.frame`, with
-compact display of list-columns.
+Print a `slideimp_tbl` data frame. Each cell of a list-column shows as
+its type and size.
 
 ## Usage
 
@@ -18,11 +18,12 @@ print(x, n = NULL, ...)
 
 - n:
 
-  Number of rows to show. If `NULL`, a default is used.
+  Integer or `NULL`. Number of rows to show, 10 if `NULL`.
 
 - ...:
 
-  Not used.
+  Further arguments passed to
+  [`print()`](https://rdrr.io/r/base/print.html) for the table.
 
 ## Value
 

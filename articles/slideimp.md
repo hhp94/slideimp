@@ -6,7 +6,7 @@ library(slideimp)
 set.seed(1234)
 ```
 
-## Comparing Methods Using a Shared Cross-Validation Split with `tune_imp()`
+## Comparing Methods on One Cross-Validation Split with `tune_imp()`
 
 - Simulate some data
 
@@ -23,19 +23,23 @@ obj[1:4, 1:4]
 #> sample4 0.1734418        NA 0.0000000 0.0000000
 ```
 
-- Instead of random NA sampling inside
-  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md),
-  which internally calls
-  [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md),
-  we can generate the NA locations up front and pass them to
-  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md).
-- Here, we randomly select 5 rows from each of 200 random columns
-  (features) for 5 repetitions using
+- By default,
+  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
+  samples the NA locations itself with
   [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md).
-  To specify just certain columns (i.e., clock CpGs), provide the
+  To compare methods on one split, generate the locations up front with
+  [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md)
+  and pass them to each
+  [`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
+  call.
+- Here,
+  [`sample_na_loc()`](https://hhp94.github.io/slideimp/reference/sample_na_loc.md)
+  selects 5 rows in each of 200 random columns (features), for 5
+  repetitions. To use only certain columns (e.g., clock CpGs), pass the
   `na_col_subset` argument.
-  - `na_loc` has 5 elements, one for each repeat. Each element is a
-    matrix whose rows store the row and column index of a missing value.
+  - `na_loc` has 5 elements, one for each repetition. Each element is a
+    matrix with one row per masked value, which holds the row and column
+    index of that value.
 
 ``` r
 
@@ -44,21 +48,19 @@ length(na_loc)
 #> [1] 5
 na_loc[[1]][1:6, ]
 #>      row col
-#> [1,]  18 661
-#> [2,]  17 661
-#> [3,]  20 661
-#> [4,]  15 661
-#> [5,]   6 661
-#> [6,]  10 293
+#> [1,]   1 154
+#> [2,]   5 154
+#> [3,]  12 154
+#> [4,]  11 154
+#> [5,]   2 154
+#> [6,]  17 704
 ```
 
-- Then we can compare 1) PCA, 2) K-NN imputation, and 3) a custom
-  method, since the cross-validation missing values are the same for all
-  methods.
-- **Note**: The custom function requires the first argument to be `obj`,
-  must return an object with the same dimensions as `obj`, and all
-  subsequent arguments must match the column names of the `parameters`
-  data frame.
+- Every method gets the same masked values, so PCA, K-NN and a custom
+  method can be compared directly.
+- A custom function must take `obj` as its first argument and return an
+  object with the same dimensions as `obj`. Its other arguments must
+  match the column names of the `parameters` data frame.
 
 ``` r
 
@@ -98,7 +100,7 @@ rnorm_tune <- tune_imp(
   na_loc = na_loc,
   parameters = data.frame(mean = 0, sd = 1) # must match with arguments of `rnorm_imp`
 )
-#> Tuning custom function
+#> Tuning a custom function
 #> Step 1/2: Resolving NA locations
 #> Running mode: sequential
 #> Step 2/2: Tuning
@@ -109,38 +111,43 @@ rnorm_tune <- tune_imp(
 ``` r
 
 mean(compute_metrics(pca_tune, metrics = "rmse")$.estimate)
-#> [1] 0.2048011
+#> [1] 0.2004882
 mean(compute_metrics(knn_tune, metrics = "rmse")$.estimate)
-#> [1] 0.1962497
+#> [1] 0.1935046
 mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
-#> [1] 1.110258
+#> [1] 1.131702
 ```
 
-## Group-Wise Imputation with Small-Group Padding and Group-Wise Parameters with `group_imp()`
+## Group-Wise Imputation with `group_imp()`
 
 - [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-  allows imputation to be performed separately within defined groups
-  (e.g., by chromosome), which significantly reduces run time and can
-  increase accuracy for both K-NN and PCA imputation.
-- [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-  requires the `group` argument, which maps `colnames(obj)` to groups.
-  This can be created up front with
+  imputes each group of columns (e.g., each chromosome) separately. This
+  can significantly increase accuracy for both K-NN and PCA imputation
+  ([Pham et al. 2026](https://doi.org/10.1093/bioinformatics/btag318)),
+  and it reduces run time:
+  - K-NN searches for neighbors within the group only, so it is much
+    faster.
+  - PCA is usually faster: each group forms a smaller cross-product, has
+    less memory pressure, tends to converge in fewer iterations, and
+    groups can run in parallel.
+- The `group` argument maps `colnames(obj)` to groups. Build it with
   [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
-  for advanced features such as group-wise parameters and padding of
-  small groups with random features from other groups.
+  to set parameters per group or to pad small groups.
   [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
-  returns a list-column data frame with:
-  - `features`: **required** - a list-column where each element is a
-    character vector of variable names to be imputed together.
-  - `aux`: **optional** - auxiliary variables to include in each group.
-    These are only used to augment the imputation quality of features
-    and are not imputed themselves. If one group is too small,
-    e.g. `chrM`, `aux` is used to pad the group by randomly drawing
-    features from other groups to meet `min_group_size`.
-  - `parameters`: **optional** - group-specific imputation parameters.
-- First we simulate data from 2 groups. We then create `group3` with
-  only 1 feature to show how `min_group_size` pads it using the `aux`
-  list column.
+  returns a data frame with these columns:
+  - `group`: the group labels.
+  - `feature`: a list-column. Each element holds the column names
+    imputed together.
+  - `aux`: a list-column of auxiliary columns. They help impute the
+    group’s features and are not imputed themselves. When a group such
+    as `chrM` has fewer than `min_group_size` columns,
+    [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
+    adds columns drawn at random from other groups to its `aux` until it
+    reaches that size.
+  - `parameters`: optional group-specific imputation parameters.
+- First, simulate data with 2 groups. Then move feature 1 into a new
+  group, `group3`, to show how `min_group_size` pads a one-feature group
+  through the `aux` list-column.
 
 ``` r
 
@@ -149,39 +156,40 @@ sim_obj <- sim_mat(n = 20, p = 50, n_col_groups = 2)
 # Matrix to be imputed
 obj <- sim_obj$input
 obj[1:5, 1:4]
-#>           feature1  feature2  feature3  feature4
-#> sample1 0.03031619 0.1352710 0.4653579 0.1143298
-#> sample2 0.50962966 0.2313022 0.9737881 0.5198844
-#> sample3 0.69068459 0.5020337 0.7863144 0.9997625
-#> sample4 0.40710170 0.4094603 0.3228294 0.2529592
-#> sample5 0.73113251 0.4108405 0.6385945        NA
+#>          feature1  feature2  feature3  feature4
+#> sample1 0.0000000        NA 0.2437860 0.0000000
+#> sample2 0.9022484 0.6724700 0.5377050 0.8242256
+#> sample3 1.0000000 0.6652907 0.3189869 1.0000000
+#> sample4 0.8367542 0.1726599 0.2097971 0.4225234
+#> sample5 0.4962462 0.6250307 0.4247322 0.6390391
 
 # Metadata, i.e., which features belong to which group
 meta <- sim_obj$col_group
 meta[1:5, ]
 #>    feature  group
 #> 1 feature1 group1
-#> 2 feature2 group1
+#> 2 feature2 group2
 #> 3 feature3 group1
-#> 4 feature4 group2
-#> 5 feature5 group2
+#> 4 feature4 group1
+#> 5 feature5 group1
 
-# We put feature 1 in `group3`
+# Put feature 1 in `group3`
 meta[1, 2] <- "group3"
 meta[1:5, ]
 #>    feature  group
 #> 1 feature1 group3
-#> 2 feature2 group1
+#> 2 feature2 group2
 #> 3 feature3 group1
-#> 4 feature4 group2
-#> 5 feature5 group2
+#> 4 feature4 group1
+#> 5 feature5 group1
 ```
 
-- Then we generate the `group` parameter for
-  [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-  up front. We can see that `group3` has been padded to have 10 columns.
-- For each group, we also assign a different number of nearest neighbors
-  as a demonstration.
+- Then build the `group` argument with
+  [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md).
+  The output shows `group3` padded to 10 columns: 1 feature and 9 `aux`
+  columns.
+- As a demonstration, each group also gets a different number of nearest
+  neighbors, `k`.
 
 ``` r
 
@@ -191,242 +199,126 @@ group_imp_df$parameters <- list(list(k = 3), list(k = 4), list(k = 5))
 group_imp_df
 #> # slideimp table: 3 x 4
 #>   group          feature             aux parameters
-#>  group1 <character [26]> <character [0]> <list [1]>
-#>  group2 <character [23]> <character [0]> <list [1]>
+#>  group1 <character [25]> <character [0]> <list [1]>
+#>  group2 <character [24]> <character [0]> <list [1]>
 #>  group3  <character [1]> <character [9]> <list [1]>
 ```
 
-- Finally, we impute `obj` using the modified `group_imp_df`. The
-  `k = 10` passed to
+- Finally, impute `obj` with the modified `group_imp_df`. Every group
+  sets its own `k`, so the `k = 10` passed to
   [`group_imp()`](https://hhp94.github.io/slideimp/reference/group_imp.md)
-  is ignored since all groups have group-wise `k` specified.
+  is ignored.
 
 ``` r
 
-knn_results <- group_imp(obj, group = group_imp_df, cores = 4, k = 10)
-#> Imputing 3 groups using KNN.
-#> Running mode: threaded (4 cores)
+knn_results <- group_imp(obj, group = group_imp_df, cores = 2, k = 10)
+#> Imputing 3 groups using K-NN.
+#> Running mode: threaded (2 cores)
 print(knn_results, p = 4)
-#> Method: group_imp (KNN imputation)
+#> Method: group_imp (K-NN imputation)
 #> Dimensions: 20 x 50
 #> 
-#>           feature1  feature2  feature3  feature4
-#> sample1 0.03031619 0.1352710 0.4653579 0.1143298
-#> sample2 0.50962966 0.2313022 0.9737881 0.5198844
-#> sample3 0.69068459 0.5020337 0.7863144 0.9997625
-#> sample4 0.40710170 0.4094603 0.3228294 0.2529592
-#> sample5 0.73113251 0.4108405 0.6385945 0.4472338
-#> sample6 0.48993078 0.4950764 0.6553896 0.6737998
+#>          feature1  feature2  feature3  feature4
+#> sample1 0.0000000 0.2177326 0.2437860 0.0000000
+#> sample2 0.9022484 0.6724700 0.5377050 0.8242256
+#> sample3 1.0000000 0.6652907 0.3189869 1.0000000
+#> sample4 0.8367542 0.1726599 0.2097971 0.4225234
+#> sample5 0.4962462 0.6250307 0.4247322 0.6390391
+#> sample6 0.5124205 0.7016570 0.1918216 0.5038718
 #> # Showing 6 of 20 rows and 4 of 50 columns
 ```
 
-## Sliding Window Imputation for WGBS/EM-seq Data with `slide_imp()`
+## Multiple Imputation of WGBS/EM-seq Data with `mipca_flank()`
 
-### Select `window_size`, `overlap_size`, and PCA/K-NN Parameters
-
-- We simulate the output of the `{methylKit}` package.
-  - **Note:** WGBS/EM-seq data should be grouped by chromosome before
-    performing sliding window imputation.
-  - Here, we simulate 1000 sites.
-- Importantly, we simulate the location vector of each feature (genomic
-  position) with varying spacing of 50 to 500 bp apart from each other.
-- The `locations` vector contains the genomic position of each feature
-  (column). It is used to determine which columns are grouped together
-  given a window size.
+- For whole-genome methylation data, the Bayesian PCA sampler is
+  recommended because such data are sparsely observed.
+  [`mipca_flank()`](https://hhp94.github.io/slideimp/reference/mipca_flank.md)
+  draws multiple imputations of target CpGs, each fitted on the CpGs
+  within `window_size` bp of it.
+- Split the data by chromosome first. This simulated beta matrix stands
+  in for one chromosome, with 50 to 500 bp between neighboring CpGs.
+  `location` holds the position of each column.
 
 ``` r
 
 set.seed(1234)
-sample_names <- paste0("S", 1:10)
-n_sites <- 1000
+chr1_beta <- sim_mat(n = 30, p = 500)$input
+location <- cumsum(sample(50:500, ncol(chr1_beta), replace = TRUE))
+chr1_beta[1:4, 1:4]
+#>          feature1  feature2   feature3  feature4
+#> sample1 0.5409157 0.4077444 0.09981068 0.2434143
+#> sample2 0.5224927 0.9663621 0.49824360 0.3923603
+#> sample3 0.6355535        NA 1.00000000 1.0000000
+#> sample4 0.0000000 0.0000000 0.08115191 0.2106358
+```
 
-# Simulate positions with 50–500 bp between each site
-distances_between <- sample(50:500, size = n_sites, replace = TRUE)
-locations <- cumsum(distances_between) # <- important, location vector
+- [`mipca_flank_plan()`](https://hhp94.github.io/slideimp/reference/mipca_flank.md)
+  finds the window of each target. A target whose window has fewer than
+  `min_window_n` columns is not imputed, and a target with no missing
+  values is marked `clean`.
 
-methyl <- data.frame(
-  chr = "chr1",
-  start = locations,
-  end = locations,
-  strand = "+"
+``` r
+
+targets <- colnames(chr1_beta)[c(100, 250, 400)]
+plan <- mipca_flank_plan(
+  chr1_beta,
+  location,
+  window_size = 2000, # bp on each side of the target
+  subset = targets,
+  min_window_n = 10
 )
-
-for (i in seq_along(sample_names)) {
-  methyl[[paste0("numCs", i)]] <- sample.int(100, size = n_sites, replace = TRUE)
-  methyl[[paste0("numTs", i)]] <- sample.int(100, size = n_sites, replace = TRUE)
-  methyl[[paste0("coverage", i)]] <- methyl[[paste0("numCs", i)]] + methyl[[paste0("numTs", i)]]
-}
-
-methyl[1:5, 1:10]
-#>    chr start  end strand numCs1 numTs1 coverage1 numCs2 numTs2 coverage2
-#> 1 chr1   333  333      +     83     68       151     84     36       120
-#> 2 chr1   718  718      +     82      2        84     54     99       153
-#> 3 chr1  1173 1173      +     48      2        50     44     16        60
-#> 4 chr1  1323 1323      +     70     48       118     48     56       104
-#> 5 chr1  1483 1483      +     88     15       103     83     19       102
+plan
+#> si_flank_plan: 3 targets on a 30 x 500 matrix, nothing fitted
+#>   status: impute 2, clean 1
+#>  target       name n_miss start end window_n status
+#>     100 feature100      6    94 105       12 impute
+#>     250 feature250      0   244 256       13  clean
+#>     400 feature400      6   393 406       14 impute
+#>   next: mipca_flank(x, rank, seed, transform) imputes.
+#>         mipca_flank_window(x, subset) gives one target's window to tune on.
 ```
 
-- First, we convert the data into a beta matrix with features in the
-  columns.
+- Choose `rank` on one target’s window with
+  [`mipca_tune()`](https://hhp94.github.io/slideimp/reference/mipca_tune.md).
+  A window has few columns, so lower `n_cols`, the number of columns
+  that get held-out values.
 
 ``` r
 
-numCs_matrix <- as.matrix(methyl[, paste0("numCs", seq_along(sample_names))])
-cov_matrix <- as.matrix(methyl[, paste0("coverage", seq_along(sample_names))])
-beta_matrix <- numCs_matrix / cov_matrix
-
-colnames(beta_matrix) <- sample_names
-rownames(beta_matrix) <- methyl$start
-
-beta_matrix <- t(beta_matrix)
-# Set 10% of the data to missing
-set.seed(1234)
-beta_matrix[sample.int(length(beta_matrix), floor(length(beta_matrix) * 0.1))] <- NA
-beta_matrix[1:4, 1:4]
-#>           333       718       1173      1323
-#> S1 0.54966887 0.9761905 0.96000000 0.5932203
-#> S2 0.70000000 0.3529412 0.73333333 0.4615385
-#> S3 0.06521739 0.7053571         NA 0.6507937
-#> S4 0.69444444 0.2846154 0.04347826 0.7636364
+win <- mipca_flank_window(plan, targets[1])
+tuned <- mipca_tune(win, rank = 1:3, transform = "logit_biwhiten", n_cols = 5, seed = 1)
+tuned
+#> si_tune: 3 ranks on a 30 x 12 matrix, holdout 20 cells over 5 columns
+#>  rank    crps ess_p10  ess_ok rhat_max implied_nu implied_lo implied_hi  time
+#>     1 0.08725  224.08 0.03571    1.050      2.231      2.143      3.049 0.014
+#>     2 0.10157   97.22 0.00000    1.132      2.435      2.281      4.789 0.010
+#>     3 0.09657   87.45 0.00000    1.160      3.477      2.698      5.068 0.010
+#>   next: mipca_fit(x, obj) fits the rank with the lowest crps.
+#>         mipca_fit(x, obj, rank) fits another rank.
 ```
 
-- Then, in a real dataset, we would tune hyperparameters using `chr22`.
-  Here, as a demonstration, we use the whole data since the size is
-  small.
-- We use 2 repetitions of cross-validation (increase to 10–30 in real
-  analyses). We are selecting between:
-  - `ncp` (number of principal components) of 2 or 4, indicating that we
-    are performing sliding PCA imputation. Pass `k` for sliding K-NN
-    imputation.
-  - `window_size` of 5,000 or 10,000 bp.
-  - `overlap_size` fixed at 1,000 bp (does not affect results much in
-    real analyses).
+- This is simulated data, so its convergence figures (`ess_ok`,
+  `rhat_max`) say nothing about a real analysis. Check them on your own
+  data, as the article below describes.
+- Then fit every window with the chosen `rank` and keep the targets’
+  draws. Each draw is one completed matrix of the targets.
 
 ``` r
 
-params <- expand.grid(ncp = c(2, 4), window_size = c(5000, 10000))
-params$overlap_size <- 1000
-params$min_window_n <- 20 # windows with less than 20 columns are dropped
-
-# Increase n_reps from 2 in actual analyses and use another chromosome (i.e., chr22)
-tune_slide_pca <- tune_imp(
-  obj = beta_matrix,
-  parameters = params,
-  .f = "slide_imp",
-  n_reps = 2,
-  location = locations
-)
-#> Tuning `slide_imp()`
-#> Step 1/2: Resolving NA locations
-#> ℹ Using default `num_na` = 500 (~5% of cells).
-#>   Increase for more reliability or decrease if missing is dense.
-#> Running mode: sequential
-#> Step 2/2: Tuning
-
-metrics <- compute_metrics(tune_slide_pca)
-
-aggregate(.estimate ~ .metric + ncp + window_size, data = metrics, FUN = mean)
-#>   .metric ncp window_size .estimate
-#> 1     mae   2        5000 0.2257168
-#> 2    rmse   2        5000 0.2838435
-#> 3     mae   4        5000 0.2395280
-#> 4    rmse   4        5000 0.2984013
-#> 5     mae   2       10000 0.2123151
-#> 6    rmse   2       10000 0.2642956
-#> 7     mae   4       10000 0.2223801
-#> 8    rmse   4       10000 0.2756162
-```
-
-- Finally, we can use
-  [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
-  to impute the full `beta_matrix`. Use the best parameter combination
-  from the cross-validation metrics.
-- First, we use `dry_run = TRUE` to examine the columns to be imputed.
-  - `start` and `end` are window location vectors.
-  - `window_n` is the number of features included in the window.
-
-``` r
-
-slide_imp(
-  obj = beta_matrix,
-  location = locations,
-  window_size = 5000,
-  overlap_size = 1000,
-  ncp = 2,
-  min_window_n = 20,
-  dry_run = TRUE # <- dry_run to inspect the windows
-)
-#> Dropping 43 window(s) with fewer than 20 columns.
-#> # slideimp table: 24 x 4
-#>  start end window_n  subset_local
-#>     15  34       20 <double [20]>
-#>    104 124       21 <double [21]>
-#>    188 209       22 <double [22]>
-#>    205 225       21 <double [21]>
-#>    222 241       20 <double [20]>
-#>    239 258       20 <double [20]>
-#>    254 273       20 <double [20]>
-#>    369 388       20 <double [20]>
-#>    385 404       20 <double [20]>
-#>    402 424       23 <double [23]>
-#> # ... with 14 more rows
-```
-
-- Turn off `dry_run` to impute the data
-
-``` r
-
-slide_imp(
-  obj = beta_matrix,
-  location = locations,
-  window_size = 5000,
-  overlap_size = 1000,
-  ncp = 2,
-  min_window_n = 20,
-  dry_run = FALSE,
+fit <- mipca_flank(
+  plan,
+  rank = tuned$rank[which.min(tuned$crps)],
+  seed = 1,
+  transform = "logit_biwhiten",
   .progress = FALSE
 )
-#> Method: slide_imp (PCA imputation)
-#> Dimensions: 10 x 1000
-#> Note: requested columns still contain NA values
-#> 
-#>           333       718       1173      1323      1483       1925
-#> S1 0.54966887 0.9761905 0.96000000 0.5932203        NA 0.08695652
-#> S2 0.70000000 0.3529412 0.73333333 0.4615385 0.8137255 0.45454545
-#> S3 0.06521739 0.7053571         NA 0.6507937 0.4393064 0.37735849
-#> S4 0.69444444 0.2846154 0.04347826 0.7636364 0.9595960 0.54621849
-#> S5 0.83505155 0.5777778 0.47517730        NA 0.7368421 0.21666667
-#> S6 0.26612903 0.3451327 0.53072626 0.5000000 0.6465517 0.37288136
-#> # Showing 6 of 10 rows and 6 of 1000 columns
+fit
+#> si_mi fit: 30 x 3, 12 imputed cells, 400 draws
+#>   next: as.matrix() with 'draw' for a completed matrix, summary() for Rhat and ESS
+dim(as.matrix(fit, draw = 1))
+#> [1] 30  3
 ```
 
-### Subset and Flanking Mode
-
-- Use this mode when you only need to impute specific target features
-  (e.g., clock CpGs) rather than the entire dataset.
-  - Pass the desired feature names to the `subset` argument. Only
-    windows containing these features will be imputed.
-  - Set `flank = TRUE` to build windows *centered* on each feature in
-    the `subset`. Each window will extend `window_size` bp on either
-    side of the target feature (flanking mode).
-  - In this mode, the `overlap_size` argument is ignored.
-- In this example, we only want to impute the features `"1323"` and
-  `"33810"` by creating 5,000 bp flanking windows around each feature:
-
-``` r
-
-slide_imp(
-  obj = beta_matrix,
-  location = locations,
-  window_size = 5000,
-  ncp = 2,
-  min_window_n = 20,
-  subset = c("1323", "33810"),
-  flank = TRUE,
-  dry_run = TRUE
-)
-#> # slideimp table: 2 x 5
-#>  start end window_n target  subset_local
-#>      1  22       22      4 <integer [1]>
-#>    101 138       38    122 <integer [1]>
-```
+- See the [multiple imputation
+  article](https://hhp94.github.io/slideimp/articles/multiple-imputation-beta.html)
+  for `nu`, convergence checks, and pooling the draws.

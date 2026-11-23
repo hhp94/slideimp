@@ -30,8 +30,7 @@ group_imp(
   solver = NULL,
   lobpcg_control = NULL,
   clamp = NULL,
-  pin_blas = FALSE,
-  na_check = TRUE,
+  pin_blas = TRUE,
   on_infeasible = c("error", "skip", "mean")
 )
 ```
@@ -40,27 +39,28 @@ group_imp(
 
 - obj:
 
-  A numeric matrix with samples in rows and features in columns.
+  A double matrix. Samples are in rows and features in columns.
 
 - group:
 
-  Specification of how features should be grouped for imputation.
-  Accepted formats are:
+  A data frame or a character scalar. The feature groups, in one of
+  these forms:
 
-  - A character scalar naming a supported Illumina platform; see Note.
+  - A character scalar naming a supported Illumina platform, such as
+    `"EPICv2"`. This needs the `slideimp.extra` package.
 
-  - A long-format `data.frame` with columns `group` and `feature`.
+  - A long-format data frame with columns `group` and `feature`.
 
-  - A list-column `data.frame` with a `feature` list-column. Optional
+  - A list-column data frame with a `feature` list-column. Optional
     list-columns are `aux`, for auxiliary feature names, and
     `parameters`, for group-specific parameter lists.
 
 - subset:
 
-  Optional character vector of feature names to impute. If `NULL`, all
-  grouped features are imputed. Features in a group but not in `subset`
-  are demoted to auxiliary columns for that group. Groups left with zero
-  features after demotion are dropped with a message.
+  Optional character vector. The features to impute and return, by name,
+  or `NULL` to impute every grouped feature and return every column. A
+  group's other features become its auxiliary columns, and a group left
+  with no feature is dropped with a message.
 
 - allow_unmapped:
 
@@ -80,17 +80,14 @@ group_imp(
 
 - method:
 
-  Character or `NULL`. For K-NN imputation, one of `"euclidean"` or
-  `"manhattan"`. For PCA imputation, one of `"regularized"` or `"EM"`.
-  If `NULL`, the corresponding backend default is used unless overridden
-  by `group$parameters`.
+  Character or `NULL`. One of `"euclidean"` or `"manhattan"` for K-NN
+  imputation, or `"regularized"` or `"EM"` for PCA imputation. `NULL`
+  uses `"euclidean"` for K-NN and `"regularized"` for PCA.
 
 - cores:
 
-  Integer. Number of cores for K-NN imputation only. For PCA imputation,
-  use
-  [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
-  to parallelize across groups.
+  Integer. Number of cores for K-NN imputation only, as described under
+  Parallelization.
 
 - .progress:
 
@@ -100,26 +97,26 @@ group_imp(
 
   Integer or `NULL`. Minimum total number of columns per group, counting
   both features and auxiliary columns. Groups smaller than this are
-  padded with randomly sampled columns from `obj`.
+  padded with columns sampled at random from the other grouped columns
+  of `obj`.
 
 - colmax:
 
-  Numeric scalar between `0` and `1`. Columns with a missing-data
-  proportion greater than `colmax` are excluded from the main imputation
-  method. Excluded columns are left unchanged unless `post_imp = TRUE`,
-  in which case remaining missing values are replaced by column means
-  when possible.
+  Numeric scalar between `0` and `1`. Columns with a proportion of
+  missing values greater than `colmax` take no part in the imputation,
+  as described under Column mean fill.
 
 - post_imp:
 
-  Logical. If `TRUE`, replace missing values remaining after the main
-  imputation method with column means when possible.
+  Logical. If `TRUE`, column means replace the missing values that
+  remain after imputation, as described under Column mean fill.
 
 - dist_pow:
 
   Numeric. Power used to penalize more distant neighbors in the weighted
-  average. `dist_pow = 0` gives an unweighted average of the nearest
-  neighbors.
+  average, where `0` gives an unweighted average. The weighting rule is
+  given under Details in
+  [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md).
 
 - scale:
 
@@ -127,9 +124,9 @@ group_imp(
 
 - coeff.ridge:
 
-  Numeric. Ridge regularization, used only when
-  `method = "regularized"`. Values `< 1` move toward EM PCA; values
-  `> 1` move toward mean imputation.
+  Numeric. The ridge regularization for `method = "regularized"`,
+  ignored otherwise. Values below `1` move toward EM PCA, and values
+  above `1` move toward mean imputation.
 
 - threshold:
 
@@ -137,18 +134,21 @@ group_imp(
 
 - row.w:
 
-  Row weights, normalized to sum to `1`. `NULL` (equal weights), a
-  positive numeric vector of length `nrow(obj)`, or `"n_miss"`
-  (down-weight rows with more missing values).
+  Numeric vector, `"n_miss"`, or `NULL`. The row weights, normalized to
+  sum to `1`: positive values of length `nrow(obj)`, `"n_miss"` to
+  down-weight rows with more missing values, or `NULL` for equal
+  weights.
 
 - seed:
 
-  Integer, numeric, or `NULL`. Random seed for reproducibility.
+  Integer, numeric, or `NULL`. Random seed used when padding small
+  groups and, for PCA imputation, passed to
+  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
 
 - nb.init:
 
-  Integer. Number of random initializations. The first initialization is
-  always mean imputation.
+  Integer. Number of initializations. The first is always mean
+  imputation, and the others are random.
 
 - maxiter:
 
@@ -156,132 +156,182 @@ group_imp(
 
 - miniter:
 
-  Integer. Minimum number of iterations.
+  Integer. Minimum number of iterations, at most `maxiter`.
 
 - solver:
 
-  Character. Eigensolver: `"auto"` (default), `"exact"`, or `"lobpcg"`.
-  `"auto"` runs a short timed probe and picks `"lobpcg"` only when
-  clearly faster. Consecutive EM calls warm-start LOBPCG with both the
-  previous eigenblock and search direction. When `nb.init > 1`, the auto
-  choice from the first init is reused. See Performance tips.
+  Character. One of `"auto"`, `"exact"`, or `"lobpcg"`. The eigensolver.
+  `"auto"` uses `"exact"` for small problems and otherwise runs a short
+  timed probe, picking `"lobpcg"` only when it is clearly faster. With
+  `nb.init > 1`, the choice from the first initialization is reused. See
+  the PCA Performance tips section.
 
 - lobpcg_control:
 
-  A list of LOBPCG eigensolver control options, usually created by
-  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md).
-  A plain named list is also accepted. Ignored when `solver = "exact"`.
+  A list or `NULL`. LOBPCG control options, from
+  [`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md)
+  or as a plain named list, or `NULL` for the defaults. Ignored when
+  `solver = "exact"`.
 
 - clamp:
 
-  Optional numeric vector `c(lower, upper)` bounding PCA-imputed values
-  (use `-Inf`/`Inf` for one-sided, `NULL` for none). E.g., `c(0, 1)` for
-  DNAm beta values. Observed values are not clamped.
+  Numeric vector of length 2 or `NULL`. The bounds `c(lower, upper)` for
+  PCA-imputed values, such as `c(0, 1)` for DNA methylation beta values,
+  or `NULL` for none. Use `-Inf` or `Inf` for a one-sided bound.
+  Observed values are not clamped.
 
 - pin_blas:
 
-  Logical. If `TRUE`, pin BLAS threads to 1 to reduce contention when
-  using parallel PCA on systems linked with multithreaded BLAS.
-
-- na_check:
-
-  Logical. If `TRUE`, check whether the returned matrix still contains
-  missing values.
+  Logical. If `TRUE`, pin BLAS threads to 1 on the `mirai` daemons in a
+  parallel run. Defaults to `TRUE`.
 
 - on_infeasible:
 
-  Character. One of `"error"`, `"skip"`, or `"mean"`. Controls behavior
-  when a group is infeasible for imputation, for example when `k` or
-  `ncp` exceeds the number of usable columns after applying `colmax`.
+  Character. One of `"error"`, `"skip"`, or `"mean"`. The action for a
+  group that is infeasible for imputation, for example because `k` or
+  `ncp` is too large for the columns that `colmax` leaves. Defaults to
+  `"error"`.
 
 ## Value
 
-A numeric matrix of the same dimensions as `obj`, with missing values
-imputed. The returned object has class `slideimp_results`.
+A `slideimp_results` object: a numeric matrix with the rows of `obj` and
+the columns that `subset` selects, with the missing values of the
+grouped features imputed.
 
 ## Details
 
-`group_imp()` performs K-NN or PCA imputation on feature groups
-independently, which can substantially reduce runtime for large
+Imputing each group on its own can reduce the runtime for large
 matrices.
 
 Specify `k` and related arguments to use K-NN imputation, or `ncp` and
 related arguments to use PCA imputation. If both `k` and `ncp` are
 `NULL`, `group$parameters` must supply either `k` or `ncp` for every
-group.
+group. Passing an argument of the other method, such as `scale` with
+`k`, is an error.
 
 Group-specific parameters in `group$parameters` take priority over
-global arguments. Global arguments fill in any missing values. All
-groups must use the same imputation method.
-
-For method-specific arguments inherited from
+global arguments, and global arguments fill in the parameters a group
+does not set. All groups must use the same imputation method. A global
+argument shared with
 [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) or
-[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md),
-`NULL` means the backend default is used unless overridden by
-`group$parameters`.
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+that is `NULL` takes that function's default.
 
-Per-group `k` is capped at the number of usable columns in the group
-minus one. Per-group `ncp` is capped at the maximum feasible number of
-PCA components for that group's submatrix. A warning is issued when
-capping occurs.
+Per-group `k` is capped at the group's column count minus one, counting
+features and auxiliary columns. Per-group `ncp` is capped at the smaller
+of that cap and `nrow(obj) - 2`. `group_imp()` warns when it caps a
+value.
+
+A group is infeasible when it is too small for any valid `k` or `ncp`,
+or when
+[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md) or
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+cannot impute it, for example because `colmax` leaves too few columns.
+With `on_infeasible = "skip"`, an infeasible group keeps its missing
+values. With `"mean"`, column means fill them, and with `"error"`,
+`group_imp()` stops with an error. A group whose features have no
+missing values is not imputed and is never infeasible. An infeasible
+group adds nothing to the `mean_filled_cols` and `mean_filled_cells`
+attributes of the result.
+
+With `subset`, the result holds only the `subset` columns, in the order
+they have in `obj`. The other features still take part in the
+imputation, as auxiliary columns of their groups.
+
+The `mirai` daemons run R's `"L'Ecuyer-CMRG"` generator. So with
+`nb.init > 1`, a parallel PCA run draws different random initializations
+from a sequential run under R's default generator. The two agree when
+the session also runs `RNGkind("L'Ecuyer-CMRG")`.
 
 ## Note
 
-A character scalar can be passed to `group` to name a supported Illumina
-platform, such as `"EPICv2"` or `"EPICv2_deduped"`. This requires the
-optional `slideimp.extra` package to be installed. Supported platforms
-are listed in the `slideimp_arrays` object in the `slideimp.extra`
-package.
+A platform name for `group`, such as `"EPICv2"` or `"EPICv2_deduped"`,
+needs the optional `slideimp.extra` package. Its `slideimp_arrays`
+object lists the supported platforms.
 
 ## Parallelization
 
 - K-NN: use the `cores` argument. If `mirai` daemons are active, `cores`
-  is automatically set to `1` to avoid nested parallelism.
+  is set to `1` to avoid nested parallelism.
 
 - PCA: use
   [`mirai::daemons()`](https://mirai.r-lib.org/reference/daemons.html)
   instead of `cores`.
 
-When running PCA imputation in parallel with `mirai`, set
-`pin_blas = TRUE` in
-[`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
-or `group_imp()` to prevent BLAS threads from oversubscribing CPU cores.
-This relies on `RhpcBLASctl` and works with OpenBLAS and MKL (typical on
-Linux, and on Windows after an OpenBLAS swap). `pin_blas = TRUE` may
-have no effect on macOS.
+- With `mirai` daemons, each daemon runs BLAS on one thread unless
+  `pin_blas = FALSE`.
+
+## Column mean fill
+
+A column with a proportion of missing values greater than `colmax` takes
+no part in the imputation. The method neither uses the column to impute
+other columns nor imputes it.
+
+With `post_imp = TRUE`, column means replace the missing values that
+remain after the method has run. Two kinds of missing value can remain:
+the missing values of the columns that took no part, and the cells for
+which the method found no value. Each column mean is the mean of the
+column's observed values. With `post_imp = FALSE`, both kinds stay
+missing.
+
+The result records what the column means replaced, in two attributes:
+
+- `mean_filled_cols`: an integer vector with the index, in the result,
+  of each column that took no part and was filled.
+
+- `mean_filled_cells`: an integer matrix with the columns `row` and
+  `col`, one row for each cell that the method could not impute and that
+  was filled.
+
+Both attributes are empty when no column mean was used.
+[`print()`](https://rdrr.io/r/base/print.html) reports them when they
+are not empty.
+
+## Missing values and non-finite input
+
+`obj` must be a double matrix. An integer or logical matrix is rejected,
+not converted. Convert one with `storage.mode(obj) <- "double"`.
+
+`NA` and `NaN` are both treated as missing. The package does not
+distinguish between them.
+
+`Inf` and `-Inf` are rejected on entry, and so is a column with no
+observed values (every cell `NA` or `NaN`). Locate them with
+`which(is.infinite(obj), arr.ind = TRUE)` and
+`which(colSums(!is.na(obj)) == 0)`.
 
 ## PCA Performance tips
 
-Speed comes from three levers: `solver` (through LOBPCG with
-warm-start), `threshold`, and `scale`. Tune these first, then accuracy
-parameters (`ncp`, `coeff.ridge`) on a representative subset.
+Three arguments set the speed: `solver`, `threshold`, and `scale`. Tune
+these first, then the accuracy arguments `ncp` and `coeff.ridge`, on a
+representative subset.
 
-**Exact vs. LOBPCG with warm-start.** Whether `"lobpcg"` beats `"exact"`
-depends on size and low-rankness: `"lobpcg"` is preferred for large,
-approximately low-rank matrices with small `ncp`, and `"exact"` for
-small matrices (including
+**Exact vs. LOBPCG.** `"lobpcg"` suits large, approximately low-rank
+matrices with small `ncp`. `"exact"` suits small matrices, such as
 [`slide_imp()`](https://hhp94.github.io/slideimp/reference/slide_imp.md)
-windows), where it is faster and more robust. Separately, the warm-start
-makes each successive solve cheap:
+windows, where it is faster. It is also more reliable: it always
+converges, to eigenvectors exact to machine precision, while LOBPCG
+stops at the tolerance set in
+[`lobpcg_control()`](https://hhp94.github.io/slideimp/reference/lobpcg_control.md)
+and can take many iterations, or reach `maxiter`, when the eigenvalues
+around the `ncp`-th one are close together. The warm start makes each
+later LOBPCG solve cheap:
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
-warm-starts LOBPCG with the previous eigenblock and search direction, so
-once imputed values stabilize, later solves converge in a few
-iterations. The payoff therefore grows with the number of EM iterations,
-independent of low-rankness. `solver = "auto"` (default) probes both and
-is a safe start.
+starts LOBPCG from the previous eigenblock and search direction, so once
+the imputed values stabilize, each solve takes a few iterations. The
+gain grows with the number of EM iterations, whatever the rank.
+`solver = "auto"`, the default, chooses between the two and is a safe
+start.
 
-**Threshold.** The default `1e-6` is conservative; `1e-5` is often
-faster with very similar values.
+**Threshold.** The default `1e-6` is conservative. `1e-5` is often
+faster and gives very similar values.
 
-**Scale.** For columns on a common scale (e.g., DNAm beta values in
-`[0, 1]`), `scale = FALSE` can be faster and more accurate.
+**Scale.** For columns on a common scale, such as DNA methylation beta
+values in `[0, 1]`, `scale = FALSE` can be faster and more accurate.
 
-**Parallel and BLAS.** In parallel via
-[`tune_imp()`](https://hhp94.github.io/slideimp/reference/tune_imp.md)
-or `group_imp()` with a multithreaded BLAS, set `pin_blas = TRUE` to
-avoid thread oversubscription. On Windows, the stock BLAS can be slow.
-Advanced users can swap in
-[OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows).
+**BLAS.** On Windows, the BLAS that ships with R can be slow, and
+[OpenBLAS](https://github.com/david-cortes/R-openblas-in-windows) can
+replace it.
 
 See [Speeding up PCA
 imputation](https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html)
@@ -289,9 +339,13 @@ for the full workflow.
 
 ## See also
 
-[`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md),
-[`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md),
-[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+- [`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
+  to inspect and edit the groups and their parameters.
+
+- [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
+  and
+  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  to impute a single matrix.
 
 ## Examples
 
@@ -311,10 +365,10 @@ head(group)
 
 # Simple grouped K-NN imputation
 results <- group_imp(obj, group = group, k = 2, .progress = FALSE)
-#> Imputing 2 groups using KNN.
+#> Imputing 2 groups using K-NN.
 #> Running mode: sequential
 results
-#> Method: group_imp (KNN imputation)
+#> Method: group_imp (K-NN imputation)
 #> Dimensions: 10 x 20
 #> 
 #>          feature1  feature2  feature3  feature4   feature5  feature6
@@ -335,7 +389,7 @@ knn_subset <- group_imp(
   k = 2,
   .progress = FALSE
 )
-#> Imputing 2 groups using KNN.
+#> Imputing 2 groups using K-NN.
 #> Running mode: sequential
 
 # Use prep_groups() to inspect and edit per-group parameters
@@ -343,7 +397,7 @@ prepped <- prep_groups(colnames(obj), group)
 prepped$parameters <- lapply(seq_len(nrow(prepped)), function(i) list(k = 2))
 prepped$parameters[[2]]$k <- 4
 knn_grouped <- group_imp(obj, group = prepped, .progress = FALSE)
-#> Imputing 2 groups using KNN.
+#> Imputing 2 groups using K-NN.
 #> Running mode: sequential
 
 if (FALSE) { # interactive() && requireNamespace("mirai", quietly = TRUE)

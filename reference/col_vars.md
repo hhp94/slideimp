@@ -1,23 +1,18 @@
-# Calculate Matrix Column Variances
+# Matrix Column Variances
 
 Compute the sample variance for each column of a numeric matrix.
 
 ## Usage
 
 ``` r
-col_vars(obj, cores = 1)
+col_vars(obj)
 ```
 
 ## Arguments
 
 - obj:
 
-  A numeric matrix.
-
-- cores:
-
-  Integer. Number of cores to use for parallel computation. Defaults to
-  `1`.
+  A double matrix.
 
 ## Value
 
@@ -25,11 +20,13 @@ A numeric vector of column variances, named if `obj` has column names.
 
 ## Details
 
-Columns with fewer than two non-missing values are assigned `NA`.
+`NA` and `NaN` are treated as missing and dropped, as
+[`stats::var()`](https://rdrr.io/r/stats/cor.html) does with
+`na.rm = TRUE`. A column with fewer than two non-missing values has
+variance `NA`.
 
-`NA`/`NaN` are treated as missing and dropped (equivalent to
-`var(x, na.rm = TRUE)`). `Inf`/`-Inf` are **not** missing. They enter
-the arithmetic, so a column's variance can be `NaN`, matching base R.
+`Inf` and `-Inf` are not missing. A column that contains one and has at
+least two non-missing values has variance `NaN`, as in base R.
 
 ## Examples
 

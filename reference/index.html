@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.9</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.99</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -19,7 +19,8 @@
 <li class="active nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
-  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+  <ul class="dropdown-menu" aria-labelledby="dropdown-articles"><li><a class="dropdown-item" href="../articles/multiple-imputation-beta.html">Multiple imputation of a beta matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
   </ul></li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -54,10 +55,31 @@
 
       <dl><dt>
 
+          <code><a href="abb_cols.html">abb_cols()</a></code>
+
+        </dt>
+        <dd>Propose Columns to Draw by Approximate Bayesian Bootstrap</dd>
+
+        <dt>
+
+          <code><a href="as.matrix.si_mi.html">`[`(<i>&lt;si_mi&gt;</i>)</a></code> <code><a href="as.matrix.si_mi.html">as.matrix(<i>&lt;si_mi&gt;</i>)</a></code> <code><a href="as.matrix.si_mi.html">as.matrix(<i>&lt;si_mi_pca&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Completed Matrix from a Bayesian PCA Imputation</dd>
+
+        <dt>
+
+          <code><a href="cbind.si_mi.html">cbind(<i>&lt;si_mi&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Join Bayesian PCA Imputations of Different Columns</dd>
+
+        <dt>
+
           <code><a href="col_vars.html">col_vars()</a></code>
 
         </dt>
-        <dd>Calculate Matrix Column Variances</dd>
+        <dd>Matrix Column Variances</dd>
 
         <dt>
 
@@ -96,10 +118,38 @@
 
         <dt>
 
-          <code><a href="mean_imp_col.html">mean_imp_col()</a></code>
+          <code><a href="mipca.html">mipca()</a></code>
 
         </dt>
-        <dd>Column Mean Imputation</dd>
+        <dd>Multiple Imputation by Bayesian PCA</dd>
+
+        <dt>
+
+          <code><a href="mipca_finalize.html">update(<i>&lt;si_mi_pca&gt;</i>)</a></code> <code><a href="mipca_finalize.html">update(<i>&lt;si_mi&gt;</i>)</a></code> <code><a href="mipca_finalize.html">mipca_finalize()</a></code>
+
+        </dt>
+        <dd>Extend or Finalize a Resumable Bayesian PCA Fit</dd>
+
+        <dt>
+
+          <code><a href="mipca_fit.html">mipca_fit()</a></code>
+
+        </dt>
+        <dd>Fit Bayesian PCA Imputation at a Tuned Rank</dd>
+
+        <dt>
+
+          <code><a href="mipca_flank.html">mipca_flank_plan()</a></code> <code><a href="mipca_flank.html">print(<i>&lt;si_flank_plan&gt;</i>)</a></code> <code><a href="mipca_flank.html">mipca_flank_window()</a></code> <code><a href="mipca_flank.html">mipca_flank()</a></code>
+
+        </dt>
+        <dd>Bayesian PCA Imputation on a Flanking Window per Column</dd>
+
+        <dt>
+
+          <code><a href="mipca_tune.html">mipca_tune()</a></code> <code><a href="mipca_tune.html">print(<i>&lt;si_tune&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Choose the Rank of Bayesian PCA Imputation on Held-Out Values</dd>
 
         <dt>
 
@@ -113,28 +163,28 @@
           <code><a href="prep_groups.html">prep_groups()</a></code>
 
         </dt>
-        <dd>Prepare Groups for Imputation</dd>
+        <dd>Group Preparation for Imputation</dd>
 
         <dt>
 
           <code><a href="print.slideimp_results.html">print(<i>&lt;slideimp_results&gt;</i>)</a></code>
 
         </dt>
-        <dd>Print a <code>slideimp_results</code> Object</dd>
+        <dd>Print Method for <code>slideimp_results</code> Objects</dd>
 
         <dt>
 
           <code><a href="print.slideimp_sim.html">print(<i>&lt;slideimp_sim&gt;</i>)</a></code>
 
         </dt>
-        <dd>Print a <code>slideimp_sim</code> Object</dd>
+        <dd>Print Method for <code>slideimp_sim</code> Objects</dd>
 
         <dt>
 
           <code><a href="print.slideimp_tbl.html">print(<i>&lt;slideimp_tbl&gt;</i>)</a></code>
 
         </dt>
-        <dd>Print a <code>slideimp_tbl</code> Object</dd>
+        <dd>Print Method for <code>slideimp_tbl</code> Objects</dd>
 
         <dt>
 
@@ -148,7 +198,7 @@
           <code><a href="sim_mat.html">sim_mat()</a></code>
 
         </dt>
-        <dd>Simulate a Matrix with Metadata</dd>
+        <dd>Simulated Numeric Matrix with Metadata</dd>
 
         <dt>
 
@@ -162,14 +212,35 @@
           <code><a href="slideimp_resolve_group.html">slideimp_resolve_group()</a></code>
 
         </dt>
-        <dd>Resolve a Group Specification to a Data Frame</dd>
+        <dd>Resolution of a Group Specification</dd>
+
+        <dt>
+
+          <code><a href="spectra_opts.html">spectra_opts()</a></code>
+
+        </dt>
+        <dd>Eigensolver Settings for Bayesian PCA Imputation</dd>
+
+        <dt>
+
+          <code><a href="summary.si_mi.html">print(<i>&lt;si_mi_pca&gt;</i>)</a></code> <code><a href="summary.si_mi.html">print(<i>&lt;si_mi&gt;</i>)</a></code> <code><a href="summary.si_mi.html">summary(<i>&lt;si_mi_pca&gt;</i>)</a></code> <code><a href="summary.si_mi.html">summary(<i>&lt;si_mi&gt;</i>)</a></code> <code><a href="summary.si_mi.html">print(<i>&lt;si_mi_summary&gt;</i>)</a></code>
+
+        </dt>
+        <dd>Summarize and Print a Bayesian PCA Imputation</dd>
+
+        <dt>
+
+          <code><a href="tf_identity.html">tf_identity()</a></code> <code><a href="tf_identity.html">tf_sv()</a></code> <code><a href="tf_identity.html">tf_biwhiten()</a></code>
+
+        </dt>
+        <dd>Transforms for Bayesian PCA Imputation</dd>
 
         <dt>
 
           <code><a href="tune_imp.html">tune_imp()</a></code>
 
         </dt>
-        <dd>Tune Imputation Method Parameters</dd>
+        <dd>Hyperparameter Tuning for Imputation Methods</dd>
       </dl></div>
   </main></div>
 

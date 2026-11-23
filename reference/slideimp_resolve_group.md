@@ -1,10 +1,9 @@
-# Resolve a Group Specification to a Data Frame
+# Resolution of a Group Specification
 
-Convert a group specification to the canonical data-frame form expected
-by
-[`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md).
-This S3 generic is exported so that extension packages, such as
-`slideimp.extra`, can register additional methods.
+Convert a group specification to the data frame that
+[`prep_groups()`](https://hhp94.github.io/slideimp/reference/prep_groups.md)
+reads. This S3 generic is exported so that extension packages, such as
+`slideimp.extra`, can register methods for other classes.
 
 ## Usage
 
@@ -22,17 +21,14 @@ slideimp_resolve_group(x)
 
 - x:
 
-  A group specification. `slideimp` provides a method for `data.frame`
-  objects. The optional `slideimp.extra` package provides a method for
-  character platform names.
+  An object. The group specification: `slideimp` has a method for
+  `data.frame`, and the optional `slideimp.extra` package adds one for a
+  character platform name.
 
 ## Value
 
-A data frame group specification, or an error for unsupported inputs.
-
-## Note
-
-This is primarily an extension hook for `slideimp.extra`.
+A data frame. The `data.frame` method returns `x` with duplicate rows
+removed.
 
 ## Examples
 

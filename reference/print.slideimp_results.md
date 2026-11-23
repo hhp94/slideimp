@@ -1,4 +1,4 @@
-# Print a `slideimp_results` Object
+# Print Method for `slideimp_results` Objects
 
 Print the output of
 [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md),
@@ -22,15 +22,16 @@ print(x, n = 6L, p = 6L, ...)
 
 - n:
 
-  Number of rows to print.
+  Integer. Number of rows to print.
 
 - p:
 
-  Number of columns to print.
+  Integer. Number of columns to print.
 
 - ...:
 
-  Not used.
+  Further arguments passed to
+  [`print()`](https://rdrr.io/r/base/print.html) for the preview.
 
 ## Value
 
@@ -45,7 +46,7 @@ result <- knn_imp(mat$input, k = 5, .progress = FALSE)
 class(result)
 #> [1] "slideimp_results" "matrix"           "array"           
 print(result, n = 6, p = 6)
-#> Method: KNN imputation
+#> Method: K-NN imputation
 #> Dimensions: 10 x 10
 #> 
 #>          feature1   feature2  feature3  feature4   feature5  feature6

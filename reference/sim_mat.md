@@ -1,11 +1,10 @@
-# Simulate a Matrix with Metadata
+# Simulated Numeric Matrix with Metadata
 
-`sim_mat()` generates random normal data with optional
-compound-symmetric column correlation. Values can optionally be scaled
-to the interval `[0, 1]` column-wise. The function also creates feature
-metadata for columns and sample metadata for rows, and can inject `NA`
-values into a specified proportion of matrix cells across a specified
-proportion of columns.
+`sim_mat()` generates random normal data with compound-symmetric column
+correlation, optionally scaled to `[0, 1]` column-wise. It also builds
+feature metadata for the columns and sample metadata for the rows, and
+sets a proportion of the cells to `NA` across a proportion of the
+columns.
 
 ## Usage
 
@@ -35,16 +34,18 @@ sim_mat(
 
 - rho:
 
-  Numeric. Compound-symmetric column correlation before optional
-  scaling. Defaults to `0.5`.
+  Numeric. Correlation between every pair of columns before scaling, at
+  least `0` and below `1`. Defaults to `0.5`.
 
 - n_col_groups:
 
-  Integer. Number of groups to assign to features. Defaults to `2`.
+  Integer. Number of group labels drawn at random for the features.
+  Defaults to `2`.
 
 - n_row_groups:
 
-  Integer. Number of groups to assign to samples. Defaults to `1`.
+  Integer. Number of group labels drawn at random for the samples.
+  Defaults to `1`.
 
 - perc_total_na:
 
@@ -59,13 +60,14 @@ sim_mat(
 - beta:
 
   Logical. If `TRUE`, scale values to the interval `[0, 1]` column-wise.
+  Defaults to `TRUE`.
 
 ## Value
 
-An object of class `slideimp_sim`. This is a list containing:
+A `slideimp_sim` object, a list with:
 
-- `input`: a numeric matrix of dimension \\n \times p\\ containing the
-  simulated values and injected missing values.
+- `input`: a numeric matrix of dimension \\n \times p\\ that holds the
+  simulated values and the injected `NA` values.
 
 - `col_group`: a data frame with \\p\\ rows mapping each `feature` to a
   `group`.
@@ -73,10 +75,7 @@ An object of class `slideimp_sim`. This is a list containing:
 - `row_group`: a data frame with \\n\\ rows mapping each `sample` to a
   `group`.
 
-## Details
-
-Generate a numeric matrix with optional row and column metadata and
-added missing values.
+- `n_col_groups`, `n_row_groups`: the group counts as given.
 
 ## Examples
 
@@ -94,7 +93,7 @@ sim_data
 #> 6 feature6 group2
 #> # Showing 6 of 10 rows
 #> 
-#> $row_group (1 row groups)
+#> $row_group (1 row group)
 #>    sample  group
 #> 1 sample1 group1
 #> 2 sample2 group1

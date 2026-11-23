@@ -11,8 +11,8 @@
 <script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
 <script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Numeric Matrices K-NN and PCA Imputation">
-<meta name="description" content='Fast k-nearest neighbors (K-NN) and principal component analysis (PCA) imputation algorithms for missing values in epigenetic data or other high-dimensional numeric matrices. For PCA, a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver with warm starts of both the eigenblock and search direction is also supported. Two complementary imputation strategies are available. Group-wise imputation (e.g., by chromosome) is recommended for Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other matrices with groupable columns. A sliding window approach for K-NN or PCA imputation is recommended only for whole-genome methylation data such as whole-genome bisulfite sequencing (WGBS) or Enzymatic Methyl-seq (EM-seq). The package also supports hyperparameter tuning via repeated cross-validation. The K-NN algorithm is described in: Hastie, T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D. (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA imputation is an optimized reimplementation of the imputePCA() function from the missMDA package described in: Josse, J. and Husson, F. (2016) &lt;doi:10.18637/jss.v070.i01&gt; "missMDA: A Package for Handling Missing Values in Multivariate Data Analysis".'>
-<meta property="og:description" content='Fast k-nearest neighbors (K-NN) and principal component analysis (PCA) imputation algorithms for missing values in epigenetic data or other high-dimensional numeric matrices. For PCA, a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver with warm starts of both the eigenblock and search direction is also supported. Two complementary imputation strategies are available. Group-wise imputation (e.g., by chromosome) is recommended for Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other matrices with groupable columns. A sliding window approach for K-NN or PCA imputation is recommended only for whole-genome methylation data such as whole-genome bisulfite sequencing (WGBS) or Enzymatic Methyl-seq (EM-seq). The package also supports hyperparameter tuning via repeated cross-validation. The K-NN algorithm is described in: Hastie, T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and Botstein, D. (1999) "Imputing Missing Data for Gene Expression Arrays". The PCA imputation is an optimized reimplementation of the imputePCA() function from the missMDA package described in: Josse, J. and Husson, F. (2016) &lt;doi:10.18637/jss.v070.i01&gt; "missMDA: A Package for Handling Missing Values in Multivariate Data Analysis".'>
+<meta name="description" content="Fast k-nearest neighbor (K-NN) and principal component analysis (PCA) imputation of missing values in high-dimensional numeric matrices, such as DNA methylation data. PCA imputation can use a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver, which warm-starts each iteration from the previous eigenblock and search direction. Group-wise imputation, for example by chromosome, is recommended for Illumina DNA methylation arrays such as 450K and EPIC, and for other matrices with groupable columns. Sliding-window imputation imputes columns ordered by position. Tuning functions choose hyperparameters by masking observed values, imputing them, and scoring the result over repeated random masks. The Bayesian PCA sampler draws multiple imputations of the missing values. For whole-genome methylation data, such as whole-genome bisulfite sequencing (WGBS) or Enzymatic Methyl-seq (EM-seq), the sampler is recommended because such data are sparsely observed. The K-NN method is described in Troyanskaya et al. (2001) &lt;doi:10.1093/bioinformatics/17.6.520&gt;. PCA imputation is an optimized reimplementation of imputePCA() from the missMDA package, described in Josse and Husson (2016) &lt;doi:10.18637/jss.v070.i01&gt;. The sampler implements the Bayesian method of MIPCA() in missMDA, described in Audigier, Husson and Josse (2016) &lt;doi:10.1080/00949655.2015.1104683&gt;.">
+<meta property="og:description" content="Fast k-nearest neighbor (K-NN) and principal component analysis (PCA) imputation of missing values in high-dimensional numeric matrices, such as DNA methylation data. PCA imputation can use a locally optimal block preconditioned conjugate gradient (LOBPCG) eigensolver, which warm-starts each iteration from the previous eigenblock and search direction. Group-wise imputation, for example by chromosome, is recommended for Illumina DNA methylation arrays such as 450K and EPIC, and for other matrices with groupable columns. Sliding-window imputation imputes columns ordered by position. Tuning functions choose hyperparameters by masking observed values, imputing them, and scoring the result over repeated random masks. The Bayesian PCA sampler draws multiple imputations of the missing values. For whole-genome methylation data, such as whole-genome bisulfite sequencing (WGBS) or Enzymatic Methyl-seq (EM-seq), the sampler is recommended because such data are sparsely observed. The K-NN method is described in Troyanskaya et al. (2001) &lt;doi:10.1093/bioinformatics/17.6.520&gt;. PCA imputation is an optimized reimplementation of imputePCA() from the missMDA package, described in Josse and Husson (2016) &lt;doi:10.18637/jss.v070.i01&gt;. The sampler implements the Bayesian method of MIPCA() in missMDA, described in Audigier, Husson and Josse (2016) &lt;doi:10.1080/00949655.2015.1104683&gt;.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.9</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.99</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -36,7 +36,8 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+<li><a class="dropdown-item" href="articles/multiple-imputation-beta.html">Multiple imputation of a beta matrix</a></li>
+    <li><a class="dropdown-item" href="articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
   </ul>
 </li>
 <li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
@@ -66,12 +67,14 @@
 </h1></div>
 <!-- badges: start -->
 
-<p><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> is a lightweight R package for fast K-NN and PCA imputation of missing values in high-dimensional numeric matrices (samples in rows, variables in columns). Two “meta-callers” wrap the workhorse functions <code><a href="reference/knn_imp.html">knn_imp()</a></code> and <code><a href="reference/pca_imp.html">pca_imp()</a></code>:</p>
+<p><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> is a lightweight R package for fast K-NN and PCA imputation of missing values in high-dimensional numeric matrices (samples in rows, variables in columns). Its main functions:</p>
 <ul>
-<li><p><code><a href="reference/group_imp.html">group_imp()</a></code>: group-wise K-NN or PCA imputation (e.g., by chromosome for Illumina DNAm microarrays such as 450K, EPIC, EPICv2, MSA).</p></li>
-<li><p><code><a href="reference/slide_imp.html">slide_imp()</a></code>: sliding window K-NN or PCA imputation for whole-genome methylation data (WGBS, EM-seq). <strong>Note</strong>: not intended for Illumina microarrays, use <code><a href="reference/group_imp.html">group_imp()</a></code> instead.</p></li>
-<li><p><code><a href="reference/pca_imp.html">pca_imp()</a></code>: Optimized reimplementation of <a href="http://factominer.free.fr/missMDA/PCA.html" class="external-link"><code>missMDA::imputePCA()</code></a> for high-dimensional matrices. Supports a LOBPCG eigensolver that warm-starts each EM iteration from the previous eigenblock and search direction.</p></li>
-<li><p><code><a href="reference/knn_imp.html">knn_imp()</a></code>: Full K-NN imputation with <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a> multi-threading. Supports <code>subset</code> imputation to restrict work to specific columns (e.g., clock CpGs) for very fast targeted imputation.</p></li>
+<li><p><code><a href="reference/group_imp.html">group_imp()</a></code>: group-wise K-NN or PCA imputation, wrapping <code><a href="reference/knn_imp.html">knn_imp()</a></code> and <code><a href="reference/pca_imp.html">pca_imp()</a></code> (e.g., by chromosome for Illumina DNAm microarrays such as 450K, EPIC, EPICv2, MSA).</p></li>
+<li><p><code><a href="reference/slide_imp.html">slide_imp()</a></code>: sliding window K-NN or PCA imputation over columns ordered by position, wrapping <code><a href="reference/knn_imp.html">knn_imp()</a></code> and <code><a href="reference/pca_imp.html">pca_imp()</a></code>. <strong>Note</strong>: not intended for Illumina microarrays, use <code><a href="reference/group_imp.html">group_imp()</a></code> instead.</p></li>
+<li><p><code><a href="reference/pca_imp.html">pca_imp()</a></code>: optimized reimplementation of <a href="http://factominer.free.fr/missMDA/PCA.html" class="external-link"><code>missMDA::imputePCA()</code></a> for high-dimensional matrices. Supports a LOBPCG eigensolver that warm-starts each EM iteration from the previous eigenblock and search direction.</p></li>
+<li><p><code><a href="reference/knn_imp.html">knn_imp()</a></code>: full K-NN imputation with <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a> multi-threading. Supports <code>subset</code> imputation to restrict work to specific columns (e.g., clock CpGs) for very fast targeted imputation.</p></li>
+<li><p><code><a href="reference/mipca.html">mipca()</a></code>: Bayesian PCA sampler that draws multiple imputations of the missing values, with the method of <a href="https://doi.org/10.1080/00949655.2015.1104683" class="external-link">Audigier, Husson and Josse (2016)</a>. Recommended for whole-genome methylation data (WGBS, EM-seq), which are sparsely observed. See the <a href="https://hhp94.github.io/slideimp/articles/multiple-imputation-beta.html">multiple imputation article</a>.</p></li>
+<li><p><code><a href="reference/mipca_flank.html">mipca_flank()</a></code>: runs <code><a href="reference/mipca.html">mipca()</a></code> on target CpGs.</p></li>
 </ul>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
@@ -89,7 +92,7 @@
 <div class="section level2">
 <h2 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
 </h2>
-<p>If you find <a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> helpful in your work, please cite our Bioinformatics paper:</p>
+<p>To cite <a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a>, use the Bioinformatics paper:</p>
 <div class="sourceCode" id="cb4"><pre class="sourceCode bibtex"><code class="sourceCode bibtex"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="va">@article</span>{<span class="ot">10</span>.<span class="ot">1093</span>/<span class="ot">bioinformatics</span>/<span class="ot">btag318</span>,</span>
 <span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>    <span class="dt">author</span> = {Pham, Hung and Lombroso, Adam P and Cevik, Esma Cansu and Taylor, Hugh S and O'Donnell, Kieran J},</span>
 <span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>    <span class="dt">title</span> = {slideimp: efficient imputation of {DNA} methylation data},</span>
@@ -110,15 +113,15 @@
 </ul>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">MSA_beta_matrix</span><span class="op">)</span></span>
-<span><span class="co"># [1]     20 281797</span></span>
+<span><span class="co">#&gt; [1]     20 281797</span></span>
 <span><span class="va">MSA_beta_matrix</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
-<span><span class="co">#         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11</span></span>
-<span><span class="co"># sample1              NA       0.5023435       0.3835431              NA</span></span>
-<span><span class="co"># sample2       0.4907466       0.5095459       0.9025816       0.4313347</span></span>
-<span><span class="co"># sample3       0.6885036              NA       0.7646753       0.4498772</span></span>
-<span><span class="co"># sample4       0.0000000       0.0000000              NA       0.0000000</span></span></code></pre></div>
+<span><span class="co">#&gt;         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11</span></span>
+<span><span class="co">#&gt; sample1              NA       0.5023435       0.3835431              NA</span></span>
+<span><span class="co">#&gt; sample2       0.4907466       0.5095459       0.9025816       0.4313347</span></span>
+<span><span class="co">#&gt; sample3       0.6885036              NA       0.7646753       0.4498772</span></span>
+<span><span class="co">#&gt; sample4       0.0000000       0.0000000              NA       0.0000000</span></span></code></pre></div>
 <ul>
-<li><p>Chromosome-wise imputation of Illumina microarrays can be performed with a single function call (requires the Illumina manifests, conveniently provided by the <a href="https://github.com/hhp94/slideimp.extra" class="external-link"><code>slideimp.extra</code></a> package).</p></li>
+<li><p>Chromosome-wise imputation of Illumina microarrays can be performed with a single function call (requires the Illumina manifests, which the <a href="https://github.com/hhp94/slideimp.extra" class="external-link"><code>slideimp.extra</code></a> package provides).</p></li>
 <li><p>This example demonstrates PCA imputation. To use K-NN imputation instead, supply the <code>k</code> argument.</p></li>
 </ul>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
@@ -132,22 +135,22 @@
 <span>  clamp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">1</span><span class="op">)</span>, <span class="co"># &lt;- PCA imputation can generate values outside of `c(0, 1)`</span></span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span> <span class="co"># &lt;- turn on to monitor progress of longer running jobs</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co"># Found cleaned manifest for 'MSA'</span></span>
-<span><span class="co"># ! 1 group dropped: no features remaining after matching `obj_cn`.</span></span>
-<span><span class="co"># ℹ Dropped group indices: 24</span></span>
-<span><span class="co"># Imputing 25 groups using PCA.</span></span>
-<span><span class="co"># Running mode: sequential</span></span>
+<span><span class="co">#&gt; Found cleaned manifest for 'MSA'</span></span>
+<span><span class="co">#&gt; ! 1 group dropped: no feature matches a column name.</span></span>
+<span><span class="co">#&gt; ℹ Dropped group: M</span></span>
+<span><span class="co">#&gt; Imputing 25 groups using PCA.</span></span>
+<span><span class="co">#&gt; Running mode: sequential</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">imputed</span>, n <span class="op">=</span> <span class="fl">4</span>, p <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
-<span><span class="co"># Method: group_imp (PCA imputation)</span></span>
-<span><span class="co"># Dimensions: 20 x 281797</span></span>
-<span><span class="co">#</span></span>
-<span><span class="co">#         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11</span></span>
-<span><span class="co"># sample1       0.1517542       0.5023435      0.38354308       0.2067731</span></span>
-<span><span class="co"># sample2       0.4907466       0.5095459      0.90258164       0.4313347</span></span>
-<span><span class="co"># sample3       0.6885036       0.7339375      0.76467530       0.4498772</span></span>
-<span><span class="co"># sample4       0.0000000       0.0000000      0.05230101       0.0000000</span></span>
-<span><span class="co"># # Showing 4 of 20 rows and 4 of 281797 columns</span></span></code></pre></div>
+<span><span class="co">#&gt; Method: group_imp (PCA imputation)</span></span>
+<span><span class="co">#&gt; Dimensions: 20 x 281797</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;         cg06185909_TC11 cg18975462_BC11 cg20516119_TC11 cg10149399_BC11</span></span>
+<span><span class="co">#&gt; sample1       0.1517542       0.5023435      0.38354308       0.2067731</span></span>
+<span><span class="co">#&gt; sample2       0.4907466       0.5095459      0.90258164       0.4313347</span></span>
+<span><span class="co">#&gt; sample3       0.6885036       0.7339375      0.76467530       0.4498772</span></span>
+<span><span class="co">#&gt; sample4       0.0000000       0.0000000      0.05230101       0.0000000</span></span>
+<span><span class="co">#&gt; # Showing 4 of 20 rows and 4 of 281797 columns</span></span></code></pre></div>
 <div class="section level3">
 <h3 id="troubleshooting-tips">Troubleshooting tips<a class="anchor" aria-label="anchor" href="#troubleshooting-tips"></a>
 </h3>
@@ -161,9 +164,9 @@
 <h3 id="performance-tips">Performance tips<a class="anchor" aria-label="anchor" href="#performance-tips"></a>
 </h3>
 <ul>
-<li>For tips on the <code>solver</code> choice and LOBPCG warm-start, plus <code>threshold</code>, <code>scale</code>, <code>lobpcg_control</code>, and <a href="https://mirai.r-lib.org" class="external-link">mirai</a>/BLAS threading, see <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>.</li>
+<li>For tips on the <code>solver</code> choice and LOBPCG warm-start, plus <code>threshold</code>, <code>scale</code>, and <a href="https://mirai.r-lib.org" class="external-link">mirai</a>/BLAS threading, see <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a>.</li>
 <li>For PCA imputation of bounded data, i.e., DNA methylation beta values, use <code>clamp = c(0, 1)</code> to restrict PCA-imputed values to the valid range.</li>
-<li>For parallel PCA imputation with a threaded BLAS such as OpenBLAS or MKL, set <code>pin_blas = TRUE</code> so BLAS threads and <a href="https://mirai.r-lib.org" class="external-link">mirai</a> workers do not compete for cores. This requires <a href="https://prs.ism.ac.jp/~nakama/Rhpc/" class="external-link">RhpcBLASctl</a>.</li>
+<li>For parallel PCA imputation, <code><a href="reference/group_imp.html">group_imp()</a></code> and <code><a href="reference/tune_imp.html">tune_imp()</a></code> pin BLAS to one thread on each <a href="https://mirai.r-lib.org" class="external-link">mirai</a> worker, so BLAS threads and workers do not compete for cores. Set <code>pin_blas = FALSE</code> to turn this off. On Windows with OpenBLAS, the pin does not reach every call. See <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a> for the fix.</li>
 <li>For faster PCA imputation on Windows machines, advanced users can replace R’s default reference BLAS with OpenBLAS. See <a href="https://github.com/david-cortes/R-openblas-in-windows" class="external-link">this community guide</a>.</li>
 <li>For parallel K-NN imputation, use the <code>cores</code> argument, which uses <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a>’s <code>parallelFor</code>, instead of <a href="https://mirai.r-lib.org" class="external-link">mirai</a>. If you only need clock CpGs, pass <code>subset</code> to skip all other probes.</li>
 </ul>
@@ -173,7 +176,7 @@
 <h2 id="extended-workflow">Extended Workflow<a class="anchor" aria-label="anchor" href="#extended-workflow"></a>
 </h2>
 <ul>
-<li>We simulate DNA methylation (DNAm) microarray data from 2 chromosomes. All <a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> functions expect the input to be a numeric matrix where variables are stored in the columns.</li>
+<li>Simulate DNA methylation (DNAm) microarray data from 2 chromosomes. All <a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a> functions expect the input to be a double matrix (convert an integer matrix with <code>storage.mode(obj) &lt;- "double"</code>) where variables are stored in the columns.</li>
 </ul>
 <div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a></span><span class="op">)</span></span>
@@ -187,14 +190,13 @@
 <span><span class="va">group_df</span> <span class="op">&lt;-</span> <span class="va">sim_obj</span><span class="op">$</span><span class="va">col_group</span></span></code></pre></div>
 <ul>
 <li>
-<p>Hyperparameters are tuned using <code><a href="reference/tune_imp.html">tune_imp()</a></code>. We evaluate the following options with grid search (K-NN imputation):</p>
+<p>Tune the hyperparameters with <code><a href="reference/tune_imp.html">tune_imp()</a></code>. This grid search evaluates these K-NN imputation options:</p>
 <ul>
 <li>Number of nearest neighbors (<code>k</code>): 5 or 20</li>
 <li>Inverse distance power (<code>dist_pow</code>) for weighted averaging: 1 or 2 (higher values assign lower weights to more distant neighbors)</li>
 </ul>
 </li>
-<li><p>Tuning is performed on a subset of the data. We use 10 repeats (<code>n_reps = 10</code>) of cross-validation for evaluation. We artificially mask 50 observed values (<code>num_na = 50</code>) to compute the RMSE and MAE. Use larger values for both <code>n_reps</code> and <code>num_na</code> in real analyses for more reliable error estimates.</p></li>
-<li><p><strong>Note:</strong> Parallelization via the <code>cores</code> argument (which uses <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a>) is only available for K-NN imputation.</p></li>
+<li><p>The tuning runs on a subset of the data. It uses 10 repeats of cross-validation (<code>n_reps = 10</code>). Each repeat masks 50 observed values (<code>num_na = 50</code>) and computes the RMSE and MAE. Use larger values for both <code>n_reps</code> and <code>num_na</code> in real analyses for more reliable error estimates.</p></li>
 </ul>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">knn_params</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/expand.grid.html" class="external-link">expand.grid</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">5</span>, <span class="fl">20</span><span class="op">)</span>, dist_pow <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">)</span><span class="op">)</span></span>
@@ -218,39 +220,24 @@
 </ul>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">metrics</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">tune_knn</span><span class="op">)</span></span>
-<span></span>
-<span><span class="co"># Equivalently: dplyr::summarize(metrics, n = n(), mean_error = mean(.estimate),</span></span>
-<span><span class="co"># sd_error = sd(.estimate), .by = c(k, dist_pow, .metric))</span></span>
-<span><span class="va">sum_metrics</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/do.call.html" class="external-link">do.call</a></span><span class="op">(</span></span>
-<span>  <span class="va">data.frame</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span></span>
-<span>    <span class="va">.estimate</span> <span class="op">~</span> <span class="va">k</span> <span class="op">+</span> <span class="va">dist_pow</span> <span class="op">+</span> <span class="va">.metric</span>,</span>
-<span>    data <span class="op">=</span> <span class="va">metrics</span>,</span>
-<span>    FUN <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">x</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, mean_error <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span>, sd_error <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/stats/sd.html" class="external-link">sd</a></span><span class="op">(</span><span class="va">x</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">sum_metrics</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/order.html" class="external-link">order</a></span><span class="op">(</span><span class="va">sum_metrics</span><span class="op">$</span><span class="va">.estimate.mean_error</span><span class="op">)</span>, <span class="op">]</span></span>
-<span><span class="co">#&gt;    k dist_pow .metric .estimate.n .estimate.mean_error .estimate.sd_error</span></span>
-<span><span class="co">#&gt; 2 20        1     mae          10            0.1501427         0.01599598</span></span>
-<span><span class="co">#&gt; 4 20        2     mae          10            0.1519464         0.01638402</span></span>
-<span><span class="co">#&gt; 1  5        1     mae          10            0.1656087         0.01683512</span></span>
-<span><span class="co">#&gt; 3  5        2     mae          10            0.1669792         0.01666404</span></span>
-<span><span class="co">#&gt; 6 20        1    rmse          10            0.1897722         0.01915653</span></span>
-<span><span class="co">#&gt; 8 20        2    rmse          10            0.1918765         0.01936392</span></span>
-<span><span class="co">#&gt; 5  5        1    rmse          10            0.2081833         0.01949624</span></span>
-<span><span class="co">#&gt; 7  5        2    rmse          10            0.2101955         0.01884442</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span><span class="va">.estimate</span> <span class="op">~</span> <span class="va">k</span> <span class="op">+</span> <span class="va">dist_pow</span> <span class="op">+</span> <span class="va">.metric</span>, data <span class="op">=</span> <span class="va">metrics</span>, FUN <span class="op">=</span> <span class="va">mean</span><span class="op">)</span></span>
+<span><span class="co">#&gt;    k dist_pow .metric .estimate</span></span>
+<span><span class="co">#&gt; 1  5        1     mae 0.1636596</span></span>
+<span><span class="co">#&gt; 2 20        1     mae 0.1473074</span></span>
+<span><span class="co">#&gt; 3  5        2     mae 0.1654782</span></span>
+<span><span class="co">#&gt; 4 20        2     mae 0.1487407</span></span>
+<span><span class="co">#&gt; 5  5        1    rmse 0.2098225</span></span>
+<span><span class="co">#&gt; 6 20        1    rmse 0.1898989</span></span>
+<span><span class="co">#&gt; 7  5        2    rmse 0.2120673</span></span>
+<span><span class="co">#&gt; 8 20        2    rmse 0.1926341</span></span></code></pre></div>
 <ul>
-<li>For PCA imputation and custom functions, set up parallelization with <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code>. See <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a> for additional PCA performance-tuning guidance.</li>
-<li>
-<strong>Note:</strong> For machines with multi-threaded BLAS, turn on <code>pin_blas = TRUE</code> when tuning PCA imputation in parallel to avoid thrashing.</li>
+<li>For PCA imputation and custom functions, set up parallelization with <code><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">mirai::daemons()</a></code>. See <a href="https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a> for more guidance on PCA performance.</li>
 </ul>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">2</span><span class="op">)</span> <span class="co"># 2 Cores</span></span>
 <span></span>
 <span><span class="co"># PCA imputation.</span></span>
 <span><span class="va">pca_params</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>ncp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>, <span class="fl">5</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co"># For machines with multi-threaded BLAS, turn on `pin_blas = TRUE`</span></span>
 <span><span class="va">tune_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/tune_imp.html">tune_imp</a></span><span class="op">(</span><span class="va">obj</span>, parameters <span class="op">=</span> <span class="va">pca_params</span>, .f <span class="op">=</span> <span class="st">"pca_imp"</span>, n_reps <span class="op">=</span> <span class="fl">10</span>, num_na <span class="op">=</span> <span class="fl">50</span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span> <span class="co"># Close daemons</span></span></code></pre></div>
@@ -259,10 +246,10 @@
 </ul>
 <div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">knn_group_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/group_imp.html">group_imp</a></span><span class="op">(</span><span class="va">obj</span>, group <span class="op">=</span> <span class="va">group_df</span>, k <span class="op">=</span> <span class="fl">20</span>, dist_pow <span class="op">=</span> <span class="fl">1</span>, cores <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Imputing 2 groups using KNN.</span></span>
+<span><span class="co">#&gt; Imputing 2 groups using K-NN.</span></span>
 <span><span class="co">#&gt; Running mode: threaded (2 cores)</span></span>
 <span><span class="va">knn_group_results</span></span>
-<span><span class="co">#&gt; Method: group_imp (KNN imputation)</span></span>
+<span><span class="co">#&gt; Method: group_imp (K-NN imputation)</span></span>
 <span><span class="co">#&gt; Dimensions: 20 x 100</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;          feature1  feature2  feature3  feature4  feature5  feature6</span></span>
@@ -274,119 +261,63 @@
 <span><span class="co">#&gt; sample6 0.3768380 0.5570723 0.8764909 0.5276245 0.6722794 0.5740639</span></span>
 <span><span class="co">#&gt; # Showing 6 of 20 rows and 6 of 100 columns</span></span></code></pre></div>
 <ul>
-<li>PCA imputation with <code><a href="reference/group_imp.html">group_imp()</a></code> can be parallelized with <a href="https://mirai.r-lib.org" class="external-link">mirai</a>, as with <code><a href="reference/tune_imp.html">tune_imp()</a></code>.</li>
+<li><p><code><a href="reference/group_imp.html">group_imp()</a></code> runs PCA imputation in parallel on <a href="https://mirai.r-lib.org" class="external-link">mirai</a> daemons in the same way as <code><a href="reference/tune_imp.html">tune_imp()</a></code>.</p></li>
+<li><p>Alternatively, full matrix imputation can be performed using <code><a href="reference/knn_imp.html">knn_imp()</a></code> or <code><a href="reference/pca_imp.html">pca_imp()</a></code>.</p></li>
 </ul>
 <div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">2</span><span class="op">)</span></span>
-<span><span class="va">pca_group_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/group_imp.html">group_imp</a></span><span class="op">(</span><span class="va">obj</span>, group <span class="op">=</span> <span class="va">group_df</span>, ncp <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
-<span><span class="fu">mirai</span><span class="fu">::</span><span class="fu"><a href="https://mirai.r-lib.org/reference/daemons.html" class="external-link">daemons</a></span><span class="op">(</span><span class="fl">0</span><span class="op">)</span></span></code></pre></div>
-<ul>
-<li>Alternatively, full matrix imputation can be performed using <code><a href="reference/knn_imp.html">knn_imp()</a></code> or <code><a href="reference/pca_imp.html">pca_imp()</a></code>.</li>
-</ul>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">full_knn_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/knn_imp.html">knn_imp</a></span><span class="op">(</span>obj <span class="op">=</span> <span class="va">obj</span>, k <span class="op">=</span> <span class="fl">20</span><span class="op">)</span></span>
 <span><span class="va">full_pca_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/pca_imp.html">pca_imp</a></span><span class="op">(</span>obj <span class="op">=</span> <span class="va">obj</span>, ncp <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="sliding-window-imputation">Sliding Window Imputation<a class="anchor" aria-label="anchor" href="#sliding-window-imputation"></a>
+<h2 id="multiple-imputation-of-wgbsem-seq-data">Multiple imputation of WGBS/EM-seq data<a class="anchor" aria-label="anchor" href="#multiple-imputation-of-wgbsem-seq-data"></a>
 </h2>
 <ul>
-<li>
-<code><a href="reference/slide_imp.html">slide_imp()</a></code> performs sliding window imputation.</li>
-<li>This function is <strong>not</strong> for Illumina DNAm microarrays. See <code><a href="reference/group_imp.html">group_imp()</a></code>.</li>
-<li>
-<strong>Note:</strong>
-<ul>
-<li>DNAm WGBS/EM-seq data should be grouped by chromosomes (i.e., run <code><a href="reference/slide_imp.html">slide_imp()</a></code> separately on each chromosome) before imputation. See the package vignette for more details.</li>
-<li>See vignette for details about selecting <code>window_size</code> and <code>overlap_size</code> with <code><a href="reference/tune_imp.html">tune_imp()</a></code>.</li>
+<li>For WGBS/EM-seq data, <code><a href="reference/mipca_flank.html">mipca_flank()</a></code> draws multiple imputations of target CpGs, each fitted on the CpGs within <code>window_size</code> bp of it. Split the data by chromosome first.</li>
+<li>This simulated beta matrix stands in for one chromosome, with 50 to 500 bp between neighboring CpGs.</li>
 </ul>
-</li>
+<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span>
+<span><span class="va">chr1_beta</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/sim_mat.html">sim_mat</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">30</span>, p <span class="op">=</span> <span class="fl">500</span>, beta <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">$</span><span class="va">input</span></span>
+<span><span class="va">location</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cumsum.html" class="external-link">cumsum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fl">50</span><span class="op">:</span><span class="fl">500</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">chr1_beta</span><span class="op">)</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<ul>
+<li>First, find the window of each target with <code><a href="reference/mipca_flank.html">mipca_flank_plan()</a></code>.</li>
 </ul>
 <div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Simulate some data</span></span>
-<span><span class="va">chr1_beta</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/sim_mat.html">sim_mat</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">10</span>, p <span class="op">=</span> <span class="fl">2000</span><span class="op">)</span><span class="op">$</span><span class="va">input</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">targets</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/colnames.html" class="external-link">colnames</a></span><span class="op">(</span><span class="va">chr1_beta</span><span class="op">)</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">100</span>, <span class="fl">250</span>, <span class="fl">400</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/mipca_flank.html">mipca_flank_plan</a></span><span class="op">(</span></span>
+<span>  <span class="va">chr1_beta</span>,</span>
+<span>  <span class="va">location</span>,</span>
+<span>  window_size <span class="op">=</span> <span class="fl">2000</span>, <span class="co"># bp on each side of the target</span></span>
+<span>  subset <span class="op">=</span> <span class="va">targets</span>,</span>
+<span>  min_window_n <span class="op">=</span> <span class="fl">10</span></span>
+<span><span class="op">)</span></span>
+<span><span class="va">plan</span></span>
+<span><span class="co">#&gt; si_flank_plan: 3 targets on a 30 x 500 matrix, nothing fitted</span></span>
+<span><span class="co">#&gt;   status: impute 2, clean 1</span></span>
+<span><span class="co">#&gt;  target       name n_miss start end window_n status</span></span>
+<span><span class="co">#&gt;     100 feature100      6    94 105       12 impute</span></span>
+<span><span class="co">#&gt;     250 feature250      0   244 256       13  clean</span></span>
+<span><span class="co">#&gt;     400 feature400      6   393 406       14 impute</span></span>
+<span><span class="co">#&gt;   next: mipca_flank(x, rank, seed, transform) imputes.</span></span>
+<span><span class="co">#&gt;         mipca_flank_window(x, subset) gives one target's window to tune on.</span></span></code></pre></div>
 <ul>
-<li>
-<p><code><a href="reference/slide_imp.html">slide_imp()</a></code> parameters:</p>
-<ul>
-<li>
-<code>location</code> (required): a sorted numeric vector of length <code>ncol(obj)</code> specifying the position of each column (e.g., genomic coordinates in <em>bp</em>).</li>
-<li>
-<code>window_size</code> (required): width of each sliding window (same unit as <code>location</code>).</li>
-<li>
-<code>overlap_size</code>: overlap width between consecutive windows (same units as <code>location</code>). Must be strictly less than <code>window_size</code>.</li>
-<li>
-<code>min_window_n</code> (required): minimum number of columns a window must contain to be imputed. Windows with fewer columns than this threshold are dropped. Must be greater than <code>k</code> (for K-NN) or <code>ncp</code> (for PCA).</li>
-<li>
-<code>dry_run</code>: return only the calculated windows to inspect which are included.</li>
-<li>
-<code>k</code> (required): <em>(specifying K-NN imputation)</em> number of nearest neighbors to use inside each window.</li>
-<li>
-<code>ncp</code> (required): <em>(specifying PCA imputation)</em> number of principal components to retain. Use this instead of <code>k</code> when performing sliding-window PCA imputation.</li>
-<li>
-<code>subset</code>: impute only a subset of features (e.g., clock CpGs).</li>
-<li>
-<code>flank</code>: build flanking windows of <code>window_size</code> around features provided in <code>subset</code>.</li>
-</ul>
-</li>
-<li><p>First, let’s perform a dry run to examine the windows that will be imputed by <code>slide_imp</code>.</p></li>
+<li>Then fit each window and keep the targets’ draws. Choose <code>rank</code> with <code><a href="reference/mipca_tune.html">mipca_tune()</a></code> on one target’s window.</li>
 </ul>
 <div class="sourceCode" id="cb15"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">location</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_len</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">chr1_beta</span><span class="op">)</span><span class="op">)</span> <span class="co"># 1, 2, ..., 2000 for this simulated chromosome</span></span>
-<span></span>
-<span><span class="fu"><a href="reference/slide_imp.html">slide_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">chr1_beta</span>,</span>
-<span>  location <span class="op">=</span> <span class="va">location</span>,</span>
-<span>  window_size <span class="op">=</span> <span class="fl">50</span>, <span class="co"># select with `tune_imp()`</span></span>
-<span>  overlap_size <span class="op">=</span> <span class="fl">5</span>,</span>
-<span>  min_window_n <span class="op">=</span> <span class="fl">11</span>, <span class="co"># must be &gt; k = 10</span></span>
-<span>  dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; # slideimp table: 45 x 4</span></span>
-<span><span class="co">#&gt;  start end window_n  subset_local</span></span>
-<span><span class="co">#&gt;      1  50       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;     46  95       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;     91 140       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;    136 185       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;    181 230       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;    226 275       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;    271 320       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;    316 365       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;    361 410       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt;    406 455       50 &lt;double [50]&gt;</span></span>
-<span><span class="co">#&gt; # ... with 35 more rows</span></span></code></pre></div>
+<code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/mipca_flank.html">mipca_flank</a></span><span class="op">(</span><span class="va">plan</span>, rank <span class="op">=</span> <span class="fl">2</span>, seed <span class="op">=</span> <span class="fl">1</span>, transform <span class="op">=</span> <span class="st">"logit_biwhiten"</span>, .progress <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span><span class="va">fit</span></span>
+<span><span class="co">#&gt; si_mi fit: 30 x 3, 12 imputed cells, 400 draws</span></span>
+<span><span class="co">#&gt;   next: as.matrix() with 'draw' for a completed matrix, summary() for Rhat and ESS</span></span></code></pre></div>
 <ul>
-<li>Then, we can perform the imputation using the given parameters.</li>
+<li>See the <a href="https://hhp94.github.io/slideimp/articles/multiple-imputation-beta.html">multiple imputation article</a> for tuning, convergence checks, and pooling the draws.</li>
 </ul>
-<div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="reference/slide_imp.html">slide_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">chr1_beta</span>,</span>
-<span>  location <span class="op">=</span> <span class="va">location</span>,</span>
-<span>  window_size <span class="op">=</span> <span class="fl">50</span>, <span class="co"># select with `tune_imp()`</span></span>
-<span>  overlap_size <span class="op">=</span> <span class="fl">5</span>,</span>
-<span>  min_window_n <span class="op">=</span> <span class="fl">11</span>, <span class="co"># must be &gt; k = 10</span></span>
-<span>  k <span class="op">=</span> <span class="fl">10</span>, <span class="co"># select with `tune_imp()`</span></span>
-<span>  cores <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>  .progress <span class="op">=</span> <span class="cn">FALSE</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; Method: slide_imp (KNN imputation)</span></span>
-<span><span class="co">#&gt; Dimensions: 10 x 2000</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;          feature1  feature2  feature3   feature4  feature5  feature6</span></span>
-<span><span class="co">#&gt; sample1 0.7500638 0.5323295 0.6095626 0.96762386 0.5149855 1.0000000</span></span>
-<span><span class="co">#&gt; sample2 0.2809107 0.8695599 0.6324029 0.62469147 0.6040981 0.1583159</span></span>
-<span><span class="co">#&gt; sample3 0.9409348 0.5445597 0.6432675 1.00000000 0.5613868 0.3054879</span></span>
-<span><span class="co">#&gt; sample4 0.5946795 0.0000000 0.5837423 0.07237333 0.4410413 0.6101870</span></span>
-<span><span class="co">#&gt; sample5 0.8664253 0.6206139 0.3444691 0.52025046 0.5220036 0.7464794</span></span>
-<span><span class="co">#&gt; sample6 0.8157626 0.3053222 0.7227880 0.57711498 0.4576367 0.0000000</span></span>
-<span><span class="co">#&gt; # Showing 6 of 10 rows and 6 of 2000 columns</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="other-functions">Other functions<a class="anchor" aria-label="anchor" href="#other-functions"></a>
 </h2>
 <ul>
 <li>
-<code><a href="reference/col_vars.html">col_vars()</a></code> / <code><a href="reference/mean_imp_col.html">mean_imp_col()</a></code>: Fast column-wise variance and mean imputation via <a href="https://github.com/RcppCore/RcppArmadillo" class="external-link">RcppArmadillo</a> and <a href="https://github.com/tnagler/RcppThread" class="external-link">RcppThread</a>.</li>
+<code><a href="reference/col_vars.html">col_vars()</a></code>: Column-wise variance, skipping missing values.</li>
 <li>
 <code><a href="reference/mat_miss.html">mat_miss()</a></code>: Efficient column or row missing statistics.</li>
 </ul>

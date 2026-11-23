@@ -3,7 +3,7 @@
 Construct a validated list of control options for the LOBPCG eigensolver
 used by
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md).
-Most users do not need to call this directly.
+Most users do not need to call it.
 
 ## Usage
 
@@ -15,8 +15,10 @@ lobpcg_control(warmup_iters = 10L, tol = 1e-09, maxiter = 20)
 
 - warmup_iters:
 
-  Integer. Number of warm-up iterations before the main LOBPCG solve.
-  Must be non-negative.
+  Integer. Number of initial
+  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  iterations that use the exact eigensolver before LOBPCG starts. Must
+  be non-negative.
 
 - tol:
 
@@ -25,15 +27,23 @@ lobpcg_control(warmup_iters = 10L, tol = 1e-09, maxiter = 20)
 
 - maxiter:
 
-  Integer. Maximum number of LOBPCG iterations. Must be non-negative. In
-  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md),
-  `maxiter` must be positive when `solver = "auto"` or
-  `solver = "lobpcg"`. Use `solver = "exact"` to force the exact solver.
+  Integer. Maximum number of LOBPCG iterations per eigenvalue solve.
+  Must be non-negative, and positive when
+  [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+  runs with `solver = "auto"` or `"lobpcg"`. Use `solver = "exact"`, not
+  `maxiter = 0`, to select the exact solver.
 
 ## Value
 
-A named list of class `"slideimp_lobpcg_control"` containing
-`warmup_iters`, `tol`, and `maxiter`.
+A `slideimp_lobpcg_control` object: a named list with `warmup_iters`,
+`tol`, and `maxiter`.
+
+## Details
+
+Under `solver = "auto"`,
+[`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md)
+raises a `warmup_iters` that was not set for a large `ncp`, up to `50`.
+Set `warmup_iters` to keep a fixed value.
 
 ## Examples
 
@@ -90,7 +100,7 @@ pca_imp(obj, ncp = 2, solver = "exact")
 #> # Showing 6 of 10 rows and 6 of 10 columns
 
 # Pass directly to pca_imp()
-pca_imp(obj, ncp = 2, lobpcg_control = lobpcg_control(tol = 1e-9))
+pca_imp(obj, ncp = 2, lobpcg_control = lobpcg_control(tol = 1e-8))
 #> Method: PCA imputation
 #> Dimensions: 10 x 10
 #> 

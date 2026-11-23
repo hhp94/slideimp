@@ -10,7 +10,9 @@
 <link href="../deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
 <script src="../deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="../deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="../deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="slideimp">
+<script src="../deps/headroom-0.11.0/headroom.min.js"></script><script src="../deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="../deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="../deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="../deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="../deps/search-1.0.0/fuse.min.js"></script><script src="../deps/search-1.0.0/mark.min.js"></script><script src="slideimp_files/libs/quarto-html/popper.min.js"></script><script src="slideimp_files/libs/quarto-html/tippy.umd.min.js"></script><link href="slideimp_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="slideimp_files/libs/quarto-html/light-border.css" rel="stylesheet">
+<!-- pkgdown --><script src="../pkgdown.js"></script><meta property="og:title" content="slideimp">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -20,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.9</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.99</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -34,7 +36,8 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
+<li><a class="dropdown-item" href="../articles/multiple-imputation-beta.html">Multiple imputation of a beta matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/speeding-up-pca-imputation.html">Speeding up PCA imputation</a></li>
   </ul>
 </li>
 <li class="nav-item"><a class="nav-link" href="../news/index.html">Changelog</a></li>
@@ -57,34 +60,37 @@
 
 
   </div>
-</nav><div class="container template-article">
-
-
-
-
+</nav><div class="container template-quarto">
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>slideimp</h1>
-            
-      
-      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/master/vignettes/slideimp.Rmd" class="external-link"><code>vignettes/slideimp.Rmd</code></a></small>
-      <div class="d-none name"><code>slideimp.Rmd</code></div>
+
+
+
+
+      <small class="dont-index">Source: <a href="https://github.com/hhp94/slideimp/blob/master/vignettes/slideimp.qmd" class="external-link"><code>vignettes/slideimp.qmd</code></a></small>
+      <div class="d-none name"><code></code></div>
     </div>
 
-    
-    
-<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+
+
+
+
+
+    <div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a></span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span></code></pre></div>
-<div class="section level2">
-<h2 id="comparing-methods-using-a-shared-cross-validation-split-with-tune_imp">Comparing Methods Using a Shared Cross-Validation Split with
-<code>tune_imp()</code><a class="anchor" aria-label="anchor" href="#comparing-methods-using-a-shared-cross-validation-split-with-tune_imp"></a>
+</div>
+<section class="level2"><h2 id="comparing-methods-on-one-cross-validation-split-with-tune_imp">Comparing Methods on One Cross-Validation Split with <code>tune_imp()</code>
+<a class="anchor" aria-label="anchor" href="#comparing-methods-on-one-cross-validation-split-with-tune_imp"></a>
 </h2>
 <ul>
 <li>Simulate some data</li>
 </ul>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># 20 rows, 1000 columns, all columns have at least some NA</span></span>
 <span><span class="va">sim_obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sim_mat.html">sim_mat</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">20</span>, p <span class="op">=</span> <span class="fl">1000</span>, perc_col_na <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
 <span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="va">sim_obj</span><span class="op">$</span><span class="va">input</span></span>
@@ -94,45 +100,36 @@
 <span><span class="co">#&gt; sample2 0.5338935 0.4724364 0.9663621 0.3722729</span></span>
 <span><span class="co">#&gt; sample3 0.7185848 0.7351035 0.6724479 0.3162537</span></span>
 <span><span class="co">#&gt; sample4 0.1734418        NA 0.0000000 0.0000000</span></span></code></pre></div>
+</div>
 <ul>
-<li>Instead of random NA sampling inside <code><a href="../reference/tune_imp.html">tune_imp()</a></code>, which
-internally calls <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code>, we can generate the NA
-locations up front and pass them to <code><a href="../reference/tune_imp.html">tune_imp()</a></code>.</li>
-<li>Here, we randomly select 5 rows from each of 200 random columns
-(features) for 5 repetitions using <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code>. To
-specify just certain columns (i.e., clock CpGs), provide the
-<code>na_col_subset</code> argument.
+<li>By default, <code><a href="../reference/tune_imp.html">tune_imp()</a></code> samples the NA locations itself with <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code>. To compare methods on one split, generate the locations up front with <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code> and pass them to each <code><a href="../reference/tune_imp.html">tune_imp()</a></code> call.</li>
+<li>Here, <code><a href="../reference/sample_na_loc.html">sample_na_loc()</a></code> selects 5 rows in each of 200 random columns (features), for 5 repetitions. To use only certain columns (e.g., clock CpGs), pass the <code>na_col_subset</code> argument.
 <ul>
 <li>
-<code>na_loc</code> has 5 elements, one for each repeat. Each
-element is a matrix whose rows store the row and column index of a
-missing value.</li>
+<code>na_loc</code> has 5 elements, one for each repetition. Each element is a matrix with one row per masked value, which holds the row and column index of that value.</li>
 </ul>
 </li>
 </ul>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">na_loc</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sample_na_loc.html">sample_na_loc</a></span><span class="op">(</span><span class="va">obj</span>, n_cols <span class="op">=</span> <span class="fl">200</span>, n_rows <span class="op">=</span> <span class="fl">5</span>, n_reps <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">na_loc</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] 5</span></span>
 <span><span class="va">na_loc</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">6</span>, <span class="op">]</span></span>
 <span><span class="co">#&gt;      row col</span></span>
-<span><span class="co">#&gt; [1,]  18 661</span></span>
-<span><span class="co">#&gt; [2,]  17 661</span></span>
-<span><span class="co">#&gt; [3,]  20 661</span></span>
-<span><span class="co">#&gt; [4,]  15 661</span></span>
-<span><span class="co">#&gt; [5,]   6 661</span></span>
-<span><span class="co">#&gt; [6,]  10 293</span></span></code></pre></div>
+<span><span class="co">#&gt; [1,]   1 154</span></span>
+<span><span class="co">#&gt; [2,]   5 154</span></span>
+<span><span class="co">#&gt; [3,]  12 154</span></span>
+<span><span class="co">#&gt; [4,]  11 154</span></span>
+<span><span class="co">#&gt; [5,]   2 154</span></span>
+<span><span class="co">#&gt; [6,]  17 704</span></span></code></pre></div>
+</div>
 <ul>
-<li>Then we can compare 1) PCA, 2) K-NN imputation, and 3) a custom
-method, since the cross-validation missing values are the same for all
-methods.</li>
-<li>
-<strong>Note</strong>: The custom function requires the first
-argument to be <code>obj</code>, must return an object with the same
-dimensions as <code>obj</code>, and all subsequent arguments must match
-the column names of the <code>parameters</code> data frame.</li>
+<li>Every method gets the same masked values, so PCA, K-NN and a custom method can be compared directly.</li>
+<li>A custom function must take <code>obj</code> as its first argument and return an object with the same dimensions as <code>obj</code>. Its other arguments must match the column names of the <code>parameters</code> data frame.</li>
 </ul>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="cell">
+<div class="sourceCode cell-code" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># This custom function imputes missing values with random normal values and takes</span></span>
 <span><span class="co"># `mean` and `sd` as params</span></span>
 <span><span class="va">rnorm_imp</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">obj</span>, <span class="va">mean</span>, <span class="va">sd</span><span class="op">)</span> <span class="op">{</span></span>
@@ -148,9 +145,9 @@ the column names of the <code>parameters</code> data frame.</li>
 <span>  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>ncp <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; Tuning `pca_imp()`</span></span>
-<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
-<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
-<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
+<span><span class="co">#&gt; Step 1/2: Resolving NA locations</span></span>
+<span><span class="co">#&gt; Running mode: sequential</span></span>
+<span><span class="co">#&gt; Step 2/2: Tuning</span></span>
 <span></span>
 <span><span class="va">knn_tune</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
 <span>  <span class="va">obj</span>,</span>
@@ -159,9 +156,9 @@ the column names of the <code>parameters</code> data frame.</li>
 <span>  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; Tuning `knn_imp()`</span></span>
-<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
-<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
-<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
+<span><span class="co">#&gt; Step 1/2: Resolving NA locations</span></span>
+<span><span class="co">#&gt; Running mode: sequential</span></span>
+<span><span class="co">#&gt; Step 2/2: Tuning</span></span>
 <span></span>
 <span><span class="va">rnorm_tune</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
 <span>  <span class="va">obj</span>,</span>
@@ -169,367 +166,348 @@ the column names of the <code>parameters</code> data frame.</li>
 <span>  na_loc <span class="op">=</span> <span class="va">na_loc</span>,</span>
 <span>  parameters <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span>mean <span class="op">=</span> <span class="fl">0</span>, sd <span class="op">=</span> <span class="fl">1</span><span class="op">)</span> <span class="co"># must match with arguments of `rnorm_imp`</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning <span style="color: #00BB00;">custom function</span></span></span>
-<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
-<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
-<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span></code></pre></div>
+<span><span class="co">#&gt; Tuning a custom function</span></span>
+<span><span class="co">#&gt; Step 1/2: Resolving NA locations</span></span>
+<span><span class="co">#&gt; Running mode: sequential</span></span>
+<span><span class="co">#&gt; Step 2/2: Tuning</span></span></code></pre></div>
+</div>
 <ul>
 <li>Pick the method with the lowest cross-validation error:</li>
 </ul>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">pca_tune</span>, metrics <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span><span class="op">$</span><span class="va">.estimate</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.2048011</span></span>
+<span><span class="co">#&gt; [1] 0.2004882</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">knn_tune</span>, metrics <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span><span class="op">$</span><span class="va">.estimate</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 0.1962497</span></span>
+<span><span class="co">#&gt; [1] 0.1935046</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/mean.html" class="external-link">mean</a></span><span class="op">(</span><span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">rnorm_tune</span>, metrics <span class="op">=</span> <span class="st">"rmse"</span><span class="op">)</span><span class="op">$</span><span class="va">.estimate</span><span class="op">)</span></span>
-<span><span class="co">#&gt; [1] 1.110258</span></span></code></pre></div>
+<span><span class="co">#&gt; [1] 1.131702</span></span></code></pre></div>
 </div>
-<div class="section level2">
-<h2 id="group-wise-imputation-with-small-group-padding-and-group-wise-parameters-with-group_imp">Group-Wise Imputation with Small-Group Padding and Group-Wise
-Parameters with <code>group_imp()</code><a class="anchor" aria-label="anchor" href="#group-wise-imputation-with-small-group-padding-and-group-wise-parameters-with-group_imp"></a>
+</section><section class="level2"><h2 id="group-wise-imputation-with-group_imp">Group-Wise Imputation with <code>group_imp()</code>
+<a class="anchor" aria-label="anchor" href="#group-wise-imputation-with-group_imp"></a>
 </h2>
 <ul>
 <li>
-<code><a href="../reference/group_imp.html">group_imp()</a></code> allows imputation to be performed
-separately within defined groups (e.g., by chromosome), which
-significantly reduces run time and can increase accuracy for both K-NN
-and PCA imputation.</li>
-<li>
-<code><a href="../reference/group_imp.html">group_imp()</a></code> requires the <code>group</code> argument,
-which maps <code>colnames(obj)</code> to groups. This can be created up
-front with <code><a href="../reference/prep_groups.html">prep_groups()</a></code> for advanced features such as
-group-wise parameters and padding of small groups with random features
-from other groups. <code><a href="../reference/prep_groups.html">prep_groups()</a></code> returns a list-column data
-frame with:
+<code><a href="../reference/group_imp.html">group_imp()</a></code> imputes each group of columns (e.g., each chromosome) separately. This can significantly increase accuracy for both K-NN and PCA imputation (<a href="https://doi.org/10.1093/bioinformatics/btag318" class="external-link">Pham et al. 2026</a>), and it reduces run time:
 <ul>
-<li>
-<code>features</code>: <strong>required</strong> - a list-column
-where each element is a character vector of variable names to be imputed
-together.</li>
-<li>
-<code>aux</code>: <strong>optional</strong> - auxiliary variables to
-include in each group. These are only used to augment the imputation
-quality of features and are not imputed themselves. If one group is too
-small, e.g. <code>chrM</code>, <code>aux</code> is used to pad the group
-by randomly drawing features from other groups to meet
-<code>min_group_size</code>.</li>
-<li>
-<code>parameters</code>: <strong>optional</strong> - group-specific
-imputation parameters.</li>
+<li>K-NN searches for neighbors within the group only, so it is much faster.</li>
+<li>PCA is usually faster: each group forms a smaller cross-product, has less memory pressure, tends to converge in fewer iterations, and groups can run in parallel.</li>
 </ul>
 </li>
-<li>First we simulate data from 2 groups. We then create
-<code>group3</code> with only 1 feature to show how
-<code>min_group_size</code> pads it using the <code>aux</code> list
-column.</li>
+<li>The <code>group</code> argument maps <code>colnames(obj)</code> to groups. Build it with <code><a href="../reference/prep_groups.html">prep_groups()</a></code> to set parameters per group or to pad small groups. <code><a href="../reference/prep_groups.html">prep_groups()</a></code> returns a data frame with these columns:
+<ul>
+<li>
+<code>group</code>: the group labels.</li>
+<li>
+<code>feature</code>: a list-column. Each element holds the column names imputed together.</li>
+<li>
+<code>aux</code>: a list-column of auxiliary columns. They help impute the group’s features and are not imputed themselves. When a group such as <code>chrM</code> has fewer than <code>min_group_size</code> columns, <code><a href="../reference/prep_groups.html">prep_groups()</a></code> adds columns drawn at random from other groups to its <code>aux</code> until it reaches that size.</li>
+<li>
+<code>parameters</code>: optional group-specific imputation parameters.</li>
 </ul>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+</li>
+<li>First, simulate data with 2 groups. Then move feature 1 into a new group, <code>group3</code>, to show how <code>min_group_size</code> pads a one-feature group through the <code>aux</code> list-column.</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">sim_obj</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sim_mat.html">sim_mat</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">20</span>, p <span class="op">=</span> <span class="fl">50</span>, n_col_groups <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Matrix to be imputed</span></span>
 <span><span class="va">obj</span> <span class="op">&lt;-</span> <span class="va">sim_obj</span><span class="op">$</span><span class="va">input</span></span>
 <span><span class="va">obj</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
-<span><span class="co">#&gt;           feature1  feature2  feature3  feature4</span></span>
-<span><span class="co">#&gt; sample1 0.03031619 0.1352710 0.4653579 0.1143298</span></span>
-<span><span class="co">#&gt; sample2 0.50962966 0.2313022 0.9737881 0.5198844</span></span>
-<span><span class="co">#&gt; sample3 0.69068459 0.5020337 0.7863144 0.9997625</span></span>
-<span><span class="co">#&gt; sample4 0.40710170 0.4094603 0.3228294 0.2529592</span></span>
-<span><span class="co">#&gt; sample5 0.73113251 0.4108405 0.6385945        NA</span></span>
+<span><span class="co">#&gt;          feature1  feature2  feature3  feature4</span></span>
+<span><span class="co">#&gt; sample1 0.0000000        NA 0.2437860 0.0000000</span></span>
+<span><span class="co">#&gt; sample2 0.9022484 0.6724700 0.5377050 0.8242256</span></span>
+<span><span class="co">#&gt; sample3 1.0000000 0.6652907 0.3189869 1.0000000</span></span>
+<span><span class="co">#&gt; sample4 0.8367542 0.1726599 0.2097971 0.4225234</span></span>
+<span><span class="co">#&gt; sample5 0.4962462 0.6250307 0.4247322 0.6390391</span></span>
 <span></span>
 <span><span class="co"># Metadata, i.e., which features belong to which group</span></span>
 <span><span class="va">meta</span> <span class="op">&lt;-</span> <span class="va">sim_obj</span><span class="op">$</span><span class="va">col_group</span></span>
 <span><span class="va">meta</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="op">]</span></span>
 <span><span class="co">#&gt;    feature  group</span></span>
 <span><span class="co">#&gt; 1 feature1 group1</span></span>
-<span><span class="co">#&gt; 2 feature2 group1</span></span>
+<span><span class="co">#&gt; 2 feature2 group2</span></span>
 <span><span class="co">#&gt; 3 feature3 group1</span></span>
-<span><span class="co">#&gt; 4 feature4 group2</span></span>
-<span><span class="co">#&gt; 5 feature5 group2</span></span>
+<span><span class="co">#&gt; 4 feature4 group1</span></span>
+<span><span class="co">#&gt; 5 feature5 group1</span></span>
 <span></span>
-<span><span class="co"># We put feature 1 in `group3`</span></span>
+<span><span class="co"># Put feature 1 in `group3`</span></span>
 <span><span class="va">meta</span><span class="op">[</span><span class="fl">1</span>, <span class="fl">2</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="st">"group3"</span></span>
 <span><span class="va">meta</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="op">]</span></span>
 <span><span class="co">#&gt;    feature  group</span></span>
 <span><span class="co">#&gt; 1 feature1 group3</span></span>
-<span><span class="co">#&gt; 2 feature2 group1</span></span>
+<span><span class="co">#&gt; 2 feature2 group2</span></span>
 <span><span class="co">#&gt; 3 feature3 group1</span></span>
-<span><span class="co">#&gt; 4 feature4 group2</span></span>
-<span><span class="co">#&gt; 5 feature5 group2</span></span></code></pre></div>
+<span><span class="co">#&gt; 4 feature4 group1</span></span>
+<span><span class="co">#&gt; 5 feature5 group1</span></span></code></pre></div>
+</div>
 <ul>
-<li>Then we generate the <code>group</code> parameter for
-<code><a href="../reference/group_imp.html">group_imp()</a></code> up front. We can see that <code>group3</code>
-has been padded to have 10 columns.</li>
-<li>For each group, we also assign a different number of nearest
-neighbors as a demonstration.</li>
+<li>Then build the <code>group</code> argument with <code><a href="../reference/prep_groups.html">prep_groups()</a></code>. The output shows <code>group3</code> padded to 10 columns: 1 feature and 9 <code>aux</code> columns.</li>
+<li>As a demonstration, each group also gets a different number of nearest neighbors, <code>k</code>.</li>
 </ul>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<div class="cell">
+<div class="sourceCode cell-code" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span>
 <span><span class="va">group_imp_df</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/prep_groups.html">prep_groups</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/colnames.html" class="external-link">colnames</a></span><span class="op">(</span><span class="va">obj</span><span class="op">)</span>, group <span class="op">=</span> <span class="va">meta</span>, min_group_size <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
 <span><span class="va">group_imp_df</span><span class="op">$</span><span class="va">parameters</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fl">3</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fl">4</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>k <span class="op">=</span> <span class="fl">5</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">group_imp_df</span></span>
 <span><span class="co">#&gt; # slideimp table: 3 x 4</span></span>
 <span><span class="co">#&gt;   group          feature             aux parameters</span></span>
-<span><span class="co">#&gt;  group1 &lt;character [26]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
-<span><span class="co">#&gt;  group2 &lt;character [23]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
+<span><span class="co">#&gt;  group1 &lt;character [25]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
+<span><span class="co">#&gt;  group2 &lt;character [24]&gt; &lt;character [0]&gt; &lt;list [1]&gt;</span></span>
 <span><span class="co">#&gt;  group3  &lt;character [1]&gt; &lt;character [9]&gt; &lt;list [1]&gt;</span></span></code></pre></div>
+</div>
 <ul>
-<li>Finally, we impute <code>obj</code> using the modified
-<code>group_imp_df</code>. The <code>k = 10</code> passed to
-<code><a href="../reference/group_imp.html">group_imp()</a></code> is ignored since all groups have group-wise
-<code>k</code> specified.</li>
+<li>Finally, impute <code>obj</code> with the modified <code>group_imp_df</code>. Every group sets its own <code>k</code>, so the <code>k = 10</code> passed to <code><a href="../reference/group_imp.html">group_imp()</a></code> is ignored.</li>
 </ul>
-<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">knn_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/group_imp.html">group_imp</a></span><span class="op">(</span><span class="va">obj</span>, group <span class="op">=</span> <span class="va">group_imp_df</span>, cores <span class="op">=</span> <span class="fl">4</span>, k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Imputing 3 groups using <span style="font-weight: bold;">KNN</span>.</span></span>
-<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">threaded</span> (4 cores)</span></span>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">knn_results</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/group_imp.html">group_imp</a></span><span class="op">(</span><span class="va">obj</span>, group <span class="op">=</span> <span class="va">group_imp_df</span>, cores <span class="op">=</span> <span class="fl">2</span>, k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span>
+<span><span class="co">#&gt; Imputing 3 groups using K-NN.</span></span>
+<span><span class="co">#&gt; Running mode: threaded (2 cores)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">knn_results</span>, p <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span>
-<span><span class="co">#&gt; Method: group_imp (KNN imputation)</span></span>
+<span><span class="co">#&gt; Method: group_imp (K-NN imputation)</span></span>
 <span><span class="co">#&gt; Dimensions: 20 x 50</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;           feature1  feature2  feature3  feature4</span></span>
-<span><span class="co">#&gt; sample1 0.03031619 0.1352710 0.4653579 0.1143298</span></span>
-<span><span class="co">#&gt; sample2 0.50962966 0.2313022 0.9737881 0.5198844</span></span>
-<span><span class="co">#&gt; sample3 0.69068459 0.5020337 0.7863144 0.9997625</span></span>
-<span><span class="co">#&gt; sample4 0.40710170 0.4094603 0.3228294 0.2529592</span></span>
-<span><span class="co">#&gt; sample5 0.73113251 0.4108405 0.6385945 0.4472338</span></span>
-<span><span class="co">#&gt; sample6 0.48993078 0.4950764 0.6553896 0.6737998</span></span>
+<span><span class="co">#&gt;          feature1  feature2  feature3  feature4</span></span>
+<span><span class="co">#&gt; sample1 0.0000000 0.2177326 0.2437860 0.0000000</span></span>
+<span><span class="co">#&gt; sample2 0.9022484 0.6724700 0.5377050 0.8242256</span></span>
+<span><span class="co">#&gt; sample3 1.0000000 0.6652907 0.3189869 1.0000000</span></span>
+<span><span class="co">#&gt; sample4 0.8367542 0.1726599 0.2097971 0.4225234</span></span>
+<span><span class="co">#&gt; sample5 0.4962462 0.6250307 0.4247322 0.6390391</span></span>
+<span><span class="co">#&gt; sample6 0.5124205 0.7016570 0.1918216 0.5038718</span></span>
 <span><span class="co">#&gt; # Showing 6 of 20 rows and 4 of 50 columns</span></span></code></pre></div>
 </div>
-<div class="section level2">
-<h2 id="sliding-window-imputation-for-wgbsem-seq-data-with-slide_imp">Sliding Window Imputation for WGBS/EM-seq Data with
-<code>slide_imp()</code><a class="anchor" aria-label="anchor" href="#sliding-window-imputation-for-wgbsem-seq-data-with-slide_imp"></a>
+</section><section class="level2"><h2 id="multiple-imputation-of-wgbsem-seq-data-with-mipca_flank">Multiple Imputation of WGBS/EM-seq Data with <code>mipca_flank()</code>
+<a class="anchor" aria-label="anchor" href="#multiple-imputation-of-wgbsem-seq-data-with-mipca_flank"></a>
 </h2>
-<div class="section level3">
-<h3 id="select-window_size-overlap_size-and-pcak-nn-parameters">Select <code>window_size</code>, <code>overlap_size</code>, and
-PCA/K-NN Parameters<a class="anchor" aria-label="anchor" href="#select-window_size-overlap_size-and-pcak-nn-parameters"></a>
-</h3>
 <ul>
-<li>We simulate the output of the <code>{methylKit}</code> package.
-<ul>
-<li>
-<strong>Note:</strong> WGBS/EM-seq data should be grouped by
-chromosome before performing sliding window imputation.</li>
-<li>Here, we simulate 1000 sites.</li>
+<li>For whole-genome methylation data, the Bayesian PCA sampler is recommended because such data are sparsely observed. <code><a href="../reference/mipca_flank.html">mipca_flank()</a></code> draws multiple imputations of target CpGs, each fitted on the CpGs within <code>window_size</code> bp of it.</li>
+<li>Split the data by chromosome first. This simulated beta matrix stands in for one chromosome, with 50 to 500 bp between neighboring CpGs. <code>location</code> holds the position of each column.</li>
 </ul>
-</li>
-<li>Importantly, we simulate the location vector of each feature
-(genomic position) with varying spacing of 50 to 500 bp apart from each
-other.</li>
-<li>The <code>locations</code> vector contains the genomic position of
-each feature (column). It is used to determine which columns are grouped
-together given a window size.</li>
-</ul>
-<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span>
-<span><span class="va">sample_names</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"S"</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">)</span></span>
-<span><span class="va">n_sites</span> <span class="op">&lt;-</span> <span class="fl">1000</span></span>
-<span></span>
-<span><span class="co"># Simulate positions with 50–500 bp between each site</span></span>
-<span><span class="va">distances_between</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fl">50</span><span class="op">:</span><span class="fl">500</span>, size <span class="op">=</span> <span class="va">n_sites</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span><span class="va">locations</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cumsum.html" class="external-link">cumsum</a></span><span class="op">(</span><span class="va">distances_between</span><span class="op">)</span> <span class="co"># &lt;- important, location vector</span></span>
-<span></span>
-<span><span class="va">methyl</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span>
-<span>  chr <span class="op">=</span> <span class="st">"chr1"</span>,</span>
-<span>  start <span class="op">=</span> <span class="va">locations</span>,</span>
-<span>  end <span class="op">=</span> <span class="va">locations</span>,</span>
-<span>  strand <span class="op">=</span> <span class="st">"+"</span></span>
+<span><span class="va">chr1_beta</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/sim_mat.html">sim_mat</a></span><span class="op">(</span>n <span class="op">=</span> <span class="fl">30</span>, p <span class="op">=</span> <span class="fl">500</span><span class="op">)</span><span class="op">$</span><span class="va">input</span></span>
+<span><span class="va">location</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/cumsum.html" class="external-link">cumsum</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample</a></span><span class="op">(</span><span class="fl">50</span><span class="op">:</span><span class="fl">500</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">ncol</a></span><span class="op">(</span><span class="va">chr1_beta</span><span class="op">)</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="va">chr1_beta</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
+<span><span class="co">#&gt;          feature1  feature2   feature3  feature4</span></span>
+<span><span class="co">#&gt; sample1 0.5409157 0.4077444 0.09981068 0.2434143</span></span>
+<span><span class="co">#&gt; sample2 0.5224927 0.9663621 0.49824360 0.3923603</span></span>
+<span><span class="co">#&gt; sample3 0.6355535        NA 1.00000000 1.0000000</span></span>
+<span><span class="co">#&gt; sample4 0.0000000 0.0000000 0.08115191 0.2106358</span></span></code></pre></div>
+</div>
+<ul>
+<li>
+<code><a href="../reference/mipca_flank.html">mipca_flank_plan()</a></code> finds the window of each target. A target whose window has fewer than <code>min_window_n</code> columns is not imputed, and a target with no missing values is marked <code>clean</code>.</li>
+</ul>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">targets</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/colnames.html" class="external-link">colnames</a></span><span class="op">(</span><span class="va">chr1_beta</span><span class="op">)</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">100</span>, <span class="fl">250</span>, <span class="fl">400</span><span class="op">)</span><span class="op">]</span></span>
+<span><span class="va">plan</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mipca_flank.html">mipca_flank_plan</a></span><span class="op">(</span></span>
+<span>  <span class="va">chr1_beta</span>,</span>
+<span>  <span class="va">location</span>,</span>
+<span>  window_size <span class="op">=</span> <span class="fl">2000</span>, <span class="co"># bp on each side of the target</span></span>
+<span>  subset <span class="op">=</span> <span class="va">targets</span>,</span>
+<span>  min_window_n <span class="op">=</span> <span class="fl">10</span></span>
 <span><span class="op">)</span></span>
-<span></span>
-<span><span class="kw">for</span> <span class="op">(</span><span class="va">i</span> <span class="kw">in</span> <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_along</a></span><span class="op">(</span><span class="va">sample_names</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span>
-<span>  <span class="va">methyl</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"numCs"</span>, <span class="va">i</span><span class="op">)</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample.int</a></span><span class="op">(</span><span class="fl">100</span>, size <span class="op">=</span> <span class="va">n_sites</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span>  <span class="va">methyl</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"numTs"</span>, <span class="va">i</span><span class="op">)</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample.int</a></span><span class="op">(</span><span class="fl">100</span>, size <span class="op">=</span> <span class="va">n_sites</span>, replace <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
-<span>  <span class="va">methyl</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"coverage"</span>, <span class="va">i</span><span class="op">)</span><span class="op">]</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="va">methyl</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"numCs"</span>, <span class="va">i</span><span class="op">)</span><span class="op">]</span><span class="op">]</span> <span class="op">+</span> <span class="va">methyl</span><span class="op">[[</span><span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"numTs"</span>, <span class="va">i</span><span class="op">)</span><span class="op">]</span><span class="op">]</span></span>
-<span><span class="op">}</span></span>
-<span></span>
-<span><span class="va">methyl</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">5</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">10</span><span class="op">]</span></span>
-<span><span class="co">#&gt;    chr start  end strand numCs1 numTs1 coverage1 numCs2 numTs2 coverage2</span></span>
-<span><span class="co">#&gt; 1 chr1   333  333      +     83     68       151     84     36       120</span></span>
-<span><span class="co">#&gt; 2 chr1   718  718      +     82      2        84     54     99       153</span></span>
-<span><span class="co">#&gt; 3 chr1  1173 1173      +     48      2        50     44     16        60</span></span>
-<span><span class="co">#&gt; 4 chr1  1323 1323      +     70     48       118     48     56       104</span></span>
-<span><span class="co">#&gt; 5 chr1  1483 1483      +     88     15       103     83     19       102</span></span></code></pre></div>
+<span><span class="va">plan</span></span>
+<span><span class="co">#&gt; si_flank_plan: 3 targets on a 30 x 500 matrix, nothing fitted</span></span>
+<span><span class="co">#&gt;   status: impute 2, clean 1</span></span>
+<span><span class="co">#&gt;  target       name n_miss start end window_n status</span></span>
+<span><span class="co">#&gt;     100 feature100      6    94 105       12 impute</span></span>
+<span><span class="co">#&gt;     250 feature250      0   244 256       13  clean</span></span>
+<span><span class="co">#&gt;     400 feature400      6   393 406       14 impute</span></span>
+<span><span class="co">#&gt;   next: mipca_flank(x, rank, seed, transform) imputes.</span></span>
+<span><span class="co">#&gt;         mipca_flank_window(x, subset) gives one target's window to tune on.</span></span></code></pre></div>
+</div>
 <ul>
-<li>First, we convert the data into a beta matrix with features in the
-columns.</li>
+<li>Choose <code>rank</code> on one target’s window with <code><a href="../reference/mipca_tune.html">mipca_tune()</a></code>. A window has few columns, so lower <code>n_cols</code>, the number of columns that get held-out values.</li>
 </ul>
-<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">numCs_matrix</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">methyl</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"numCs"</span>, <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_along</a></span><span class="op">(</span><span class="va">sample_names</span><span class="op">)</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span>
-<span><span class="va">cov_matrix</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">methyl</span><span class="op">[</span>, <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste0</a></span><span class="op">(</span><span class="st">"coverage"</span>, <span class="fu"><a href="https://rdrr.io/r/base/seq.html" class="external-link">seq_along</a></span><span class="op">(</span><span class="va">sample_names</span><span class="op">)</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span>
-<span><span class="va">beta_matrix</span> <span class="op">&lt;-</span> <span class="va">numCs_matrix</span> <span class="op">/</span> <span class="va">cov_matrix</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/colnames.html" class="external-link">colnames</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="va">sample_names</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/colnames.html" class="external-link">rownames</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span> <span class="op">&lt;-</span> <span class="va">methyl</span><span class="op">$</span><span class="va">start</span></span>
-<span></span>
-<span><span class="va">beta_matrix</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/t.html" class="external-link">t</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span></span>
-<span><span class="co"># Set 10% of the data to missing</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/Random.html" class="external-link">set.seed</a></span><span class="op">(</span><span class="fl">1234</span><span class="op">)</span></span>
-<span><span class="va">beta_matrix</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/sample.html" class="external-link">sample.int</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">floor</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/length.html" class="external-link">length</a></span><span class="op">(</span><span class="va">beta_matrix</span><span class="op">)</span> <span class="op">*</span> <span class="fl">0.1</span><span class="op">)</span><span class="op">)</span><span class="op">]</span> <span class="op">&lt;-</span> <span class="cn">NA</span></span>
-<span><span class="va">beta_matrix</span><span class="op">[</span><span class="fl">1</span><span class="op">:</span><span class="fl">4</span>, <span class="fl">1</span><span class="op">:</span><span class="fl">4</span><span class="op">]</span></span>
-<span><span class="co">#&gt;           333       718       1173      1323</span></span>
-<span><span class="co">#&gt; S1 0.54966887 0.9761905 0.96000000 0.5932203</span></span>
-<span><span class="co">#&gt; S2 0.70000000 0.3529412 0.73333333 0.4615385</span></span>
-<span><span class="co">#&gt; S3 0.06521739 0.7053571         NA 0.6507937</span></span>
-<span><span class="co">#&gt; S4 0.69444444 0.2846154 0.04347826 0.7636364</span></span></code></pre></div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">win</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mipca_flank.html">mipca_flank_window</a></span><span class="op">(</span><span class="va">plan</span>, <span class="va">targets</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span><span class="op">)</span></span>
+<span><span class="va">tuned</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mipca_tune.html">mipca_tune</a></span><span class="op">(</span><span class="va">win</span>, rank <span class="op">=</span> <span class="fl">1</span><span class="op">:</span><span class="fl">3</span>, transform <span class="op">=</span> <span class="st">"logit_biwhiten"</span>, n_cols <span class="op">=</span> <span class="fl">5</span>, seed <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span>
+<span><span class="va">tuned</span></span>
+<span><span class="co">#&gt; si_tune: 3 ranks on a 30 x 12 matrix, holdout 20 cells over 5 columns</span></span>
+<span><span class="co">#&gt;  rank    crps ess_p10  ess_ok rhat_max implied_nu implied_lo implied_hi  time</span></span>
+<span><span class="co">#&gt;     1 0.08725  224.08 0.03571    1.050      2.231      2.143      3.049 0.014</span></span>
+<span><span class="co">#&gt;     2 0.10157   97.22 0.00000    1.132      2.435      2.281      4.789 0.010</span></span>
+<span><span class="co">#&gt;     3 0.09657   87.45 0.00000    1.160      3.477      2.698      5.068 0.010</span></span>
+<span><span class="co">#&gt;   next: mipca_fit(x, obj) fits the rank with the lowest crps.</span></span>
+<span><span class="co">#&gt;         mipca_fit(x, obj, rank) fits another rank.</span></span></code></pre></div>
+</div>
 <ul>
-<li>Then, in a real dataset, we would tune hyperparameters using
-<code>chr22</code>. Here, as a demonstration, we use the whole data
-since the size is small.</li>
-<li>We use 2 repetitions of cross-validation (increase to 10–30 in real
-analyses). We are selecting between:
-<ul>
-<li>
-<code>ncp</code> (number of principal components) of 2 or 4,
-indicating that we are performing sliding PCA imputation. Pass
-<code>k</code> for sliding K-NN imputation.</li>
-<li>
-<code>window_size</code> of 5,000 or 10,000 bp.</li>
-<li>
-<code>overlap_size</code> fixed at 1,000 bp (does not affect results
-much in real analyses).</li>
+<li>This is simulated data, so its convergence figures (<code>ess_ok</code>, <code>rhat_max</code>) say nothing about a real analysis. Check them on your own data, as the article below describes.</li>
+<li>Then fit every window with the chosen <code>rank</code> and keep the targets’ draws. Each draw is one completed matrix of the targets.</li>
 </ul>
-</li>
-</ul>
-<div class="sourceCode" id="cb11"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="va">params</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/expand.grid.html" class="external-link">expand.grid</a></span><span class="op">(</span>ncp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">4</span><span class="op">)</span>, window_size <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">5000</span>, <span class="fl">10000</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="va">params</span><span class="op">$</span><span class="va">overlap_size</span> <span class="op">&lt;-</span> <span class="fl">1000</span></span>
-<span><span class="va">params</span><span class="op">$</span><span class="va">min_window_n</span> <span class="op">&lt;-</span> <span class="fl">20</span> <span class="co"># windows with less than 20 columns are dropped</span></span>
-<span></span>
-<span><span class="co"># Increase n_reps from 2 in actual analyses and use another chromosome (i.e., chr22)</span></span>
-<span><span class="va">tune_slide_pca</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/tune_imp.html">tune_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">beta_matrix</span>,</span>
-<span>  parameters <span class="op">=</span> <span class="va">params</span>,</span>
-<span>  .f <span class="op">=</span> <span class="st">"slide_imp"</span>,</span>
-<span>  n_reps <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>  location <span class="op">=</span> <span class="va">locations</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; Tuning `slide_imp()`</span></span>
-<span><span class="co">#&gt; Step 1/2: <span style="color: #00BB00;">Resolving NA locations</span></span></span>
-<span><span class="co">#&gt; <span style="color: #00BBBB;">ℹ</span> Using default `num_na` = 500 (~5% of cells).</span></span>
-<span><span class="co">#&gt;   Increase for more reliability or decrease if missing is dense.</span></span>
-<span><span class="co">#&gt; Running mode: <span style="font-weight: bold;">sequential</span></span></span>
-<span><span class="co">#&gt; Step 2/2: <span style="color: #00BB00;">Tuning</span></span></span>
-<span></span>
-<span><span class="va">metrics</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/compute_metrics.html">compute_metrics</a></span><span class="op">(</span><span class="va">tune_slide_pca</span><span class="op">)</span></span>
-<span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/stats/aggregate.html" class="external-link">aggregate</a></span><span class="op">(</span><span class="va">.estimate</span> <span class="op">~</span> <span class="va">.metric</span> <span class="op">+</span> <span class="va">ncp</span> <span class="op">+</span> <span class="va">window_size</span>, data <span class="op">=</span> <span class="va">metrics</span>, FUN <span class="op">=</span> <span class="va">mean</span><span class="op">)</span></span>
-<span><span class="co">#&gt;   .metric ncp window_size .estimate</span></span>
-<span><span class="co">#&gt; 1     mae   2        5000 0.2257168</span></span>
-<span><span class="co">#&gt; 2    rmse   2        5000 0.2838435</span></span>
-<span><span class="co">#&gt; 3     mae   4        5000 0.2395280</span></span>
-<span><span class="co">#&gt; 4    rmse   4        5000 0.2984013</span></span>
-<span><span class="co">#&gt; 5     mae   2       10000 0.2123151</span></span>
-<span><span class="co">#&gt; 6    rmse   2       10000 0.2642956</span></span>
-<span><span class="co">#&gt; 7     mae   4       10000 0.2223801</span></span>
-<span><span class="co">#&gt; 8    rmse   4       10000 0.2756162</span></span></code></pre></div>
-<ul>
-<li>Finally, we can use <code><a href="../reference/slide_imp.html">slide_imp()</a></code> to impute the full
-<code>beta_matrix</code>. Use the best parameter combination from the
-cross-validation metrics.</li>
-<li>First, we use <code>dry_run = TRUE</code> to examine the columns to
-be imputed.
-<ul>
-<li>
-<code>start</code> and <code>end</code> are window location
-vectors.</li>
-<li>
-<code>window_n</code> is the number of features included in the
-window.</li>
-</ul>
-</li>
-</ul>
-<div class="sourceCode" id="cb12"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/slide_imp.html">slide_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">beta_matrix</span>,</span>
-<span>  location <span class="op">=</span> <span class="va">locations</span>,</span>
-<span>  window_size <span class="op">=</span> <span class="fl">5000</span>,</span>
-<span>  overlap_size <span class="op">=</span> <span class="fl">1000</span>,</span>
-<span>  ncp <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>  min_window_n <span class="op">=</span> <span class="fl">20</span>,</span>
-<span>  dry_run <span class="op">=</span> <span class="cn">TRUE</span> <span class="co"># &lt;- dry_run to inspect the windows</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; Dropping 43 window(s) with fewer than 20 columns.</span></span>
-<span><span class="co">#&gt; # slideimp table: 24 x 4</span></span>
-<span><span class="co">#&gt;  start end window_n  subset_local</span></span>
-<span><span class="co">#&gt;     15  34       20 &lt;double [20]&gt;</span></span>
-<span><span class="co">#&gt;    104 124       21 &lt;double [21]&gt;</span></span>
-<span><span class="co">#&gt;    188 209       22 &lt;double [22]&gt;</span></span>
-<span><span class="co">#&gt;    205 225       21 &lt;double [21]&gt;</span></span>
-<span><span class="co">#&gt;    222 241       20 &lt;double [20]&gt;</span></span>
-<span><span class="co">#&gt;    239 258       20 &lt;double [20]&gt;</span></span>
-<span><span class="co">#&gt;    254 273       20 &lt;double [20]&gt;</span></span>
-<span><span class="co">#&gt;    369 388       20 &lt;double [20]&gt;</span></span>
-<span><span class="co">#&gt;    385 404       20 &lt;double [20]&gt;</span></span>
-<span><span class="co">#&gt;    402 424       23 &lt;double [23]&gt;</span></span>
-<span><span class="co">#&gt; # ... with 14 more rows</span></span></code></pre></div>
-<ul>
-<li>Turn off <code>dry_run</code> to impute the data</li>
-</ul>
-<div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/slide_imp.html">slide_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">beta_matrix</span>,</span>
-<span>  location <span class="op">=</span> <span class="va">locations</span>,</span>
-<span>  window_size <span class="op">=</span> <span class="fl">5000</span>,</span>
-<span>  overlap_size <span class="op">=</span> <span class="fl">1000</span>,</span>
-<span>  ncp <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>  min_window_n <span class="op">=</span> <span class="fl">20</span>,</span>
-<span>  dry_run <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb12"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mipca_flank.html">mipca_flank</a></span><span class="op">(</span></span>
+<span>  <span class="va">plan</span>,</span>
+<span>  rank <span class="op">=</span> <span class="va">tuned</span><span class="op">$</span><span class="va">rank</span><span class="op">[</span><span class="fu"><a href="https://rdrr.io/r/base/which.min.html" class="external-link">which.min</a></span><span class="op">(</span><span class="va">tuned</span><span class="op">$</span><span class="va">crps</span><span class="op">)</span><span class="op">]</span>,</span>
+<span>  seed <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  transform <span class="op">=</span> <span class="st">"logit_biwhiten"</span>,</span>
 <span>  .progress <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span>
-<span><span class="co">#&gt; Method: slide_imp (PCA imputation)</span></span>
-<span><span class="co">#&gt; Dimensions: 10 x 1000</span></span>
-<span><span class="co">#&gt; Note: requested columns still contain NA values</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;           333       718       1173      1323      1483       1925</span></span>
-<span><span class="co">#&gt; S1 0.54966887 0.9761905 0.96000000 0.5932203        NA 0.08695652</span></span>
-<span><span class="co">#&gt; S2 0.70000000 0.3529412 0.73333333 0.4615385 0.8137255 0.45454545</span></span>
-<span><span class="co">#&gt; S3 0.06521739 0.7053571         NA 0.6507937 0.4393064 0.37735849</span></span>
-<span><span class="co">#&gt; S4 0.69444444 0.2846154 0.04347826 0.7636364 0.9595960 0.54621849</span></span>
-<span><span class="co">#&gt; S5 0.83505155 0.5777778 0.47517730        NA 0.7368421 0.21666667</span></span>
-<span><span class="co">#&gt; S6 0.26612903 0.3451327 0.53072626 0.5000000 0.6465517 0.37288136</span></span>
-<span><span class="co">#&gt; # Showing 6 of 10 rows and 6 of 1000 columns</span></span></code></pre></div>
+<span><span class="va">fit</span></span>
+<span><span class="co">#&gt; si_mi fit: 30 x 3, 12 imputed cells, 400 draws</span></span>
+<span><span class="co">#&gt;   next: as.matrix() with 'draw' for a completed matrix, summary() for Rhat and ESS</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix</a></span><span class="op">(</span><span class="va">fit</span>, draw <span class="op">=</span> <span class="fl">1</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; [1] 30  3</span></span></code></pre></div>
 </div>
-<div class="section level3">
-<h3 id="subset-and-flanking-mode">Subset and Flanking Mode<a class="anchor" aria-label="anchor" href="#subset-and-flanking-mode"></a>
-</h3>
 <ul>
-<li>Use this mode when you only need to impute specific target features
-(e.g., clock CpGs) rather than the entire dataset.
-<ul>
-<li>Pass the desired feature names to the <code>subset</code> argument.
-Only windows containing these features will be imputed.</li>
-<li>Set <code>flank = TRUE</code> to build windows <em>centered</em> on
-each feature in the <code>subset</code>. Each window will extend
-<code>window_size</code> bp on either side of the target feature
-(flanking mode).</li>
-<li>In this mode, the <code>overlap_size</code> argument is
-ignored.</li>
-</ul>
-</li>
-<li>In this example, we only want to impute the features
-<code>"1323"</code> and <code>"33810"</code> by creating 5,000 bp
-flanking windows around each feature:</li>
-</ul>
-<div class="sourceCode" id="cb14"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="../reference/slide_imp.html">slide_imp</a></span><span class="op">(</span></span>
-<span>  obj <span class="op">=</span> <span class="va">beta_matrix</span>,</span>
-<span>  location <span class="op">=</span> <span class="va">locations</span>,</span>
-<span>  window_size <span class="op">=</span> <span class="fl">5000</span>,</span>
-<span>  ncp <span class="op">=</span> <span class="fl">2</span>,</span>
-<span>  min_window_n <span class="op">=</span> <span class="fl">20</span>,</span>
-<span>  subset <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"1323"</span>, <span class="st">"33810"</span><span class="op">)</span>,</span>
-<span>  flank <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  dry_run <span class="op">=</span> <span class="cn">TRUE</span></span>
-<span><span class="op">)</span></span>
-<span><span class="co">#&gt; # slideimp table: 2 x 5</span></span>
-<span><span class="co">#&gt;  start end window_n target  subset_local</span></span>
-<span><span class="co">#&gt;      1  22       22      4 &lt;integer [1]&gt;</span></span>
-<span><span class="co">#&gt;    101 138       38    122 &lt;integer [1]&gt;</span></span></code></pre></div>
-</div>
-</div>
-  </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
+<li>See the <a href="https://hhp94.github.io/slideimp/articles/multiple-imputation-beta.html">multiple imputation article</a> for <code>nu</code>, convergence checks, and pooling the draws.</li>
+</ul></section><script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp('/' + window.location.host + '/');
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+      window.quartoDecorateExternalLinks = function (root) {
+     var links = (root || window.document).querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+          if (!link.classList.contains('no-external-icon')) {
+          }
+        }
+      }
+      };
+      window.quartoDecorateExternalLinks(window.document);
+    // Esc closes the popup (WCAG 1.4.13) and focus leaving both trigger and
+    // popup closes it (WCAG 2.4.11); tippy handles neither for interactive popups.
+    const hideOnEscAndFocusOut = {
+      name: 'hideOnEscAndFocusOut',
+      defaultValue: true,
+      fn(instance) {
+        const dismiss = () => {
+          // A show scheduled by the trigger delay would otherwise reopen it
+          instance.clearDelayTimeouts();
+          instance.hide();
+        };
+        const onKeyDown = (event) => {
+          if (event.key !== 'Escape') {
+            return;
+          }
+          // Keep Esc from also reaching page handlers (e.g. reveal.js overview),
+          // except an open reveal.js slide menu, which Esc should close too.
+          // The menu handles keys only when its keyboard option is on.
+          const menuHandlesEsc = window.Reveal?.getPlugin?.('menu')?.isOpen() &&
+            window.Reveal.getConfig().menu?.keyboard !== false;
+          if (!menuHandlesEsc) {
+            event.stopPropagation();
+          }
+          if (instance.popper.contains(window.document.activeElement)) {
+            // Disabled while refocusing so the focus trigger does not reopen it
+            instance.disable();
+            instance.reference.focus();
+            instance.enable();
+          }
+          dismiss();
+        };
+        const onFocusOut = (event) => {
+          const target = event.relatedTarget;
+          if (target && !instance.reference.contains(target) &&
+              !instance.popper.contains(target)) {
+            dismiss();
+          }
+        };
+        // On the trigger too: a click trigger (code-annotations: select) has no
+        // blur handling. Attached for the instance's lifetime so leaving the
+        // trigger also cancels a show still pending on the trigger delay.
+        instance.reference.addEventListener('focusout', onFocusOut);
+        return {
+          onShow() {
+            window.document.addEventListener('keydown', onKeyDown, true);
+            instance.popper.addEventListener('focusout', onFocusOut);
+          },
+          onHide() {
+            window.document.removeEventListener('keydown', onKeyDown, true);
+            instance.popper.removeEventListener('focusout', onFocusOut);
+          },
+          onDestroy() {
+            instance.reference.removeEventListener('focusout', onFocusOut);
+          },
+        };
+      },
+    };
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'light-border',
+        placement: 'bottom-start',
+        plugins: [hideOnEscAndFocusOut],
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config);
+    }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script></main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>
 </div>
-
 
 
     <footer><div class="pkgdown-footer-left">

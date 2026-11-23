@@ -5,9 +5,34 @@
 - **Hung Pham**. Author, maintainer, copyright holder.
   [](https://orcid.org/0000-0002-8271-9355)
 
+- **Francois Husson**. Contributor, copyright holder.
+  [](https://orcid.org/0000-0002-7271-8877)  
+  'missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R,
+  src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp
+
+- **Julie Josse**. Contributor, copyright holder.
+  [](https://orcid.org/0000-0001-9547-891X)  
+  'missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R,
+  src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp
+
+- **Vincent Audigier**. Contributor, copyright holder.  
+  'missMDA' MIPCA() Bayesian sampler, reimplemented in R/mi_pca_imp.R
+  and src/mipca.cpp
+
 - **Posit Software, PBC**. Copyright holder.  
-  Copyright holder of code adapted from the 'carrier' package, MIT
-  licensed
+  'carrier' package code, adapted in R/crate.R and
+  tests/testthat/test-crate\*.R
+
+- **Yixuan Qiu**. Contributor, copyright holder.  
+  Spectra library, vendored in src/Spectra
+
+- **Gael Guennebaud**. Contributor, copyright holder.  
+  Eigen SelfAdjointEigenSolver code, adapted in
+  src/Spectra/LinAlg/TridiagEigen.h
+
+- **Jitse Niesen**. Contributor, copyright holder.  
+  Eigen SelfAdjointEigenSolver code, adapted in
+  src/Spectra/LinAlg/TridiagEigen.h
 
 ## Citation
 
