@@ -1,4 +1,4 @@
-# slideimp (development version)
+# slideimp 1.3.0
 
 ## Breaking changes
 
