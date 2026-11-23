@@ -290,9 +290,9 @@ tuned <- mipca_tune(win, rank = 1:3, transform = "logit_biwhiten", n_cols = 5, s
 tuned
 #> si_tune: 3 ranks on a 30 x 12 matrix, holdout 20 cells over 5 columns
 #>  rank    crps ess_p10  ess_ok rhat_max implied_nu implied_lo implied_hi  time
-#>     1 0.08725  224.08 0.03571    1.050      2.231      2.143      3.049 0.014
-#>     2 0.10157   97.22 0.00000    1.132      2.435      2.281      4.789 0.010
-#>     3 0.09657   87.45 0.00000    1.160      3.477      2.698      5.068 0.010
+#>     1 0.08725  224.08 0.03571    1.050      2.231      2.143      3.049 0.018
+#>     2 0.10157   97.22 0.00000    1.132      2.435      2.281      4.789 0.012
+#>     3 0.09657   87.45 0.00000    1.160      3.477      2.698      5.068 0.013
 #>   next: mipca_fit(x, obj) fits the rank with the lowest crps.
 #>         mipca_fit(x, obj, rank) fits another rank.
 ```

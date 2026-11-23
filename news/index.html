@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.99</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.3.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -45,9 +45,9 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="slideimp-development-version">slideimp (development version)<a class="anchor" aria-label="anchor" href="#slideimp-development-version"></a></h2>
+<h2 class="pkg-version" data-toc-text="1.3.0" id="slideimp-130">slideimp 1.3.0<a class="anchor" aria-label="anchor" href="#slideimp-130"></a></h2>
 <div class="section level3">
-<h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
+<h3 id="breaking-changes-1-3-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-1-3-0"></a></h3>
 <ul><li><p><code>Depends</code> is now <code>R (&gt;= 4.4.0)</code> (was 4.3.0), for C++17.</p></li>
 <li><p>Every function that takes <code>obj</code> requires a double matrix. 1.2.0 converted integer and logical matrices.</p></li>
 <li><p>The <code>na_check</code> argument of <code><a href="../reference/knn_imp.html">knn_imp()</a></code>, <code><a href="../reference/pca_imp.html">pca_imp()</a></code>, <code><a href="../reference/slide_imp.html">slide_imp()</a></code> and <code><a href="../reference/group_imp.html">group_imp()</a></code> is removed. Use <code><a href="https://rdrr.io/r/base/NA.html" class="external-link">anyNA()</a></code> on the result instead.</p></li>
@@ -59,7 +59,7 @@
 <li><p>Many errors, messages and <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code> notes are reworded. Code that matches on message text may need updating.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<h3 id="new-features-1-3-0">New features<a class="anchor" aria-label="anchor" href="#new-features-1-3-0"></a></h3>
 <ul><li>
 <p>Multiple imputation by Bayesian PCA, a reimplementation of the sampler of <code><a href="https://rdrr.io/pkg/missMDA/man/MIPCA.html" class="external-link">missMDA::MIPCA()</a></code> (Audigier, Husson and Josse, 2016):</p>
 <ul><li>
@@ -77,7 +77,7 @@
 <li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> gains <code>subset</code>: the result holds only the selected columns, while every eligible column still takes part in the fit.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="changes-in-results-development-version">Changes in results<a class="anchor" aria-label="anchor" href="#changes-in-results-development-version"></a></h3>
+<h3 id="changes-in-results-1-3-0">Changes in results<a class="anchor" aria-label="anchor" href="#changes-in-results-1-3-0"></a></h3>
 <ul><li><p><code><a href="../reference/knn_imp.html">knn_imp()</a></code> with <code>post_imp = TRUE</code> sets a cell that K-NN leaves missing to the mean of its column’s observed values. 1.2.0 took a mean that included the K-NN imputed values. These cells change value, in <code><a href="../reference/slide_imp.html">slide_imp()</a></code> and <code><a href="../reference/group_imp.html">group_imp()</a></code> with K-NN too.</p></li>
 <li><p>The column means that <code>post_imp</code> and <code>on_infeasible = "mean"</code> set are now computed with base R’s <code><a href="https://rdrr.io/r/base/colSums.html" class="external-link">.colMeans()</a></code>, so they can differ from 1.2.0’s in the last bits.</p></li>
 <li><p><code><a href="../reference/group_imp.html">group_imp()</a></code>: every group now reads <code>obj</code> as it was passed. 1.2.0’s sequential path wrote each group’s imputed values into <code>obj</code> before the next group ran, so a later group could use them as observed values in its auxiliary columns.</p></li>
@@ -87,7 +87,7 @@
 <li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> on a matrix with no missing values returns a <code>slideimp_results</code> object like any other call, where 1.2.0 returned the input unchanged.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="minor-improvements-and-fixes-development-version">Minor improvements and fixes<a class="anchor" aria-label="anchor" href="#minor-improvements-and-fixes-development-version"></a></h3>
+<h3 id="minor-improvements-and-fixes-1-3-0">Minor improvements and fixes<a class="anchor" aria-label="anchor" href="#minor-improvements-and-fixes-1-3-0"></a></h3>
 <ul><li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> no longer crashes the R session when <code>ncp</code> exceeds the rank of the completed data, as with replicate samples.</p></li>
 <li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code>: finite input whose squares overflow stops with “the cross-product of the data is not finite; values this large overflow when squared, rescale the input”, before either solver. A LAPACK failure reads “the symmetric eigensolver failed (LAPACK dsyevr, info = <n>)”. The 1.2.0 error “<code>eig_sym_sel</code> failed to converge” is gone.</n></p></li>
 <li><p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> refuses eligible columns holding more than <code>.Machine$integer.max</code> missing values.</p></li>

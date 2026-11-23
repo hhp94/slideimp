@@ -5,6 +5,17 @@
 library(slideimp)
 ```
 
+> **Experimental**
+>
+> The Bayesian PCA sampler
+> ([`mipca()`](https://hhp94.github.io/slideimp/reference/mipca.md),
+> [`mipca_tune()`](https://hhp94.github.io/slideimp/reference/mipca_tune.md),
+> [`mipca_fit()`](https://hhp94.github.io/slideimp/reference/mipca_fit.md)
+> and
+> [`mipca_flank()`](https://hhp94.github.io/slideimp/reference/mipca_flank.md))
+> is experimental. Its arguments, defaults and output can change in a
+> later release.
+
 [`pca_imp()`](https://hhp94.github.io/slideimp/reference/pca_imp.md) and
 [`knn_imp()`](https://hhp94.github.io/slideimp/reference/knn_imp.md)
 fill each missing value with one best guess. That is enough for many
@@ -91,10 +102,10 @@ tuned <- mipca_tune(
 tuned
 #> si_tune: 4 ranks on a 80 x 300 matrix, holdout 200 cells over 50 columns
 #>  rank    crps ess_p10 ess_ok rhat_max implied_nu implied_lo implied_hi  time
-#>     1 0.04873   323.3 0.3365    1.032        Inf        Inf        Inf 0.167
-#>     2 0.02606   305.4 0.2554    1.036      9.587      6.334        Inf 0.159
-#>     3 0.02598   290.6 0.1992    1.039     13.679      4.561        Inf 0.241
-#>     4 0.02618   277.6 0.1369    1.039      9.954      5.475        Inf 0.247
+#>     1 0.04873   323.3 0.3365    1.032        Inf        Inf        Inf 0.252
+#>     2 0.02606   305.4 0.2554    1.036      9.587      6.334        Inf 0.256
+#>     3 0.02598   290.6 0.1992    1.039     13.679      4.561        Inf 0.377
+#>     4 0.02618   277.6 0.1369    1.039      9.954      5.475        Inf 0.422
 #>   next: mipca_fit(x, obj) fits the rank with the lowest crps.
 #>         mipca_fit(x, obj, rank) fits another rank.
 ```
@@ -168,7 +179,12 @@ genome-scale matrix the saving is large.
 ## Check convergence
 
 [`summary()`](https://rdrr.io/r/base/summary.html) reports Rhat and ESS
-for a sample of the imputed cells.
+for a sample of the imputed cells. Rhat compares the chains with each
+other ([Gelman and Rubin 1992](https://doi.org/10.1214/ss/1177011136),
+[Vehtari et al. 2021](https://doi.org/10.1214/20-BA1221)). ESS, the
+effective sample size, estimates how many independent draws the chains
+are worth ([Geyer 1992](https://doi.org/10.1214/ss/1177011137), [Vehtari
+et al. 2021](https://doi.org/10.1214/20-BA1221)).
 
 ``` r
 
@@ -390,9 +406,9 @@ tuned_win <- mipca_tune(
 tuned_win
 #> si_tune: 3 ranks on a 80 x 21 matrix, holdout 40 cells over 10 columns
 #>  rank    crps ess_p10 ess_ok rhat_max implied_nu implied_lo implied_hi  time
-#>     1 0.04828   278.1  0.095    1.030      3.045      2.620      10.98 0.026
-#>     2 0.03778   233.7  0.040    1.045        Inf      8.555        Inf 0.026
-#>     3 0.03835   193.1  0.015    1.054        Inf        Inf        Inf 0.042
+#>     1 0.04828   278.1  0.095    1.030      3.045      2.620      10.98 0.047
+#>     2 0.03778   233.7  0.040    1.045        Inf      8.555        Inf 0.054
+#>     3 0.03835   193.1  0.015    1.054        Inf        Inf        Inf 0.061
 #>   next: mipca_fit(x, obj) fits the rank with the lowest crps.
 #>         mipca_fit(x, obj, rank) fits another rank.
 ```
@@ -430,9 +446,21 @@ work on it as on a fit from
 [`cbind()`](https://rdrr.io/r/base/cbind.html) joins the fits of several
 matrices, such as one per chromosome.
 
-## Reference
+## References
 
 Audigier, V., Husson, F. and Josse, J. (2016). Multiple imputation for
 continuous variables using a Bayesian principal component analysis.
 *Journal of Statistical Computation and Simulation*, 86(11), 2140-2156.
 <https://doi.org/10.1080/00949655.2015.1104683>
+
+Gelman, A. and Rubin, D. B. (1992). Inference from iterative simulation
+using multiple sequences. *Statistical Science*, 7(4), 457-472.
+<https://doi.org/10.1214/ss/1177011136>
+
+Geyer, C. J. (1992). Practical Markov chain Monte Carlo. *Statistical
+Science*, 7(4), 473-483. <https://doi.org/10.1214/ss/1177011137>
+
+Vehtari, A., Gelman, A., Simpson, D., Carpenter, B. and Burkner, P.-C.
+(2021). Rank-normalization, folding, and localization: an improved R-hat
+for assessing convergence of MCMC. *Bayesian Analysis*, 16(2), 667-718.
+<https://doi.org/10.1214/20-BA1221>

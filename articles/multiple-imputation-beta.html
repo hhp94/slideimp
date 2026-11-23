@@ -22,7 +22,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">slideimp</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.2.0.99</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.3.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -82,6 +82,12 @@
 <div class="sourceCode cell-code" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/hhp94/slideimp" class="external-link">slideimp</a></span><span class="op">)</span></span></code></pre></div>
 </div>
+<div>
+<blockquote>
+<p><strong>Experimental</strong></p>
+<p>The Bayesian PCA sampler (<code><a href="../reference/mipca.html">mipca()</a></code>, <code><a href="../reference/mipca_tune.html">mipca_tune()</a></code>, <code><a href="../reference/mipca_fit.html">mipca_fit()</a></code> and <code><a href="../reference/mipca_flank.html">mipca_flank()</a></code>) is experimental. Its arguments, defaults and output can change in a later release.</p>
+</blockquote>
+</div>
 <p><code><a href="../reference/pca_imp.html">pca_imp()</a></code> and <code><a href="../reference/knn_imp.html">knn_imp()</a></code> fill each missing value with one best guess. That is enough for many uses, but an analysis run on a singly imputed matrix treats the guesses as if they had been measured, so its standard errors come out too small. Multiple imputation instead draws several plausible values for every missing value, so the uncertainty about the missing cells carries through to the final estimate.</p>
 <p>slideimp does this with a Bayesian low-rank (PCA) model, the method of <a href="https://doi.org/10.1080/00949655.2015.1104683" class="external-link">Audigier, Husson and Josse (2016)</a>. This article goes through each step for a beta-value matrix (DNA methylation, values in <code>[0, 1]</code>), from tuning the model to a pooled estimate.</p>
 <section class="level2"><h2 id="simulate-a-beta-matrix">Simulate a beta matrix<a class="anchor" aria-label="anchor" href="#simulate-a-beta-matrix"></a>
@@ -130,10 +136,10 @@
 <span><span class="va">tuned</span></span>
 <span><span class="co">#&gt; si_tune: 4 ranks on a 80 x 300 matrix, holdout 200 cells over 50 columns</span></span>
 <span><span class="co">#&gt;  rank    crps ess_p10 ess_ok rhat_max implied_nu implied_lo implied_hi  time</span></span>
-<span><span class="co">#&gt;     1 0.04873   323.3 0.3365    1.032        Inf        Inf        Inf 0.167</span></span>
-<span><span class="co">#&gt;     2 0.02606   305.4 0.2554    1.036      9.587      6.334        Inf 0.159</span></span>
-<span><span class="co">#&gt;     3 0.02598   290.6 0.1992    1.039     13.679      4.561        Inf 0.241</span></span>
-<span><span class="co">#&gt;     4 0.02618   277.6 0.1369    1.039      9.954      5.475        Inf 0.247</span></span>
+<span><span class="co">#&gt;     1 0.04873   323.3 0.3365    1.032        Inf        Inf        Inf 0.252</span></span>
+<span><span class="co">#&gt;     2 0.02606   305.4 0.2554    1.036      9.587      6.334        Inf 0.256</span></span>
+<span><span class="co">#&gt;     3 0.02598   290.6 0.1992    1.039     13.679      4.561        Inf 0.377</span></span>
+<span><span class="co">#&gt;     4 0.02618   277.6 0.1369    1.039      9.954      5.475        Inf 0.422</span></span>
 <span><span class="co">#&gt;   next: mipca_fit(x, obj) fits the rank with the lowest crps.</span></span>
 <span><span class="co">#&gt;         mipca_fit(x, obj, rank) fits another rank.</span></span></code></pre></div>
 </div>
@@ -177,7 +183,7 @@
 <p>To fit a rank and <code>nu</code> that do not come from a tuning table, call <code><a href="../reference/mipca.html">mipca()</a></code> directly. <code><a href="../reference/mipca.html">mipca()</a></code> also takes <code>subset</code>, which limits which columns have their draws stored. Every missing value is still drawn at every iteration, because the low-rank structure ties the columns together, so <code>subset</code> saves memory, not time. The stored draws take cells x draws of memory, so on a genome-scale matrix the saving is large.</p>
 </section><section class="level2"><h2 id="check-convergence">Check convergence<a class="anchor" aria-label="anchor" href="#check-convergence"></a>
 </h2>
-<p><code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> reports Rhat and ESS for a sample of the imputed cells.</p>
+<p><code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> reports Rhat and ESS for a sample of the imputed cells. Rhat compares the chains with each other (<a href="https://doi.org/10.1214/ss/1177011136" class="external-link">Gelman and Rubin 1992</a>, <a href="https://doi.org/10.1214/20-BA1221" class="external-link">Vehtari et al. 2021</a>). ESS, the effective sample size, estimates how many independent draws the chains are worth (<a href="https://doi.org/10.1214/ss/1177011137" class="external-link">Geyer 1992</a>, <a href="https://doi.org/10.1214/20-BA1221" class="external-link">Vehtari et al. 2021</a>).</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
@@ -328,9 +334,9 @@
 <span><span class="va">tuned_win</span></span>
 <span><span class="co">#&gt; si_tune: 3 ranks on a 80 x 21 matrix, holdout 40 cells over 10 columns</span></span>
 <span><span class="co">#&gt;  rank    crps ess_p10 ess_ok rhat_max implied_nu implied_lo implied_hi  time</span></span>
-<span><span class="co">#&gt;     1 0.04828   278.1  0.095    1.030      3.045      2.620      10.98 0.026</span></span>
-<span><span class="co">#&gt;     2 0.03778   233.7  0.040    1.045        Inf      8.555        Inf 0.026</span></span>
-<span><span class="co">#&gt;     3 0.03835   193.1  0.015    1.054        Inf        Inf        Inf 0.042</span></span>
+<span><span class="co">#&gt;     1 0.04828   278.1  0.095    1.030      3.045      2.620      10.98 0.047</span></span>
+<span><span class="co">#&gt;     2 0.03778   233.7  0.040    1.045        Inf      8.555        Inf 0.054</span></span>
+<span><span class="co">#&gt;     3 0.03835   193.1  0.015    1.054        Inf        Inf        Inf 0.061</span></span>
 <span><span class="co">#&gt;   next: mipca_fit(x, obj) fits the rank with the lowest crps.</span></span>
 <span><span class="co">#&gt;         mipca_fit(x, obj, rank) fits another rank.</span></span></code></pre></div>
 </div>
@@ -353,9 +359,13 @@
 <span><span class="co">#&gt; [1] 80  2</span></span></code></pre></div>
 </div>
 <p>The fit holds the targets only, and <code><a href="https://rdrr.io/r/base/matrix.html" class="external-link">as.matrix()</a></code>, <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> and the pooling above work on it as on a fit from <code><a href="../reference/mipca.html">mipca()</a></code>. <code><a href="https://rdrr.io/r/base/cbind.html" class="external-link">cbind()</a></code> joins the fits of several matrices, such as one per chromosome.</p>
-</section><section class="level2"><h2 id="reference">Reference<a class="anchor" aria-label="anchor" href="#reference"></a>
+</section><section class="level2"><h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a>
 </h2>
+<!-- BibTeX for the Rhat and ESS papers: dev/bib/. -->
 <p>Audigier, V., Husson, F. and Josse, J. (2016). Multiple imputation for continuous variables using a Bayesian principal component analysis. <em>Journal of Statistical Computation and Simulation</em>, 86(11), 2140-2156. <a href="https://doi.org/10.1080/00949655.2015.1104683" class="external-link uri">https://doi.org/10.1080/00949655.2015.1104683</a></p>
+<p>Gelman, A. and Rubin, D. B. (1992). Inference from iterative simulation using multiple sequences. <em>Statistical Science</em>, 7(4), 457-472. <a href="https://doi.org/10.1214/ss/1177011136" class="external-link uri">https://doi.org/10.1214/ss/1177011136</a></p>
+<p>Geyer, C. J. (1992). Practical Markov chain Monte Carlo. <em>Statistical Science</em>, 7(4), 473-483. <a href="https://doi.org/10.1214/ss/1177011137" class="external-link uri">https://doi.org/10.1214/ss/1177011137</a></p>
+<p>Vehtari, A., Gelman, A., Simpson, D., Carpenter, B. and Burkner, P.-C. (2021). Rank-normalization, folding, and localization: an improved R-hat for assessing convergence of MCMC. <em>Bayesian Analysis</em>, 16(2), 667-718. <a href="https://doi.org/10.1214/20-BA1221" class="external-link uri">https://doi.org/10.1214/20-BA1221</a></p>
 </section><script id="quarto-html-after-body" type="application/javascript">
   window.document.addEventListener("DOMContentLoaded", function (event) {
       var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
