@@ -1,23 +1,68 @@
-# dev/ is TRACKED. Design notes, prototype scripts, reference PDFs and small
-# benchmark results belong in git so they travel between machines -- see the
-# "do not add an ignore rule for something the maintainer produced or fetched
-# by hand" rule in CLAUDE.md. Papers are tracked at whatever size they are.
+# dev/ is OPT-IN. Everything here is ignored unless it is listed below, so
+# drafts, scratch scripts and private notes stay on this machine by default.
 #
-# The exception is large REGENERABLE data: cohort matrices, cached downloads,
-# serialized fixtures. Those are rebuilt from source, not authored, so losing
-# them costs compute rather than work. They are listed below so a stray `git
-# add dev/` cannot pull a hundred megabytes into history by accident.
-#
-# This file is allow-by-default on purpose. A new note or PDF dropped here is
-# tracked with no further action; only the formats named below are excluded.
+# To track a file, add a `!` line for it below and commit it. A file that is
+# already tracked stays tracked whatever this file says. A file in a folder
+# needs the folder's `!<folder>/` line as well as its own.
 
-*.qs2
-*.qs
-*.rda
-*.RData
-*.fst
-*.feather
-*.parquet
-*.h5
-*.bigmemory
-*.bin
+*
+!.gitignore
+
+# notes and maps
+!CPP.md
+!DECISIONS.md
+!WRITING.md
+!ci.md
+!knn_imp_structure.md
+!mipca_structure.md
+!pca_imp_structure.md
+!to-do.md
+!vendored.md
+!r_manual/
+!r_manual/R-exts.md
+
+# helpers and checks named in .claude/CLAUDE.md
+!GSE286313.EPICv1_chr21.qs2
+!check_impute_knn.R
+!check_map_anchors.py
+!check_rcpp_list.R
+!check_slideimp_extra.R
+!dev-utils.R
+
+# helpers named in WRITING.md
+!style_prose_chunks.R
+
+# setup that README.qmd sources
+!readme_msa.R
+
+# gate/: the gate of a change to the PCA chain (dev/to-do.md)
+!gate/
+!gate/eigen_install_candidate.R
+!gate/eigen_p4_gate.sh
+!gate/eigen_time_builds.R
+!gate/eigen_time_install.R
+!gate/eigen_time_worker.R
+!gate/profile_install.R
+!gate/profile_phases.R
+!gate/profile_run.sh
+!gate/ref_capture.R
+!gate/ref_compare.R
+!gate/ref_compare_selftest.R
+!gate/review_p2_suite.R
+
+# probe/: measurements a note or a comment cites
+!probe/
+!probe/probe_knn_imp_peak.R
+!probe/probe_mean_source.R
+
+# tool/: dev tools
+!tool/
+!tool/review_worktree.sh
+!tool/roxygen.R
+!tool/roxygen_utils.R
+!tool/run_test_files.R
+!tool/si_lapack_selftest.R
+!tool/si_lapack_test.R
+!tool/si_lapack_test.cpp
+!tool/vendor_spectra.R
+!tool/test_mirai_with_dev_install.R

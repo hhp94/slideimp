@@ -29,28 +29,28 @@ group_imp(
   solver = NULL,
   lobpcg_control = NULL,
   clamp = NULL,
-  pin_blas = FALSE,
-  na_check = TRUE,
+  pin_blas = TRUE,
   on_infeasible = c("error", "skip", "mean")
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with samples in rows and features in columns.}
+\item{obj}{A double matrix. Samples are in rows and features in columns.}
 
-\item{group}{Specification of how features should be grouped for imputation.
-Accepted formats are:
+\item{group}{A data frame or a character scalar. The feature groups, in one
+of these forms:
 \itemize{
-\item A character scalar naming a supported Illumina platform; see Note.
-\item A long-format \code{data.frame} with columns \code{group} and \code{feature}.
-\item A list-column \code{data.frame} with a \code{feature} list-column. Optional
+\item A character scalar naming a supported Illumina platform, such as
+\code{"EPICv2"}. This needs the \code{slideimp.extra} package.
+\item A long-format data frame with columns \code{group} and \code{feature}.
+\item A list-column data frame with a \code{feature} list-column. Optional
 list-columns are \code{aux}, for auxiliary feature names, and \code{parameters},
 for group-specific parameter lists.
 }}
 
-\item{subset}{Optional character vector of feature names to impute. If
-\code{NULL}, all grouped features are imputed. Features in a group but not in
-\code{subset} are demoted to auxiliary columns for that group. Groups left with
-zero features after demotion are dropped with a message.}
+\item{subset}{Optional character vector. The features to impute and
+return, by name, or \code{NULL} to impute every grouped feature and return
+every column. A group's other features become its auxiliary columns, and
+a group left with no feature is dropped with a message.}
 
 \item{allow_unmapped}{Logical. If \code{FALSE}, every column in \code{colnames(obj)}
 must appear in \code{group}. If \code{TRUE}, columns with no group assignment are
@@ -62,174 +62,205 @@ If \code{NULL}, \code{k} may be supplied through \code{group$parameters}.}
 \item{ncp}{Integer or \code{NULL}. Number of components for PCA imputation. If
 \code{NULL}, \code{ncp} may be supplied through \code{group$parameters}.}
 
-\item{method}{Character or \code{NULL}. For K-NN imputation, one of
-\code{"euclidean"} or \code{"manhattan"}. For PCA imputation, one of
-\code{"regularized"} or \code{"EM"}. If \code{NULL}, the corresponding backend default
-is used unless overridden by \code{group$parameters}.}
+\item{method}{Character or \code{NULL}. One of \code{"euclidean"} or \code{"manhattan"}
+for K-NN imputation, or \code{"regularized"} or \code{"EM"} for PCA imputation.
+\code{NULL} uses \code{"euclidean"} for K-NN and \code{"regularized"} for PCA.}
 
-\item{cores}{Integer. Number of cores for K-NN imputation only. For PCA
-imputation, use \code{mirai::daemons()} to parallelize across groups.}
+\item{cores}{Integer. Number of cores for K-NN imputation only, as
+described under Parallelization.}
 
 \item{.progress}{Logical. If \code{TRUE}, show progress.}
 
 \item{min_group_size}{Integer or \code{NULL}. Minimum total number of columns
 per group, counting both features and auxiliary columns. Groups smaller
-than this are padded with randomly sampled columns from \code{obj}.}
+than this are padded with columns sampled at random from the other
+grouped columns of \code{obj}.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are excluded from the main imputation
-method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
-which case remaining missing values are replaced by column means when
-possible.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a proportion
+of missing values greater than \code{colmax} take no part in the imputation, as
+described under Column mean fill.}
 
-\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
-the main imputation method with column means when possible.}
+\item{post_imp}{Logical. If \code{TRUE}, column means replace the missing values
+that remain after imputation, as described under Column mean fill.}
 
 \item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
-the weighted average, applied to the distance defined by \code{method}, which
-is a mean squared difference for \code{"euclidean"} and a mean absolute
-difference for \code{"manhattan"}. \code{dist_pow = 0} gives an unweighted average
-of the nearest neighbors. The full weighting rule is given under Details
-in \code{\link[=knn_imp]{knn_imp()}}.}
+the weighted average, where \code{0} gives an unweighted average. The weighting
+rule is given under Details in \code{\link[=knn_imp]{knn_imp()}}.}
 
 \item{scale}{Logical. If \code{TRUE}, columns are scaled to unit variance.}
 
-\item{coeff.ridge}{Numeric. Ridge regularization, used only when
-\code{method = "regularized"}. Values \verb{< 1} move toward EM PCA; values \verb{> 1}
-move toward mean imputation.}
+\item{coeff.ridge}{Numeric. The ridge regularization for
+\code{method = "regularized"}, ignored otherwise. Values below \code{1} move toward
+EM PCA, and values above \code{1} move toward mean imputation.}
 
 \item{threshold}{Numeric. Convergence threshold.}
 
-\item{row.w}{Row weights, normalized to sum to \code{1}. \code{NULL} (equal weights),
-a positive numeric vector of length \code{nrow(obj)}, or \code{"n_miss"}
-(down-weight rows with more missing values).}
+\item{row.w}{Numeric vector, \code{"n_miss"}, or \code{NULL}. The row weights,
+normalized to sum to \code{1}: positive values of length \code{nrow(obj)},
+\code{"n_miss"} to down-weight rows with more missing values, or \code{NULL} for
+equal weights.}
 
-\item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.}
+\item{seed}{Integer, numeric, or \code{NULL}. Random seed used when padding
+small groups and, for PCA imputation, passed to \code{\link[=pca_imp]{pca_imp()}}.}
 
-\item{nb.init}{Integer. Number of random initializations. The first
-initialization is always mean imputation.}
+\item{nb.init}{Integer. Number of initializations. The first is always mean
+imputation, and the others are random.}
 
 \item{maxiter}{Integer. Maximum number of iterations.}
 
-\item{miniter}{Integer. Minimum number of iterations. Must be less than or
-equal to \code{maxiter}.}
+\item{miniter}{Integer. Minimum number of iterations, at most \code{maxiter}.}
 
-\item{solver}{Character. Eigensolver: \code{"auto"} (default), \code{"exact"}, or
-\code{"lobpcg"}. \code{"auto"} runs a short timed probe and picks \code{"lobpcg"} only
-when clearly faster. Consecutive EM calls warm-start LOBPCG with both the
-previous eigenblock and search direction. When \code{nb.init > 1}, the auto
-choice from the first init is reused. See Performance tips.}
+\item{solver}{Character. One of \code{"auto"}, \code{"exact"}, or \code{"lobpcg"}. The
+eigensolver. \code{"auto"} uses \code{"exact"} for small problems and otherwise runs
+a short timed probe, picking \code{"lobpcg"} only when it is clearly faster.
+With \code{nb.init > 1}, the choice from the first initialization is reused.
+See the PCA Performance tips section.}
 
-\item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
-created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. Its
-fields are validated on every call, so an object modified after
-construction is checked again rather than trusted. Ignored when
-\code{solver = "exact"}.}
+\item{lobpcg_control}{A list or \code{NULL}. LOBPCG control options, from
+\code{\link[=lobpcg_control]{lobpcg_control()}} or as a plain named list, or \code{NULL} for the defaults.
+Ignored when \code{solver = "exact"}.}
 
-\item{clamp}{Optional numeric vector \code{c(lower, upper)} bounding PCA-imputed
-values (use \code{-Inf}/\code{Inf} for one-sided, \code{NULL} for none). E.g., \code{c(0, 1)}
-for DNAm beta values. Observed values are not clamped.}
+\item{clamp}{Numeric vector of length 2 or \code{NULL}. The bounds
+\code{c(lower, upper)} for PCA-imputed values, such as \code{c(0, 1)} for DNA
+methylation beta values, or \code{NULL} for none. Use \code{-Inf} or \code{Inf} for a
+one-sided bound. Observed values are not clamped.}
 
-\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 to reduce
-contention when using parallel PCA on systems linked with multithreaded
-BLAS.}
-
-\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
-contains missing values.}
+\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 on the \code{mirai}
+daemons in a parallel run. Defaults to \code{TRUE}.}
 
 \item{on_infeasible}{Character. One of \code{"error"}, \code{"skip"}, or \code{"mean"}.
-Controls behavior when a group is infeasible for imputation, for example
-when \code{k} or \code{ncp} exceeds the number of usable columns after applying
-\code{colmax}.}
+The action for a group that is infeasible for imputation, for example
+because \code{k} or \code{ncp} is too large for the columns that \code{colmax} leaves.
+Defaults to \code{"error"}.}
 }
 \value{
-A numeric matrix of the same dimensions as \code{obj}, with missing
-values imputed. The returned object has class \code{slideimp_results}.
+A \code{slideimp_results} object: a numeric matrix with the rows of
+\code{obj} and the columns that \code{subset} selects, with the missing values of
+the grouped features imputed.
 }
 \description{
 Perform K-NN or PCA imputation independently within feature groups.
 }
 \details{
-\code{group_imp()} performs K-NN or PCA imputation on feature groups
-independently, which can substantially reduce runtime for large matrices.
+Imputing each group on its own can reduce the runtime for large matrices.
 
 Specify \code{k} and related arguments to use K-NN imputation, or \code{ncp} and
 related arguments to use PCA imputation. If both \code{k} and \code{ncp} are \code{NULL},
-\code{group$parameters} must supply either \code{k} or \code{ncp} for every group.
+\code{group$parameters} must supply either \code{k} or \code{ncp} for every group. Passing
+an argument of the other method, such as \code{scale} with \code{k}, is an error.
 
 Group-specific parameters in \code{group$parameters} take priority over global
-arguments. Global arguments fill in any missing values. All groups must use
-the same imputation method.
+arguments, and global arguments fill in the parameters a group does not
+set. All groups must use the same imputation method. A global argument
+shared with \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}} that is \code{NULL} takes that function's
+default.
 
-For method-specific arguments inherited from \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}},
-\code{NULL} means the backend default is used unless overridden by
-\code{group$parameters}.
+Per-group \code{k} is capped at the group's column count minus one, counting
+features and auxiliary columns. Per-group \code{ncp} is capped at the smaller of
+that cap and \code{nrow(obj) - 2}. \code{group_imp()} warns when it caps a value.
 
-Per-group \code{k} is capped at the number of usable columns in the group minus
-one. Per-group \code{ncp} is capped at the maximum feasible number of PCA
-components for that group's submatrix. A warning is issued when capping
-occurs.
+A group is infeasible when it is too small for any valid \code{k} or \code{ncp}, or
+when \code{\link[=knn_imp]{knn_imp()}} or \code{\link[=pca_imp]{pca_imp()}} cannot impute it, for example because
+\code{colmax} leaves too few columns. With \code{on_infeasible = "skip"}, an
+infeasible group keeps its missing values. With \code{"mean"}, column means fill
+them, and with \code{"error"}, \code{group_imp()} stops with an error. A group whose
+features have no missing values is not imputed and is never infeasible. An
+infeasible group adds nothing to the \code{mean_filled_cols} and
+\code{mean_filled_cells} attributes of the result.
+
+With \code{subset}, the result holds only the \code{subset} columns, in the order
+they have in \code{obj}. The other features still take part in the imputation,
+as auxiliary columns of their groups.
+
+The \code{mirai} daemons run R's \code{"L'Ecuyer-CMRG"} generator. So with
+\code{nb.init > 1}, a parallel PCA run draws different random initializations
+from a sequential run under R's default generator. The two agree when the
+session also runs \code{RNGkind("L'Ecuyer-CMRG")}.
 }
 \note{
-A character scalar can be passed to \code{group} to name a supported Illumina
-platform, such as \code{"EPICv2"} or \code{"EPICv2_deduped"}. This requires the
-optional \code{slideimp.extra} package to be installed. Supported platforms are
-listed in the \code{slideimp_arrays} object in the \code{slideimp.extra} package.
+A platform name for \code{group}, such as \code{"EPICv2"} or \code{"EPICv2_deduped"}, needs
+the optional \code{slideimp.extra} package. Its \code{slideimp_arrays} object lists
+the supported platforms.
 }
 \section{Parallelization}{
 
 \itemize{
 \item K-NN: use the \code{cores} argument. If \code{mirai} daemons are active, \code{cores}
-is automatically set to \code{1} to avoid nested parallelism.
+is set to \code{1} to avoid nested parallelism.
 \item PCA: use \code{mirai::daemons()} instead of \code{cores}.
+\item With \code{mirai} daemons, each daemon runs BLAS on one thread unless
+\code{pin_blas = FALSE}.
+}
 }
 
-When running PCA imputation in parallel with \code{mirai}, set \code{pin_blas = TRUE}
-in \code{\link[=tune_imp]{tune_imp()}} or \code{\link[=group_imp]{group_imp()}} to prevent BLAS threads from
-oversubscribing CPU cores. This relies on \code{RhpcBLASctl} and works with
-OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
-\code{pin_blas = TRUE} may have no effect on macOS.
+\section{Column mean fill}{
+
+
+A column with a proportion of missing values greater than \code{colmax} takes no
+part in the imputation. The method neither uses the column to impute other
+columns nor imputes it.
+
+With \code{post_imp = TRUE}, column means replace the missing values that remain
+after the method has run. Two kinds of missing value can remain: the missing
+values of the columns that took no part, and the cells for which the method
+found no value. Each column mean is the mean of the column's observed
+values. With \code{post_imp = FALSE}, both kinds stay missing.
+
+The result records what the column means replaced, in two attributes:
+\itemize{
+\item \code{mean_filled_cols}: an integer vector with the index, in the result, of
+each column that took no part and was filled.
+\item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
+one row for each cell that the method could not impute and that was
+filled.
+}
+
+Both attributes are empty when no column mean was used. \code{print()} reports
+them when they are not empty.
 }
 
 \section{Missing values and non-finite input}{
 
 
-\code{NA} and \code{NaN} are both treated as missing. No function in the package
-distinguishes between them.
+\code{obj} must be a double matrix. An integer or logical matrix is rejected,
+not converted. Convert one with \code{storage.mode(obj) <- "double"}.
 
-\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
-with \code{which(is.infinite(x), arr.ind = TRUE)}.
+\code{NA} and \code{NaN} are both treated as missing. The package does not
+distinguish between them.
 
-A column with no observed values (every cell \code{NA} or \code{NaN}) is also
-rejected.
+\code{Inf} and \code{-Inf} are rejected on entry, and so is a column with no
+observed values (every cell \code{NA} or \code{NaN}). Locate them with
+\code{which(is.infinite(obj), arr.ind = TRUE)} and
+\code{which(colSums(!is.na(obj)) == 0)}.
 }
 
 \section{PCA Performance tips}{
 
-Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),
-\code{threshold}, and \code{scale}. Tune these first, then accuracy parameters
-(\code{ncp}, \code{coeff.ridge}) on a representative subset.
+Three arguments set the speed: \code{solver}, \code{threshold}, and \code{scale}. Tune
+these first, then the accuracy arguments \code{ncp} and \code{coeff.ridge}, on a
+representative subset.
 
-\strong{Exact vs. LOBPCG with warm-start.} Whether \code{"lobpcg"} beats \code{"exact"}
-depends on size and low-rankness: \code{"lobpcg"} is preferred for large, approximately
-low-rank matrices with small \code{ncp}, and \code{"exact"} for small matrices
-(including \code{slide_imp()} windows), where it is faster and more robust.
-Separately, the warm-start makes each successive solve cheap: \code{pca_imp()}
-warm-starts LOBPCG with the previous eigenblock and search direction, so once
-imputed values stabilize, later solves converge in a few iterations. The
-payoff therefore grows with the number of EM iterations, independent of
-low-rankness. \code{solver = "auto"} (default) probes both and is a safe start.
+\strong{Exact vs. LOBPCG.} \code{"lobpcg"} suits large, approximately low-rank
+matrices with small \code{ncp}. \code{"exact"} suits small matrices, such as
+\code{slide_imp()} windows, where it is faster. It is also more reliable: it
+always converges, to eigenvectors exact to machine precision, while LOBPCG
+stops at the tolerance set in \code{\link[=lobpcg_control]{lobpcg_control()}} and can take many
+iterations, or reach \code{maxiter}, when the eigenvalues around the \code{ncp}-th one
+are close together. The warm start makes each later LOBPCG solve cheap:
+\code{pca_imp()} starts LOBPCG from the previous eigenblock and search direction,
+so once the imputed values stabilize, each solve takes a few iterations. The
+gain grows with the number of EM iterations, whatever the rank.
+\code{solver = "auto"}, the default, chooses between the two and is a safe start.
 
-\strong{Threshold.} The default \code{1e-6} is conservative; \code{1e-5} is often faster
-with very similar values.
+\strong{Threshold.} The default \code{1e-6} is conservative. \code{1e-5} is often faster
+and gives very similar values.
 
-\strong{Scale.} For columns on a common scale (e.g., DNAm beta values in
-\verb{[0, 1]}), \code{scale = FALSE} can be faster and more accurate.
+\strong{Scale.} For columns on a common scale, such as DNA methylation beta
+values in \verb{[0, 1]}, \code{scale = FALSE} can be faster and more accurate.
 
-\strong{Parallel and BLAS.} In parallel via \code{tune_imp()} or \code{group_imp()} with a
-multithreaded BLAS, set \code{pin_blas = TRUE} to avoid thread oversubscription.
-On Windows, the stock BLAS can be slow. Advanced users can swap in
-\href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+\strong{BLAS.} On Windows, the BLAS that ships with R can be slow, and
+\href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS} can
+replace it.
 
 See \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}
 for the full workflow.
@@ -271,5 +302,8 @@ pca_grouped
 \dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=prep_groups]{prep_groups()}}, \code{\link[=knn_imp]{knn_imp()}}, \code{\link[=pca_imp]{pca_imp()}}
+\itemize{
+\item \code{\link[=prep_groups]{prep_groups()}} to inspect and edit the groups and their parameters.
+\item \code{\link[=knn_imp]{knn_imp()}} and \code{\link[=pca_imp]{pca_imp()}} to impute a single matrix.
+}
 }

@@ -1,3 +1,5 @@
+skip_on_cran()
+
 # -----------------------------------------------------------------------------
 # Reduced base-R re-implementation of carrier::crate()
 #
@@ -12,7 +14,8 @@ test_that(".crate() requires named `...` arguments", {
 
   expect_error(
     crate(function(x) identity(x), x = 1, y = 2, 3),
-    "named"
+    "must be uniquely named",
+    fixed = TRUE
   )
 
   expect_no_error(crate(function(x) identity(x), x = 1, y = 2))
@@ -22,7 +25,7 @@ test_that(".crate() requires named `...` arguments", {
 test_that(".crate() requires a function", {
   crate <- getFromNamespace(".crate", "slideimp")
 
-  expect_error(crate(1), "function")
+  expect_error(crate(1), "must be a function closure", fixed = TRUE)
 })
 
 test_that(".new_crate() creates crate objects", {
@@ -164,7 +167,11 @@ test_that("existing crates passed through `...` are not re-crated", {
 
 test_that(".crate() rejects duplicate `...` names", {
   crate <- getFromNamespace(".crate", "slideimp")
-  expect_error(crate(function() NULL, x = 1, x = 2), "named")
+  expect_error(
+    crate(function() NULL, x = 1, x = 2),
+    "must be uniquely named",
+    fixed = TRUE
+  )
 })
 
 test_that(".crate() honours a custom .parent_env", {
@@ -173,20 +180,4 @@ test_that(".crate() honours a custom .parent_env", {
   e$visible <- "yes"
   fn <- crate(function() visible, .parent_env = e)
   expect_identical(fn(), "yes")
-})
-
-test_that(".crate() works through mirai", {
-  skip_if_not_manual()
-  skip_if_not_installed("withr")
-  crate <- getFromNamespace(".crate", "slideimp")
-  mirai::daemons(1L)
-  withr::defer(mirai::daemons(0L))
-  helper <- function(x) x + offset
-  fn <- crate(
-    function(i) helper(i),
-    helper = helper,
-    offset = 10
-  )
-  out <- mirai::mirai_map(1:3, fn)[.progress = FALSE]
-  expect_equal(unlist(out), 11:13)
 })

@@ -1,62 +1,81 @@
 Type: Package
 Package: slideimp
 Title: Numeric Matrices K-NN and PCA Imputation
-Version: 1.2.0.11
+Version: 1.2.0.99
 Authors@R: c(
     person("Hung", "Pham", , "amser.hoanghung@gmail.com", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0000-0002-8271-9355")),
+    person("Francois", "Husson", role = c("ctb", "cph"),
+           comment = c("'missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R, src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp",
+                       ORCID = "0000-0002-7271-8877")),
+    person("Julie", "Josse", role = c("ctb", "cph"),
+           comment = c("'missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R, src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp",
+                       ORCID = "0000-0001-9547-891X")),
+    person("Vincent", "Audigier", role = c("ctb", "cph"),
+           comment = "'missMDA' MIPCA() Bayesian sampler, reimplemented in R/mi_pca_imp.R and src/mipca.cpp"),
     person("Posit Software, PBC", role = "cph",
-           comment = "Copyright holder of code adapted from the 'carrier' package, MIT licensed")
+           comment = "'carrier' package code, adapted in R/crate.R and tests/testthat/test-crate*.R"),
+    person("Yixuan", "Qiu", role = c("ctb", "cph"),
+           comment = "Spectra library, vendored in src/Spectra"),
+    person("Gael", "Guennebaud", role = c("ctb", "cph"),
+           comment = "Eigen SelfAdjointEigenSolver code, adapted in src/Spectra/LinAlg/TridiagEigen.h"),
+    person("Jitse", "Niesen", role = c("ctb", "cph"),
+           comment = "Eigen SelfAdjointEigenSolver code, adapted in src/Spectra/LinAlg/TridiagEigen.h")
   )
-Description: Fast k-nearest neighbors (K-NN) and principal component
-    analysis (PCA) imputation algorithms for missing values in epigenetic
-    data or other high-dimensional numeric matrices. For PCA, a locally
-    optimal block preconditioned conjugate gradient (LOBPCG) eigensolver
-    with warm starts of both the eigenblock and search direction is also
-    supported. Two complementary imputation strategies are available.
-    Group-wise imputation (e.g., by chromosome) is recommended for
-    Illumina DNA methylation microarrays (e.g., 450K, EPIC) and other
-    matrices with groupable columns. A sliding window approach for K-NN or
-    PCA imputation is recommended only for whole-genome methylation data
-    such as whole-genome bisulfite sequencing (WGBS) or Enzymatic
-    Methyl-seq (EM-seq). The package also supports hyperparameter tuning
-    via repeated cross-validation. The K-NN algorithm is described in:
-    Hastie, T., Tibshirani, R., Sherlock, G., Eisen, M., Brown, P. and
-    Botstein, D.  (1999) "Imputing Missing Data for Gene Expression
-    Arrays". The PCA imputation is an optimized reimplementation of the
-    imputePCA() function from the 'missMDA' package described in: Josse,
-    J. and Husson, F. (2016) <doi:10.18637/jss.v070.i01> "missMDA: A
-    Package for Handling Missing Values in Multivariate Data Analysis".
+Description: Fast k-nearest neighbor (K-NN) and principal component
+    analysis (PCA) imputation of missing values in high-dimensional
+    numeric matrices, such as DNA methylation data. PCA imputation can
+    use a locally optimal block preconditioned conjugate gradient (LOBPCG)
+    eigensolver, which warm-starts each iteration from the previous
+    eigenblock and search direction. Group-wise imputation, for example
+    by chromosome, is recommended for Illumina DNA methylation arrays
+    such as 450K and EPIC, and for other matrices with groupable columns.
+    Sliding-window imputation imputes columns ordered by position. Tuning
+    functions choose hyperparameters by masking observed values, imputing
+    them, and scoring the result over repeated random masks. The Bayesian
+    PCA sampler draws multiple imputations of the missing values. For
+    whole-genome methylation data, such as whole-genome bisulfite
+    sequencing (WGBS) or Enzymatic Methyl-seq (EM-seq), the sampler is
+    recommended because such data are sparsely observed. The K-NN method
+    is described in Troyanskaya et al. (2001)
+    <doi:10.1093/bioinformatics/17.6.520>. PCA imputation is an optimized
+    reimplementation of imputePCA() from the 'missMDA' package, described
+    in Josse and Husson (2016) <doi:10.18637/jss.v070.i01>. The sampler
+    implements the Bayesian method of MIPCA() in 'missMDA', described in
+    Audigier, Husson and Josse (2016) <doi:10.1080/00949655.2015.1104683>.
 License: GPL (>= 2)
 URL: https://github.com/hhp94/slideimp, https://hhp94.github.io/slideimp/
 BugReports: https://github.com/hhp94/slideimp/issues
 Depends: 
-    R (>= 4.3.0)
+    R (>= 4.4.0)
 Imports:
-    bigmemory,
     checkmate,
     cli,
     collapse,
-    mirai,
+    dqrng (>= 0.4.1),
+    mirai (>= 2.5.0),
     Rcpp,
+    RhpcBLASctl,
+    rlang,
     stats,
     utils
 Suggests:
     knitr,
     missMDA,
+    quarto,
     rcpptimer,
-    RhpcBLASctl,
     rmarkdown,
-    testthat (>= 3.0.0),
+    testthat (>= 3.2.3),
     withr
 LinkingTo:
+    BH,
+    dqrng (>= 0.4.1),
     Rcpp,
-    RcppArmadillo,
+    RcppEigen,
     RcppThread
-VignetteBuilder: 
-    knitr
+VignetteBuilder: knitr, quarto
 Config/Needs/website: rmarkdown
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US

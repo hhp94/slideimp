@@ -7,24 +7,28 @@
 lobpcg_control(warmup_iters = 10L, tol = 1e-09, maxiter = 20)
 }
 \arguments{
-\item{warmup_iters}{Integer. Number of warm-up iterations before the main
-LOBPCG solve. Must be non-negative.}
+\item{warmup_iters}{Integer. Number of initial \code{\link[=pca_imp]{pca_imp()}} iterations that
+use the exact eigensolver before LOBPCG starts. Must be non-negative.}
 
 \item{tol}{Numeric. Convergence tolerance for the LOBPCG eigensolver. Must
 be non-negative and finite.}
 
-\item{maxiter}{Integer. Maximum number of LOBPCG iterations. Must be
-non-negative. In \code{\link[=pca_imp]{pca_imp()}}, \code{maxiter} must be positive when
-\code{solver = "auto"} or \code{solver = "lobpcg"}. Use \code{solver = "exact"} to force
-the exact solver.}
+\item{maxiter}{Integer. Maximum number of LOBPCG iterations per eigenvalue
+solve. Must be non-negative, and positive when \code{\link[=pca_imp]{pca_imp()}} runs with
+\code{solver = "auto"} or \code{"lobpcg"}. Use \code{solver = "exact"}, not
+\code{maxiter = 0}, to select the exact solver.}
 }
 \value{
-A named list of class \code{"slideimp_lobpcg_control"} containing
+A \code{slideimp_lobpcg_control} object: a named list with
 \code{warmup_iters}, \code{tol}, and \code{maxiter}.
 }
 \description{
 Construct a validated list of control options for the LOBPCG eigensolver
-used by \code{\link[=pca_imp]{pca_imp()}}. Most users do not need to call this directly.
+used by \code{\link[=pca_imp]{pca_imp()}}. Most users do not need to call it.
+}
+\details{
+Under \code{solver = "auto"}, \code{\link[=pca_imp]{pca_imp()}} raises a \code{warmup_iters} that was not
+set for a large \code{ncp}, up to \code{50}. Set \code{warmup_iters} to keep a fixed value.
 }
 \examples{
 set.seed(123)
@@ -40,7 +44,7 @@ lobpcg_control(maxiter = 50)
 pca_imp(obj, ncp = 2, solver = "exact")
 
 # Pass directly to pca_imp()
-pca_imp(obj, ncp = 2, lobpcg_control = lobpcg_control(tol = 1e-9))
+pca_imp(obj, ncp = 2, lobpcg_control = lobpcg_control(tol = 1e-8))
 
 # Or use a named list
 pca_imp(obj, ncp = 2, lobpcg_control = list(maxiter = 50))

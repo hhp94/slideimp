@@ -1,0 +1,175 @@
+---
+title: "slideimp"
+vignette: >
+  %\VignetteIndexEntry{slideimp}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: '#>'
+---
+
+```{r}
+#| label: setup
+library(slideimp)
+set.seed(1234)
+```
+
+## Comparing Methods on One Cross-Validation Split with `tune_imp()`
+* Simulate some data
+
+```{r}
+# 20 rows, 1000 columns, all columns have at least some NA
+sim_obj <- sim_mat(n = 20, p = 1000, perc_col_na = 1)
+obj <- sim_obj$input
+obj[1:4, 1:4]
+```
+
+* By default, `tune_imp()` samples the NA locations itself with `sample_na_loc()`. To compare methods on one split, generate the locations up front with `sample_na_loc()` and pass them to each `tune_imp()` call.
+* Here, `sample_na_loc()` selects 5 rows in each of 200 random columns (features), for 5 repetitions. To use only certain columns (e.g., clock CpGs), pass the `na_col_subset` argument.
+  - `na_loc` has 5 elements, one for each repetition. Each element is a matrix with one row per masked value, which holds the row and column index of that value.
+
+```{r}
+na_loc <- sample_na_loc(obj, n_cols = 200, n_rows = 5, n_reps = 5)
+length(na_loc)
+na_loc[[1]][1:6, ]
+```
+
+* Every method gets the same masked values, so PCA, K-NN and a custom method can be compared directly.
+* A custom function must take `obj` as its first argument and return an object with the same dimensions as `obj`. Its other arguments must match the column names of the `parameters` data frame.
+
+```{r}
+# This custom function imputes missing values with random normal values and takes
+# `mean` and `sd` as params
+rnorm_imp <- function(obj, mean, sd) {
+  na <- is.na(obj)
+  obj[na] <- rnorm(sum(na), mean = mean, sd = sd) # <- impute values with rnorm
+  return(obj) # <- return an imputed object with the same dim as obj
+}
+
+pca_tune <- tune_imp(
+  obj,
+  .f = "pca_imp",
+  na_loc = na_loc,
+  parameters = data.frame(ncp = 10)
+)
+
+knn_tune <- tune_imp(
+  obj,
+  .f = "knn_imp",
+  na_loc = na_loc,
+  parameters = data.frame(k = 10)
+)
+
+rnorm_tune <- tune_imp(
+  obj,
+  .f = rnorm_imp,
+  na_loc = na_loc,
+  parameters = data.frame(mean = 0, sd = 1) # must match with arguments of `rnorm_imp`
+)
+```
+
+* Pick the method with the lowest cross-validation error:
+
+```{r}
+mean(compute_metrics(pca_tune, metrics = "rmse")$.estimate)
+mean(compute_metrics(knn_tune, metrics = "rmse")$.estimate)
+mean(compute_metrics(rnorm_tune, metrics = "rmse")$.estimate)
+```
+
+## Group-Wise Imputation with `group_imp()`
+* `group_imp()` imputes each group of columns (e.g., each chromosome) separately. This can significantly increase accuracy for both K-NN and PCA imputation ([Pham et al. 2026](https://doi.org/10.1093/bioinformatics/btag318)), and it reduces run time:
+  - K-NN searches for neighbors within the group only, so it is much faster.
+  - PCA is usually faster: each group forms a smaller cross-product, has less memory pressure, tends to converge in fewer iterations, and groups can run in parallel.
+* The `group` argument maps `colnames(obj)` to groups. Build it with `prep_groups()` to set parameters per group or to pad small groups. `prep_groups()` returns a data frame with these columns:
+  - `group`: the group labels.
+  - `feature`: a list-column. Each element holds the column names imputed together.
+  - `aux`: a list-column of auxiliary columns. They help impute the group's features and are not imputed themselves. When a group such as `chrM` has fewer than `min_group_size` columns, `prep_groups()` adds columns drawn at random from other groups to its `aux` until it reaches that size.
+  - `parameters`: optional group-specific imputation parameters.
+
+* First, simulate data with 2 groups. Then move feature 1 into a new group, `group3`, to show how `min_group_size` pads a one-feature group through the `aux` list-column.
+
+```{r}
+sim_obj <- sim_mat(n = 20, p = 50, n_col_groups = 2)
+
+# Matrix to be imputed
+obj <- sim_obj$input
+obj[1:5, 1:4]
+
+# Metadata, i.e., which features belong to which group
+meta <- sim_obj$col_group
+meta[1:5, ]
+
+# Put feature 1 in `group3`
+meta[1, 2] <- "group3"
+meta[1:5, ]
+```
+
+* Then build the `group` argument with `prep_groups()`. The output shows `group3` padded to 10 columns: 1 feature and 9 `aux` columns.
+* As a demonstration, each group also gets a different number of nearest neighbors, `k`.
+
+```{r}
+set.seed(1234)
+group_imp_df <- prep_groups(colnames(obj), group = meta, min_group_size = 10)
+group_imp_df$parameters <- list(list(k = 3), list(k = 4), list(k = 5))
+group_imp_df
+```
+
+* Finally, impute `obj` with the modified `group_imp_df`. Every group sets its own `k`, so the `k = 10` passed to `group_imp()` is ignored.
+
+```{r}
+knn_results <- group_imp(obj, group = group_imp_df, cores = 2, k = 10)
+print(knn_results, p = 4)
+```
+
+## Multiple Imputation of WGBS/EM-seq Data with `mipca_flank()`
+* For whole-genome methylation data, the Bayesian PCA sampler is recommended because such data are sparsely observed. `mipca_flank()` draws multiple imputations of target CpGs, each fitted on the CpGs within `window_size` bp of it.
+* Split the data by chromosome first. This simulated beta matrix stands in for one chromosome, with 50 to 500 bp between neighboring CpGs. `location` holds the position of each column.
+
+```{r}
+set.seed(1234)
+chr1_beta <- sim_mat(n = 30, p = 500)$input
+location <- cumsum(sample(50:500, ncol(chr1_beta), replace = TRUE))
+chr1_beta[1:4, 1:4]
+```
+
+* `mipca_flank_plan()` finds the window of each target. A target whose window has fewer than `min_window_n` columns is not imputed, and a target with no missing values is marked `clean`.
+
+```{r}
+targets <- colnames(chr1_beta)[c(100, 250, 400)]
+plan <- mipca_flank_plan(
+  chr1_beta,
+  location,
+  window_size = 2000, # bp on each side of the target
+  subset = targets,
+  min_window_n = 10
+)
+plan
+```
+
+* Choose `rank` on one target's window with `mipca_tune()`. A window has few columns, so lower `n_cols`, the number of columns that get held-out values.
+
+```{r}
+win <- mipca_flank_window(plan, targets[1])
+tuned <- mipca_tune(win, rank = 1:3, transform = "logit_biwhiten", n_cols = 5, seed = 1)
+tuned
+```
+
+* This is simulated data, so its convergence figures (`ess_ok`, `rhat_max`) say nothing about a real analysis. Check them on your own data, as the article below describes.
+* Then fit every window with the chosen `rank` and keep the targets' draws. Each draw is one completed matrix of the targets.
+
+```{r}
+fit <- mipca_flank(
+  plan,
+  rank = tuned$rank[which.min(tuned$crps)],
+  seed = 1,
+  transform = "logit_biwhiten",
+  .progress = FALSE
+)
+fit
+dim(as.matrix(fit, draw = 1))
+```
+
+* See the [multiple imputation article](https://hhp94.github.io/slideimp/articles/multiple-imputation-beta.html) for `nu`, convergence checks, and pooling the draws.
+

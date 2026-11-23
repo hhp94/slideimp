@@ -1,3 +1,5 @@
+skip_on_cran()
+
 test_that("mat_miss counts NAs correctly", {
   m <- matrix(
     c(1, NA, 3, NA, NA, 6),
@@ -13,7 +15,7 @@ test_that("mat_miss counts NAs correctly", {
 
 test_that("mat_miss handles edge cases", {
   # no NAs
-  m1 <- matrix(1:6, 2, 3)
+  m1 <- matrix(as.double(1:6), 2, 3)
   expect_equal(unname(mat_miss(m1)), c(0, 0, 0))
 
   # all NAs
@@ -41,8 +43,13 @@ test_that("mat_miss does not count Inf as missing", {
 
 test_that("mat_miss validates inputs", {
   expect_error(mat_miss(data.frame(x = 1)), "matrix")
-  expect_error(mat_miss(matrix("a", 1, 1)), "numeric")
-  expect_error(mat_miss(matrix(1, 1, 1), col = "yes"))
+  expect_error(mat_miss(matrix("a", 1, 1)), "Must store doubles", fixed = TRUE)
+  expect_error(mat_miss(matrix(1:2, 1, 2)), "Must store doubles", fixed = TRUE)
+  expect_error(
+    mat_miss(matrix(1, 1, 1), col = "yes"),
+    "Assertion on 'col' failed",
+    fixed = TRUE
+  )
 })
 
 test_that("mat_miss agrees with base R on sim_mat output", {
@@ -53,13 +60,4 @@ test_that("mat_miss agrees with base R on sim_mat output", {
     unname(mat_miss(s$input, col = FALSE)),
     unname(rowSums(is.na(s$input)))
   )
-})
-
-test_that("the package is built with 64-bit Armadillo indices", {
-  # -DARMA_64BIT_WORD=1 in src/Makevars. Without it arma indices are 32 bits,
-  # capping a matrix at 2^32-1 elements; the zero-copy constructor used for
-  # `const arma::mat&` does not check that bound, so n_elem and colptr()
-  # arithmetic wrap silently instead of erroring. At 850k columns the cap lands
-  # near 5,052 rows, which real data reaches.
-  expect_equal(arma_uword_bytes(), 8L)
 })

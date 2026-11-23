@@ -10,17 +10,45 @@ Provides K-nearest-neighbor, PCA, grouped, and sliding-window imputation
 methods for numeric matrices, along with utilities for simulation and
 parameter tuning.
 }
+\section{Column mean fill}{
+
+
+A column with a proportion of missing values greater than \code{colmax} takes no
+part in the imputation. The method neither uses the column to impute other
+columns nor imputes it.
+
+With \code{post_imp = TRUE}, column means replace the missing values that remain
+after the method has run. Two kinds of missing value can remain: the missing
+values of the columns that took no part, and the cells for which the method
+found no value. Each column mean is the mean of the column's observed
+values. With \code{post_imp = FALSE}, both kinds stay missing.
+
+The result records what the column means replaced, in two attributes:
+\itemize{
+\item \code{mean_filled_cols}: an integer vector with the index, in the result, of
+each column that took no part and was filled.
+\item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
+one row for each cell that the method could not impute and that was
+filled.
+}
+
+Both attributes are empty when no column mean was used. \code{print()} reports
+them when they are not empty.
+}
+
 \section{Missing values and non-finite input}{
 
 
-\code{NA} and \code{NaN} are both treated as missing. No function in the package
-distinguishes between them.
+\code{obj} must be a double matrix. An integer or logical matrix is rejected,
+not converted. Convert one with \code{storage.mode(obj) <- "double"}.
 
-\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
-with \code{which(is.infinite(x), arr.ind = TRUE)}.
+\code{NA} and \code{NaN} are both treated as missing. The package does not
+distinguish between them.
 
-A column with no observed values (every cell \code{NA} or \code{NaN}) is also
-rejected.
+\code{Inf} and \code{-Inf} are rejected on entry, and so is a column with no
+observed values (every cell \code{NA} or \code{NaN}). Locate them with
+\code{which(is.infinite(obj), arr.ind = TRUE)} and
+\code{which(colSums(!is.na(obj)) == 0)}.
 }
 
 \seealso{
@@ -42,7 +70,13 @@ Authors:
 
 Other contributors:
 \itemize{
-  \item Posit Software, PBC (Copyright holder of code adapted from the 'carrier' package, MIT licensed) [copyright holder]
+  \item Francois Husson (\href{https://orcid.org/0000-0002-7271-8877}{ORCID}) ('missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R, src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp) [contributor, copyright holder]
+  \item Julie Josse (\href{https://orcid.org/0000-0001-9547-891X}{ORCID}) ('missMDA' imputePCA() and MIPCA(), reimplemented in R/pca_imp.R, src/pca_kernel.cpp, R/mi_pca_imp.R and src/mipca.cpp) [contributor, copyright holder]
+  \item Vincent Audigier ('missMDA' MIPCA() Bayesian sampler, reimplemented in R/mi_pca_imp.R and src/mipca.cpp) [contributor, copyright holder]
+  \item Posit Software, PBC ('carrier' package code, adapted in R/crate.R and tests/testthat/test-crate*.R) [copyright holder]
+  \item Yixuan Qiu (Spectra library, vendored in src/Spectra) [contributor, copyright holder]
+  \item Gael Guennebaud (Eigen SelfAdjointEigenSolver code, adapted in src/Spectra/LinAlg/TridiagEigen.h) [contributor, copyright holder]
+  \item Jitse Niesen (Eigen SelfAdjointEigenSolver code, adapted in src/Spectra/LinAlg/TridiagEigen.h) [contributor, copyright holder]
 }
 
 }

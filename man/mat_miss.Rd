@@ -7,25 +7,26 @@
 mat_miss(obj, col = TRUE, prop = FALSE)
 }
 \arguments{
-\item{obj}{A numeric matrix.}
+\item{obj}{A double matrix.}
 
-\item{col}{Logical. If \code{TRUE}, compute column-wise. If \code{FALSE},
-compute row-wise.}
+\item{col}{Logical. Whether to compute per column (\code{TRUE}) or per row
+(\code{FALSE}).}
 
-\item{prop}{Logical. If \code{FALSE}, return missing-value counts. If \code{TRUE},
-return missing-value proportions.}
+\item{prop}{Logical. Whether to return missing-value proportions (\code{TRUE})
+or counts (\code{FALSE}).}
 }
 \value{
 When \code{prop = FALSE}, an integer vector of missing-value counts.
-When \code{prop = TRUE}, a double vector of missing-value proportions. Either
-is per column when \code{col = TRUE} and per row otherwise, and is named when
-the corresponding dimension names are present.
-
-\code{NA} and \code{NaN} both count as missing. \code{Inf} and \code{-Inf} do not.
+When \code{prop = TRUE}, a double vector of missing-value proportions. The
+vector has one element per column when \code{col = TRUE}, or per row
+otherwise, named from \code{colnames(obj)} or \code{rownames(obj)} when set.
 }
 \description{
 Calculate the number or proportion of missing values per column or per row
-of a numeric matrix without allocating a full logical mask matrix.
+of a numeric matrix, without allocating a logical matrix the size of \code{obj}.
+}
+\details{
+\code{NA} and \code{NaN} both count as missing. \code{Inf} and \code{-Inf} do not.
 }
 \examples{
 obj <- matrix(c(1, NA, 3, 4, NA, 6, NA, 8, 9), nrow = 3)

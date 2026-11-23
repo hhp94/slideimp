@@ -1,17 +1,16 @@
-#' Calculate Matrix Column Variances
+#' Matrix Column Variances
 #'
 #' Compute the sample variance for each column of a numeric matrix.
 #'
-#' @param obj A numeric matrix.
-#' @param cores Integer. Number of cores to use for parallel computation.
-#'   Defaults to `1`.
+#' @param obj A double matrix.
 #'
 #' @details
-#' Columns with fewer than two non-missing values are assigned `NA`.
+#' `NA` and `NaN` are treated as missing and dropped, as [stats::var()] does
+#' with `na.rm = TRUE`. A column with fewer than two non-missing values has
+#' variance `NA`.
 #'
-#' `NA`/`NaN` are treated as missing and dropped (equivalent to
-#' `var(x, na.rm = TRUE)`). `Inf`/`-Inf` are **not** missing. They enter the
-#' arithmetic, so a column's variance can be `NaN`, matching base R.
+#' `Inf` and `-Inf` are not missing. A column that contains one and has at
+#' least two non-missing values has variance `NaN`, as in base R.
 #'
 #' @returns A numeric vector of column variances, named if `obj` has column
 #'   names.
@@ -34,17 +33,16 @@
 #'
 #' col_vars(obj)
 #' apply(obj, 2, var, na.rm = TRUE)
-col_vars <- function(obj, cores = 1) {
+col_vars <- function(obj) {
   checkmate::assert_matrix(
     obj,
-    mode = "numeric",
+    mode = "double",
     null.ok = FALSE,
     min.rows = 1,
     min.cols = 1,
     .var.name = "obj"
   )
-  checkmate::assert_int(cores, lower = 1)
-  vars <- col_vars_internal(mat = obj, cores = cores)[1, ]
+  vars <- col_scan(obj, var = TRUE)$var
   names(vars) <- colnames(obj)
   return(vars)
 }

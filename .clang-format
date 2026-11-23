@@ -1,0 +1,18 @@
+# C++ layout for src/. clang-format 23.1.5, installed like air as a global
+# binary (uv tool install clang-format==23.1.5); the repository does not pin
+# it, and another release lays code out a little differently. Run from the
+# root: clang-format -i src/*.cpp src/*.h. Files left alone are listed in
+# .clang-format-ignore.
+BasedOnStyle: LLVM
+BreakBeforeBraces: Attach
+# Include order is load-bearing: USE_FC_LEN_T before any R header,
+# Rconfig.h before R_ext/BLAS.h, RcppEigen.h in place of Rcpp.h.
+SortIncludes: Never
+IncludeBlocks: Preserve
+IndentPPDirectives: AfterHash
+PPIndentWidth: 1
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+# Comments are written by hand: reflowing breaks the "// ---- section ----"
+# rules and rewraps prose. Only their indentation follows the code.
+ReflowComments: IndentOnly

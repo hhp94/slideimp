@@ -1,163 +1,243 @@
-#include <RcppArmadillo.h>
+#include <Rcpp.h>
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <limits>
+#include <string>
+#include <utility>
+#include <vector>
 #include "loc_timer.h"
+#include "matrix_checks.h"
+
+// One repetition of the constrained NA sampler behind sample_na_loc().
+//
+// Returns a (total_na x 2) integer matrix of 1-based (row, col) positions, or
+// a matrix with ZERO rows when no attempt filled every slot. The caller
+// raises the error: a condition the user may want to catch is built in R,
+// where it can carry a class and name the arguments to relax.
+//
+// `pool_idx_in` and `pool_cap` are parallel. `pool_cap[i]` is the most NAs
+// column `pool_idx_in[i]` can take: its room under colmax, capped so that two
+// observed values stay. sample_na_loc() passes only columns that can take the
+// smallest demand and that hold two distinct observed values, so the skips
+// below for a short or constant column are a guard, not the policy.
+//
+// Every uniform draw is R::runif(0, 1), from R's generator, so set.seed()
+// fixes the positions.
 
 // [[Rcpp::export]]
-arma::umat sample_each_rep_cpp(const arma::mat &obj,
-                               const arma::uvec &pool_idx_in, // 0-based column indices available for sampling
-                               const arma::uvec &na_per_col,  // how many NAs to place in each needed column
-                               const arma::uvec &row_room,    // per-row budget: max additional NAs allowed
-                               const arma::uvec &col_room,    // per-column budget: max NAs allowed
-                               arma::uword max_attempts)
-{
+Rcpp::IntegerMatrix sample_each_rep_cpp(
+    const Rcpp::NumericMatrix &obj,
+    const Rcpp::IntegerVector
+        &pool_idx_in, // 0-based column indices available for sampling
+    const Rcpp::IntegerVector
+        &na_per_col, // how many NAs to place in each needed column, ascending
+    const Rcpp::IntegerVector
+        &row_room, // per-row budget: max additional NAs allowed
+    const Rcpp::IntegerVector
+        &pool_cap, // per-pool-column budget: max NAs the column can take
+    const int max_attempts) {
   LOC_TIMER_OBJ(sample_each_rep);
   LOC_TIC(sample_each_rep, "sample_each_rep_total");
 
-  const arma::uword n_cols_needed = na_per_col.n_elem; // number of columns to fill
-  const arma::uword total_na = arma::accu(na_per_col); // total NA cells to place
-  const arma::uword n_rows = obj.n_rows;
+  const std::size_t n_rows = static_cast<std::size_t>(obj.nrow());
+
+  // The kernel indexes with these values, so it checks them, not the caller.
+  if (row_room.size() != obj.nrow()) {
+    Rcpp::stop("'row_room' has length %d, but 'obj' has %d rows",
+               row_room.size(), obj.nrow());
+  }
+  if (pool_cap.size() != pool_idx_in.size()) {
+    Rcpp::stop("'pool_cap' and 'pool_idx_in' differ in length");
+  }
+  if (max_attempts < 0) {
+    Rcpp::stop("'max_attempts' must be 0 or more");
+  }
+  stop_on_bad_col_index(pool_idx_in, obj.ncol(), "pool_idx_in");
+  stop_on_negative(na_per_col, "na_per_col");
+  stop_on_negative(row_room, "row_room");
+  stop_on_negative(pool_cap, "pool_cap");
+  // A column listed twice could fill two slots from the same unchanged
+  // column, returning one (row, col) twice.
+  {
+    std::vector<unsigned char> seen(static_cast<std::size_t>(obj.ncol()), 0);
+    for (R_xlen_t i = 0; i < pool_idx_in.size(); ++i) {
+      if (seen[pool_idx_in[i]]) {
+        Rcpp::stop("'pool_idx_in' holds column index %d more than once",
+                   pool_idx_in[i]);
+      }
+      seen[pool_idx_in[i]] = 1;
+    }
+  }
+
+  const int *pool = pool_idx_in.begin();
+  const int *need = na_per_col.begin();
+  const int *cap = pool_cap.begin();
+  const std::size_t n_cols_needed = static_cast<std::size_t>(na_per_col.size());
+  const std::size_t n_pool = static_cast<std::size_t>(pool_idx_in.size());
+  const double *x = obj.begin();
+
+  // total NA cells to place: at most one per cell of `obj`, but summed in
+  // std::size_t so a caller's error cannot overflow it before it is refused
+  std::size_t total_na = 0;
+  for (std::size_t i = 0; i < n_cols_needed; ++i) {
+    total_na += static_cast<std::size_t>(need[i]);
+  }
+  if (total_na > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+    Rcpp::stop("'na_per_col' sums past the rows an R matrix can hold");
+  }
 
   // reusable allocations across attempts
-  arma::uvec left_temp(n_rows, arma::fill::none);
-  arma::uvec row_out(total_na, arma::fill::zeros);
-  arma::uvec col_out(total_na, arma::fill::zeros);
-  arma::uvec attempt_row_room(row_room.n_elem);
+  std::vector<std::size_t> left_temp(n_rows);
+  std::vector<int> row_out(total_na, 0);
+  std::vector<int> col_out(total_na, 0);
+  std::vector<int> attempt_row_room(n_rows);
 
-  for (arma::uword attempt = 0; attempt < max_attempts; ++attempt)
-  {
-    LOC_TIC(sample_each_rep, "attempt_setup");
-    // shuffle column order each attempt to escape bad orderings `pool_idx[sample.int(length(pool_idx))]`
-    arma::uvec shuffled = arma::shuffle(pool_idx_in);
-    attempt_row_room = row_room;
-    arma::uword written = 0;
-    arma::uword slot = 0; // number of columns successfully filled so far
-    LOC_TOC(sample_each_rep, "attempt_setup");
-    for (arma::uword i = 0; i < shuffled.n_elem; ++i) // for (col_idx in shuffled)
-    {
-      if (slot >= n_cols_needed)
-      {
+  // Visiting order over the pool, as positions into `pool_idx_in`. It is
+  // shuffled lazily, one swap per column visited, and it persists across
+  // attempts: a uniform shuffle of any arrangement is uniform. An attempt
+  // therefore costs the columns it visits, not the size of the pool.
+  std::vector<std::size_t> order(n_pool);
+  for (std::size_t i = 0; i < n_pool; ++i) {
+    order[i] = i;
+  }
+
+  for (int attempt = 0; attempt < max_attempts; ++attempt) {
+    std::copy(row_room.begin(), row_room.end(), attempt_row_room.begin());
+    std::size_t written = 0;
+    std::size_t slot = 0; // number of columns successfully filled so far
+    for (std::size_t i = 0; i < n_pool; ++i) {
+      if (slot >= n_cols_needed) {
         break; // all columns filled, stop scanning available pool
       }
 
-      const arma::uword col_idx = shuffled(i);
+      // Fisher-Yates step: position i takes a uniform draw from [i, n_pool)
+      const std::size_t k = std::min(
+          n_pool - 1, i + (std::size_t)(R::runif(0, 1) * (n_pool - i)));
+      std::swap(order[i], order[k]);
+      const std::size_t pos = order[i];
+      const int col_idx = pool[pos];
+
       // NAs required for the current slot
-      const arma::uword needed = na_per_col(slot);
+      const std::size_t needed = static_cast<std::size_t>(need[slot]);
       // skip column if its budget can't accommodate the needed count
-      if (col_room(col_idx) < needed)
-      {
+      if (static_cast<std::size_t>(cap[pos]) < needed) {
         continue;
       }
 
-      const double *candidate = obj.colptr(col_idx);
+      const double *candidate = col_ptr(x, col_idx, n_rows);
 
-      LOC_TIC(sample_each_rep, "find_finite");
-      arma::uvec obs_row = arma::find_finite(obj.col(col_idx)); // which(!is.na(candidate))
-      LOC_TOC(sample_each_rep, "find_finite");
-
-      if (obs_row.n_elem < 2)
-      {
-        continue;
-      }
-      // Protect a heterogeneous pair of rows
-      // Pick keep0 at random, then keep1 from rows with a different value.
-      // Skip the column if all observed values are identical (ZV).
-      LOC_TIC(sample_each_rep, "protect_pair");
-      LOC_TIC(sample_each_rep, "protect_pair_v0");
-      const arma::uword p0_idx = arma::randi<arma::uword>(
-          arma::distr_param(0, (arma::sword)obs_row.n_elem - 1));
-      const arma::uword keep0 = obs_row(p0_idx);
-      const double v0 = candidate[keep0];
-      LOC_TOC(sample_each_rep, "protect_pair_v0");
-
-      LOC_TIC(sample_each_rep, "protect_pair_v1");
-      // pass 1: count rows whose value differs from v0.
-      arma::uword n_diff = 0;
-      for (arma::uword j = 0; j < obs_row.n_elem; ++j)
-      {
-        if (candidate[obs_row(j)] != v0)
-        {
-          ++n_diff;
-        }
-      }
-      if (n_diff == 0)
-      {
-        LOC_TOC(sample_each_rep, "protect_pair_v1");
-        LOC_TOC(sample_each_rep, "protect_pair");
-        continue; // column is ZV among observed values
-      }
-      // pass 2: pick the pick-th differing row uniformly.
-      const arma::uword pick = (arma::uword)(arma::randu() * n_diff);
-      arma::uword keep1 = 0;
-      arma::uword seen = 0;
-      for (arma::uword j = 0; j < obs_row.n_elem; ++j)
-      {
-        const arma::uword r = obs_row(j);
-        if (candidate[r] == v0)
-        {
+      // Split the observed rows by row budget.
+      //  - A row with budget left can take an NA: it goes to `left_temp`.
+      //  - A row at its budget stays observed whatever is drawn, so it
+      //    protects the column for free. Track whether those rows already
+      //    hold two distinct values.
+      LOC_TIC(sample_each_rep, "scan_rows");
+      std::size_t L = 0;
+      bool fixed_any = false;
+      bool fixed_two = false;
+      double fixed_val = 0.0;
+      for (std::size_t r = 0; r < n_rows; ++r) {
+        const double v = candidate[r];
+        if (!std::isfinite(v)) {
           continue;
         }
-        if (seen == pick)
-        {
-          keep1 = r;
-          break;
+        if (attempt_row_room[r] > 0) {
+          left_temp[L++] = r;
+        } else if (!fixed_any) {
+          fixed_any = true;
+          fixed_val = v;
+        } else if (v != fixed_val) {
+          fixed_two = true;
         }
-        ++seen;
       }
-      LOC_TOC(sample_each_rep, "protect_pair_v1");
+      LOC_TOC(sample_each_rep, "scan_rows");
+
+      // Protect two rows with different values, so the column keeps its
+      // variance. Rows at their budget are used first, because protecting a
+      // row that could take an NA spends a cell the column may need. Rows
+      // protected out of `left_temp` are removed from it.
+      LOC_TIC(sample_each_rep, "protect_pair");
+      if (!fixed_two) {
+        double v0 = fixed_val;
+        if (!fixed_any) {
+          if (L == 0) {
+            LOC_TOC(sample_each_rep, "protect_pair");
+            continue; // no observed value at all
+          }
+          // first protected row: uniform over the observed rows
+          const std::size_t p0 =
+              std::min(L - 1, (std::size_t)(R::runif(0, 1) * L));
+          v0 = candidate[left_temp[p0]];
+          left_temp[p0] = left_temp[L - 1];
+          --L;
+        }
+        // second protected row: uniform over the rows whose value differs
+        std::size_t n_diff = 0;
+        for (std::size_t j = 0; j < L; ++j) {
+          if (candidate[left_temp[j]] != v0) {
+            ++n_diff;
+          }
+        }
+        if (n_diff == 0) {
+          LOC_TOC(sample_each_rep, "protect_pair");
+          continue; // every observed value is identical
+        }
+        const std::size_t pick =
+            std::min(n_diff - 1, (std::size_t)(R::runif(0, 1) * n_diff));
+        std::size_t seen = 0;
+        for (std::size_t j = 0; j < L; ++j) {
+          if (candidate[left_temp[j]] == v0) {
+            continue;
+          }
+          if (seen == pick) {
+            left_temp[j] = left_temp[L - 1];
+            --L;
+            break;
+          }
+          ++seen;
+        }
+      }
       LOC_TOC(sample_each_rep, "protect_pair");
-      // build eligible rows (exclude protected + row-budget exhausted)
-      // R does this in two vectorised steps:
-      //  1. left_over <- setdiff(obs_row, kept_global)
-      //  2. left_over <- left_over[attempt_row_room[left_over] > 0L]
-      // Here, we fuse both filters into a single loop, push_back-ing only rows that pass both guards.
-      // inside the loop:
-      LOC_TIC(sample_each_rep, "build_leftover");
-      arma::uword L = 0;
-      for (arma::uword j = 0; j < obs_row.n_elem; ++j)
-      {
-        const arma::uword r = obs_row(j);
-        if (r != keep0 && r != keep1 && attempt_row_room(r) > 0)
-        {
-          left_temp(L++) = r;
-        }
-      }
-      LOC_TOC(sample_each_rep, "build_leftover");
+
       // randomly select exactly `needed` rows from the eligible set
-      // `left_vec` (size L) without replacement (`sample.int(length(left_over), needed)`in R)
+      // `left_temp` (size L) without replacement (`sample.int(L, needed)` in R)
       // for j = 0, 1, ..., needed-1
       //  1. k <- j + runif{0, ..., L-j-1} // uniform in [j, L-1]
-      //  2. swap(left_vec[j], left_vec[k])
-      //  3. commit left_vec[j] as the selected row
-      if (L < needed)
-      {
+      //  2. swap(left_temp[j], left_temp[k])
+      //  3. commit left_temp[j] as the selected row
+      if (L < needed) {
         continue;
       }
       LOC_TIC(sample_each_rep, "commit");
-      for (arma::uword j = 0; j < needed; ++j)
-      {
-        const arma::uword k = j + (arma::uword)(arma::randu() * (L - j));
-        std::swap(left_temp(j), left_temp(k));
-        const arma::uword r = left_temp(j);
-        row_out(written + j) = r;
-        col_out(written + j) = col_idx;
-        attempt_row_room(r) -= 1;
+      for (std::size_t j = 0; j < needed; ++j) {
+        const std::size_t k2 =
+            std::min(L - 1, j + (std::size_t)(R::runif(0, 1) * (L - j)));
+        std::swap(left_temp[j], left_temp[k2]);
+        const std::size_t r = left_temp[j];
+        row_out[written + j] = static_cast<int>(r);
+        col_out[written + j] = col_idx;
+        attempt_row_room[r] -= 1;
       }
       written += needed;
       ++slot;
       LOC_TOC(sample_each_rep, "commit");
     }
 
-    if (slot == n_cols_needed)
-    {
-      arma::umat result(total_na, 2);
-      result.col(0) = row_out + 1; // convert to 1-based for R
-      result.col(1) = col_out + 1;
+    if (slot == n_cols_needed) {
+      Rcpp::IntegerMatrix result(
+          Rcpp::no_init_matrix(static_cast<int>(total_na), 2));
+      int *res = result.begin();
+      for (std::size_t j = 0; j < total_na; ++j) {
+        res[j] = row_out[j] + 1; // 1-based for R
+        res[total_na + j] = col_out[j] + 1;
+      }
       LOC_TOC(sample_each_rep, "sample_each_rep_total");
       return result;
     }
-    // slot < n_cols_needed: shuffle and retry
+    // slot < n_cols_needed: reshuffle and retry
   }
 
   LOC_TOC(sample_each_rep, "sample_each_rep_total");
-  Rcpp::stop("Failed to sample NA locations after %d attempts.",
-             static_cast<int>(max_attempts));
+  return Rcpp::IntegerMatrix(0, 2);
 }

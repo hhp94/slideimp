@@ -2,16 +2,16 @@
 % Please edit documentation in R/print.R
 \name{print.slideimp_sim}
 \alias{print.slideimp_sim}
-\title{Print a \code{slideimp_sim} Object}
+\title{Print Method for \code{slideimp_sim} Objects}
 \usage{
 \method{print}{slideimp_sim}(x, n = 6L, p = 6L, ...)
 }
 \arguments{
 \item{x}{A \code{slideimp_sim} object.}
 
-\item{n}{Number of rows of each component to show.}
+\item{n}{Integer. Number of rows of each component to show.}
 
-\item{p}{Number of columns of \code{input} to show.}
+\item{p}{Integer. Number of columns of \code{input} to show.}
 
 \item{...}{Not used.}
 }

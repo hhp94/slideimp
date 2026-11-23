@@ -2,15 +2,12 @@
 % Please edit documentation in R/col_vars.R
 \name{col_vars}
 \alias{col_vars}
-\title{Calculate Matrix Column Variances}
+\title{Matrix Column Variances}
 \usage{
-col_vars(obj, cores = 1)
+col_vars(obj)
 }
 \arguments{
-\item{obj}{A numeric matrix.}
-
-\item{cores}{Integer. Number of cores to use for parallel computation.
-Defaults to \code{1}.}
+\item{obj}{A double matrix.}
 }
 \value{
 A numeric vector of column variances, named if \code{obj} has column
@@ -20,11 +17,12 @@ names.
 Compute the sample variance for each column of a numeric matrix.
 }
 \details{
-Columns with fewer than two non-missing values are assigned \code{NA}.
+\code{NA} and \code{NaN} are treated as missing and dropped, as \code{\link[stats:var]{stats::var()}} does
+with \code{na.rm = TRUE}. A column with fewer than two non-missing values has
+variance \code{NA}.
 
-\code{NA}/\code{NaN} are treated as missing and dropped (equivalent to
-\code{var(x, na.rm = TRUE)}). \code{Inf}/\code{-Inf} are \strong{not} missing. They enter the
-arithmetic, so a column's variance can be \code{NaN}, matching base R.
+\code{Inf} and \code{-Inf} are not missing. A column that contains one and has at
+least two non-missing values has variance \code{NaN}, as in base R.
 }
 \examples{
 set.seed(123)

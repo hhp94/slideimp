@@ -1,387 +1,937 @@
 # pca_imp() structural map
 
 A descriptive map of the `pca_imp()` call chain, from the R entry point down to BLAS/LAPACK.
-Citations are `path:line`. When this file and the code disagree, the code is right.
+Code is cited by file and by a fragment of one line that occurs exactly once in that file,
+never by line number; for example (`R/pca_imp.R`: `pca_imp <- function(`) is the definition
+of `pca_imp()`. `uv run dev/check_map_anchors.py` checks every citation, and its header gives
+the citation forms. When this file and the code disagree, the code is right.
 
 ## Call chain overview
 
 ```
-R/pca_imp.R:302            pca_imp()                       user-facing entry
-  |
-  +- R/pca_imp.R:329       check_finite(obj)            -> src/mat_stats.cpp:197
-  +- R/pca_imp.R:361       new_lobpcg_control()            R/pca_imp.R:142
-  |    +- R/pca_imp.R:94   lobpcg_control()                exported constructor
-  +- R/pca_imp.R:380,474   mat_miss()                   -> src/mat_stats.cpp:241,268
-  +- R/pca_imp.R:391       col_vars()                   -> src/mat_stats.cpp:29
-  +- R/pca_imp.R:496       for (i in seq_len(nb.init))     R-level restart loop
+R/pca_imp.R                pca_imp()                       user-facing entry: the
+  |                        scan, pca_imp_parts(), then the door
+  +- R/col_scan.R            col_scan()                 -> src/mat_stats.cpp
+  |                        holes, Inf, variances (and row holes) per column
+  +- R/col_scan.R            refuse_nonfinite()              Inf + all-NA refusal
+R/pca_imp.R                pca_imp_parts()                 the body: everything below
+  |                        but the door
+  +- R/pca_imp.R           new_lobpcg_control()            R/pca_imp.R
+  |    +- R/pca_imp.R      lobpcg_control()                exported constructor
+  +- R/pca_imp.R           scan$n_miss                   no missing value:
+  |                        pca_imp_results()
+  +- R/pca_imp.R           scan$var                      eligibility
+  +- R/pca_imp.R           for (i in seq_len(nb.init))     R-level restart loop
   |    |
-  |    +- R/pca_imp.R:507  pca_imp_internal_cpp()
-  |         +- R/RcppExports.R:4        .Call(`_slideimp_pca_imp_internal_cpp`)
-  |         +- src/RcppExports.cpp:17   SEXP wrapper (BEGIN_RCPP/END_RCPP)
-  |         +- src/armaSVD.cpp:305      pca_imp_internal_cpp()   C++ entry symbol
+  |    +- R/pca_imp.R      pca_imp_internal_cpp()
+  |         +- R/RcppExports.R          .Call(`_slideimp_pca_imp_internal_cpp`)
+  |         +- src/RcppExports.cpp      SEXP wrapper (BEGIN_RCPP/END_RCPP)
+  |         +- src/pca_kernel.cpp       pca_imp_internal_cpp()   C++ entry symbol
   |              |
-  |              +- :462  pass 1: per-column NA counts
-  |              +- :511  pass 2: centered moments + Xhat fill
-  |              +- :630  initialize_missing_start()   armaSVD.cpp:176
-  |              +- :670  gram_cache_init()            gram_ops.h:63  -> dsyrk_
-  |              +- :744  EM outer loop
-  |                   +- :753 impute_restandardize<>() armaSVD.cpp:31
-  |                   +- :770 SVD_triplet()            svd_triplet.h:62
-  |                   |    +- form_weighted_gram()     gram_ops.h:156 -> dsyrk_/dgemm_
-  |                   |    +- hybrid_topk_eig()        hybrid_topk_eig.h:441
-  |                   |    |    +- lobpcg_solve()      lobpcg_warm.h:367 -> dsyevd_
-  |                   |    |    +- eig_sym_sel()       eig_sym_sel.h:129  -> dsyevr_
-  |                   |    +- gemm_nn/gemm_tn()        pca_linalg_utils.h:85,122 -> dgemm_
-  |                   +- :817 reconstruct_cols()       armaSVD.cpp:275 -> dgemm_
-  |                   +- :824 missing_weighted_residual_ss()  armaSVD.cpp:235
-  |                   +- :863 convergence test
-  |              +- :900  postprocessing, imputed_values triplets
-  |              +- :1003 Rcpp::List back to R
+  |              +- check_arguments()                  src/pca_kernel.cpp
+  |              +- normalized_row_weights()           src/pca_kernel.cpp
+  |              +- count_missing()                    src/pca_kernel.cpp   pass 1: per-column NA counts
+  |              +- lay_out_columns()                  src/pca_kernel.cpp   permutation, ColumnLayout
+  |              +- scan_columns()                     src/pca_kernel.cpp   pass 2: centered moments + Xhat fill
+  |              +- standardize_columns()              src/pca_kernel.cpp
+  |              +- initialize_missing_start()         src/pca_kernel.cpp
+  |              +- gram_cache_init()                  src/gram_ops.h -> si_la::syrk
+  |              +- EM outer loop
+  |                   +- impute_restandardize<>()      src/pca_kernel.cpp
+  |                   +- SVD_triplet()                 src/svd_triplet.h
+  |                   |    +- form_weighted_gram()     src/gram_ops.h -> si_la::syrk/gemm
+  |                   |    +- hybrid_topk_eig()        src/hybrid_topk_eig.h
+  |                   |    |    +- lobpcg_solve()      src/lobpcg_warm.h -> dsyevd_
+  |                   |    |    +- eig_sym_sel()       src/eig_sym_sel.h -> si_la::syevr_range
+  |                   |    +- gemm_nn/gemm_tn_block()  src/pca_linalg_utils.h -> si_la::gemm
+  |                   +- reconstruct_cols()            src/pca_kernel.cpp -> si_la::gemm
+  |                   +- missing_weighted_residual_ss()  src/pca_kernel.cpp
+  |                   +- subspace_cosine()             src/pca_kernel.cpp   diagnostics build only
+  |                   +- convergence test, print_iter()  src/pca_kernel.cpp
+  |              +- complete_fixed_block()             src/pca_kernel.cpp -> si_la::gemm
+  |              +- observed_mse()                     src/pca_kernel.cpp
+  |              +- imputed_cells()                    src/pca_kernel.cpp   loc and value
+  |              +- Rcpp::List back to R
   |
-  +- R/pca_imp.R:656       clamp
-  +- R/pca_imp.R:667       write imputed triplets back into obj
-  +- R/pca_imp.R:676       post_imp: mean_imp_col() on the columns that can
-  |                        still hold NA, skipped when none  -> src/mat_stats.cpp:78
-  +- R/pca_imp.R:688       new_slideimp_results()          R/utils.R:5
+  +- R/pca_imp.R           mse guard, per restart
+  +- R/pca_imp.R           clamp
+  +- R/pca_imp.R           PCA part from loc and value; over the ineligible
+  |                        kept columns, a mean part over those with a hole
+  |                        (a left NA part without post_imp) and a part with
+  |                        nothing to fill over the rest
+  +- R/pca_imp.R           pca_imp_info(): the call's record
+R/parts.R                  fill_imp_parts() -> fill_parts(): one copy of obj's
+  |                        kept columns, the parts cut to them and written
+  |                        (in pca_imp(); group_imp() and slide_imp() take
+  |                        the parts instead)
+R/pca_imp.R                pca_imp_results()
+  +- R/utils.R             new_slideimp_results()
 ```
 
-C++ files in the chain: 3 translation units (`src/armaSVD.cpp`, `src/RcppExports.cpp`,
-`src/mat_stats.cpp`) and 8 headers (`svd_triplet.h`, `gram_ops.h`, `eig_sym_sel.h`,
-`hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `matrix_checks.h`,
-`loc_timer.h`). Never touched: `find_windows.cpp`, `find_windows_flank.cpp`,
-`impute_knn_brute.cpp`, `imputed_value.cpp/.h`, `sample_each_rep_cpp.cpp`.
+C++ files in the chain: 4 translation units (`src/pca_kernel.cpp`, `src/RcppExports.cpp`,
+`src/mat_stats.cpp`, `src/si_lapack.cpp`) and 9 headers (`svd_triplet.h`, `gram_ops.h`,
+`eig_sym_sel.h`, `hybrid_topk_eig.h`, `lobpcg_warm.h`, `pca_linalg_utils.h`, `si_lapack.h`,
+`matrix_checks.h`, `loc_timer.h`). `si_lapack.cpp/.h` is the wrapper layer ("What the
+wrappers do"), and every BLAS and LAPACK call of the chain goes through it.
+Never touched: `par_for.h`, `find_windows.cpp`, `find_windows_flank.cpp`,
+`knn_kernel.cpp`, `sample_each_rep_cpp.cpp`.
 
-## Layer 1: R entry point (R/pca_imp.R)
+## Layer 1: R entry point (`R/pca_imp.R`)
 
-**Control-object constructors.** `resolve_clamp()` (`:10-55`) normalizes `clamp` to `NULL`
-or an unnamed length-2 numeric; length 1 is a distinct error (`:15`) from other bad lengths
-(`:23`), and `NA` bounds are rejected at `:31`. `lobpcg_control()` (`:94-126`) is the
+**Control-object constructors.** `resolve_clamp()` normalizes `clamp` to `NULL`
+or an unnamed length-2 numeric; length 1 is a distinct error from other bad lengths,
+and `NA` bounds are rejected. `lobpcg_control()` is the
 exported constructor, defaulting to `warmup_iters = 10L`, `tol = 1e-9`, `maxiter = 20`; it
-records which arguments were passed explicitly in an `explicit` attribute (`:95-99`,
-attached `:124`) and stamps class `"slideimp_lobpcg_control"` (`:123`).
-`new_lobpcg_control()` (`:142-206`) is the internal normalizer: `solver = "exact"`
-short-circuits to `lobpcg_control(maxiter = 0L)` (`:151`), overriding anything the user
-passed; `NULL` yields defaults (`:157`); a named list is validated against
-`formals(lobpcg_control)` (`:172-179`) then funneled through `do.call` (`:180`). Hand-built
+records which arguments were passed explicitly in an `explicit` attribute
+and stamps class `"slideimp_lobpcg_control"`.
+`new_lobpcg_control()` is the internal normalizer: `solver = "exact"`
+short-circuits to `lobpcg_control(maxiter = 0L)`, overriding anything the user
+passed; `NULL` yields defaults; a named list is validated against
+`formals(lobpcg_control)` then funneled through `do.call`.
+An object already carrying the class is re-validated rather than trusted
+(`R/pca_imp.R`: `if (inherits(x, "slideimp_lobpcg_control")) {`), by the
+same `check_lobpcg_fields()` that `lobpcg_control()` calls. Hand-built
 control objects with no `explicit` attribute have every field treated as explicit
-(`:185-188`). A final guard rejects `maxiter == 0` under `"auto"`/`"lobpcg"` (`:199-204`).
+(`R/pca_imp.R`: `if (is.null(explicit)) {`). A final guard rejects `maxiter == 0` under
+`"auto"`/`"lobpcg"`.
 
-**Argument handling and gating.** `pca_imp()` is defined at `:302-592`.
-`check_finite(obj)` (`:329`) is the missing-value gate for the whole chain: it rejects
-`Inf`/`-Inf` anywhere and any all-`NA`/`NaN` column (`src/mat_stats.cpp:197`). The C++
-kernel does no Inf scan of its own; the comment at `src/armaSVD.cpp:325-327` records that
+**Argument handling and gating.** `pca_imp()` is defined at
+(`R/pca_imp.R`: `pca_imp <- function(`), and is `pca_imp_parts()`
+(`R/pca_imp.R`: `pca_imp_parts <- function(`) followed by the door
+(`R/pca_imp.R`: `pca_imp_results(fill_imp_parts(res), res$info)`). The
+internal takes the same formals, defaults included, with the scan second,
+holds the body this layer describes, and returns `obj`, `parts`, `keep`,
+`info` and `n_miss`, as `knn_imp_parts()` does (`dev/knn_imp_structure.md`,
+Layer 1). `pca_imp()` refuses a matrix that is not double, then takes the
+scan with the variances, and the row holes under `row.w = "n_miss"`
+(`R/pca_imp.R`: `scan <- col_scan(obj, var = TRUE, rows = identical(row.w, "n_miss"))`).
+The column scan is the missing-value gate for the whole chain: `refuse_nonfinite()`
+rejects `Inf`/`-Inf` anywhere and any all-`NA`/`NaN` column (`R/col_scan.R`:
+`refuse_nonfinite <- function(`). The C++ kernel does no Inf scan of its own; the
+comment (`src/pca_kernel.cpp`: `No Inf scan here.`) records that
 this is deliberate, since the kernel is entered once per `nb.init` on an unchanged `obj`.
-`ncp` is bounded by `ncol(obj) - 1L` (`:330`); `row.w` accepts a numeric vector, `"n_miss"`,
-or `NULL` (`:339-350`); `seed` is guarded against `seed * (nb.init - 1)` exceeding int range
-(`:354`); `.progress` becomes `trace_iter` (10 or 0) at `:377`, a C++-side print period.
-`cmiss <- mat_miss(obj, col = TRUE)` (`:380`), and a matrix with no missingness returns
-unchanged at `:383-386` (as a bare matrix, not a `slideimp_results`). `eligible` (`:392-393`)
-combines the `colmax` missing-rate ceiling with a non-degenerate-variance test from
-`col_vars(obj)` (`:391`). Feasibility caps (`:397-427`) require `ncp` to be at most
-`min(nrow(obj) - 2L, n_elig - 1L)`; both abort paths carry class `slideimp_infeasible`
-(`:409`, `:426`), which `group_imp()` and `slide_imp()` catch, and a third such abort
-(`:430-438`) fires when every column with missingness is ineligible.
+A slice from `group_imp()` or `slide_imp()` brings the door's scan indexed,
+which does not include the row holes; under `row.w = "n_miss"` the slice counts its own
+(`R/pca_imp.R`: `n_miss_per_row <- col_scan(obj, rows = TRUE)$row_miss`).
+`ncp` is bounded by `ncol(obj) - 1L`; `row.w` accepts a numeric vector, `"n_miss"`,
+or `NULL`; `seed` is guarded against `seed * (nb.init - 1)` exceeding int range;
+`.progress` becomes `trace_iter` (10 or 0), a C++-side print period.
+`subset` becomes `keep`, the result's columns, ascending, or `NULL` for every
+column (`R/pca_imp.R`: `keep <- resolve_narrow_subset(subset, obj, call = parent.frame())`), through
+`resolve_narrow_subset()` (`R/utils.R`:
+`resolve_narrow_subset <- function(subset, obj, call = parent.frame()) {`), which
+refuses an unknown name and an empty selection and turns a selection of every
+column into `NULL`. Every eligible column still enters the kernel: `subset`
+narrows only what is returned.
+`cmiss` is the scan's count of holes per column (`R/pca_imp.R`: `cmiss <- scan$n_miss`), and
+when no kept column has a hole
+the kept columns return unchanged, with the same record as the main path (`R/pca_imp.R`:
+`pca_imp_info(post_imp = post_imp, solver = solver)`): no parts, and the door
+hands the kept columns back as they are (`R/parts.R`:
+`fill_imp_parts <- function(res) {`) through `pca_imp_results()`, so the
+result has the same class and attributes either way.
+The kernel is not called. `eligible`
+combines the `colmax` missing-rate ceiling with a test that the column's variance in the
+scan is not degenerate (`R/pca_imp.R`: `obj_vars <- scan$var`). Feasibility caps (`R/pca_imp.R`: `max_ncp_rows <- nrow(obj) - 2L`)
+require `ncp` to be at most
+`min(nrow(obj) - 2L, n_elig - 1L)`; both abort paths carry class `slideimp_infeasible`,
+which `group_imp()` and `slide_imp()` catch, and a third such abort
+(`R/pca_imp.R`: `if (!any(cmiss[out_cols][eligible[out_cols]] > 0L)) {`) fires when
+every kept column with missingness is ineligible.
 
-**solver = "auto" policy (R half).** `:445-461` decides whether the C++ auto probe is worth
-running at all. `k_eig` is `ncp + 1` for `"regularized"` and `ncp` for `"EM"` (`:445`);
-`n_gram <- min(nrow(obj), n_elig)` (`:446`) mirrors the Gram dimension the backend will use.
-`auto_force_exact` (`:448-449`) demotes `"auto"` to exact when `n_gram < 250` or
+**solver = "auto" policy (R half).** The block (`R/pca_imp.R`: `# solver = "auto" policy.`)
+decides whether the C++ auto probe is worth running at all.
+`k_eig` is `ncp + 1` for `"regularized"` and `ncp` for `"EM"`;
+`n_gram <- min(nrow(obj), n_elig)` mirrors the Gram dimension that the backend will use.
+`auto_force_exact` demotes `"auto"` to exact when `n_gram < 250` or
 `k_eig / n_gram > 0.10`. Otherwise, and only when the user did not set `warmup_iters`
-explicitly, `warmup_iters` is raised to `min(50, max(10, ceiling(1.5 * k_eig)))` (`:451-455`).
-`solver_code` (`:457-461`) is the integer handed to C++: `0` exact, `1` lobpcg, `2` auto.
+explicitly, `warmup_iters` is raised to `min(50, max(10, ceiling(1.5 * k_eig)))`.
+`solver_code` is the integer handed to C++: `0` exact, `1` lobpcg, `2` auto.
 
-**Restart loop and result assembly.** `:496-549`. Each iteration re-seeds R's RNG with
-`seed * (i - 1L)` (`:498`, matching `missMDA`) and calls the kernel with `init = 0L` for the
-first restart and `init = i` afterwards (`:514`); `init == 0` means mean imputation (zeros
+**Restart loop and result assembly** (`R/pca_imp.R`: `for (i in seq_len(nb.init)) {`). Each
+iteration re-seeds R's RNG with
+`seed * (i - 1L)` (matching `missMDA`) and calls the kernel with `init = 0L` for the
+first restart and `init = i` afterwards; `init == 0` means mean imputation (zeros
 in centered space), anything else a Gaussian random start. After the first call under
 `solver = "auto"`, the returned `solver_chosen` code is collapsed to a forced `0`/`1` and
-locked in `locked_solver` (`:612-620`) so later restarts skip the probe; the restart with
-the lowest `mse` wins (`:622-634`). `clamp` is applied to the value column of the triplet
-matrix at `:656-661` (imputed values only), and `:663-667` writes the triplets back through
-a two-column index matrix, the indices from C++ already being 1-based original-matrix
-indices. `post_imp = TRUE` collects the columns that can still hold NA -- ineligible
-columns that had any, plus the columns of NA rows in the triplet -- and runs
-`mean_imp_col(obj, subset = na_cols)` only when that set is non-empty (`:676-685`), so
-an all-eligible input pays no extra copy here. `new_slideimp_results()`
-(`R/utils.R:5`) forces `has_remaining_na` before attaching the class (a classed object
-routes `anyNA()` through `any(is.na(x))`, an `n x p` logical), then sets class and
-standard attributes; `:696-704` adds `solver_requested`,
-`solver_chosen`, `n_iter`, `criterion_final`, `converged`, `n_exact`, `n_lobpcg_ok`,
-`n_lobpcg_bad`. `slide_imp()` reads `attr(x, "solver_chosen")` back from the first
-non-fallback window and pins every later window to it (`R/slide_imp.R:511-537`).
+locked in `locked_solver` so later restarts skip the probe; the restart with
+the lowest `mse` wins. Each restart's `mse` must be finite or the call stops as a
+package defect (`R/pca_imp.R`: `if (!is.finite(cur_obj)) {`): the kernel's SSE sums
+the residual over every cell of each eligible column, holes included, before
+subtracting the holes' share (`src/pca_kernel.cpp`: `sse -= s * ej2;`), so a NaN or
+Inf at any imputed cell surfaces there, and the kernel's values themselves are
+never NA past this point. `clamp` is applied to the kernel's `value` (imputed
+values only). The result is then built from three parts
+(`R/parts.R`), which together cover every column: the PCA part
+(`R/pca_imp.R`: `pca_part <- new_part(`) is the kernel's `loc` and `value` as they
+are, `loc` being an integer matrix with columns `row` and `col` of 1-based
+original-matrix indices, over the eligible columns; the
+ineligible columns with a hole are one part, filled through `fallback_part()`
+under `post_imp = TRUE` and a `left_na` part under `post_imp = FALSE`; and those
+without a hole are a mean part with an empty map. So `fallback_part()` copies
+only the columns it fills, and a `left_na` part names only columns that keep a
+hole. With `subset`, the PCA part still
+covers every eligible column and the door cuts it to `keep`, while the mean parts
+cover only the kept ineligible columns, so no mean is computed for a column the
+result does not hold. `mean_filled_cols` is the kept ineligible columns that had a hole, under
+`post_imp` only (`R/pca_imp.R`: `mean_cols[cmiss[mean_cols] > 0L]`), numbered as
+the result's columns, and `mean_filled_cells` is always empty. `pca_imp_info()`
+(`R/pca_imp.R`: `pca_imp_info <- function(`) gathers the call's record:
+`imp_method`, `fallback`, `post_imp`, `mean_filled_cols`,
+`mean_filled_cells`, `solver_requested`, `solver_chosen`, `solver_probed`, `n_iter`,
+`criterion_final`, `converged`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`. On the
+no-missing-values exit its defaults stand in for the solve that never ran:
+`solver_chosen = NA`, `solver_probed = FALSE`, `n_iter = 0L`, `converged = NA`.
+`n_iter` is an integer on both paths, as the kernel returns it.
+
+In `pca_imp()`, `fill_parts()` (`R/parts.R`:
+`fill_parts <- function(obj, parts, keep = NULL, n_miss = NULL) {`) copies `obj`
+once and writes the parts, through `fill_imp_parts()`, which hands it the
+scan's hole counts, checking that each filling part fills exactly the holes
+of its columns, and
+`pca_imp_results()` (`R/pca_imp.R`: `pca_imp_results <- function(obj, info) {`) builds the
+result. It calls `new_slideimp_results()` (`R/utils.R`: `new_slideimp_results <- function(`),
+which strips its input to a bare matrix, then sets class and standard attributes, and
+adds the rest of the record as attributes, in the order above.
+
+The door takes `keep`, the input columns to return, and cuts the parts to it
+after validating them (`R/parts.R`: `cut_parts <- function(parts, lins, keep, n_col) {`).
+With `keep`, it copies only the kept columns.
+
+`slide_imp()` calls `pca_imp_parts()`, not `pca_imp()`, on each window, and pins every
+later window to the `solver_chosen` of its `info`, but only from a window whose
+`solver_probed` is `TRUE`. A size-demoted window, or one whose probe never finished,
+leaves the next window on `"auto"` (`R/slide_imp.R`: `pca_solver_current == "auto" &&`).
+Each window passes its targets as `subset` (`R/slide_imp.R`: `subset = local_idx,`) and
+gets back parts that cover them. A window whose targets hold no missing value takes the
+internal's early exit, which reports `solver_probed = FALSE`, so it never pins the solver;
+a window whose targets' holes are all in ineligible columns is `slideimp_infeasible`, as it
+is under `knn_imp()`, and goes through `on_infeasible`. The windows' values are averaged at
+the holes and written in one `fill_parts()` (`dev/knn_imp_structure.md`, "How the wrappers
+reach knn_imp()").
+`group_imp()` calls `pca_imp_parts()`, not `pca_imp()`, on each group's slice, passes the
+group's features as `subset` too (`R/group_imp.R`:
+`p$subset <- seq_len(feat_lengths[[i]])`), takes the parts, cut to the features and
+moved into its input's numbering (`R/parts.R`: `rebase_parts <- function(parts, col_idx, keep = NULL) {`),
+and fills every group's parts in one `fill_parts()`
+(`dev/knn_imp_structure.md`, "How the wrappers reach knn_imp()"). It does not call the
+backend at all for a group whose feature columns are complete
+(`R/group_imp.R`: `cmiss <- scan$n_miss`, `needs_imp <- vapply(`).
 
 ## Layer 2: the Rcpp boundary
 
-`R/RcppExports.R:4-6` is the generated shim, calling
+`R/RcppExports.R` is the generated shim, calling
 `.Call(`_slideimp_pca_imp_internal_cpp`, ...)` with 16 arguments.
-`src/RcppExports.cpp:16` declares the C++ signature; `:17-40` is the `RcppExport` SEXP
-wrapper, converting each argument through `Rcpp::traits::input_parameter<>` (`:21-36`). An
-`Rcpp::RNGScope` (`:20`) makes `Rcpp::rnorm()` inside the kernel use R's RNG stream.
-Registration is `src/RcppExports.cpp:192` in `CallEntries`, with `R_init_slideimp` at
-`:208-211` and `R_useDynamicSymbols(dll, FALSE)`. The C++ entry symbol is
-`pca_imp_internal_cpp` (`src/armaSVD.cpp:305`, marked `// [[Rcpp::export]]` at `:304`).
+`src/RcppExports.cpp` declares the C++ signature; the `RcppExport` SEXP wrapper
+(`src/RcppExports.cpp`: `RcppExport SEXP _slideimp_pca_imp_internal_cpp(`) converts each
+argument through `Rcpp::traits::input_parameter<>`. An
+`Rcpp::RNGScope` makes `Rcpp::rnorm()` inside the kernel use R's RNG stream.
+Registration is in `CallEntries` (`src/RcppExports.cpp`: `{"_slideimp_pca_imp_internal_cpp"`),
+with `R_init_slideimp` and `R_useDynamicSymbols(dll, FALSE)`. The C++ entry symbol is
+`pca_imp_internal_cpp` (`src/pca_kernel.cpp`: `pca_imp_internal_cpp(const Rcpp::NumericMatrix &obj,`), marked
+`// [[Rcpp::export]]`.
 
-`obj` arrives as `const arma::mat&`, so Rcpp constructs a read-only Armadillo view over the
-SEXP rather than copying. `row_w` is taken **by value** (`src/armaSVD.cpp:315`) because the
-kernel normalizes it in place (`:459`).
+The kernel takes what R holds: `obj` as a `const Rcpp::NumericMatrix &`, read in place through its pointer and
+never copied; `eligible_idx` as an integer vector of 0-based columns; every count and
+setting as `int`, which `pca_imp()` converts at the call where it holds a double
+(`R/pca_imp.R`: `maxiter = as.integer(maxiter),`); and `row_w` as a
+`const Rcpp::NumericVector &`, checked in place and then copied once into the kernel's own vector because the
+kernel normalizes it, both in `normalized_row_weights()` (`src/pca_kernel.cpp`: `std::vector<double> w(row_w_ptr, row_w_ptr + nrX);`,
+`w[i] /= row_w_sum;`). Inside, a count is held in `std::size_t` once checked, so an offset
+such as `j * nrX` is computed in `std::size_t`; a row or column index of `obj` is `int`
+(`src/pca_kernel.cpp`: `Types, for the whole file.`).
 
-## Layer 3: kernel setup (src/armaSVD.cpp:305-742)
+## Layer 3: kernel setup (`src/pca_kernel.cpp`)
 
-- Argument sanity (`:335-376`): `maxiter >= 1`, `miniter <= maxiter`, `ncp >= 1`, `solver`
-  in 0..2, non-empty and in-bounds `eligible_idx`, `ncp < min(nrX, n_elig)`. `:379-382`
-  guards `nrX * n_elig` overflow. `:388-430` guards the `blas_int` range: problem
-  dimensions, the `26 * n` dsyevr workspace minimum (`:399`), and the `~3k` Rayleigh-Ritz
-  dsyevd workspace LOBPCG would need (`:409-418`).
-- Orientation (`:384-386`): `tall = (nrX >= n_elig)`; `k = regularized ? ncp + 1 : ncp`
+The entry point reads as the steps below, each a function of the file's anonymous
+namespace with its timer phase, where it has one, around the call in the entry point;
+the EM loop of Layer 4 is written out in it.
+
+- Argument sanity, in `check_arguments()` (`src/pca_kernel.cpp`: `void check_arguments(`),
+  which takes the entry point's arguments by name and returns nothing
+  (`src/pca_kernel.cpp`: `if (maxiter < 1)`): `maxiter >= 1`,
+  `0 <= miniter <= maxiter`, `ncp >= 1`, `init >= 0`, `trace_iter >= 0`, `solver` in 0..2,
+  and under LOBPCG `lobpcg_maxiter >= 1` and `warmup_iters >= 0`; a non-empty
+  `eligible_idx` whose every index is a column of `obj`, refused by
+  `stop_on_bad_col_index()` in the words the K-NN kernel uses (`src/matrix_checks.h`:
+  `static inline void stop_on_bad_col_index(`); `ncp < min(nrX, n_elig)`. `NA_integer_` is
+  `INT_MIN`, so each lower bound refuses it. A further check (`src/pca_kernel.cpp`: `prevent nrX * n_elig overflow later.`)
+  guards `nrX * n_elig`. The block (`src/pca_kernel.cpp`: `LAPACK workspace guard`) guards
+  the `int` range of the minimum dsyevr workspace, `26 * n`, and of the dsyevd minimums of the
+  Rayleigh-Ritz problems that LOBPCG would solve, of order at most `3k`, taking each from the
+  functions that the wrappers use ("What the wrappers do", "Workspace"); the dimensions themselves
+  fit an `int`, being R's.
+  `normalized_row_weights()` then refuses a `row_w` that is not finite, has a negative
+  weight or does not sum to a positive number, in that order and in two loops, and returns
+  the normalized copy; the entry point then refuses `regularized` with too few rows or
+  columns for `ncp` (`src/pca_kernel.cpp`: `if (regularized && !(denom_sigma > 0.0))`).
+  More missing cells than an R matrix has rows is refused once they are counted, in
+  `lay_out_columns()`
+  (`src/pca_kernel.cpp`: `has a row for each and an R matrix holds at most %d rows`), since `loc` has a row for each.
+  `check_arguments()` derives the counts its checks need, `n_cp`, `k` and `n_gram` among
+  them, and the entry point derives them again after it returns.
+- Orientation: `tall = (nrX >= n_elig)`; `k = regularized ? ncp + 1 : ncp`
   eigenpairs are requested; `n_gram = tall ? n_elig : nrX`, so the eigenproblem is always
   over the smaller dimension.
-- Pass 1 (`:462-474`) counts NAs per eligible column. `:476-489` splits eligible columns
+- Pass 1 (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "pass1_count_missing")`), `count_missing()`,
+  counts NAs per
+  eligible column. `lay_out_columns()` (`src/pca_kernel.cpp`: `perm lists the complete columns first`)
+  splits eligible columns
   into fixed (no NA) and changing, building `perm` so that after permutation the changing
   columns are exactly positions `[n_fixed, n_elig)`. Every later loop derives its local
   index as `n_fixed + ci`, which is why no column-index vector is threaded through.
-- `:495-501` builds a CSR-style pair: `miss_rows_offsets` (length `n_mc + 1`) and
-  `miss_rows_flat` (length `n_missing`). `for_each_missing_in_col()` (`:12-23`) is the only
-  iterator over them.
-- Pass 2 (`:511-573`) fills `Xhat` (`:503`) and accumulates per column the observed weight
+- The layout is one `ColumnLayout` (`src/pca_kernel.cpp`: `struct ColumnLayout {`), built
+  once by `lay_out_columns()` (`src/pca_kernel.cpp`: `ColumnLayout layout{nrX,`) and passed
+  by const reference to
+  everything that walks it: `nrX`, `n_fixed`, `n_mc`, `eligible_idx_perm` (the column of `obj`
+  each permuted column holds), and a CSR-style pair, `miss_rows_offsets` (length `n_mc + 1`,
+  `std::size_t`) and `miss_rows_flat` (length `n_missing`, `int` row indices), which pass 2
+  fills. `for_each_missing_in_col()` is the only iterator over the pair.
+- Pass 2 (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "pass2_scan")`), `scan_columns()`, fills `Xhat` and
+  accumulates per column, into one `ColumnMoments` (`src/pca_kernel.cpp`:
+  `struct ColumnMoments {`), the observed weight
   `denom`, the reference mean `mu0`, and centered moments `obs_sum_c` / `obs_sumsq_c`.
-  Centering against `mu0` before squaring is what keeps the later variance updates away from
-  `E[x^2] - mu^2` cancellation (`:550-551`). `:577-584` rejects any eligible column with
-  zero observed weight. `:589-600` computes `mean_p` and, when `scale`, the per-column scale
-  `et` floored at `PCA_TOL`; `:602-628` centers (and scales) `Xhat` in place.
-  `initialize_missing_start()` (`:176-233`, called at `:630`) allocates `fittedX` once and
-  writes starting values at missing positions only: zeros for `init == 0`, `Rcpp::rnorm`
-  draws otherwise (`:214`).
+  Centering against `mu0` before squaring keeps the later variance updates away from
+  `E[x^2] - mu^2` cancellation. `standardize_columns()` first rejects
+  (`src/pca_kernel.cpp`: `if (!(mom.denom[j] > 0.0))`)
+  any eligible column with
+  zero observed weight, then computes `mean_p` and, when `scale`, the per-column
+  scale `et` floored at `PCA_TOL`, the other two fields of `ColumnMoments`, which
+  `impute_restandardize()` updates every iteration; it then centers (and scales) `Xhat` in place.
+  `fittedX` is allocated once, zero-filled, and `initialize_missing_start()`
+  writes starting values at missing positions only: for `init == 0` zeros into `Xhat`,
+  which `fittedX` already holds, and otherwise `Rcpp::rnorm` draws into both.
 
-Workspaces allocated once, outside the loop (`:638-683`): `sqrt_row_w` / `inv_sqrt_row_w`
-(the weighted space is `diag(sqrt(w)) * Xhat`, and `U` comes back in it); `GramWorkspace`
-holding fixed dsyrk/dgemm dimension arguments (`gram_ops.h:14-34`); `EigSymWorkspace`, which
-runs the dsyevr workspace query once (`eig_sym_sel.h:63-120`); `AA_NxN` at `n_gram x n_gram`
-and `X_work` at `nrX x n_elig` in the tall case only (`:661-665`); `GramCache`, precomputing
-the fixed-column Gram contribution (`:669-673`); and `HybridEigContext` (`:675-683`),
+Workspaces allocated once, outside the loop: `sqrt_row_w` / `inv_sqrt_row_w`
+(the weighted space is `diag(sqrt(w)) * Xhat`, and `U` comes back in it); `GramDims`,
+the dimensions of the Gram and its dsyrk, orientation included, and no storage
+(`src/gram_ops.h`: `struct GramDims {`);
+`EigSymRange`, which holds the range `il..n` of the top `k` eigenpairs dsyevr is asked
+for (`src/eig_sym_sel.h`: `struct EigSymRange`) and refuses a `k` outside `1..n_gram`, an
+`Rcpp::stop` not expected to be reachable after the argument checks; `SolveBuffers`
+(`src/svd_triplet.h`: `struct SolveBuffers {`), the nine buffers `SVD_triplet()` reads and
+writes, `AA_NxN` at `n_gram x n_gram` and `X_work` at `nrX x n_elig` in the tall case only
+among them, with `lambda_shrinked` beside it; `GramCache`, which precomputes
+the Gram contribution of the fixed columns; and `HybridEigContext`,
 carrying the solver mode, warmup count, LOBPCG options and persistent LOBPCG state across
-all outer iterations.
+all outer iterations. Its `LOBPCGOptions` is the one in the chain, and the entry point
+sets its `tol` and `maxiter` from the call (`src/pca_kernel.cpp`:
+`hyb_ctx.lobpcg_opt.tol = lobpcg_tol;`), so their member defaults, which are those of
+`lobpcg_control()`, are never what a run uses; `stall_window` and `qr_rel_tol` keep theirs.
 
-## Layer 4: the EM outer loop (src/armaSVD.cpp:744-895)
+## Layer 4: the EM outer loop (`src/pca_kernel.cpp`)
 
 One iteration:
 
-1. `Rcpp::checkUserInterrupt()` every 5 iterations (`:746-749`).
-2. `impute_restandardize<Scale>()` (`:31-174`, called at `:751-766`) -- the fused heart of
+1. `Rcpp::checkUserInterrupt()` every fifth iteration, `INTERRUPT_EVERY`
+   (`src/pca_kernel.cpp`: `if (nb_iter % INTERRUPT_EVERY == 0)`).
+2. `impute_restandardize<Scale>()`, the main fused step of
    the loop. It copies the previous fit into `Xhat` at missing positions, updates each
    changing column's mean (and variance when scaling) incrementally from `mu0` plus centered
    contributions, rescales the column in one pass, and simultaneously refreshes the
-   sqrt-weighted copy of that column that the Gram step consumes (`:130-137`, `:154-161`).
+   sqrt-weighted copy of that column that the Gram step consumes.
    Only changing columns are touched.
-3. `SVD_triplet()` (`:770`) -- see Layer 5.
-4. Shrinkage (`:777-803`): `tail` is the clamped residual energy
-   `trace - sum of top ncp squared singular values` (`:782`); under `regularized`, `sigma2`
-   is that tail scaled by `scale_factor / denom_sigma` and capped at the `(ncp+1)`-th
-   squared singular value (`:785-786`); `lambda_shrinked[i] = v - sigma2 / v` (`:796`).
-5. Reconstruction (`:805-819`). `scale_rows_cols_inplace()` (`pca_linalg_utils.h:42`) fuses
-   the row de-weighting of `U` with the shrunk column scaling, mutating `U` in place;
-   `reconstruct_cols()` (`:275-302`) then does one `dgemm_` writing only the changing block
-   of `fittedX` (`:817`). The fixed block is never read inside the loop.
-6. Objective (`:821-835`): `objective_full` minus the weighted residual sum of squares over
-   missing cells only (`missing_weighted_residual_ss()`, `:235-271`), floored at 0.
+3. `SVD_triplet()` -- see Layer 5.
+4. Shrinkage (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "post_svd")`): `tail` is the clamped
+   residual energy `trace - sum of top ncp squared singular values`; under `regularized`,
+   `sigma2` is that tail scaled by `scale_factor / denom_sigma`, multiplied by `coeff_ridge`,
+   and capped at the `(ncp+1)`-th squared singular value;
+   `lambda_shrinked[i] = v - sigma2 / v`.
+5. Reconstruction (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "reconstruct")`).
+   `scale_rows_cols_inplace()` (`src/pca_linalg_utils.h`: `void scale_rows_cols_inplace(`)
+   fuses the row de-weighting of `U` with the shrunk column scaling, mutating `U` in place;
+   `reconstruct_cols()` then does one dgemm, through `si_la::gemm`, writing only the changing block
+   of `fittedX`. The fixed block is never read inside the loop, and in the wide
+   case the fixed rows of `V` that it would need are not computed there (Layer 5).
+6. Objective (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "objective")`): `objective_full` minus
+   the weighted residual sum of squares over
+   missing cells only (`missing_weighted_residual_ss()`), floored at 0.
 
-**Convergence** (`:863-880`): the criterion is `abs(1 - objective / old)` (`:863`),
-reproducing `missMDA::imputePCA()`. It is tested only once `nb_iter >= miniter` (`:867`),
-and stopping requires `criterion < threshold || objective < threshold` (`:869`). Hitting
-`maxiter` first sets `converged = false` and emits an `Rcpp::warning` (`:875-880`). The loop
-is a bare `for (;;)` (`:744`) whose only exits are at `:889-894`. `trace_iter > 0` prints on
-iteration 1, every `trace_iter` iterations, and on the last (`:882-887`); print precision is
-restored by the `PrecGuard` RAII struct (`:698-710`).
+**Convergence** (`src/pca_kernel.cpp`: `const double criterion =`): the criterion is
+`abs(1 - objective / old)`, reproducing `missMDA::imputePCA()`. It is tested only once
+`nb_iter >= miniter`, and stopping requires `criterion < threshold || objective < threshold`.
+Hitting `maxiter` first stops the loop with `converged` still false, and does nothing
+else. The kernel stays silent
+because a warning raised from C++ can longjmp past the frame's destructors, so `pca_imp()` warns
+once, through `cli::cli_warn()`, for the winning restart only
+(`R/pca_imp.R`: `if (!isTRUE(best_diag$converged)) {`). The loop
+is `for (std::size_t nb_iter = 1;; ++nb_iter)`, whose only exits are in the block
+(`src/pca_kernel.cpp`: `if (stop_now)`).
+`trace_iter > 0` prints, through `start_trace()` and `print_iter()`, on
+iteration 1, every `trace_iter` iterations, and on the last; print precision is
+restored by the `PrecGuard` RAII struct (`src/pca_kernel.cpp`: `struct PrecGuard {`).
 
-**Postprocessing** (`:900-969`): `reconstruct_cols(U, V, fittedX, 0, n_fixed)` (`:904`)
-completes the fixed block the loop skipped, purely so the SSE covers the whole matrix. The
-SSE loop (`:907-939`) computes the full residual in original units (times `et^2` per column)
-then subtracts the missing-cell contribution, giving an observed-cells-only `mse` (`:941`),
-the `nb.init` selection statistic. `imputed_values` (`:943-967`) is an `n_missing x 3`
-matrix of `(row_1based, orig_col_1based, value)`, where the value comes from the final
-`Xhat` at the missing position, de-standardized -- not from `fittedX` (`:953-955`). The
-ordinary-build return list (`:1003-1012`) carries `imputed_values`, `mse`, `n_iter`,
+**Postprocessing** (`src/pca_kernel.cpp`: `LOC_TIC(pca_kernel, "postprocessing")`) is three
+calls inside that phase: `complete_fixed_block()`, `observed_mse()` and `imputed_cells()`,
+which returns `loc` and `value` as one `ImputedCells`. In the wide
+case `gemm_tn_block()` over columns `0 .. n_fixed-1` of `Xhat` first fills the fixed rows of `V` that
+`SVD_triplet()` leaves unwritten, from the
+last iteration's `Vn` and the fixed columns of `Xhat`, which nothing writes after
+`pass2_scan`; the tall case returns `V` complete. `reconstruct_cols()` over columns
+`0 .. n_fixed-1` then completes the fixed block of `fittedX` that the loop skipped, purely so the SSE
+covers the whole matrix. Both calls no-op when `n_fixed == 0`. The fixed rows of `V` reach R
+only through `mse`; `value` never reads them. The
+SSE loop (`src/pca_kernel.cpp`: `double sse = 0.0;`) computes the full residual in original
+units (times `et^2` per column)
+then subtracts the missing-cell contribution, giving an observed-cells-only `mse`,
+the statistic that selects among the `nb.init` restarts. The imputed cells come back as `loc`, an
+`n_missing x 2` integer matrix with columns `row` and `col`, 1-based in `obj`, and
+`value`, a double vector (`src/pca_kernel.cpp`: `Rcpp::IntegerMatrix loc(`), in column-major
+order; each value comes from the final `Xhat` at the missing position, de-standardized,
+not from `fittedX`. The
+ordinary-build return list carries `loc`, `value`, `mse`, `n_iter` (an integer),
 `criterion_final`, `converged`, `solver_chosen`, `n_exact`, `n_lobpcg_ok`, `n_lobpcg_bad`.
+`criterion_final` is the criterion that stopped a converged fit. When the objective alone
+stopped it, the criterion being at or above `threshold`, there is none to report and the
+value is `NA` (`src/pca_kernel.cpp`:
+`(converged && !(criterion < threshold)) ? NA_REAL : criterion;`). The `NA` can withhold a
+well-defined ratio, and it also covers one that is rounding noise, as when `ncp` is at or
+above the rank of the data from the first iteration and the objective sits at the rounding
+floor of the subtraction, with no tolerance needed to tell the two apart. The rule is
+final: `criterion_final` is not made `NA` merely because the objective is below
+`threshold`.
 `solver_chosen` comes from `HybridEigContext::solver_chosen_code()`
-(`hybrid_topk_eig.h:239-262`): 0 forced exact, 1 forced lobpcg, 2 auto never decided, 3 auto
-chose exact, 4 auto chose lobpcg. `R/pca_imp.R:532` collapses 1 and 4 to "lobpcg" and
-everything else to "exact".
+(`src/hybrid_topk_eig.h`: `int solver_chosen_code() const`): 0 forced exact, 1 forced lobpcg,
+2 auto never decided, 3 auto chose exact, 4 auto chose lobpcg. Under `solver = "auto"` only
+(`R/pca_imp.R`: `if (solver == "auto" && i == 1L) {`), `pca_imp()`
+collapses 1 and 4 to "lobpcg" and everything else to "exact"; the string is set at
+(`R/pca_imp.R`: `solver_chosen = if (resolved_solver_code == 1L)`).
 
 ## Layer 5: Gram formation and factor recovery
 
-`SVD_triplet()` (`src/svd_triplet.h:62-125`) never forms an SVD directly. It builds the
-weighted Gram into `AA_NxN` via `form_weighted_gram()` (`:83`), takes
-`trace_val = arma::trace(AA_NxN)` (`:86`) for the tail energy, calls `hybrid_topk_eig()`
-(`:89`, failure being an `Rcpp::stop` at `:91`), converts eigenvalues to singular values and
-inverses with a `PCA_TOL` floor (`:95-111`), and recovers the other factor with one `dgemm_`
-(`:113-124`): tall gives eigenvectors as `V` and `U = X_work * Vn` (`gemm_nn`, `:117`), wide
-gives them as `U` and `V = Xhat' * Vn` (`gemm_tn`, `:122`). `split_eigvec_block()` (`:15-54`)
-writes the plain and `d_inv`-scaled copies in a single pass.
+`SVD_triplet()` (`src/svd_triplet.h`: `inline double SVD_triplet(`) never forms an SVD directly.
+It builds the
+weighted Gram into `AA_NxN` via `form_weighted_gram()`, stops if its upper triangle
+holds NaN or Inf (`src/svd_triplet.h`: `if (!gram_upper_finite(AA_NxN, n))`), before
+either solver, which is where finite input whose squares overflow is stopped; on the exact path
+`si_la::syevr_range` tests the same triangle again ("What the wrappers do"). It takes
+the trace of `AA_NxN` (`gram_trace()`), which it returns for the tail energy, calls `hybrid_topk_eig()`
+(a status other than 0 being an `Rcpp::stop`), converts eigenvalues to singular values and
+inverses with a `PCA_TOL` floor, and recovers the other factor with one dgemm
+through `si_la::gemm` (`src/svd_triplet.h`: `LOC_TIC(timer, "recover_factors")`): tall gives
+eigenvectors as `V` and `U = X_work * Vn` (`gemm_nn`, dgemm whatever the shape, never dgemv);
+wide gives them as `U` and forms only the changing rows of `V`,
+`V[n_fixed.., ] = Xhat[, n_fixed..]' * Vn`, as one strided-block dgemm in
+`gemm_tn_block()` (`src/pca_linalg_utils.h`: `gemm_tn_block(const double *A, const std::size_t a_rows,`), reading `n_fixed`
+from the
+Gram cache the way `form_weighted_gram()` does. Both helpers take raw buffers and their
+dimensions, refuse operands whose dimensions do not fit, and return the wrapper's status; a
+non-zero one is an `Rcpp::stop` at the call site
+(`src/svd_triplet.h`: `const int st = pca_detail::gemm_nn(`), through
+`stop_if_gemm_refused()` (`src/svd_triplet.h`: `inline void stop_if_gemm_refused(`), which
+every dgemm of `src/pca_kernel.cpp` stops through too. Every dimension is checked
+against the `int` range at kernel setup, so that error is not expected to be reachable.
+`SVD_triplet()` takes its buffers as one `SolveBuffers`, reads every dimension from `GramDims`
+and the eigenpair range, and takes a raw pointer to each buffer at its top, so the code below
+reads the same raw buffers it did when each was a parameter. `SolveBuffers` sizes each buffer
+once, in its constructor, with the sizes its header lists, and `src/pca_kernel.cpp` constructs
+it once, before the EM loop (`src/pca_kernel.cpp`: `every buffer SVD_triplet() reads or writes is sized here`).
+So `V`'s fixed rows stay unwritten until postprocessing fills them from the same `Vn`
+(Layer 4). Of the nine buffers the kernel reads `U`, `V`, `Vn`, `vs_top`, `eigvecs` (in the
+diagnostics build) and `X_work` (through the Gram cache); `eigvals` and `d_inv` are read only
+inside `SVD_triplet()`. `split_eigvec_block()` writes the plain and `d_inv`-scaled copies in a single
+pass.
 
-`form_weighted_gram()` (`src/gram_ops.h:156-265`) has four branches:
+`form_weighted_gram()` (`src/gram_ops.h`: `form_weighted_gram(const double *Xhat, const double *sw, const double *X_work,`) has four branches,
+each entering BLAS through `si_la::syrk` and `si_la::gemm`:
 
 | case | how the Gram is built |
 | --- | --- |
-| tall, cache active | copy cached fixed block (`:179`), `dgemm_` cross block (`:191`), `dsyrk_` changing-changing block (`:207`) |
-| tall, no cache | one `dsyrk_` over all of `X_work` (`:218`) |
-| wide, cache active | copy cached fixed Gram (`:226`), `dsyrk_` with `beta = 1` adding the changing columns (`:238`) |
-| wide, no cache | `dsyrk_` on `Xhat` (`:248`), then scale entries by `sw[i] * sw[j]` (`:250-262`) |
+| tall, cache active | copy cached fixed block, dgemm cross block, dsyrk changing-changing block |
+| tall, no cache | one dsyrk over all of `X_work` |
+| wide, cache active | copy cached fixed Gram, dsyrk with `beta = 1` adding the changing columns |
+| wide, no cache | dsyrk on `Xhat`, then scale entries by `sw[i] * sw[j]` |
 
-Only the upper triangle is written, matching dsyevr's `uplo = 'U'` (`eig_sym_sel.h:42`). The
-LOBPCG path mirrors it down first (`hybrid_topk_eig.h:382`).
+`src/gram_ops.h` takes raw buffers and the dimensions `GramDims` holds, as `std::size_t`,
+each number under one name: `nr` the rows of `A` and its leading dimension, `n` the order of
+the Gram and its leading dimension, with `tall` the orientation they follow from;
+`gram_cache_init()` and `gram_changing_block()` take the `GramDims` of the whole Gram, as
+`form_weighted_gram()` does. `GramCache` keeps the fixed Gram and the wide case's scaled
+changing columns in `std::vector<double>`, and the count of fixed columns, which is what
+makes it active (`src/gram_ops.h`: `bool active() const { return n_fixed > 0; }`).
+`gram_cache_init()` and `form_weighted_gram()` return the wrapper's
+status; a non-zero one is an `Rcpp::stop` at the call site (`src/pca_kernel.cpp`:
+`if (gram_init_st != si_la::ok)`; `src/svd_triplet.h`: `if (gram_st != si_la::ok)`), not
+expected to be reachable for the reason given above.
+
+Only the upper triangle is written, matching dsyevr's `uplo = 'U'`
+(`src/eig_sym_sel.h`: `PEIG_UPLO = 'U'`). The
+LOBPCG path mirrors it down first (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, n)`).
+The order of the Gram reaches both solvers as one `n`, `GramDims::n`, through
+`hybrid_topk_eig()` and `hybrid_topk_eig_impl()` to `eig_sym_sel()` and `lobpcg_solve()`.
 
 ## Layer 6: the eigensolver
 
-**Routing** (`src/hybrid_topk_eig.h`). `hybrid_topk_eig()` (`:441-458`) is a timing wrapper:
-while the auto probe is undecided (`auto_timing_active()`, `:121-125`) it brackets the real
-call with a `steady_clock` measurement and feeds it to `record_auto_probe_time()`
-(`:182-202`). `hybrid_topk_eig_impl()` (`:265-435`) picks the path at `:290-373`:
+**Routing** (`src/hybrid_topk_eig.h`). `hybrid_topk_eig()` is a timing wrapper:
+while the auto probe is undecided (`auto_timing_active()`) it brackets the real
+call with a `steady_clock` measurement and feeds it to `record_auto_probe_time()`.
+`hybrid_topk_eig_impl()` picks the path:
 
 - `Exact` -- always dsyevr.
-- `Lobpcg` -- dsyevr while `outer_iter < warmup_iters` (`:290`, `:307-310`) or while there
+- `Lobpcg` -- dsyevr while `outer_iter < warmup_iters` or while there
   is no seed, then LOBPCG.
-- `Auto` (`:320-372`) -- exact for at least `max(warmup_iters, auto_min_exact_iter)`
-  iterations (`:344`, target at `:116-119`), then `HYB_AUTO_N_PROBE_ITER_DEFAULT = 5` LOBPCG
-  probes (`:354-357`), then decides. `maybe_decide_auto()` (`:142-180`) picks LOBPCG only
-  when its mean time is below `(1 - 0.10) * exact_mean` (`:163`, margin at `:60`); otherwise
-  it picks exact and drops the LOBPCG state so exact mode carries no seed-maintenance
-  overhead (`:127-135`).
+- `Auto` (`src/hybrid_topk_eig.h`: `else // HybridSolverMode::Auto`) -- exact for at least
+  `max(warmup_iters, auto_min_exact_iter)`
+  iterations, then `HYB_AUTO_N_PROBE_ITER_DEFAULT = 5` LOBPCG
+  probes, then decides, at the end of an undecided call only (`record_auto_probe_time()`),
+  so an undecided call past the exact probe always has a seed and a LOBPCG probe to run,
+  and the undecided arm has two branches (`src/hybrid_topk_eig.h`:
+  `the exact probe, then the LOBPCG probe.`). `maybe_decide_auto()` picks LOBPCG only
+  when its mean time is below `(1 - 0.10) * exact_mean`
+  (`src/hybrid_topk_eig.h`: `HYB_AUTO_MARGIN_DEFAULT = 0.10`); otherwise
+  it picks exact and drops the LOBPCG state so that exact mode spends no time maintaining
+  a seed (`src/hybrid_topk_eig.h`: `void choose_auto_exact()`).
 
-On LOBPCG success (`:386-403`) the eigenvalues are moved out, `eigvecs` is copied from the
-committed state, and `refresh_momentum_P()` rebuilds the search direction from the two most
-recent eigenblocks. On failure `n_lobpcg_bad` increments (`:405`) and control falls through
-to `eig_sym_sel()` (`:408`); after any exact solve, `seed_lobpcg_state()` re-seeds the warm
-start when `keep_lobpcg_seed_state()` allows (`:424-432`).
+No arm tests `lobpcg_opt.maxiter`, nor does `keep_lobpcg_seed_state()`: kernel setup refuses
+a `lobpcg_maxiter` below 1 for `Lobpcg` and `Auto`, and sets 0 only for `Exact`
+(`src/hybrid_topk_eig.h`: `maxiter is at least 1 unless solver_mode is Exact`).
 
-**Exact path** (`src/eig_sym_sel.h`). `dsyevr_` is declared by hand (`:21-35`) rather than
-pulled from `<R_ext/Lapack.h>`; the comment at `:10-20` records that the R header clashes
-with Armadillo's own declarations. Hidden Fortran character-length arguments are passed
-explicitly (the trailing `1, 1, 1`). `EigSymWorkspace::init()` (`:63-120`) runs the
-`lwork = -1` query once and floors the result at the documented `26 * n` / `10 * n` minima
-(`:105-114`). `eig_sym_sel()` (`:129-177`) requests eigenpairs `il..iu` with `range = 'I'`
-(`:42`, `:72-73`), returning exactly the top `k`. dsyevr returns ascending order, so
-`:162-173` reverses eigenvalues and swaps whole eigenvector columns in place, then
-`canonicalize_signs()` (`pca_linalg_utils.h:15`) applies the sklearn `svd_flip` convention.
-`A` is destroyed by the call (`:125-127`), which is safe because the Gram is rebuilt every
+On LOBPCG success (`src/hybrid_topk_eig.h`: `if (lob_res.converged)`) the eigenvalues and
+the committed `X` are copied into the caller's buffers, after a check that the state still
+has the range's `n x topk` shape, which it keeps from its seed (an internal error
+otherwise, not expected to be reachable), and `refresh_momentum_P()` rebuilds the search
+direction from the two most recent eigenblocks. On failure `n_lobpcg_bad` increments and control falls through
+to `eig_sym_sel()`; after any exact solve, `seed_lobpcg_state()` re-seeds the warm
+start when `keep_lobpcg_seed_state()` allows.
+
+**Exact path** (`src/eig_sym_sel.h`). `eig_sym_sel()` takes raw buffers and calls
+`si_la::syevr_range`, which enters dsyevr with `range = 'I'` for eigenpairs `il..n`, the
+top `k`, asks for the workspace on every call and floors it at the documented
+`26 * n` / `10 * n` minima ("What the wrappers do"). `eigvals` and `eigvecs` are
+buffers of `SolveBuffers`, sized once before the EM loop (`src/svd_triplet.h`:
+`eigvecs(dims.n * topk), eigvals(topk), vs_top(topk), d_inv(ncp) {}`). dsyevr returns
+ascending order, so `eig_sym_sel()` reverses eigenvalues and swaps whole eigenvector columns
+in place, then `canonicalize_signs()` (`src/pca_linalg_utils.h`: `void canonicalize_signs(`)
+applies the sklearn `svd_flip` convention. A non-zero status, from the wrapper or from an
+order `n` that is not the range's, is what `hybrid_topk_eig()` returns, and
+`SVD_triplet()` stops with a text chosen by it: LAPACK's own `info`
+(`src/svd_triplet.h`: `Rcpp::stop("the symmetric eigensolver failed (LAPACK dsyevr, info = %d)",`),
+a failed allocation, a non-finite Gram, which says the same as the test before the
+solve, or an internal error for the rest. All are plain errors with no class of their own.
+`A` is destroyed by the call, which is safe because the Gram is rebuilt every
 outer iteration.
 
 **LOBPCG path** (`src/lobpcg_warm.h`). This is a **warm-start-only** solver:
-`lobpcg_solve()` (`:367`) hard-errors via `Rcpp::stop` on an unseeded state (`:375-376`), so
-callers must check `LOBPCGState::seeded()` (`:73-77`) first. The state carries `X` (`n x k`,
+`lobpcg_solve()` raises an error through `Rcpp::stop` on an unseeded state, so
+callers must check `LOBPCGState::seeded()` first. The state carries `X` (`n x k`,
 orthonormal, sign-canonicalized approximate top-k eigenvectors) and `P` (`n x k`, the search
-direction). The header's "P invariant" note (`:21-25`) states that the committed `P` is
-deliberately *not* orthonormal and not orthogonal to `X`; entry-time cleanup (`:390-391`)
+direction). The header's "P invariant" note states that the committed `P` is
+deliberately *not* orthonormal and not orthogonal to `X`, and names the one case in which
+it is empty: `P` lost at entry, so the first Rayleigh-Ritz is over `X` alone, and the
+call converging at its first residual test. Unless `refresh_momentum_P()` then builds a
+`P`, the state is not seeded and the next call goes to the exact solver, `NO_SEED` under
+`solver = "lobpcg"`, which seeds it again, or tries to; entry-time cleanup
+(`src/lobpcg_warm.h`: `bool have_P = qr_project_out_qr(`)
 re-projects and re-orthonormalizes it. Both matvecs are recomputed fresh at entry
-(`:397-402`) because `A` changes between outer calls. The initial Rayleigh-Ritz is over the
-joint basis `[X, P]` (`rr_two_block()`, `:275-310`), falling back to `X` alone when `P` is
-unusable (`:423-436`).
+(`src/lobpcg_warm.h`: `Block AX = mul(a, n, n, X);`) because `A` changes between outer calls. The
+initial Rayleigh-Ritz is over the
+joint basis `[X, P]` (`rr_two_block()`), falling back to `X` alone when `P` is
+unusable (`src/lobpcg_warm.h`: `fall back to X-only initial RR`).
 
-The iteration (`:447-608`) is standard three-block LOBPCG over `[X, R_active, P_active]`,
-with four bail-outs besides convergence: a divergence guard at relative residual > 10
-(`:467-472`), a stall counter over `stall_window = 5` (`:474-484`), residual collapse after
-QR (`:496-501`), and `P` collapse (`:535`, `:550`). `MATVEC_REFRESH = 20` (`:440`)
-periodically recomputes `AX`/`AP` from scratch (`:517-521`, `:603-607`) to shed accumulated
-rounding. State is committed only on success (`:613-619`). Small Rayleigh-Ritz problems go
-through `small_eig_desc()` (`:203-250`), which calls `dsyevd_` twice (query `:221`, solve
-`:239`) with buffers cached on the `LOBPCGState`. Warm-start construction is two entry
-points over one helper, `build_momentum_P()` (`:145-174`), which forms
-`P = X_prev - X_curr (X_curr' X_prev)`: `seed_lobpcg_state()` (`:318-337`) after an exact
-solve, with no norm floor; `refresh_momentum_P()` (`:345-359`) after a LOBPCG success, with
-a floor of `1e-10 * sqrt(k)` below which the post-RR `P` is kept instead.
+The iteration (`src/lobpcg_warm.h`: `for (; it < opt.maxiter; ++it)`) is standard three-block
+LOBPCG over `[X, R_active, P_active]`.
+Besides convergence it exits on `maxiter`, a divergence guard at relative
+residual > 10 (`DIVERGED_REL_RES`), a stall counter over `stall_window = 5`, residual collapse
+after QR, `P` collapse, and `LOBPCG_RR_FAILED` when
+`rr_two_block` or `small_eig_desc` fails. With `MATVEC_REFRESH = 20`, `AX`/`AP` are
+periodically recomputed from scratch to shed accumulated
+rounding. State is committed only on success (`src/lobpcg_warm.h`: `if (out.converged)`).
+Small Rayleigh-Ritz problems go
+through `small_eig_desc()`, which symmetrizes the projected Gram and calls
+`si_la::syevd`; the wrapper asks dsyevd for its workspace and allocates it on
+every call, so the `LOBPCGState` holds `X` and `P` and nothing else.
+Warm-start construction is two entry
+points over one helper, `build_momentum_P()`, which forms
+`P = X_prev - X_curr (X_curr' X_prev)`: `seed_lobpcg_state()` after an exact
+solve, with no norm floor; `refresh_momentum_P()` after a LOBPCG success, with
+a floor of `1e-10 * sqrt(k)` (`TEMPORAL_NORM_FLOOR`) below which the post-RR `P` is kept
+instead.
+
+**Storage on the LOBPCG path.** The iteration holds its matrices in `lobpcg_detail::Block`
+(`src/lobpcg_warm.h`: `struct Block`), a column-major buffer with its dimensions `nrow` and
+`ncol`, its cells in a `std::vector<double>`, and `data()` for the first cell, which is
+what the calls into `si_la` are handed.
+Every product goes through one function (`src/lobpcg_warm.h`: `inline void product_into(`):
+a right operand of one column is a vector and the product is dgemv through `si_la::gemv`,
+any other is dgemm through `si_la::gemm`. A product inside a sum or
+difference, or one whose target is among its operands, is formed into a block of its own
+first and subtracted cell by cell, and of three operands the inner product
+is formed first. `V -= X (X' V)` is `project_out()`
+(`src/lobpcg_warm.h`: `inline void project_out(Block &V, const Block &X) {`,
+`sub_cells(V, mul(X, tmul(X, V)));`), at four sites: in `qr_project_out_qr()`, in
+`build_momentum_P()` on a copy of `X_prev`, and on `P` at entry and on the active
+residuals in `lobpcg_solve()`. The three-block path projects `P` out of `X` and the active
+residuals with products of its own, which it shares with `A P`; `P_active` and its
+product take over the cells of `P` and `A P`, which the iteration does not read again
+(`src/lobpcg_warm.h`: `Pact = std::exchange(P, Block());`). `small_eig_desc()` likewise
+reverses dsyevd's columns in place and hands them over as its eigenvector block. `-=` of a product whose operands do not include its target is one call with
+`beta = 1` (`src/lobpcg_warm.h`: `inline void sub_mul(`). The boundary with
+`src/hybrid_topk_eig.h` is plain buffers too: `lobpcg_solve()` takes the Gram as a raw
+buffer and its order and reads it in place (`src/lobpcg_warm.h`:
+`inline LOBPCGResult lobpcg_solve(const double *a,`), `LOBPCGState` holds `X` and `P` as
+`Block`s, `LOBPCGResult` holds the eigenvalues as a `std::vector<double>`, and
+`seed_lobpcg_state()` and `refresh_momentum_P()` take the two eigenvector blocks as `Block`s.
+`hybrid_topk_eig_impl()` copies the eigenvectors of each solve into one `Block`, which seeds
+or refreshes the state and then becomes `X_prev`.
+
+**Where a factorization can fail on the LOBPCG path.** Three calls return a
+`si_la` status, and `la_failed()` (`src/lobpcg_warm.h`: `inline bool la_failed(`)
+sorts it for all three. A positive status, which is LAPACK's `info` or,
+from `si_la::solve_tri_right`, the position of a zero on the diagonal, and
+`err_nonfinite` are numerical failures and take the path below. `err_alloc`
+stops with "could not allocate the workspace", and `err_arg` and `err_size`,
+which no call here can produce once kernel setup has refused dimensions past
+`int`, stop with "internal error". Per site:
+
+| site | call | a numerical failure leads to |
+| --- | --- | --- |
+| `qr_orthonormalize()` | `si_la::qr_econ` | `V` reset and a rank of 0, the same as a block whose first pivot is 0. The caller decides: at entry, `have_P` is false and the first Rayleigh-Ritz is over `X` alone; on the active residuals, `LOBPCG_RESIDUAL_COLLAPSED`; on `P_active`, `LOBPCG_P_COLLAPSED`; in `build_momentum_P()`, no `P`, so the state is left unseeded after an exact solve, or the post-RR `P` is kept after a LOBPCG success |
+| `qr_orthonormalize_update_matvec()` | `si_la::solve_tri_right` | false, which both callers turn into `LOBPCG_P_COLLAPSED`. dtrsm reports nothing, so the one numerical failure is the wrapper's own test before it: a zero on the diagonal of `R`, which the pivot test of `qr_orthonormalize()` has already ruled out for a block that kept every column, so no input is known to reach it. Nothing estimates the condition of `R`: a triangle singular to working precision is solved as it is |
+| `small_eig_desc()` | `si_la::syevd` | false. From `rr_two_block()` or the `X`-only form before the loop, `LOBPCG_INITIAL_RR_FAILED`; inside the loop, `LOBPCG_RR_FAILED` |
+
+Every `LOBPCG_*` status but `LOBPCG_CONVERGED` leaves the state untouched and
+sends `hybrid_topk_eig_impl()` to the exact solver on the same Gram, as above.
+"What the wrappers do" has what each wrapper refuses before its routine and what
+its status means.
 
 **Where BLAS/LAPACK is entered.**
 
 | symbol | site | purpose |
 | --- | --- | --- |
-| `dsyrk_` | `gram_ops.h:54`, `:207`, `:238` | Gram formation |
-| `dgemm_` | `gram_ops.h:191` | fixed-changing Gram cross block |
-| `dgemm_` | `pca_linalg_utils.h:112`, `:151` | `gemm_nn` / `gemm_tn` factor recovery |
-| `dgemm_` | `armaSVD.cpp:295` | `reconstruct_cols`, strided column block |
-| `dsyevr_` | `eig_sym_sel.h:86`, `:145` | workspace query, exact top-k eigen |
-| `dsyevd_` | `lobpcg_warm.h:221`, `:239` | LOBPCG Rayleigh-Ritz |
-| Armadillo | `lobpcg_warm.h:91` (`qr_econ`), `:192` (`solve`), `:397` (`A * X`) | LOBPCG orthonormalization and matvecs |
+| dsyrk, through `si_la::syrk` | `syrk_upper()`, `form_weighted_gram()` (`src/gram_ops.h`) | Gram formation |
+| dgemm, through `si_la::gemm` | `form_weighted_gram()` (`src/gram_ops.h`) | fixed-changing Gram cross block |
+| dgemm, through `si_la::gemm` | `gemm_nn()`, `gemm_tn_block()` (`src/pca_linalg_utils.h`) | `gemm_nn` / `gemm_tn_block` factor recovery; the block form also fills the fixed rows of `V` after the loop (`src/pca_kernel.cpp`: `pca_detail::gemm_tn_block(Xhat, nrX, n_elig, 0, n_fixed, buf.Vn.data(),`) |
+| dgemm, through `si_la::gemm` | `reconstruct_cols()` (`src/pca_kernel.cpp`) | `reconstruct_cols`, strided column block |
+| dsyevr, through `si_la::syevr_range` | `eig_sym_sel()` (`src/eig_sym_sel.h`) | exact top-k eigen, workspace query included |
+| dsyevd, through `si_la::syevd` | `small_eig_desc()` (`src/lobpcg_warm.h`) | LOBPCG Rayleigh-Ritz, workspace query included |
+| dgeqrf and dorgqr, through `si_la::qr_econ` | `qr_orthonormalize()` (`src/lobpcg_warm.h`) | LOBPCG orthonormalization |
+| dtrsm, through `si_la::solve_tri_right` | `qr_orthonormalize_update_matvec()` (`src/lobpcg_warm.h`) | `A * Q` carried through a QR without a new matvec |
+| dgemm through `si_la::gemm`, or dgemv through `si_la::gemv` for a block of one column | `product_into()` (`src/lobpcg_warm.h`) | LOBPCG matvecs and projections |
 
 The exact path enters LAPACK once per outer iteration with an `n_gram x n_gram` problem. The
 LOBPCG path never touches `n_gram`-sized LAPACK: its dense work is `n_gram x k` matvecs and
 QRs plus a `3k x 3k` dsyevd.
 
+## What the wrappers do
+
+`src/si_lapack.h` declares, and `src/si_lapack.cpp` defines, R's BLAS and LAPACK as plain
+functions over `double*`, `std::size_t` dimensions and an int status. The header's opening
+comment has the conventions and each function's comment what it computes; this section has
+what each does around its routine, and why. `src/pca_linalg_utils.h` calls `si_la::gemm`,
+`src/gram_ops.h` calls `si_la::syrk` and `si_la::gemm`, `src/eig_sym_sel.h` calls
+`si_la::syevr_range`, `src/lobpcg_warm.h` calls `si_la::qr_econ`, `si_la::solve_tri_right`,
+`si_la::syevd`, `si_la::gemm` and `si_la::gemv`, and `src/pca_kernel.cpp` calls `si_la::gemm`,
+and `si_la::svd_values` in the diagnostics build; Layer 6 has where each site enters BLAS and
+LAPACK and what it does with a status. `dev/tool/si_lapack_test.R` tests every function against
+R's own products, `eigen()`, `svd()`, `qr()`, `backsolve()` and `forwardsolve()`, with guard
+cells after every buffer a wrapper writes, and `dev/tool/si_lapack_selftest.R` shows it failing on
+a broken wrapper. READ means read
+in the source named; NOT READ is said where it applies.
+
+**Before the routine.** Each wrapper checks its arguments before Fortran is entered. An
+option character other than `'N'` or `'T'` for a transpose and `'U'` or `'L'` for a triangle,
+a leading dimension below the rows of its buffer, or dimensions the routine would refuse
+together are `err_arg`, so no illegal argument reaches xerbla, which under R raises an R error
+from inside the library and unwinds no C++ frame. A dimension past `int` is `err_size`, never
+narrowed, and so is a workspace whose documented minimum is past `int`, tested before the
+routine is asked for its optimum, since LAPACK's own arithmetic for that answer has wrapped by
+then (`src/si_lapack.cpp`: `bool fits_int(const double len)`). A failed allocation is
+`err_alloc`. A positive status is the routine's own `info`, passed on, or, from
+`solve_tri_right`, whose routine has none, the wrapper's own. Nothing in the file
+calls the R API, prints or throws: each call site raises its own error.
+
+| wrapper | routine and options | refused before the routine, beyond the options | calls no routine when |
+| --- | --- | --- | --- |
+| `si_la::gemm` | dgemm, every argument passed through | `ldc < m`; when `k > 0`, `lda` or `ldb` below the rows its operand is stored with | `m` or `n` is 0, and writes nothing; `k` is 0, and `C` becomes `beta * C` |
+| `si_la::gemv` | dgemv, unit strides | `lda < m` | `y` is empty; `x` is empty, and `y` becomes `beta * y`, where dgemv itself would leave `y` alone |
+| `si_la::syrk` | dsyrk, into the `uplo` triangle of `C` alone | `ldc < n`; when `k > 0`, `lda` below the rows `A` is stored with | `n` is 0; `k` is 0, and that triangle becomes `beta * C` |
+| `si_la::syevr_range` | dsyevr, `jobz = 'V'`, `range = 'I'`, `abstol = 0` | not `1 <= il <= iu <= n`; NaN or Inf in the `uplo` triangle (`err_nonfinite`) | never: `n = 0` has no range |
+| `si_la::syevd` | dsyevd, `jobz = 'V'` | NaN or Inf in the `uplo` triangle (`err_nonfinite`) | `n` is 0 |
+| `si_la::qr_econ` | dgeqrf, then dorgqr with `k = n` | `m < n` | `n` is 0 |
+| `si_la::solve_tri_right` | dtrsm, `side = 'R'`, `trans = 'N'`, `diag = 'N'`, `alpha = 1` | nothing; an exact zero on the diagonal of the triangle is a positive status, not a refusal | `m` or `n` is 0; the diagonal holds an exact zero |
+| `si_la::svd_values` | dgesdd, `jobz = 'N'`; compiled only when `PCA_IMP_DIAGNOSTICS` is set | NaN or Inf anywhere in `a` (`err_nonfinite`) | `min(m, n)` is 0 |
+
+Where a wrapper scales instead of calling, it scales as BLAS defines the result: `beta = 0`
+assigns 0, so a NaN or Inf already there does not survive, and `beta = 1` leaves the cells
+alone (`src/si_lapack.cpp`: `void scale_range(double *x, const std::size_t len, const double beta)`).
+After the routine, `syevr_range` returns `err_count` when dsyevr reports success with another
+number of eigenpairs than asked; with NaN and Inf refused first, no input is known to reach it.
+On any failure what the outputs hold is unspecified; `dev/tool/si_lapack_test.R` checks that a
+refused call leaves them as they were.
+
+**The eigenvalue buffer of `syevr_range`.** LAPACK documents `W` as `n` cells whatever the
+range. For a proper subset dsyevr goes through dstebz, which stores every eigenvalue that its search
+interval holds and then drops those outside `il..iu`; when the range cuts a group of equal
+eigenvalues that is more than `iu - il + 1` of them. The wrapper holds the `n` cells itself
+and copies `iu - il + 1` out (`src/si_lapack.cpp`:
+`std::copy(w_all.begin(), w_all.begin() + count, w);`), so its caller's buffer needs no more.
+`pca_imp()` reaches such a range when the completed data is rank deficient and `ncp`, plus one
+when regularized, exceeds its rank: samples that are exact copies of each other, holes
+included, or columns that are. A call that hands dsyevr a buffer of `iu - il + 1` cells
+writes past it, and on replicate samples that write can end the R process
+with a segmentation fault. The regression test is such an input
+(`tests/testthat/test-pca_imp.R`: `test_that("pca_imp returns on replicate samples with ncp above their rank", {`).
+It sees the overrun only where it does harm; `dev/tool/si_lapack_test.R` sees it in guard cells
+after `w`, on ranges that cut a group, where it also shows dsyevr writing past the count.
+
+**NaN and Inf.** LAPACK does not refuse them. Measured on one machine with R's own LAPACK:
+dsyevr asked for every
+eigenpair of a matrix holding NaN does not return, a proper subset comes back with `info = 0`
+and another number of eigenpairs than asked, and dsyevd can return `info = 0` with NaN
+eigenvalues. So `syevr_range` and `syevd` test the triangle LAPACK reads, and only that one,
+before the routine is entered (`src/si_lapack.cpp`:
+`bool tri_finite(const char uplo, const std::size_t n, const double *a)`), and `svd_values`
+tests all of `a`. `qr_econ` and `solve_tri_right` test nothing, and NaN or Inf goes through to their
+output. In the chain, `pca_imp()` refuses Inf in its input (`R/pca_imp.R`:
+`refuse_nonfinite(scan)`), NaN is a hole, and the Gram is tested where it is
+formed (Layer 5), so finite input
+whose squares overflow, unscaled values near 1e160 or near 1e200 with `scale = TRUE`,
+stops there with a message that names the cause
+(`tests/testthat/test-pca_imp.R`: `test_that("finite input whose squares overflow stops before the eigensolver", {`).
+A non-finite Gram that reached the exact path would still be refused by `syevr_range`. On the
+LOBPCG path a small Gram holding NaN or Inf is a failed Rayleigh-Ritz, and a residual norm
+that is NaN or Inf ends the solve as `LOBPCG_BAD_SEED` before the convergence test
+(`src/lobpcg_warm.h`: `if (!all_finite(rn))`), since the largest norm is taken
+by `max_skip_nan()`, which passes over NaN; either way that outer iteration goes to the exact
+solver.
+
+**Workspace.** Every wrapper that needs a workspace asks its routine for it on every call,
+with a length of -1, and uses the larger of the answer and the routine's documented minimum
+(`src/si_lapack.cpp`: `bool work_len(const double queried, const double minimum, int &out)`):
+`26 n` and `10 n` for dsyevr, `1 + 6 n + 2 n^2` and `3 + 5 n` for dsyevd, `max(1, n)` for
+dgeqrf and for dorgqr, and `3 min(m, n) + max(max(m, n), 7 min(m, n))` for dgesdd. The two
+eigensolvers' minimums are defined once, in the header, as `syevr_lwork_min()` and three
+more after it (`src/si_lapack.h`: `constexpr double syevr_lwork_min(`), and kernel setup's
+guard tests the same functions. An answer
+that is not usable, 0, negative or NaN, leaves the minimum. Nothing is kept between calls, so
+the length is a function of the problem alone. The length can change the
+result:
+
+- dsyevr: given `26 n` in place of its answer, the eigenvectors change at orders 60 and 300
+  (measured).
+- dsyevd: READ, in LAPACK 3.12.0 (`dsyevd.f`, `dormql.f`, fetched from the reference
+  repository, not from R's sources): dsyevd keeps `1 + 2 n + n^2` cells and hands the rest to
+  dormtr, which is dormql for `uplo = 'U'`; dormql applies the reflectors in blocks only when
+  its block size is below `n - 1` and that remainder holds its `T` array of 4160 cells and at
+  least two columns a block, and otherwise one at a time. At the queried length,
+  `1 + 6 n + 2 n^2`, the remainder is `n^2 + 4 n + 1`. With a block size of 32 (NOT READ:
+  ilaenv; it is the value the measured boundaries give) that makes the eigenvectors depend on
+  the length for orders 34 to 79 and for no other. Measured, orders 2 to 140: with the
+  workspace of a problem 1.5, 2 or 3 times the order, every call of order 34 to 79 differs
+  from the wrapper's and no other does; with that of the order plus one, orders 62 to 79; the
+  eigenvalues never differ, and the eigenvectors by at most 6.9e-16.
+
+**`qr_econ`.** One form, `m >= n`: `x` is copied into `q`, dgeqrf factors it there, the upper
+triangle it leaves is copied into the `n x n` `r` with zeros below, and dorgqr forms the `n`
+columns of `q` with `k = n`. The sign of each column is LAPACK's: the diagonal of `r` is not
+made positive. `m < n` is `err_arg`, a shape the one call site stops on before the call
+(`src/lobpcg_warm.h`: `internal error: a LOBPCG block has more columns than rows`). The call
+(`src/lobpcg_warm.h`: `if (la_failed(si_la::qr_econ(v_rows, v_cols, V.data(), Q.data(),`)
+and what a failure there leads to are in Layer 6.
+
+**`solve_tri_right`.** One dtrsm with `side = 'R'`: `X * tri(A) = B`, solved on `B` in
+place. It is the form that the one call site has, `A * Q` being `n x k` and `R` `k x k`; a solve
+from the left, which is all dtrtrs offers, would take the transpose of both operands and of
+the answer. It is how R's own `backsolve()` solves a triangle (READ: `do_backsolve` in R's
+`array.c`, which tests the diagonal for an exact zero, an error there, and then calls dtrsm,
+with `side = 'L'`). dtrsm has no `info` and divides by the diagonal, so the wrapper makes
+that test before the routine (`src/si_lapack.cpp`: `if (a[i * (n + 1)] == 0.0) {`): a
+positive status `i` is the wrapper's own, diagonal element `i` of the triangle, counted from
+1, is exactly zero, and `b` is as it was given. Nothing estimates the condition of the
+triangle, so one singular to working precision is solved as it is, and NaN or Inf in either
+operand goes through to the answer. The one call site solves `X R = A Q` on `A Q` in place
+(`src/lobpcg_warm.h`: `si_la::solve_tri_right('U', AQ.nrow, AQ.ncol, R.data(), AQ.data()),`).
+
+**`svd_values`.** The diagnostics build only: it is compiled when `PCA_IMP_DIAGNOSTICS` is
+set, so the package as shipped does not reference dgesdd. Its one caller, `subspace_cosine()`,
+forms `V_prev' V_new`
+with `si_la::gemm`, once per iteration from the second on, and hands it over
+(`src/pca_kernel.cpp`: `st = si_la::svd_values(n_cp, n_cp, V_cross.data(), V_cross_sv.data());`).
+A positive status or `err_nonfinite` is an R error, as an `Rcpp::exception`
+(`src/pca_kernel.cpp`: `the SVD of the subspace product failed`); `err_alloc` and a refusal of
+the arguments stop too, the second as an internal error. The smallest singular value is taken
+with `std::min_element`. No route to the failure is known, since a Gram holding NaN is refused
+before the eigenvectors exist.
+
+**Against R's own calls.** READ, in R's sources at the tags `R-4-6-1` and `R-4-4-0`
+(`Lapack.c` and `dlapack.f` of its LAPACK module, `array.c` of its main sources, and
+`eigen.R` and `svd.R` of base); the functions named here are the same text at both tags, apart
+from two initializers in `La_rs`. One difference is material, and it stays:
+
+- dsyevr. `La_rs`, behind `eigen()`, asks for `range = 'A'`, which in R's bundled dsyevr is
+  the dstemr path. `syevr_range` asks for `range = 'I'`, and a proper subset goes to dstebz
+  and dstein, bisection and inverse iteration: a path `eigen()` never takes. R's form would
+  be every eigenpair with the top `ncp` copied out, `n` vectors through dormtr where `ncp`
+  are wanted. The two forms were not timed or compared.
+
+The rest differ in nothing that reaches a result, or by design:
+
+- dsyevd: R calls it nowhere. The Rayleigh-Ritz solve of LOBPCG is its one use here.
+- QR: R calls neither dgeqrf nor dorgqr. `La_qr` is dgeqp3, with column pivoting, and
+  `qr_qy_real` applies `Q` with dormqr without forming it. A pivoted `R` is not the triangle
+  the update `X R = A Q` solves with, and LOBPCG needs `Q` formed.
+- Products: `matprod` sends a right operand of one column to dgemv, as `product_into()` does,
+  and also a left operand of one row, to dgemv on the transpose, which `product_into()` sends
+  to dgemm. `symcrossprod` is dsyrk with `uplo = 'U'`, the form of `src/gram_ops.h`.
+- NaN and Inf: R scans both operands of every product before BLAS and falls back to a plain
+  loop, and tests the input of `eigen()` and `svd()` in R code. The chain tests its input
+  once and the Gram where it is formed, as above.
+- Workspace: R takes the queried length as it comes, with no floor at the documented minimum
+  and no test that it fits `int`.
+- `uplo`: R gives dsyevr `'L'`, the chain `'U'`, the triangle dsyrk wrote.
+
+**The routines as chosen.** The set stays as it is; none of the alternatives was built or
+measured.
+
+- Two symmetric eigensolvers. dsyevd keeps the Rayleigh-Ritz solve of LOBPCG, its one use;
+  the alternative was `syevr_range` over the full range, one routine fewer. The reason, from
+  the LAPACK literature and NOT MEASURED in this chain: divide and conquer keeps its
+  eigenvectors orthogonal better than dstemr does, on clustered eigenvalues above all, and
+  here that matters more than on the exact path. The Ritz vectors rotate the basis
+  (`src/lobpcg_warm.h`: `X = mul(X, V);`), which the next iteration takes as orthonormal,
+  so a loss carries over and adds up, and converged Ritz values are clustered as a rule.
+  The exact path uses its vectors once and forms the Gram anew. `syevr_range`
+  keeps `range = 'I'` and asks dsyevr for its workspace on every call.
+- The values-only SVD stays: only the diagnostics build compiles it.
+- No product is left that dsyrk could form. The Gram goes through it; the small Grams of
+  LOBPCG, symmetric by construction, are each the product of two different blocks
+  (`src/lobpcg_warm.h`: `const Block PAP = tmul(Pact, APact);`), which dsyrk does not express.
+
+**Sums outside the wrappers.** The chain's other reductions call no BLAS. Each is a plain loop
+in order, never the multi-accumulator form that `dev/CPP.md` bans:
+
+- The Frobenius norm of `P` in `build_momentum_P()`, a sum of squares, read only by a
+  threshold (`src/lobpcg_warm.h`: `!(frobenius_norm(P) > min_projected_fro_norm))`).
+- The residual norms of LOBPCG, one sum of squares a column (`src/lobpcg_warm.h`:
+  `inline std::vector<double> column_norms(`). They feed the iteration's tests and
+  `max_rel_res`, which only the diagnostics build reports (`src/pca_kernel.cpp`:
+  `Rcpp::Named("eig_lobpcg_max_rel_res")`).
+- The infinity norm of the Gram, which scales LOBPCG's tolerance, `norm_inf()`: each row's sum
+  of absolute values, from zero in column order (`src/lobpcg_warm.h`:
+  `row_sum[i] += std::abs(col[i]);`), then the largest.
+- The largest of a set of norms, `max_skip_nan()`: from `-Inf`, keeping a value only when it
+  is `>` the best so far, so NaN is skipped and a set of NaN gives `-Inf`.
+- The sum of the squared leading singular values that the tail energy subtracts from the
+  trace (`src/pca_kernel.cpp`: `sum_top_sq += buf.vs_top[cp] * buf.vs_top[cp];`), and the trace itself
+  (`src/svd_triplet.h`: `inline double gram_trace(`).
+- The sum the row weights are divided by, taken in the loop that tests their sign
+  (`src/pca_kernel.cpp`: `row_w_sum += row_w_ptr[i];`).
+
 ## Data structures and ownership
 
-- `obj` crosses as `const arma::mat&` and is never mutated in C++; the write-back happens in
-  R (`R/pca_imp.R:567`). `row_w` crosses by value (`src/armaSVD.cpp:315`) and is normalized
-  in place (`:459`).
-- `Xhat` (`:503`) is the working copy -- permuted column order, centered, scaled, mutated in
-  place every outer iteration. `fittedX` is allocated once (`:187`) and overwritten by dgemm
-  each iteration. `U` is mutated in place by `scale_rows_cols_inplace()` (`:810`), so after
+- `obj` crosses as `const Rcpp::NumericMatrix &` and is never mutated in C++; the write-back happens in
+  R, through the matrix door (`R/pca_imp.R`: `pca_imp_results(fill_imp_parts(res), res$info)`).
+  `row_w` crosses by reference and
+  the kernel checks it in place and normalizes its own copy (`src/pca_kernel.cpp`: `row_w is checked where it lies`).
+- `Xhat` is the working copy -- permuted column order, centered, scaled, mutated in
+  place every outer iteration. `fittedX` is allocated once (`src/pca_kernel.cpp`: `std::vector<double> fittedX(nrX * n_elig);`);
+  dgemm overwrites only its changing block each iteration, and the fixed block is
+  filled once, after the loop (Layer 5). `U` is mutated in place by `scale_rows_cols_inplace()`, so after
   the reconstruct step it no longer holds the orthonormal left factor.
-- `AA_NxN` is destroyed by every eigen call: dsyevr overwrites it (`eig_sym_sel.h:125-127`),
-  and the LOBPCG path mirrors its upper triangle down first (`hybrid_topk_eig.h:382`).
-- `HybridEigContext::lobpcg_state` and `X_prev` are the only state surviving across outer
-  iterations; both are reset when auto picks exact (`hybrid_topk_eig.h:132-134`).
-- Return crosses as an `Rcpp::List` (`src/armaSVD.cpp:1003`), copying the triplet matrix
-  into R. Only missing cells are transported, never the full imputed matrix. The
-  `mat_stats.cpp` entry points instead return whole matrices by value, so `mean_imp_col()`
-  and `col_vars()` each allocate a result that Rcpp copies into a SEXP.
-- `PCA_TOL = 1e-15` (`src/pca_linalg_utils.h:9`) is the single tolerance floor across the
-  chain: scale floors (`armaSVD.cpp:123`, `:599`), inverse row-weight floor (`:643`),
-  shrinkage guard (`:796`), singular-value inverse guard (`svd_triplet.h:109`).
-- `src/matrix_checks.h` is included by `src/armaSVD.cpp:6`, but its only function
-  `stop_on_inf()` (`:8-29`) is never called from that translation unit. It is reached from
-  `src/mat_stats.cpp:192` via `check_inf()`, which `pca_imp()` hits indirectly through
-  `mean_imp_col()` (`R/mean_imp_col.R:38`), and only when `post_imp` has columns left
-  to fill.
+- `AA_NxN` is destroyed by every eigen call: dsyevr overwrites it
+  (`src/eig_sym_sel.h`: `destroys A: dsyevr overwrites`),
+  and the LOBPCG path mirrors its upper triangle down first
+  (`src/hybrid_topk_eig.h`: `mirror_upper_to_lower(A, n)`).
+- `HybridEigContext` carries state across outer iterations: `lobpcg_state` (`X` and `P`),
+  `X_prev`, `auto_choice`, the auto counters and timing sums,
+  and `n_exact`/`n_lobpcg_ok`/`n_lobpcg_bad` (`src/hybrid_topk_eig.h`: `LOBPCGState lobpcg_state;`).
+  When auto picks
+  exact, only `lobpcg_state.X`, `lobpcg_state.P` and `X_prev` are reset.
+- Every matrix and vector of the kernel is a `std::vector<double>`, column-major and
+  unpadded, zero-filled when sized.
+- `V` is sized once, before the EM loop, with the other buffers of `SolveBuffers`
+  (`src/svd_triplet.h`: `U(dims.nr * ncp), V(dims.nc * ncp), Vn(dims.n * ncp),`).
+  In the wide case its rows
+  `0 .. n_fixed-1` stay zero until postprocessing writes them
+  (`src/pca_kernel.cpp`: `n_gram, n_cp, buf.V.data());`); nothing reads them inside the
+  loop. `Vn` is sized there too, written
+  only by `split_eigvec_block()` and read only by the
+  factor-recovery
+  dgemm calls, so the post-loop fill can reuse the last iteration's copy.
+- Return crosses as an `Rcpp::List` holding `loc` and `value`, allocated as R objects
+  and written in place. Only missing cells are transported, never the full imputed matrix.
+  The scan instead returns by value from `mat_stats.cpp`, a list of vectors of
+  length `p` (and `n` for the row holes) written straight into SEXPs. The mean fill
+  reaches no kernel of its own: `fallback_part()` builds a mean part in R, and the
+  matrix door fills it with the PCA part (`R/parts.R`: `fallback_part <- function(`,
+  `fill_parts <- function(obj, parts, keep = NULL, n_miss = NULL) {`), one copy of the
+  matrix.
+- `PCA_TOL = 1e-15` (`src/pca_linalg_utils.h`: `inline constexpr double PCA_TOL`) is the
+  shared floor in `pca_kernel.cpp` and
+  `svd_triplet.h`: scale floors, inverse row-weight floor,
+  shrinkage guard, singular-value inverse guard.
+  LOBPCG has its own floors
+  (`src/lobpcg_warm.h`: `double qr_rel_tol = 1e-12;`, `const double min_temporal_norm =`),
+  and R keeps row weights at or above `1e-10`, rejecting a smaller supplied
+  `row.w` (`R/pca_imp.R`: `lower = 1e-10`) and flooring the weights it computes
+  for `row.w = "n_miss"` (`R/pca_imp.R`: `row.w[row.w < 1e-10] <- 1e-10`), and
+  applies a `.Machine$double.eps` variance floor.
+- `src/matrix_checks.h` is included by `src/pca_kernel.cpp`, for `col_ptr()` and
+  `stop_on_bad_col_index()`, as by
+  `src/mat_stats.cpp`, `src/sample_each_rep_cpp.cpp` and `src/knn_kernel.cpp`.
+  It refuses nothing about the values: every refusal of `Inf` and all-`NA`
+  columns is applied in R, to the scan (`R/col_scan.R`).
 
 ## Compile-time switches
 
-**`-DARMA_64BIT_WORD=1`** -- set in `src/Makevars:1` and `src/Makevars.win:1`. Makes
-`arma::uword` 64 bits; without it a matrix past `2^32 - 1` elements wraps silently.
-`arma_uword_bytes()` (`src/mat_stats.cpp:180-183`) exists only so the test suite can assert
-the flag survived.
+`src/Makevars` and `src/Makevars.win` set no macro. The two below are
+added by `load_all1()` (`dev/dev-utils.R`) through the user Makevars.
 
-**`-DLOC_TIMER`** (`src/loc_timer.h`) -- when defined (`:3`) the header pulls in
+**`-DLOC_TIMER`** (`src/loc_timer.h`) -- when defined the header pulls in
 `rcpptimer.h` and the `LOC_TIMER_*` macros become real: `LOC_TIMER_OBJ` declares an
 `Rcpp::Timer`, `LOC_TIC`/`LOC_TOC` bracket a phase, and `LOC_TIMER_PARAM`/`LOC_TIMER_ARG`
 thread the timer through signatures. When undefined, everything collapses to `((void)0)` and
-the parameter macros expand to nothing (`:26-34`) -- which is why `SVD_triplet()`'s
-signature ends with `LOC_TIMER_PARAM(timer)` (`svd_triplet.h:80`) and its call site ends
-with `LOC_TIMER_ARG(pca_imp_gram)` (`armaSVD.cpp:774`). Timed phases:
-`pca_imp_internal_cpp_total` (`armaSVD.cpp:324`), `pass1_count_missing` (`:462`),
-`pass2_scan` (`:511`), `gram_cache_init` (`:668`), `restandardize` (`:750`), `svd` (`:769`),
-`post_svd` (`:777`), `reconstruct` (`:805`), `objective` (`:821`), `postprocessing`
-(`:900`), and inside `SVD_triplet` the `form_gram`, `eig` and `recover_factors` phases
-(`svd_triplet.h:82`, `:88`, `:113`). `rcpptimer` is deliberately absent from `LinkingTo`, so
-its include directory is added by hand in `load_all1()` (`R/dev-utils.R:11-18`).
+the parameter macros expand to nothing, which is why `SVD_triplet()`'s
+signature ends with `LOC_TIMER_PARAM(timer)` and its call site ends
+with `LOC_TIMER_ARG(pca_kernel)`. Timed phases (`src/pca_kernel.cpp`):
+`pca_imp_internal_cpp_total`, `pass1_count_missing`,
+`pass2_scan`, `gram_cache_init`, `restandardize`, `svd`,
+`post_svd`, `reconstruct`, `objective`, `postprocessing`,
+and inside `SVD_triplet` (`src/svd_triplet.h`) the `form_gram`, `eig` and `recover_factors`
+phases. `rcpptimer` is deliberately absent from `LinkingTo`, so
+its include directory is added by hand in `load_all1()`
+(`dev/dev-utils.R`: `inc <- system.file("include", package = "rcpptimer")`).
 
-**`-DPCA_IMP_DIAGNOSTICS`** (`src/armaSVD.cpp`) -- defaulted to 0 at `:1-3`, set by
-`load_all1(debug = TRUE)` (`R/dev-utils.R:20`). It gates three things:
-`hyb_ctx.init_logs(maxiter)` (`:681-683`), which allocates the five per-iteration log
-vectors in `HybridEigContext` (`hybrid_topk_eig.h:97-105`) -- without it they stay empty and
-`log_at()` (`hybrid_topk_eig.h:271-286`) is a no-op because its bounds check fails; the
-history buffers `eigval_hist`, `obj_hist`, `subspace_cos_hist` (`:737-742`) and their update
-block (`:837-853`), which adds an `arma::svd` of `V_prev' * V_new` per iteration to track
-subspace rotation; and a wider return list (`:978-1001`). The counters `n_exact`,
+**`-DPCA_IMP_DIAGNOSTICS`** (`src/pca_kernel.cpp`) -- defaulted to 0 in
+`src/si_lapack.h` (`src/si_lapack.h`: `# define PCA_IMP_DIAGNOSTICS 0`), which the
+kernel reaches through `svd_triplet.h`, set by
+`load_all1(debug = TRUE)` (`dev/dev-utils.R`: `sprintf("-DPCA_IMP_DIAGNOSTICS=%d"`). It gates
+three things:
+`hyb_ctx.init_logs(maxiter)`, which allocates the five per-iteration log
+vectors in `HybridEigContext` (`src/hybrid_topk_eig.h`: `void init_logs(std::size_t n)`) -- without
+it they stay empty and
+`log_at()` (`src/hybrid_topk_eig.h`: `auto log_at = [&](`) is a no-op because its bounds check
+fails; the
+history buffers `eigval_hist`, `obj_hist`, `subspace_cos_hist` and their update
+block, which adds the singular values of `V_prev' * V_new` per iteration (`si_la::gemm`, `si_la::svd_values`,
+in `subspace_cosine()`, which the build without diagnostics does not compile) to track
+subspace rotation; and a wider return list. The counters `n_exact`,
 `n_lobpcg_ok`, `n_lobpcg_bad` are always maintained and returned; only the per-iteration
 logs are gated.
 
 ## Parallelism
 
-- **Inside the PCA kernel: none.** `src/armaSVD.cpp` does not include `RcppThread.h`, and
+- **Inside the PCA kernel: none.** `src/pca_kernel.cpp` does not include `RcppThread.h`, and
   neither does any header it pulls in. All intra-call parallelism comes from whatever BLAS
   the R installation links.
-- **RcppThread** appears at `src/mat_stats.cpp:38` (`col_vars_internal`) and `:126`
-  (`mean_imp_col_internal`), plus `src/impute_knn_brute.cpp:450` (the K-NN kernel, not in
-  this chain). `pca_imp()` reaches both `mat_stats.cpp` kernels with the default
-  `cores = 1` (`R/col_vars.R:37`, `R/mean_imp_col.R:34`), so the `parallelFor` runs
-  single-threaded. `src/Makevars:3` links `RcppThread::LdFlags()`; `src/Makevars.win:3`
+- **RcppThread** is reached through `par_for()` (`src/par_for.h`: `inline void par_for(`),
+  which only the K-NN kernel calls (`src/knn_kernel.cpp`, not in this
+  chain). The column scan that `pca_imp()` takes (`R/pca_imp.R`:
+  `scan <- col_scan(obj, var = TRUE, rows = identical(row.w, "n_miss"))`) runs on one thread
+  and takes no `cores`.
+  `src/Makevars` links `RcppThread::LdFlags()`; `src/Makevars.win`
   does not.
-- **mirai** is used from R only, one level above `pca_imp()`: `R/group_imp.R:901`
-  (`mirai::mirai_map` over groups) and `R/tune_imp.R:948` (over tuning replicates). Both
-  share the input matrix through `bigmemory` shared memory rather than serializing it
-  (`group_imp.R:831-839`, `tune_imp.R:894-895`) and ship the worker body as a `.crate()`
-  closure (`R/crate.R:35`). `slide_imp()` runs its windows sequentially
-  (`R/slide_imp.R:453`).
+- **mirai** is used from R only, one level above `pca_imp()`: `R/group_imp.R`
+  (`mirai::mirai_map` over groups) and `R/tune_imp.R` (over tuning replicates).
+  `group_imp()` sends each group's slice by value and gets its parts back;
+  `tune_imp()` sends the whole input to each daemon once, with `mirai::everywhere()`
+  (`R/tune_imp.R`: `mirai::everywhere({}, .slideimp_tune_obj = obj)[]`), and every
+  task masks a copy of it. Both
+  ship the worker body as a `.crate()`
+  closure (`R/crate.R`: `.crate <- function(`). `slide_imp()` runs its windows sequentially
+  (`R/slide_imp.R`: `for (i in seq_along(start)) {`).
 - **BLAS threading** is pinned inside the mirai workers, not in the kernel:
-  `RhpcBLASctl::blas_set_num_threads(1)` and `omp_set_num_threads(1)` at
-  `R/group_imp.R:851-852` and `R/tune_imp.R:906-907`, gated by `pin_blas`.
-  `check_pin_blas()` (`R/utils.R:114-125`) errors when `pin_blas = TRUE` without
-  `RhpcBLASctl` installed, and otherwise emits a tip when more than one BLAS thread is
-  detected.
+  `RhpcBLASctl::blas_set_num_threads(1)` and `RhpcBLASctl::omp_set_num_threads(1)` in
+  `R/group_imp.R` and `R/tune_imp.R`, gated by `pin_blas`, which defaults to
+  `TRUE`. `RhpcBLASctl` is in `Imports`, so nothing checks that it is
+  installed.

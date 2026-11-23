@@ -17,49 +17,57 @@ sample_na_loc(
 )
 }
 \arguments{
-\item{obj}{A numeric matrix.}
+\item{obj}{A double matrix.}
 
-\item{n_cols}{Integer or \code{NULL}. Number of columns to receive injected
-missing values. Must be supplied when \code{num_na = NULL}.}
+\item{n_cols}{Integer or \code{NULL}. Number of columns that receive missing
+values.}
 
-\item{n_rows}{Integer. Target number of missing values to inject per selected
-column.}
+\item{n_rows}{Integer. Minimum number of missing values per selected column.}
 
-\item{num_na}{Integer or \code{NULL}. Total number of missing values to inject per
-repetition. If supplied, \code{n_cols} is derived from \code{num_na} and \code{n_rows},
-and missing values are distributed as evenly as possible across columns.}
+\item{num_na}{Integer or \code{NULL}. Total number of missing values per
+repetition. When given, \code{n_cols} is ignored and the values are spread as
+evenly as possible over \code{num_na \%/\% n_rows} columns.}
 
 \item{n_reps}{Integer. Number of independent repetitions.}
 
-\item{rowmax}{Numeric scalar between \code{0} and \code{1}. Maximum allowed
-missing-data proportion per row after injection.}
+\item{rowmax}{Numeric scalar between \code{0} and \code{1}. Maximum proportion of
+missing values per row after injection.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}. Maximum allowed
-missing-data proportion per column after injection.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Maximum proportion of
+missing values per column after injection.}
 
-\item{na_col_subset}{Optional integer or character vector restricting which
-columns are eligible for missing-value injection.}
+\item{na_col_subset}{Optional character or integer vector. The columns that
+can receive missing values, by name or by number.}
 
-\item{max_attempts}{Integer. Maximum number of resampling attempts per
-repetition before giving up.}
+\item{max_attempts}{Integer. Maximum number of sampling attempts per
+repetition before an error.}
 }
 \value{
 A list of length \code{n_reps}. Each element is a two-column integer
-matrix with row and column indices for sampled \code{NA} locations.
+matrix, with columns \code{row} and \code{col}, of the sampled \code{NA} locations.
 }
 \description{
-Sample matrix indices for \code{NA} injection while respecting row and column
-missingness limits and avoiding zero-variance columns.
+Draws matrix positions for \code{NA} injection. The positions respect row and
+column limits on missing values and skip constant columns.
 }
 \details{
-The function uses a greedy stochastic search for valid \code{NA} locations. It
-ensures that:
+\code{sample_na_loc()} places the \code{NA} locations by a greedy random search.
+Every result meets these limits:
 \itemize{
-\item Total missingness per row and column does not exceed \code{rowmax} and
-\code{colmax}.
-\item At least two distinct observed values are preserved in every affected
-column.
+\item The proportion of missing values in each row and column, existing ones
+included, stays at or under \code{rowmax} and \code{colmax}.
+\item Every selected column keeps at least two distinct observed values.
+\item A column with a variance below \code{.Machine$double.eps} counts as constant
+and is never selected. \code{\link[=pca_imp]{pca_imp()}} uses the same threshold to leave a
+column out of its fit.
 }
+
+A column that cannot take \code{n_rows} missing values under these limits is
+skipped without an error.
+
+When both \code{n_cols} and \code{num_na} are \code{NULL}, \code{num_na} defaults to 5\% of the
+cells of \code{obj}, with a maximum of 500. The default never asks for more
+columns than the number that can take \code{n_rows} missing values.
 }
 \examples{
 set.seed(123)
@@ -73,4 +81,10 @@ locs
 mat[locs[[1]]] <- NA
 mat
 
+}
+\seealso{
+\itemize{
+\item \code{\link[=tune_imp]{tune_imp()}}, which takes the result as \code{na_loc}.
+\item \code{\link[=mipca_tune]{mipca_tune()}}, which takes a result with \code{n_reps = 1} as \code{na_loc}.
+}
 }

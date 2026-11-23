@@ -13,20 +13,42 @@ compute_metrics(results, metrics = c("mae", "rmse"))
 \method{compute_metrics}{slideimp_tune}(results, metrics = c("mae", "rmse"))
 }
 \arguments{
-\item{results}{A \code{slideimp_tune} data frame from \code{\link[=tune_imp]{tune_imp()}}. Must contain
-a \code{result} list-column whose elements are data frames with \code{truth} and
-\code{estimate} columns.}
+\item{results}{A \code{slideimp_tune} object or a data frame. The output of
+\code{\link[=tune_imp]{tune_imp()}}, or a data frame whose \code{result} list-column holds data frames
+with \code{truth} and \code{estimate} columns.}
 
-\item{metrics}{Character vector of metric names to compute. Defaults to
-\code{c("mae", "rmse")}. Available metrics are \code{"mae"}, \code{"rmse"}, \code{"mape"},
-\code{"bias"}, \code{"rsq"}, and \code{"rsq_trad"}.}
+\item{metrics}{Character. The metrics to compute, any of \code{"mae"},
+\code{"rmse"}, \code{"mape"}, \code{"bias"}, \code{"rsq"}, and \code{"rsq_trad"}. Defaults to
+\code{c("mae", "rmse")}.}
 }
 \value{
-A data frame containing the original parameter columns along with
-unnested metric columns: \code{.metric}, \code{.estimator}, and \code{.estimate}.
+A data frame with one row per row of \code{results} and metric. It
+keeps every column of \code{results} except \code{result}, and adds \code{n}, the number
+of masked values, \code{n_miss}, the number of those with no estimate,
+\code{.metric}, \code{.estimator}, and \code{.estimate}.
 }
 \description{
-Compute prediction accuracy metrics for results from \code{\link[=tune_imp]{tune_imp()}}.
+Computes accuracy metrics for each parameter set and repetition in the
+output of \code{\link[=tune_imp]{tune_imp()}}.
+}
+\details{
+Each metric is taken over the masked values of one row of \code{results}. A
+masked value with no estimate is left out, and \code{n_miss} counts it.
+\itemize{
+\item \code{"mae"}: mean absolute error.
+\item \code{"rmse"}: root mean squared error.
+\item \code{"mape"}: mean absolute percentage error, in percent. It divides by the
+true value, so it is not finite (\code{Inf} or \code{NaN}) for a repetition in which
+a masked value is exactly \code{0}. Use another metric for data that contain
+zeros.
+\item \code{"bias"}: mean of the estimate minus the true value.
+\item \code{"rsq"}: squared Pearson correlation of the estimates and the true values.
+It is \code{NA} when either is constant or fewer than two values have an
+estimate.
+\item \code{"rsq_trad"}: one minus the residual sum of squares over the total sum of
+squares. It is \code{NA} when the true values are constant or fewer than two
+values have an estimate.
+}
 }
 \examples{
 set.seed(1234)

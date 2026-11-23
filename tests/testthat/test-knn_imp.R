@@ -1,3 +1,5 @@
+skip_on_cran()
+
 test_that("`impute_knn_brute` calculate the missing location correctly", {
   set.seed(1234)
   to_test <- sim_mat(20, 50, perc_total_na = 0.5, perc_col_na = 1)$input
@@ -26,8 +28,11 @@ test_that("`impute_knn_brute` calculate the missing location correctly", {
     cores = 1
   )
 
-  # extract only the location columns (row, local_col_1based) that the C++ already returns
-  idx_brute <- imputed_brute[, 1:2, drop = FALSE]
+  # the (row, local 1-based column) of each missing cell, as the C++ returns
+  # it: with no dimnames, which knn_imp() sets in R (an Rcpp dimnames
+  # assignment is an rchk error in Rcpp's own header)
+  idx_brute <- imputed_brute$loc
+  expect_null(dimnames(idx_brute))
 
   # sort so the comparison is order-independent
   expected_sorted <- expected_local[
@@ -35,13 +40,14 @@ test_that("`impute_knn_brute` calculate the missing location correctly", {
     ,
     drop = FALSE
   ]
-  brute_sorted <- idx_brute[
+  brute_sorted <- unname(idx_brute[
     order(idx_brute[, 1], idx_brute[, 2]),
     ,
     drop = FALSE
-  ]
+  ])
 
-  expect_equal(brute_sorted, expected_sorted)
+  # both integer matrices, so the comparison is exact
+  expect_identical(brute_sorted, expected_sorted)
 })
 
 test_that("knn_imp fills every missing cell and touches nothing else", {
@@ -56,22 +62,24 @@ test_that("knn_imp fills every missing cell and touches nothing else", {
   expect_identical(r[,][!na_cells], obj[!na_cells])
 })
 
-# The comparison against impute::impute.knn lives in dev/probe_impute_knn.R,
+# The comparison against impute::impute.knn lives in dev/check_impute_knn.R,
 # not here. `impute` is a Bioconductor package and is not in Suggests, so a
 # `impute::` call anywhere under tests/ makes R CMD check report an unstated
 # dependency even when it is guarded by skips. The script asserts the same
-# thing the test would: knn_imp() agrees with impute.knn to 2.2e-16 absolute
-# and 4.5e-16 relative on a 100 x 100 matrix, at k = 3 and k = 10. Run it with
-# `Rscript dev/probe_impute_knn.R` after touching the neighbor search.
+# thing the test would: knn_imp() agrees with impute.knn within 1e-12, absolute
+# and relative, on a 100 x 100 matrix, at k = 3 and k = 10 (it measured 2.2e-16
+# and 4.5e-16). Run it with
+# `Rscript dev/check_impute_knn.R` after touching the neighbor search.
 
 test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   set.seed(1234)
   to_test <- sim_mat(20, 50, perc_total_na = 0.2, perc_col_na = 1)$input
-  # Impute just 3 columns
+  # Impute just 3 columns; the result holds only them
   ## Check subset using numeric index
   r1 <- knn_imp(to_test, k = 3, post_imp = FALSE, subset = c(1, 3, 5))
-  expect_true(!anyNA(r1[, c(1, 3, 5)]))
-  expect_equal(is.na(r1[, -c(1, 3, 5)]), is.na(to_test[, -c(1, 3, 5)]))
+  expect_identical(colnames(r1), colnames(to_test)[c(1, 3, 5)])
+  expect_true(anyNA(to_test[, c(1, 3, 5)]))
+  expect_true(!anyNA(r1))
   ## Check subset using character vector
   r2 <- knn_imp(
     to_test,
@@ -86,12 +94,12 @@ test_that("`subset` feature of `knn_imp` works with post_imp = FALSE/TRUE", {
   # Column 5 will be colMeans if post_imp is TRUE
   to_test_post[2:nrow(to_test_post), 5] <- NA
   r3 <- knn_imp(to_test_post, k = 3, post_imp = TRUE, subset = c(1, 3, 5))
-  expect_true(!anyNA(r3[, c(1, 3, 5)]))
-  # Expect that only the subset columns are imputed. The rests are untouched
-  expect_equal(is.na(r3[, -c(1, 3, 5)]), is.na(to_test_post[, -c(1, 3, 5)]))
-  # Verify post_imp on column 5
+  expect_identical(colnames(r3), colnames(to_test)[c(1, 3, 5)])
+  expect_true(!anyNA(r3))
+  # Verify post_imp on column 5, the result's third column
   col5_mean <- mean(to_test_post[, 5], na.rm = TRUE)
-  expect_equal(unname(r3[, 5]), rep(col5_mean, nrow(to_test_post)))
+  expect_worst_err(unname(r3[, 3]), rep(col5_mean, nrow(to_test_post)))
+  expect_identical(attr(r3, "mean_filled_cols"), 3L)
   r4 <- knn_imp(
     to_test_post,
     k = 3,
@@ -110,12 +118,20 @@ test_that("Behavior with extreme missing columns and rows", {
   expect_true(!anyNA(knn_imp(to_test, k = 3, post_imp = TRUE)))
 
   to_test[, 1] <- NA
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "All NA/NaN")
+  expect_error(
+    knn_imp(to_test, k = 3, post_imp = FALSE),
+    "holds infinite values or columns with no observed value",
+    fixed = TRUE
+  )
 
   # not admissible
   mat <- matrix(NA, nrow = 20, ncol = 20)
   diag(mat) <- rnorm(20)
-  expect_error(knn_imp(mat, k = 2), "exceeds usable columns")
+  expect_error(
+    knn_imp(mat, k = 2),
+    "must be below the number of usable columns",
+    fixed = TRUE
+  )
 })
 
 test_that("colmax is inclusive: a column exactly at colmax is eligible", {
@@ -155,8 +171,7 @@ test_that("neighbors sharing no observed row with the target are dropped", {
       k = 2,
       dist_pow = dp,
       subset = 1,
-      post_imp = FALSE,
-      na_check = FALSE
+      post_imp = FALSE
     )
     got <- unname(r[5:8, 1])
     want <- dup[5:8]
@@ -173,8 +188,7 @@ test_that("neighbors sharing no observed row with the target are dropped", {
     obj2,
     k = 2,
     subset = 1,
-    post_imp = FALSE,
-    na_check = FALSE
+    post_imp = FALSE
   )
   expect_true(all(is.na(r2[5:8, 1])))
   expect_equal(unname(r2[1:4, 1]), target[1:4])
@@ -284,8 +298,7 @@ test_that("the documented weighting rule reproduces the kernel", {
           method = m,
           dist_pow = dp,
           subset = 1,
-          post_imp = FALSE,
-          na_check = FALSE
+          post_imp = FALSE
         )
         want <- knn_ref(
           obj,
@@ -309,8 +322,7 @@ test_that("the documented weighting rule reproduces the kernel", {
           method = "euclidean",
           dist_pow = dp,
           subset = 1,
-          post_imp = FALSE,
-          na_check = FALSE
+          post_imp = FALSE
         )[miss_rows, 1]
       )
       expect_close(got, knn_ref(obj, 1L, miss_rows, k, d_rooted, 2 * dp))
@@ -324,27 +336,104 @@ test_that("the documented weighting rule reproduces the kernel", {
   }
 })
 
+test_that("tied neighbors are settled by scan order, not by the library sort", {
+  # Regression test. The fill phase of distance_vector_impl() used to order
+  # its first k candidates with std::sort, which leaves equal distances in an
+  # order of the library's choosing, and a closer candidate then evicts the
+  # LAST entry - so the library decided which of several tied neighbors was
+  # dropped. libstdc++ insertion-sorts up to 16 elements, which keeps ties in
+  # order, so the bug showed only from k = 17, where it evicted tied
+  # candidates from the front of the run. The rule is first-encountered wins,
+  # in the kernel's scan order: complete columns, then columns with missing
+  # values, each in column order. knn_ref() above breaks ties by column order
+  # instead, and agrees with the kernel only because its rnorm data has none.
+  #
+  # Column 1 is the target, missing at row 1 only. The first k candidates in
+  # scan order are the target plus a +-1 pattern on its observed rows, at
+  # distance exactly 1 under both metrics; the n_closer after them use +-1/2
+  # and each evicts one tied candidate. Candidate column j holds 2^(j - 2) at
+  # row 1, so with dist_pow = 0 the imputed value times k is a sum of distinct
+  # powers of two, one per chosen neighbor: the set can be read back from it.
+  # Every sum here is of integers below 2^53, so both sides are exact.
+  n_obs <- 8L
+  n_closer <- 4L
+  ks <- c(5L, 17L, 32L)
+  # k > 16 is where libstdc++'s std::sort stops keeping ties in order
+  expect_gt(max(ks), 16L)
+
+  for (layout in c("complete", "masked", "mixed")) {
+    for (k in ks) {
+      m <- k + n_closer
+      kind <- switch(
+        layout,
+        complete = rep("c", m),
+        masked = rep("m", m),
+        # complete and incomplete alternate, so scan order is not column order
+        mixed = c(rep_len(c("c", "m"), k), rep("m", n_closer))
+      )
+      set.seed(k)
+      t_obs <- sample(-5:5, n_obs, replace = TRUE)
+      sgn <- matrix(sample(c(-1, 1), n_obs * m, replace = TRUE), n_obs, m)
+      step <- rep(c(1, 0.5), c(k, n_closer))
+      cand <- t_obs + sweep(sgn, 2, step, "*")
+      for (j in which(kind == "m")) {
+        cand[1L + j %% n_obs, j] <- NA # in a row the target observes
+      }
+      obj <- unname(rbind(c(NA, 2^(seq_len(m) - 1)), cbind(t_obs, cand)))
+
+      # the case is the one it claims: every fill candidate is tied, every
+      # candidate after the fill is strictly closer, and evictions happen
+      gap <- abs(cand - t_obs)
+      expect_true(all(gap[, step == 1] == 1, na.rm = TRUE))
+      expect_true(all(gap[, step < 1] == 0.5, na.rm = TRUE))
+      cols <- seq_len(m) + 1L
+      scan <- c(cols[kind == "c"], cols[kind == "m"])
+      tied <- scan[seq_len(k)]
+      expect_identical(sort(tied), cols[step == 1])
+
+      # the last n_closer tied candidates in scan order are the ones evicted
+      closer <- cols[step < 1]
+      want_nn <- sort(c(tied[seq_len(k - n_closer)], closer))
+      want <- sum(obj[1L, want_nn]) / k
+      # and any other eviction is detectable - here, evicting the first ones
+      wrong_nn <- c(tied[-seq_len(n_closer)], closer)
+      expect_gt(abs(sum(obj[1L, wrong_nn]) / k - want), 0.5)
+
+      for (method in c("euclidean", "manhattan")) {
+        r <- knn_imp(
+          obj,
+          k = k,
+          method = method,
+          dist_pow = 0,
+          subset = 1,
+          post_imp = FALSE
+        )
+        got <- unname(r[1L, 1L])
+        expect_close(got, want)
+        s <- round(got * k)
+        got_nn <- cols[floor(s / 2^(seq_len(m) - 1)) %% 2 == 1]
+        expect_identical(got_nn, want_nn, info = paste(layout, k, method))
+      }
+    }
+  }
+})
+
 test_that("the parallel path gives the same answer as the serial one", {
   # par_for() (src/par_for.h) runs the loop body inline at one thread and
   # through RcppThread's pool above that, so the two have to agree. Each
   # column is computed independently in either case, so the arithmetic per
   # column is the same sequence of operations: within one process that makes
-  # identical() the right comparator.
+  # identical() the right comparator. Two cores already take the pool branch
+  # (`n_threads <= 1` is the inline one), and are all a CRAN machine allows.
   set.seed(31415)
   obj <- sim_mat(60, 40, perc_total_na = 0.15, perc_col_na = 1)$input
   expect_gt(sum(is.na(obj)), 0L)
 
   for (dp in c(0, 1)) {
-    r1 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 1, na_check = FALSE)
-    r2 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 4, na_check = FALSE)
+    r1 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 1)
+    r2 <- knn_imp(obj, k = 5, dist_pow = dp, cores = 2)
     expect_identical(r1, r2)
   }
-
-  expect_identical(col_vars(obj, cores = 1), col_vars(obj, cores = 4))
-  expect_identical(
-    mean_imp_col(obj, cores = 1),
-    mean_imp_col(obj, cores = 4)
-  )
 })
 
 test_that("the kernel checks the invariants it relies on", {
@@ -366,32 +455,161 @@ test_that("the kernel checks the invariants it relies on", {
     cores = 1L
   )
   # the call is well formed as written, so the failures below are the inputs
-  expect_no_error(do.call(impute_knn_brute, base))
+  ok <- do.call(impute_knn_brute, base)
+  expect_identical(ok$loc, cbind(3:6, 1L))
+  expect_type(ok$value, "double")
+  expect_false(anyNA(ok$value))
+  expect_identical(ok$left, integer(0))
+
+  # an index outside the matrix, NA included, is refused before it is read
+  for (bad in list(-1L, 5L, NA_integer_)) {
+    out <- base
+    out$grp_complete <- c(1:3, bad)
+    expect_error(
+      do.call(impute_knn_brute, out),
+      "outside the columns of",
+      fixed = TRUE
+    )
+  }
+  for (bad in list(0L, NA_integer_)) {
+    out <- base
+    out$k <- bad
+    expect_error(
+      do.call(impute_knn_brute, out),
+      "'k' must be >= 1",
+      fixed = TRUE
+    )
+  }
 
   # a column claimed by two groups would be its own neighbor at distance zero
   overlap <- base
   overlap$grp_complete <- 0:3
-  expect_error(do.call(impute_knn_brute, overlap), "disjoint")
+  expect_error(do.call(impute_knn_brute, overlap), "disjoint", fixed = TRUE)
 
   # group 3 is read unmasked, so a missing value there is never excluded
   nan_complete <- base
   nan_complete$obj[2, 3] <- NA
-  expect_error(do.call(impute_knn_brute, nan_complete), "fully observed")
+  expect_error(
+    do.call(impute_knn_brute, nan_complete),
+    "fully observed",
+    fixed = TRUE
+  )
 
   # a target with no observed row overlaps nothing, so it has no neighbors
   # and its cells stay missing rather than being filled from a NaN distance
   all_na <- base
   all_na$obj[, 1] <- NA
   r <- do.call(impute_knn_brute, all_na)
-  expect_identical(nrow(r), nrow(obj))
-  expect_true(all(is.na(r[, 3])))
+  expect_identical(nrow(r$loc), nrow(obj))
+  # R's NA, written by the kernel, not a NaN for R to convert
+  expect_identical(r$value, rep(NA_real_, nrow(obj)))
+  expect_identical(r$left, seq_len(nrow(obj)))
+  # and it has no mean to fall back on, so fill_mean refuses it
+  all_na$fill_mean <- TRUE
+  expect_error(
+    do.call(impute_knn_brute, all_na),
+    "'grp_impute' column 1 has no observed value",
+    fixed = TRUE
+  )
+})
+
+# An input with both ways K-NN leaves a cell, in a 12 x 6 matrix:
+# - column 1 is observed in rows 1:4 only, and every other column is missing
+#   in rows 1:4, so no candidate shares an observed row with it: K-NN leaves
+#   the whole column, rows 5:12.
+# - column 2 is missing in rows 1:4 and 10. Its neighbors come from columns
+#   3 to 6 (column 1 shares no observed row with it either), and all of them
+#   are missing in rows 1:4, so no chosen neighbor is observed there: K-NN
+#   leaves those four cells and fills row 10.
+leftover_input <- function() {
+  set.seed(77)
+  n <- 12
+  obj <- matrix(rnorm(n * 6), n, 6)
+  obj[5:n, 1] <- NA
+  obj[1:4, 2:6] <- NA
+  obj[10, 2] <- NA
+  obj
+}
+# the cells K-NN leaves in columns 1 and 2, in column-major order
+leftover_cells <- cbind(row = c(5:12, 1:4), col = rep(1:2, c(8L, 4L)))
+
+test_that("fill_mean sets each cell K-NN leaves to its column's observed mean", {
+  obj <- leftover_input()
+  grp <- list(
+    obj = obj,
+    k = 2,
+    grp_impute = 0:1,
+    grp_miss_no_imp = 2:5,
+    grp_complete = integer(0),
+    method = 0L,
+    dist_pow = 0,
+    cores = 1L
+  )
+  off <- do.call(impute_knn_brute, grp)
+  on <- do.call(impute_knn_brute, c(grp, fill_mean = TRUE))
+
+  # both kinds of leftover are present: all of column 1, and rows 1:4 of
+  # column 2, whose row 10 is filled
+  left_cells <- off$loc[off$left, , drop = FALSE]
+  expect_identical(left_cells, unname(leftover_cells))
+  expect_false(is.na(off$value[
+    off$loc[, 1L] == 10L & off$loc[, 2L] == 2L
+  ]))
+  # the left rows are the NaN rows without fill_mean, and the same with it
+  expect_identical(off$left, which(is.na(off$value)))
+  expect_identical(on$left, off$left)
+  expect_identical(on$loc, off$loc)
+  # every other cell keeps its K-NN value, bit for bit
+  expect_identical(on$value[-on$left], off$value[-off$left])
+  expect_false(anyNA(on$value))
+
+  # the left cells hold .colMeans() of their column's observed values. The
+  # kernel sums in double, .colMeans() in long double, so they may differ in
+  # the last bits: asserted on a tolerance, bitwise reported.
+  got <- on$value[on$left]
+  want <- .colMeans(obj, nrow(obj), ncol(obj), na.rm = TRUE)[left_cells[, 2]]
+  expect_length(got, 12L)
+  abs_err <- max(abs(got - want))
+  rel_err <- max(abs(got - want) / abs(want))
+  message(sprintf(
+    "fill_mean against .colMeans(): abs %.3g, rel %.3g, bitwise %s",
+    abs_err,
+    rel_err,
+    identical(got, want)
+  ))
+  expect_lte(abs_err, 1e-14)
+  expect_lte(rel_err, 1e-13)
+})
+
+test_that("post_imp fills a cell K-NN leaves with the mean of observed values", {
+  # The mean is over the column's observed values only, not over the column
+  # as K-NN left it: row 10 of column 2 is a K-NN value, and it is not in the
+  # mean that fills rows 1:4.
+  obj <- leftover_input()
+  r_on <- knn_imp(obj, k = 2, post_imp = TRUE, subset = 1:2)
+  r_off <- knn_imp(obj, k = 2, post_imp = FALSE, subset = 1:2)
+  expect_true(all(is.na(r_off[1:4, 2])))
+  expect_false(is.na(r_off[10, 2]))
+  observed_mean <- mean(obj[, 2], na.rm = TRUE)
+  with_imputed <- mean(r_off[5:12, 2])
+  # the two means differ, so the test can tell them apart
+  expect_gt(abs(observed_mean - with_imputed), 1e-3)
+  got <- r_on[1:4, 2]
+  abs_err <- max(abs(got - observed_mean))
+  rel_err <- abs_err / abs(observed_mean)
+  expect_lte(abs_err, 1e-14)
+  expect_lte(rel_err, 1e-13)
+  # and every left cell is recorded, which are the NA cells without post_imp
+  expect_identical(attr(r_on, "mean_filled_cells"), leftover_cells)
+  still_na <- which(is.na(r_off), arr.ind = TRUE)
+  expect_identical(unname(still_na), unname(leftover_cells))
 })
 
 test_that("post_imp fills columns K-NN could not finish", {
-  # The two ways a subset column can still be missing after the kernel, which
-  # are the two terms knn_imp() uses to decide whether mean_imp_col() has any
-  # work: a column held out by colmax, and a column with no overlapping
-  # candidate. Both must end up at their column mean.
+  # The two ways a subset column can still be missing after K-NN: a column
+  # held out by colmax, which a mean part fills, and a column with no
+  # overlapping candidate, which the kernel fills itself. Both must end up at
+  # their column mean.
   set.seed(606)
   n <- 12
   obj <- matrix(rnorm(n * 5), n, 5)
@@ -400,7 +618,13 @@ test_that("post_imp fills columns K-NN could not finish", {
 
   r <- knn_imp(obj, k = 2, post_imp = TRUE)
   expect_false(anyNA(r[,]))
-  expect_equal(unname(r[2:n, 2]), rep(obj[1, 2], n - 1L))
+  # the mean of one observed value: measured bitwise equal
+  expect_worst_err(
+    unname(r[2:n, 2]),
+    rep(obj[1, 2], n - 1L),
+    abs_tol = 1e-14,
+    rel_tol = 1e-13
+  )
   expect_false(anyNA(r[1:6, 3]))
 
   # a target that overlaps no candidate: K-NN leaves it, post_imp fills it
@@ -411,9 +635,91 @@ test_that("post_imp fills columns K-NN could not finish", {
   obj2 <- cbind(target, disjoint, disjoint + 1, disjoint + 2)
   r2 <- knn_imp(obj2, k = 2, subset = 1, post_imp = TRUE)
   expect_false(anyNA(r2[, 1]))
-  expect_equal(unname(r2[7:n, 1]), rep(mean(target[1:6]), n - 6L))
-  # the untargeted columns keep their missingness
-  expect_equal(is.na(r2[, -1]), is.na(obj2[, -1]))
+  # measured at 6.9e-17 absolute and 6.1e-16 relative
+  expect_worst_err(
+    unname(r2[7:n, 1]),
+    rep(mean(target[1:6]), n - 6L),
+    abs_tol = 1e-14,
+    rel_tol = 1e-13
+  )
+  # the result holds the subset column only
+  expect_identical(dim(r2), c(12L, 1L))
+  expect_identical(colnames(r2), "target")
+})
+
+test_that("knn_imp records what post_imp set to a column mean", {
+  set.seed(606)
+  n <- 12
+  obj <- matrix(rnorm(n * 6), n, 6)
+  obj[2:n, 2] <- NA # miss_rate 11/12 = 0.917, above the default colmax
+  obj[1:6, 3] <- NA # ordinary missingness, K-NN handles rows 2:6
+  # row 1 is missing in every column K-NN may use, so no neighbor has a value
+  # there and K-NN leaves the cell in each of them
+  obj[1, c(1, 3, 4, 5, 6)] <- NA
+  no_cells <- cbind(row = integer(0), col = integer(0))
+  left_cells <- cbind(row = rep(1L, 5L), col = c(1L, 3L, 4L, 5L, 6L))
+
+  r <- knn_imp(obj, k = 2, post_imp = TRUE)
+  expect_false(anyNA(r[,]))
+  expect_identical(attr(r, "mean_filled_cols"), 2L)
+  expect_identical(attr(r, "mean_filled_cells"), left_cells)
+
+  # the record is exactly what K-NN did not fill: without post_imp, those
+  # cells and that column are the only missing values left
+  r_off <- knn_imp(obj, k = 2, post_imp = FALSE)
+  still_na <- which(is.na(r_off[,]), arr.ind = TRUE)
+  expected_na <- rbind(left_cells, cbind(row = 2:n, col = 2L))
+  expect_identical(
+    unname(still_na[order(still_na[, "col"], still_na[, "row"]), ]),
+    unname(expected_na[order(expected_na[, "col"], expected_na[, "row"]), ])
+  )
+  expect_identical(attr(r_off, "mean_filled_cols"), integer(0))
+  expect_identical(attr(r_off, "mean_filled_cells"), no_cells)
+  # rows 2:6 of column 3 are K-NN values, and are not in the record
+  expect_false(anyNA(r_off[2:6, 3]))
+
+  # the values are column means, over the column's observed values only: for
+  # a cell K-NN left, not over the column as K-NN left it. Every left cell is
+  # checked; measured bitwise equal in column 2 (one observed value), and at
+  # 1.1e-16 absolute and 1.8e-16 relative over the five left cells.
+  expect_worst_err(
+    unname(r[2:n, 2]),
+    rep(obj[1, 2], n - 1L),
+    abs_tol = 1e-14,
+    rel_tol = 1e-13
+  )
+  left_cols <- left_cells[, "col"]
+  expect_worst_err(
+    unname(r[1, left_cols]),
+    vapply(left_cols, function(j) mean(obj[, j], na.rm = TRUE), numeric(1)),
+    abs_tol = 1e-14,
+    rel_tol = 1e-13
+  )
+  expect_gt(abs(r[1, 3] - mean(r_off[2:n, 3])), 1e-6)
+
+  # only `subset` columns are filled, so only they are recorded, numbered as
+  # the result's columns: input column 3 is the result's column 2
+  r_sub <- knn_imp(obj, k = 2, subset = c(1, 3), post_imp = TRUE)
+  expect_identical(attr(r_sub, "mean_filled_cols"), integer(0))
+  expect_identical(
+    attr(r_sub, "mean_filled_cells"),
+    cbind(row = c(1L, 1L), col = c(1L, 2L))
+  )
+  r_sub2 <- knn_imp(obj, k = 2, subset = c(2, 4), post_imp = TRUE)
+  expect_identical(attr(r_sub2, "mean_filled_cols"), 1L)
+  expect_identical(
+    attr(r_sub2, "mean_filled_cells"),
+    cbind(row = 1L, col = 2L)
+  )
+
+  # an early return fills nothing and still carries both attributes: without
+  # row 1, columns 1 and 4 have no hole. Column 2 goes too, since row 1 is
+  # its only observed value; input column 4 is then column 3.
+  sub <- obj[-1, -2]
+  expect_false(anyNA(sub[, c(1, 3)]))
+  r_early <- suppressMessages(knn_imp(sub, k = 2, subset = c(1, 3)))
+  expect_identical(attr(r_early, "mean_filled_cols"), integer(0))
+  expect_identical(attr(r_early, "mean_filled_cells"), no_cells)
 })
 
 test_that("early returns carry the slideimp_results class", {
@@ -421,35 +727,48 @@ test_that("early returns carry the slideimp_results class", {
   obj <- matrix(rnorm(40), nrow = 10)
   obj[2, 4] <- NA
 
-  # Empty subset: resolve_subset() reports it, and knn_imp must not repeat it.
-  msgs <- testthat::capture_messages(
-    r1 <- knn_imp(obj, k = 2, subset = integer(0))
-  )
+  # An input with no hole at all.
+  full <- obj
+  full[2, 4] <- 0
+  msgs <- testthat::capture_messages(r1 <- knn_imp(full, k = 2))
   expect_length(msgs, 1L)
-  expect_match(msgs, "No features")
+  expect_match(
+    msgs,
+    "No missing values in input",
+    fixed = TRUE
+  )
   expect_s3_class(r1, "slideimp_results")
   expect_identical(attr(r1, "imp_method"), "knn")
   expect_identical(attr(r1, "fallback"), FALSE)
-  expect_equal(r1[,, drop = FALSE], obj)
+  expect_equal(r1[,, drop = FALSE], full)
 
-  # Subset with nothing missing in it.
+  # Subset with nothing missing in it: those columns come back, unchanged.
   msgs2 <- testthat::capture_messages(
     r2 <- knn_imp(obj, k = 2, subset = 1:3)
   )
   expect_length(msgs2, 1L)
-  expect_match(msgs2, "No missing values in subset columns")
+  expect_match(
+    msgs2,
+    "No missing values in the `subset` columns. Returning them unchanged.",
+    fixed = TRUE
+  )
   expect_s3_class(r2, "slideimp_results")
-  expect_equal(r2[,, drop = FALSE], obj)
+  expect_equal(r2[,, drop = FALSE], obj[, 1:3])
 
-  # na_check decides whether the NA accounting is done, on every return path.
-  expect_false(is.null(attr(r2, "has_remaining_na")))
-  r3 <- suppressMessages(knn_imp(obj, k = 2, subset = 1:3, na_check = FALSE))
-  expect_null(attr(r3, "has_remaining_na"))
-
-  # The class does not depend on which path the data takes.
+  # The class and attributes do not depend on which path the data takes,
+  # except the dims, which follow `subset`.
   r_main <- knn_imp(obj, k = 2, subset = 4)
+  expect_identical(dim(r2), c(10L, 3L))
+  expect_identical(dim(r_main), c(10L, 1L))
+  no_dim <- function(x) {
+    a <- attributes(x)
+    a$dim <- NULL
+    a
+  }
   expect_identical(class(r1), class(r_main))
   expect_identical(class(r2), class(r_main))
+  expect_identical(no_dim(r1), no_dim(r_main))
+  expect_identical(no_dim(r2), no_dim(r_main))
 })
 
 test_that("dist_pow is validated by name before it reaches C++", {
@@ -471,7 +790,39 @@ test_that("Throw on Inf", {
   set.seed(1234)
   to_test <- sim_mat(20, 20, perc_total_na = 0.2, perc_col_na = 1)$input
   to_test[1, 1] <- Inf
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
+  expect_error(
+    knn_imp(to_test, k = 3, post_imp = FALSE),
+    "holds infinite values or columns with no observed value",
+    fixed = TRUE
+  )
   to_test[1, 1] <- -Inf
-  expect_error(knn_imp(to_test, k = 3, post_imp = FALSE), "Infinite")
+  expect_error(
+    knn_imp(to_test, k = 3, post_imp = FALSE),
+    "holds infinite values or columns with no observed value",
+    fixed = TRUE
+  )
+})
+
+test_that("knn_imp() takes unnamed input", {
+  obj <- knn_left_input()
+  out <- knn_imp(unname(obj), k = 1)
+  expect_null(dimnames(out))
+  expect_identical(bare_knn(out), unname(bare_knn(knn_imp(obj, k = 1))))
+})
+
+test_that("knn_imp: slideimp_infeasible class is set on both abort sites", {
+  # Site 1: k > n_elig - 1
+  mat <- matrix(NA_real_, nrow = 20, ncol = 20)
+  diag(mat) <- rnorm(20)
+  expect_error(knn_imp(mat, k = 2), class = "slideimp_infeasible")
+
+  # Site 2: all subset cols exceed colmax
+  set.seed(1)
+  mat2 <- matrix(rnorm(400), 20, 20)
+  mat2[1:19, 1:5] <- NA
+  mat2[20, ] <- rnorm(20)
+  expect_error(
+    knn_imp(mat2, k = 3, colmax = 0.5, subset = 1:5),
+    class = "slideimp_infeasible"
+  )
 })

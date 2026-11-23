@@ -1,288 +1,129 @@
-#include <RcppArmadillo.h>
-#include <RcppThread.h>
+#include <Rcpp.h>
 
 #include "matrix_checks.h"
-#include "par_for.h"
 
-#include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <string>
-#include <vector>
 
+// The column scan: everything the entry points read off their input, in one pass
+// over the columns `cols` (0-based, in the order the results come back) of a
+// double matrix, read in place. Indices and offsets follow
+// src/matrix_checks.h.
+//
+// Per column read: the missing count (NA and NaN), whether it holds Inf or
+// -Inf, and, with `want_var`, the sample variance by Welford's update. Inf
+// is not missing: it enters the arithmetic, so a column holding one has
+// variance NaN, as in base R, and a column with fewer than two observed
+// values has variance NA. With `want_rows`, the missing count of each row
+// over the columns read. With `tails`, a pair (below, above), the count of
+// each column's cells below `below` and above `above`; NA and NaN are in
+// neither, as with colSums(obj < below, na.rm = TRUE).
+//
+// The tail counts take a loop of their own over each column, right after the
+// column's scan loop, so the column is read again from cache, and the
+// scan loops keep no branch for them.
+//
+// It counts and never refuses: each caller applies its own policy in R
+// (R/col_scan.R). A matrix that is not double is refused, not converted, since
+// converting it would copy it.
 // [[Rcpp::export]]
-arma::mat col_min_max(const arma::mat &mat)
-{
-  // internal helper only, guaranteed no NA/Inf/NaN
-  const arma::uword p = mat.n_cols;
-  arma::mat out(2, p); // row 0 = min, row 1 = max
-  for (arma::uword j = 0; j < p; ++j)
-  {
-    out(0, j) = mat.col(j).min();
-    out(1, j) = mat.col(j).max();
+Rcpp::List col_scan_cpp(SEXP obj, const Rcpp::IntegerVector &cols,
+                        const bool want_var, const bool want_rows,
+                        const Rcpp::NumericVector &tails) {
+  if (TYPEOF(obj) != REALSXP || !Rf_isMatrix(obj)) {
+    Rcpp::stop("internal error: col_scan_cpp() takes a double matrix");
   }
-  return out;
-}
+  const R_xlen_t n_tails = tails.size();
+  if (n_tails != 0 && n_tails != 2) {
+    Rcpp::stop("internal error: col_scan_cpp() takes no tails or two");
+  }
+  const bool want_tails = n_tails == 2;
+  const double below = want_tails ? tails[0] : 0.0;
+  const double above = want_tails ? tails[1] : 0.0;
+  const Rcpp::NumericMatrix x(obj);
+  stop_on_bad_col_index(cols, x.ncol(), "cols");
+  const std::size_t n_rows = static_cast<std::size_t>(x.nrow());
+  const R_xlen_t n_read = cols.size();
 
-// [[Rcpp::export]]
-arma::rowvec col_vars_internal(const arma::mat &mat, int cores = 1)
-{
-  arma::rowvec out(mat.n_cols);
+  Rcpp::IntegerVector n_miss(Rcpp::no_init(n_read));
+  Rcpp::LogicalVector has_inf(Rcpp::no_init(n_read));
+  Rcpp::NumericVector var(Rcpp::no_init(want_var ? n_read : 0));
+  Rcpp::IntegerVector row_miss(want_rows ? x.nrow() : 0); // zero-filled
+  Rcpp::IntegerVector n_below(Rcpp::no_init(want_tails ? n_read : 0));
+  Rcpp::IntegerVector n_above(Rcpp::no_init(want_tails ? n_read : 0));
 
-  // parallelFor setup
-  cores = std::max(1, cores);
-  const size_t n_threads = static_cast<size_t>(cores);
-  const size_t n_cols = static_cast<size_t>(mat.n_cols);
+  const double *base = x.begin();
+  int *nm = n_miss.begin();
+  int *hi = has_inf.begin();
+  double *vo = var.begin();
+  int *rm = row_miss.begin();
+  int *n_lo = n_below.begin();
+  int *n_up = n_above.begin();
 
-  par_for(
-      0,
-      n_cols,
-      [&](size_t kk)
-      {
-        const arma::uword k = static_cast<arma::uword>(kk);
-        const double *col = mat.colptr(k);
+  for (R_xlen_t k = 0; k < n_read; ++k) {
+    const double *col =
+        col_ptr(base, static_cast<std::size_t>(cols[k]), n_rows);
 
-        double mean = 0.0;
-        double mean2 = 0.0;
-        arma::uword n = 0;
+    bool inf = false;
 
-        for (arma::uword i = 0; i < mat.n_rows; ++i)
-        {
-          const double x = col[i];
-
-          // missingness is NA/NaN.
-          // Inf/-Inf are not treated as missing; they enter the arithmetic.
-          // This gives R-like behavior: variance involving Inf can become NaN.
-          if (!std::isnan(x))
-          {
-            ++n;
-
-            const double delta = x - mean;
-            mean += delta / static_cast<double>(n);
-
-            const double delta2 = x - mean;
-            mean2 += delta * delta2;
+    if (want_var) {
+      std::size_t n = 0;
+      double mean = 0.0;
+      double mean2 = 0.0;
+      for (std::size_t i = 0; i < n_rows; ++i) {
+        const double v = col[i];
+        if (std::isnan(v)) {
+          if (want_rows) {
+            ++rm[i];
           }
+          continue;
         }
-
-        // return NaN when fewer than two non-missing observations are available.
-        out(k) = (n < 2) ? NA_REAL : mean2 / static_cast<double>(n - 1);
-      },
-      n_threads);
-
-  return out;
-}
-
-// [[Rcpp::export]]
-arma::mat mean_imp_col_internal(const arma::mat &mat,
-                                const arma::uvec &col_idx,
-                                int cores = 1)
-{
-  if (col_idx.n_elem > 0 && col_idx.max() >= mat.n_cols)
-  {
-    Rcpp::stop("`col_idx` out of bounds");
-  }
-
-  std::vector<uint8_t> needs_imp(mat.n_cols, 0);
-
-  for (arma::uword i = 0; i < col_idx.n_elem; ++i)
-  {
-    needs_imp[col_idx(i)] = 1;
-  }
-
-  const arma::uword n_rows = mat.n_rows;
-
-  // validate selected columns before parallel work.
-  // NA/NaN are allowed because they are the values to impute.
-  // Inf/-Inf are treated as invalid observed values.
-  for (arma::uword c = 0; c < mat.n_cols; ++c)
-  {
-    if (!needs_imp[c])
-      continue;
-
-    const double *ptr = mat.colptr(c);
-
-    for (arma::uword i = 0; i < n_rows; ++i)
-    {
-      if (std::isinf(ptr[i]))
-      {
-        Rcpp::stop(
-            "Infinite value found in column %d, row %d. "
-            "Mean imputation requires finite observed values.",
-            static_cast<int>(c + 1),
-            static_cast<int>(i + 1));
+        ++n;
+        inf = inf || std::isinf(v);
+        const double delta = v - mean;
+        mean += delta / static_cast<double>(n);
+        const double delta2 = v - mean;
+        mean2 += delta * delta2;
       }
-    }
-  }
-
-  arma::mat out(n_rows, mat.n_cols, arma::fill::none);
-
-  cores = std::max(1, cores);
-  const size_t n_threads = static_cast<size_t>(cores);
-  const size_t n_cols = static_cast<size_t>(mat.n_cols);
-  const size_t col_bytes = static_cast<size_t>(n_rows) * sizeof(double);
-
-  par_for(
-      0,
-      n_cols,
-      [&](size_t cc)
-      {
-        const arma::uword c = static_cast<arma::uword>(cc);
-
-        const double *in_ptr = mat.colptr(c);
-        double *out_ptr = out.colptr(c);
-
-        if (!needs_imp[c])
-        {
-          std::memcpy(out_ptr, in_ptr, col_bytes);
-          return;
+      nm[k] = static_cast<int>(n_rows - n);
+      vo[k] = (n < 2) ? NA_REAL : mean2 / static_cast<double>(n - 1);
+    } else {
+      // Counting alone takes no branch on a hole. With one, a matrix whose
+      // holes are scattered counted slower than this loop does.
+      int miss = 0;
+      for (std::size_t i = 0; i < n_rows; ++i) {
+        const double v = col[i];
+        const int hole = std::isnan(v);
+        miss += hole;
+        inf = inf | std::isinf(v);
+        if (want_rows) {
+          rm[i] += hole;
         }
-
-        double sum = 0.0;
-        arma::uword n = 0;
-
-        for (arma::uword i = 0; i < n_rows; ++i)
-        {
-          const double x = in_ptr[i];
-
-          if (!std::isnan(x))
-          {
-            sum += x;
-            ++n;
-          }
-        }
-
-        if (n == 0 || n == n_rows)
-        {
-          std::memcpy(out_ptr, in_ptr, col_bytes);
-          return;
-        }
-
-        const double mean_val = sum / static_cast<double>(n);
-
-        for (arma::uword i = 0; i < n_rows; ++i)
-        {
-          const double x = in_ptr[i];
-          out_ptr[i] = std::isnan(x) ? mean_val : x;
-        }
-      },
-      n_threads);
-
-  return out;
-}
-
-// Width of an Armadillo index, in bytes. Exists so the test suite can assert
-// that -DARMA_64BIT_WORD=1 survived in src/Makevars: without it arma indices
-// are 32 bits and a matrix past 2^32-1 elements wraps silently rather than
-// erroring. Nothing else calls this.
-// [[Rcpp::export]]
-int arma_uword_bytes()
-{
-  return static_cast<int>(sizeof(arma::uword));
-}
-
-// Inf/-Inf only. For callers that reject infinities but legitimately accept a
-// column with no observed value: `mean_imp_col()` leaves such columns
-// untouched by design, and `sample_na_loc()` reports them through its own
-// variance pre-check.
-// [[Rcpp::export]]
-void check_inf(const arma::mat &mat)
-{
-  stop_on_inf(mat);
-}
-
-// Inf/-Inf and all-NA/NaN columns. The gate for the imputation entry points.
-// [[Rcpp::export]]
-void check_finite(const arma::mat &mat)
-{
-  const arma::uword nr = mat.n_rows;
-  const arma::uword nc = mat.n_cols;
-
-  for (arma::uword col = 0; col < nc; ++col)
-  {
-    const double *cp = mat.colptr(col);
-
-    bool has_finite = false;
-
-    // one pass per column, two refusals:
-    // Inf/-Inf is rejected outright, wherever it appears. A column that ends
-    // the pass with no finite cell holds nothing but NA/NaN and is rejected
-    // too. Inf is checked first, so the second message never has to mention it.
-    for (arma::uword row = 0; row < nr; ++row)
-    {
-      const double x = cp[row];
-
-      if (std::isinf(x))
-      {
-        Rcpp::stop(
-            std::string("Infinite value found at row ") +
-            std::to_string(row + 1) +
-            ", column " +
-            std::to_string(col + 1) +
-            ". Infinite values are not supported.");
       }
+      nm[k] = miss;
+    }
+    hi[k] = inf ? 1 : 0;
 
-      // Inf is already ruled out, so not-NaN means finite here.
-      if (!std::isnan(x))
-      {
-        has_finite = true;
+    if (want_tails) {
+      // a comparison with NaN is false, so a hole counts in neither tail
+      int lo = 0;
+      int up = 0;
+      for (std::size_t i = 0; i < n_rows; ++i) {
+        lo += col[i] < below;
+        up += col[i] > above;
       }
-    }
-
-    if (!has_finite)
-    {
-      Rcpp::stop("All NA/NaN column detected");
-    }
-  }
-}
-
-// [[Rcpp::export]]
-arma::uvec col_miss_internal(const arma::mat &obj)
-{
-  const arma::uword n_rows = obj.n_rows;
-  const arma::uword n_cols = obj.n_cols;
-
-  arma::uvec out(n_cols);
-
-  for (arma::uword j = 0; j < n_cols; ++j)
-  {
-    const double *p = obj.colptr(j);
-
-    arma::uword count = 0;
-
-    for (arma::uword i = 0; i < n_rows; ++i)
-    {
-      // count NA/NaN as missing.
-      // Inf/-Inf are not counted as missing.
-      count += std::isnan(p[i]);
-    }
-
-    out(j) = count;
-  }
-
-  return out;
-}
-
-// [[Rcpp::export]]
-arma::uvec row_miss_internal(const arma::mat &obj)
-{
-  const arma::uword n_rows = obj.n_rows;
-  const arma::uword n_cols = obj.n_cols;
-
-  arma::uvec out(n_rows, arma::fill::zeros);
-  for (arma::uword j = 0; j < n_cols; ++j)
-  {
-    const double *p = obj.colptr(j);
-
-    for (arma::uword i = 0; i < n_rows; ++i)
-    {
-      // count NA/NaN as missing.
-      // Inf/-Inf are not counted as missing.
-      out(i) += std::isnan(p[i]);
+      n_lo[k] = lo;
+      n_up[k] = up;
     }
   }
 
-  return out;
+  return Rcpp::List::create(
+      Rcpp::Named("n_miss") = n_miss, Rcpp::Named("has_inf") = has_inf,
+      Rcpp::Named("var") = want_var ? static_cast<SEXP>(var) : R_NilValue,
+      Rcpp::Named("row_miss") =
+          want_rows ? static_cast<SEXP>(row_miss) : R_NilValue,
+      Rcpp::Named("n_below") =
+          want_tails ? static_cast<SEXP>(n_below) : R_NilValue,
+      Rcpp::Named("n_above") =
+          want_tails ? static_cast<SEXP>(n_above) : R_NilValue);
 }

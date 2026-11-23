@@ -3,7 +3,6 @@
 ^dev$
 ^data-raw$
 ^LICENSE\.md$
-^README\.Rmd$
 ^\.vscode$
 ^\.github$
 ^cran-comments\.md$
@@ -17,6 +16,11 @@
 ^\.positai$
 ^\.claude$
 ^vignettes/articles$
+^vignettes/\.quarto$
 ^[.]?air[.]toml$
-^R/dev-utils\.R$
-^CLAUDE\.md$
+^local$
+^\.clang-format$
+^\.clang-format-ignore$
+^vignettes/.*_files$
+^README\.qmd$
+^scratch$

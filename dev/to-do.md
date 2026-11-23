@@ -1,44 +1,73 @@
 # To do
 
 Work that is agreed on but not yet done. An entry stays here until the change
-lands; then it is deleted, not marked done - git history is the record of what
-happened, this file is the record of what has not.
+lands, and is then deleted, not marked done: git history records what
+happened.
 
 An entry says what to change and why, enough that a session with no memory of
 the conversation can pick it up. If an entry turns out to be wrong, delete it
-and say so in chat.
+and say so in chat. A question that is settled rather than owed goes in
+[DECISIONS.md](DECISIONS.md), not here.
 
-## Hoist the early returns in `knn_imp()` and `pca_imp()`
+## Kernel cleanup
 
-Run `/simplify` over `R/knn_imp.R` and `R/pca_imp.R`, targeting the
-early-return paths.
+Each item is a proposal with a measurement, put to the maintainer before it
+is made; nothing here licenses a hand-rolled kernel (`dev/CPP.md`) or a call
+that R's headers do not declare. `src/Spectra/` is out of scope
+(`dev/vendored.md`). The gate of a change is `dev/gate/eigen_p4_gate.sh`: the
+reference capture against HEAD and the suite, under CRAN's RcppEigen and the
+candidate. The kernels' phase timers profile a release build through
+`bash dev/gate/profile_run.sh <scratch> prep|install|run`.
 
-Both functions bail out early on inputs that need no work - an empty `subset`,
-no missing values in the subset, no missing values at all - and the two
-functions do it differently. `knn_imp()` returns through
-`new_slideimp_results()` on both of its early paths; `pca_imp()` returns a bare
-matrix at `R/pca_imp.R:459-462`, so the class and attributes of its result
-depend on which path the data took. That asymmetry is the thing to remove.
+- **LOBPCG slower than exact on `sim_mat(200, 5000)`.** The eigensolver takes
+  126 ms a call under LOBPCG against 53 ms under the exact solver, 23 outer
+  iterations each; on chr21 it is 14 ms against 29 ms. Not looked into.
 
-What the hoisted form has to preserve:
+## Release condition: pass on the RcppEigen candidate
 
-- **Return the input unchanged, with no copy.** These paths do no imputation,
-  so nothing should touch the matrix. Attaching a class and attributes is a
-  modification under copy-on-modify semantics, and on a 450k-column matrix the
-  duplication is not free. Check whether the constructor can be made to attach
-  in place, or whether the copy is unavoidable and merely needs to be
-  acknowledged; measure with `tracemem()` rather than reasoning about it.
-- **One message per path, through cli.** `resolve_subset()` already reports an
-  empty subset, so the caller must not report it a second time. Every message
-  on these paths goes through `cli::cli_inform()` with inline markup, the same
-  as the rest of the package.
-- **The same class and attributes as the main path.** `slideimp_results` with
-  `imp_method`, `fallback`, `post_imp` and `has_remaining_na`, so a caller
-  cannot tell from the result's shape which path produced it.
-  `tests/testthat/test-knn_imp.R` pins this for `knn_imp()`; `pca_imp()` needs
-  the same test.
+slideimp 1.2.0 on CRAN does not link to RcppEigen; the sampler adds it to
+`LinkingTo`, so the next release is the first that does. RcppEigen is moving
+from Eigen 3.4 to Eigen 5, and its maintainer is patching by hand the reverse
+dependencies that fail on the candidate
+(https://github.com/RcppCore/RcppEigen/issues/151). A release that passes
+only on CRAN's RcppEigen would add slideimp to that list.
 
-Open question to settle while doing it: `has_remaining_na` is computed over the
-whole matrix, but `print.slideimp_results` describes it as covering the
-requested columns. Whichever way that is resolved, both functions and both
-paths have to agree, and the help page has to say which one it is.
+Before any release that links to RcppEigen, on both CRAN's RcppEigen and the
+candidate current on that day:
+
+- The whole suite, `check_manual()` and `devtools::check()`. The candidate
+  goes in its own private library, never over the CRAN one:
+  `dev/gate/eigen_install_candidate.R` takes the library as an argument,
+  installs from the RcppCore r-universe only when the candidate is missing
+  or older, and prints the Eigen version its headers define. A run selects
+  it with `R_LIBS` set before R starts; `dev/gate/eigen_p4_gate.sh`, stage
+  suite, does that for the suite. "Passes" means the reverse-dependency
+  run's standard, the suite and the check, not a compile. Record both
+  versions tested in the release commit.
+- The reference capture on the BLAS of the rhub Linux images, compared
+  against one taken here. Until then the default tolerances of
+  `dev/gate/ref_compare.R` are a reading from one BLAS, on one machine.
+- The sampler's draws under fixed seeds, compared between the two builds:
+  worst absolute and worst relative difference, and whether they are
+  bitwise identical. If they move beyond what the `test-mipca-*` files
+  tolerate, that is a finding to settle before the release.
+
+The three runs are owed on release day, against the candidate current then.
+The reference capture on the rhub images is to be taken again with the gate
+as it now stands, which runs PCA cases at a fixed iteration count and does
+not assert on `criterion_final`. The atlas image does not reproduce its own
+capture, so its noise floor is not zero. Nothing is vendored from Eigen and
+no version is pinned.
+
+## Sampler
+
+Open, the maintainer's:
+
+- `pca_imp()` could warn when `solver = "lobpcg"` is forced at a high `ncp`.
+- Experimental: investigate a new sampler for WGBS/EM-seq data that models
+  the binomial C/T read counts at each CpG, in place of the beta values. It
+  may never ship.
+- The data transformations (`transform`, such as `"logit_biwhiten"`) are
+  experimental and may be dropped. If a release keeps them, explain in its
+  documentation what each one does.
+

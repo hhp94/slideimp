@@ -2,23 +2,23 @@
 % Please edit documentation in R/print.R
 \name{print.slideimp_tbl}
 \alias{print.slideimp_tbl}
-\title{Print a \code{slideimp_tbl} Object}
+\title{Print Method for \code{slideimp_tbl} Objects}
 \usage{
 \method{print}{slideimp_tbl}(x, n = NULL, ...)
 }
 \arguments{
 \item{x}{A \code{slideimp_tbl} object.}
 
-\item{n}{Number of rows to show. If \code{NULL}, a default is used.}
+\item{n}{Integer or \code{NULL}. Number of rows to show, 10 if \code{NULL}.}
 
-\item{...}{Not used.}
+\item{...}{Further arguments passed to \code{\link[=print]{print()}} for the table.}
 }
 \value{
 \code{x}, invisibly.
 }
 \description{
-Print \code{slideimp_tbl} objects, which inherit from \code{data.frame}, with compact
-display of list-columns.
+Print a \code{slideimp_tbl} data frame. Each cell of a list-column shows as its
+type and size.
 }
 \examples{
 sim <- sim_mat(n = 10, p = 20)

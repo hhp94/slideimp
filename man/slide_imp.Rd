@@ -32,193 +32,232 @@ slide_imp(
   .progress = TRUE,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE,
   on_infeasible = c("skip", "error", "mean")
 )
 }
 \arguments{
-\item{obj}{A numeric matrix with samples in rows and features in columns.}
+\item{obj}{A double matrix. Samples are in rows and features in columns.}
 
-\item{location}{A sorted numeric vector of length \code{ncol(obj)} giving the
-position of each column, such as genomic coordinates.}
+\item{location}{Numeric. The position of each column of \code{obj}, such as a
+genomic coordinate, sorted in ascending order.}
 
-\item{window_size}{Numeric. Window width in the same units as \code{location}.}
+\item{window_size}{Numeric. The width of each window, in the units of
+\code{location}. With \code{flank = TRUE}, the distance each window reaches on each
+side of its feature.}
 
-\item{overlap_size}{Numeric. Overlap between consecutive windows in the
-same units as \code{location}. Must be less than \code{window_size}. Ignored when
-\code{flank = TRUE}.}
+\item{overlap_size}{Numeric. The overlap between consecutive windows, in the
+units of \code{location}, less than \code{window_size}. Ignored when \code{flank = TRUE}.}
 
-\item{flank}{Logical. If \code{FALSE}, imputation uses sliding windows across the
-full matrix. If \code{TRUE}, one window of width \code{window_size} is created for
-each feature listed in \code{subset}; \code{overlap_size} is ignored. \code{subset} must
-be supplied when \code{flank = TRUE}.}
+\item{flank}{Logical. If \code{FALSE}, slide windows across all columns. If
+\code{TRUE}, build one window around each column in \code{subset}, as described
+under Details.}
 
-\item{min_window_n}{Integer. Minimum number of columns a window must contain
-to be considered for imputation. For non-dry runs, the selected \code{k} or
-\code{ncp} value must be feasible for the usable columns in each retained
-window after applying \code{colmax}.}
+\item{min_window_n}{Integer. The smallest number of columns, at least \code{2},
+that a window needs to be kept. \code{k} and \code{ncp} must be less than
+\code{min_window_n}.}
 
-\item{subset}{Optional character or integer vector specifying columns to
-impute. If \code{NULL}, all eligible columns are imputed. Required when
-\code{flank = TRUE}.}
+\item{subset}{Optional character or integer vector. The columns to impute
+and return, by name or by number, or \code{NULL} for every column. Must be
+supplied when \code{flank = TRUE}. Defaults to \code{NULL}.}
 
-\item{dry_run}{Logical. If \code{TRUE}, skip imputation and return a
-\code{slideimp_tbl} describing the windows that would be used after all
-filtering rules are applied. In this mode, \code{k} and \code{ncp} are not required.}
+\item{dry_run}{Logical. If \code{TRUE}, return the windows that \code{min_window_n}
+and \code{subset} leave, as a \code{slideimp_tbl}, without imputing. \code{k} and \code{ncp}
+are not needed then.}
 
-\item{k}{Integer. Number of nearest neighbors to use for K-NN imputation.}
+\item{k}{Integer or \code{NULL}. Number of nearest neighbors for K-NN
+imputation.}
 
-\item{cores}{Integer. Number of cores to use for K-NN imputation.}
+\item{cores}{Integer. Number of cores for K-NN imputation. Defaults to \code{1}.}
 
 \item{dist_pow}{Numeric. Power used to penalize more distant neighbors in
-the weighted average, applied to the distance defined by \code{method}, which
-is a mean squared difference for \code{"euclidean"} and a mean absolute
-difference for \code{"manhattan"}. \code{dist_pow = 0} gives an unweighted average
-of the nearest neighbors. The full weighting rule is given under Details
-in \code{\link[=knn_imp]{knn_imp()}}.}
+the weighted average, where \code{0} gives an unweighted average. The weighting
+rule is given under Details in \code{\link[=knn_imp]{knn_imp()}}.}
 
-\item{ncp}{Integer. Number of principal components used to predict missing
-entries.}
+\item{ncp}{Integer or \code{NULL}. Number of components for PCA imputation.}
 
 \item{scale}{Logical. If \code{TRUE}, columns are scaled to unit variance.}
 
-\item{coeff.ridge}{Numeric. Ridge regularization, used only when
-\code{method = "regularized"}. Values \verb{< 1} move toward EM PCA; values \verb{> 1}
-move toward mean imputation.}
+\item{coeff.ridge}{Numeric. The ridge regularization for
+\code{method = "regularized"}, ignored otherwise. Values below \code{1} move toward
+EM PCA, and values above \code{1} move toward mean imputation.}
 
 \item{threshold}{Numeric. Convergence threshold.}
 
 \item{seed}{Integer, numeric, or \code{NULL}. Random seed for reproducibility.
-Initialization \code{i} is seeded with \code{seed * (i - 1)}, exactly as
-\code{missMDA::imputePCA()} does. \code{seed = 0} therefore seeds every
-initialization with \code{0}, so all random restarts draw the same start and
-\code{nb.init} collapses to two distinct solves: the mean initialization and
-one random one. Because the product has to stay within integer range, the
-largest admissible value is \code{.Machine$integer.max \%/\% (nb.init - 1)}.}
+As in \code{missMDA::imputePCA()}, initialization \code{i} is seeded with
+\code{seed * (i - 1)}. So \code{seed = 0} gives every random initialization the same
+start, and \code{nb.init} then yields two distinct solves: the mean
+initialization and one random one. With \code{nb.init > 1}, \code{seed} can be at
+most \code{.Machine$integer.max \%/\% (nb.init - 1)}.}
 
-\item{row.w}{Row weights, normalized to sum to \code{1}. \code{NULL} (equal weights),
-a positive numeric vector of length \code{nrow(obj)}, or \code{"n_miss"}
-(down-weight rows with more missing values).}
+\item{row.w}{Numeric vector, \code{"n_miss"}, or \code{NULL}. The row weights,
+normalized to sum to \code{1}: positive values of length \code{nrow(obj)},
+\code{"n_miss"} to down-weight rows with more missing values, or \code{NULL} for
+equal weights.}
 
-\item{nb.init}{Integer. Number of random initializations. The first
-initialization is always mean imputation.}
+\item{nb.init}{Integer. Number of initializations. The first is always mean
+imputation, and the others are random.}
 
 \item{maxiter}{Integer. Maximum number of iterations.}
 
-\item{miniter}{Integer. Minimum number of iterations. Must be less than or
-equal to \code{maxiter}.}
+\item{miniter}{Integer. Minimum number of iterations, at most \code{maxiter}.}
 
-\item{solver}{Character. Eigensolver: \code{"auto"} (default), \code{"exact"}, or
-\code{"lobpcg"}. \code{"auto"} runs a short timed probe and picks \code{"lobpcg"} only
-when clearly faster. Consecutive EM calls warm-start LOBPCG with both the
-previous eigenblock and search direction. When \code{nb.init > 1}, the auto
-choice from the first init is reused. See Performance tips.}
+\item{solver}{Character. One of \code{"auto"}, \code{"exact"}, or \code{"lobpcg"}. The
+eigensolver. \code{"auto"} uses \code{"exact"} for small problems and otherwise runs
+a short timed probe, picking \code{"lobpcg"} only when it is clearly faster.
+With \code{nb.init > 1}, the choice from the first initialization is reused.
+See the PCA Performance tips section.}
 
-\item{lobpcg_control}{A list of LOBPCG eigensolver control options, usually
-created by \code{\link[=lobpcg_control]{lobpcg_control()}}. A plain named list is also accepted. Its
-fields are validated on every call, so an object modified after
-construction is checked again rather than trusted. Ignored when
-\code{solver = "exact"}.}
+\item{lobpcg_control}{A list or \code{NULL}. LOBPCG control options, from
+\code{\link[=lobpcg_control]{lobpcg_control()}} or as a plain named list, or \code{NULL} for the defaults.
+Ignored when \code{solver = "exact"}.}
 
-\item{clamp}{Optional numeric vector \code{c(lower, upper)} bounding PCA-imputed
-values (use \code{-Inf}/\code{Inf} for one-sided, \code{NULL} for none). E.g., \code{c(0, 1)}
-for DNAm beta values. Observed values are not clamped.}
+\item{clamp}{Numeric vector of length 2 or \code{NULL}. The bounds
+\code{c(lower, upper)} for PCA-imputed values, such as \code{c(0, 1)} for DNA
+methylation beta values, or \code{NULL} for none. Use \code{-Inf} or \code{Inf} for a
+one-sided bound. Observed values are not clamped.}
 
-\item{method}{Character or \code{NULL}. For K-NN imputation, one of
-\code{"euclidean"} or \code{"manhattan"}. For PCA imputation, one of
-\code{"regularized"} or \code{"EM"}. If \code{NULL}, the corresponding backend default
-is used.}
+\item{method}{Character or \code{NULL}. One of \code{"euclidean"} or \code{"manhattan"}
+for K-NN imputation, or \code{"regularized"} or \code{"EM"} for PCA imputation.
+\code{NULL} uses \code{"euclidean"} for K-NN and \code{"regularized"} for PCA.}
 
 \item{.progress}{Logical. If \code{TRUE}, show imputation progress.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a missing-data
-proportion greater than \code{colmax} are excluded from the main imputation
-method. Excluded columns are left unchanged unless \code{post_imp = TRUE}, in
-which case remaining missing values are replaced by column means when
-possible.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Columns with a proportion
+of missing values greater than \code{colmax} take no part in the imputation, as
+described under Column mean fill.}
 
-\item{post_imp}{Logical. If \code{TRUE}, replace missing values remaining after
-the main imputation method with column means when possible.}
-
-\item{na_check}{Logical. If \code{TRUE}, check whether the returned matrix still
-contains missing values.}
+\item{post_imp}{Logical. If \code{TRUE}, column means replace the missing values
+that remain after imputation, as described under Column mean fill.}
 
 \item{on_infeasible}{Character. One of \code{"skip"}, \code{"error"}, or \code{"mean"}.
-Controls behavior when a window is infeasible for imputation, for example
-when \code{k} or \code{ncp} exceeds the number of usable columns after applying
-\code{colmax}.}
+The action for a window that is infeasible for imputation, for example
+because \code{k} or \code{ncp} is too large for the columns that \code{colmax} leaves.
+Defaults to \code{"skip"}.}
 }
 \value{
-If \code{dry_run = FALSE}, a numeric matrix of the same dimensions as
-\code{obj}, with missing values imputed. The returned object has class
-\code{slideimp_results}.
+If \code{dry_run = FALSE}, a numeric matrix of class \code{slideimp_results}
+with the rows of \code{obj} and the columns that \code{subset} selects, with
+missing values imputed.
 
-If \code{dry_run = TRUE}, a data frame of class \code{slideimp_tbl} with columns
-\code{start}, \code{end}, and \code{window_n}, plus \code{subset_local} and, when
+If \code{dry_run = TRUE}, a data frame of class \code{slideimp_tbl} with one row per
+window and the columns \code{start} and \code{end} (the first and last column of
+\code{obj} in the window), \code{window_n}, \code{subset_local} and, when
 \code{flank = TRUE}, \code{target}.
 }
 \description{
-Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
-columns are meaningfully ordered. Not intended for Illumina DNA
-methylation microarrays, use \code{\link[=group_imp]{group_imp()}} instead.
+Impute missing values in a numeric matrix whose columns are ordered by
+position, using K-NN or PCA imputation within sliding windows. For Illumina
+DNA methylation microarrays, use \code{\link[=group_imp]{group_imp()}} instead.
 }
 \details{
-The sliding-window approach divides the input matrix into smaller segments
-based on \code{location} values and applies imputation to each window
-independently. Values in overlapping regions are averaged across windows to
-produce the final imputed result.
-
-Two windowing modes are supported:
+\code{slide_imp()} splits the columns of \code{obj} into windows by \code{location} and
+imputes each window on its own. There are two windowing modes:
 \itemize{
 \item \code{flank = FALSE}: greedily partition \code{location} into windows of width
 \code{window_size} with the requested \code{overlap_size} between consecutive
-windows.
-\item \code{flank = TRUE}: create one window per feature in \code{subset}, centered on
-that feature using the supplied \code{window_size}.
+windows. A window that would add no column to the window before it is not
+created. A column in more than one window takes the mean of their imputed
+values.
+\item \code{flank = TRUE}: create one window per feature in \code{subset}. Each window
+covers the \code{location} values within \code{window_size} of that feature, on
+both sides, so it spans twice \code{window_size}.
 }
 
-Specify \code{k} and related arguments to use \code{\link[=knn_imp]{knn_imp()}}, or \code{ncp} and related
-arguments to use \code{\link[=pca_imp]{pca_imp()}}.
+Supply exactly one of \code{k} and \code{ncp}. \code{k} imputes each window with
+\code{\link[=knn_imp]{knn_imp()}}, and \code{ncp} imputes it with \code{\link[=pca_imp]{pca_imp()}}. The arguments of the
+other method are ignored.
+
+The result holds the \code{subset} columns in the order they have in \code{obj}.
+In each window, every column the method can use takes part in the
+imputation, in \code{subset} or not: for K-NN every column within \code{colmax}, and
+for PCA every column within \code{colmax} whose variance is not zero. A name
+that is not in \code{colnames(obj)}, or a \code{subset} that selects no column, is an
+error.
+
+\code{on_infeasible = "skip"} does not impute an infeasible window, \code{"mean"}
+fills it with column means, and \code{"error"} stops at the first such window.
+With \code{"skip"} and \code{"mean"}, \code{slide_imp()} raises one warning of class
+\code{slideimp_fallback} that lists the affected windows.
+
+An infeasible window adds nothing to the \code{mean_filled_cols} and
+\code{mean_filled_cells} attributes. Where windows overlap, \code{mean_filled_cells}
+lists each cell that at least one window filled with its column mean.
+
+With \code{solver = "auto"}, the first window that completes the solver probe
+picks the solver, and every later window uses it.
+
+\code{slide_imp()} rejects a column with no observed values only when a window
+covers it. A column that no window covers is returned unchanged.
 }
+\section{Column mean fill}{
+
+
+A column with a proportion of missing values greater than \code{colmax} takes no
+part in the imputation. The method neither uses the column to impute other
+columns nor imputes it.
+
+With \code{post_imp = TRUE}, column means replace the missing values that remain
+after the method has run. Two kinds of missing value can remain: the missing
+values of the columns that took no part, and the cells for which the method
+found no value. Each column mean is the mean of the column's observed
+values. With \code{post_imp = FALSE}, both kinds stay missing.
+
+The result records what the column means replaced, in two attributes:
+\itemize{
+\item \code{mean_filled_cols}: an integer vector with the index, in the result, of
+each column that took no part and was filled.
+\item \code{mean_filled_cells}: an integer matrix with the columns \code{row} and \code{col},
+one row for each cell that the method could not impute and that was
+filled.
+}
+
+Both attributes are empty when no column mean was used. \code{print()} reports
+them when they are not empty.
+}
+
 \section{Missing values and non-finite input}{
 
 
-\code{NA} and \code{NaN} are both treated as missing. No function in the package
-distinguishes between them.
+\code{obj} must be a double matrix. An integer or logical matrix is rejected,
+not converted. Convert one with \code{storage.mode(obj) <- "double"}.
 
-\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
-with \code{which(is.infinite(x), arr.ind = TRUE)}.
+\code{NA} and \code{NaN} are both treated as missing. The package does not
+distinguish between them.
 
-A column with no observed values (every cell \code{NA} or \code{NaN}) is also
-rejected.
+\code{Inf} and \code{-Inf} are rejected on entry, and so is a column with no
+observed values (every cell \code{NA} or \code{NaN}). Locate them with
+\code{which(is.infinite(obj), arr.ind = TRUE)} and
+\code{which(colSums(!is.na(obj)) == 0)}.
 }
 
 \section{PCA Performance tips}{
 
-Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),
-\code{threshold}, and \code{scale}. Tune these first, then accuracy parameters
-(\code{ncp}, \code{coeff.ridge}) on a representative subset.
+Three arguments set the speed: \code{solver}, \code{threshold}, and \code{scale}. Tune
+these first, then the accuracy arguments \code{ncp} and \code{coeff.ridge}, on a
+representative subset.
 
-\strong{Exact vs. LOBPCG with warm-start.} Whether \code{"lobpcg"} beats \code{"exact"}
-depends on size and low-rankness: \code{"lobpcg"} is preferred for large, approximately
-low-rank matrices with small \code{ncp}, and \code{"exact"} for small matrices
-(including \code{slide_imp()} windows), where it is faster and more robust.
-Separately, the warm-start makes each successive solve cheap: \code{pca_imp()}
-warm-starts LOBPCG with the previous eigenblock and search direction, so once
-imputed values stabilize, later solves converge in a few iterations. The
-payoff therefore grows with the number of EM iterations, independent of
-low-rankness. \code{solver = "auto"} (default) probes both and is a safe start.
+\strong{Exact vs. LOBPCG.} \code{"lobpcg"} suits large, approximately low-rank
+matrices with small \code{ncp}. \code{"exact"} suits small matrices, such as
+\code{slide_imp()} windows, where it is faster. It is also more reliable: it
+always converges, to eigenvectors exact to machine precision, while LOBPCG
+stops at the tolerance set in \code{\link[=lobpcg_control]{lobpcg_control()}} and can take many
+iterations, or reach \code{maxiter}, when the eigenvalues around the \code{ncp}-th one
+are close together. The warm start makes each later LOBPCG solve cheap:
+\code{pca_imp()} starts LOBPCG from the previous eigenblock and search direction,
+so once the imputed values stabilize, each solve takes a few iterations. The
+gain grows with the number of EM iterations, whatever the rank.
+\code{solver = "auto"}, the default, chooses between the two and is a safe start.
 
-\strong{Threshold.} The default \code{1e-6} is conservative; \code{1e-5} is often faster
-with very similar values.
+\strong{Threshold.} The default \code{1e-6} is conservative. \code{1e-5} is often faster
+and gives very similar values.
 
-\strong{Scale.} For columns on a common scale (e.g., DNAm beta values in
-\verb{[0, 1]}), \code{scale = FALSE} can be faster and more accurate.
+\strong{Scale.} For columns on a common scale, such as DNA methylation beta
+values in \verb{[0, 1]}, \code{scale = FALSE} can be faster and more accurate.
 
-\strong{Parallel and BLAS.} In parallel via \code{tune_imp()} or \code{group_imp()} with a
-multithreaded BLAS, set \code{pin_blas = TRUE} to avoid thread oversubscription.
-On Windows, the stock BLAS can be slow. Advanced users can swap in
-\href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+\strong{BLAS.} On Windows, the BLAS that ships with R can be slow, and
+\href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS} can
+replace it.
 
 See \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}
 for the full workflow.

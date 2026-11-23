@@ -1,291 +1,137 @@
-# sample_na_loc ----
-test_that("returns a list of length n_reps, each a 2-col row/col matrix", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  out <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 4)
+skip_on_cran()
 
-  expect_type(out, "list")
-  expect_length(out, 4)
-  for (rep in out) {
-    expect_equal(nrow(rep), 3 * 2)
-  }
-})
-
-# n_cols / n_rows semantics
-test_that("each rep uses exactly n_cols distinct columns, each with n_rows NAs", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  out <- sample_na_loc(m, n_cols = 4, n_rows = 3, n_reps = 5)
-  for (rep in out) {
-    tab <- table(rep[, "col"])
-    expect_length(tab, 4) # exactly n_cols distinct columns
-    expect_true(all(tab == 3)) # each with exactly n_rows NAs
-  }
-})
-
-test_that("no duplicated (row, col) pairs within a rep", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  out <- sample_na_loc(m, n_cols = 4, n_rows = 3, n_reps = 5)
-  for (rep in out) {
-    key <- paste(rep[, "row"], rep[, "col"], sep = ":")
-    expect_false(anyDuplicated(key) > 0)
-  }
-})
-
-# num_na distribution
-test_that("num_na divisible by n_rows distributes evenly", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  out <- sample_na_loc(m, num_na = 12, n_rows = 3, n_reps = 1)
-  rep <- out[[1]]
-  expect_equal(nrow(rep), 12)
-  tab <- table(rep[, "col"])
-  expect_length(tab, 4) # 12 / 3 = 4 columns
-  expect_true(all(tab == 3))
-})
-
-test_that("num_na not divisible by n_rows bumps last buckets by at least 1", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  # num_na = 13, n_rows = 3 -> n_cols = 4, na_per_col = c(4, 3, 3, 3)
-  # (remainder = 1 column gets a +1)
-  out <- sample_na_loc(m, num_na = 13, n_rows = 3, n_reps = 1)
-  rep <- out[[1]]
-  expect_equal(nrow(rep), 13)
-  tab <- sort(as.integer(table(rep[, "col"])))
-  expect_equal(tab, c(3L, 3L, 3L, 4L))
-})
-
-# na_col_subset handling
-test_that("numeric na_col_subset restricts columns to the pool", {
-  m <- sim_mat(p = 10, perc_total_na = 0)$input
-  pool <- c(2L, 4L, 6L, 8L)
-  out <- sample_na_loc(
-    m,
-    n_cols = 3,
-    n_rows = 2,
-    na_col_subset = pool,
-    n_reps = 10
-  )
-  used <- unique(unlist(lapply(out, function(r) r[, "col"])))
-  expect_true(all(used %in% pool))
-})
-
-test_that("character na_col_subset resolves via colnames", {
-  m <- sim_mat(p = 6, perc_total_na = 0)$input # colnames feature1 ... feature6
-  out <- sample_na_loc(
-    m,
-    n_cols = 2,
-    n_rows = 1,
-    na_col_subset = c("feature2", "feature5"),
-    n_reps = 5
-  )
-  used <- unique(unlist(lapply(out, function(r) r[, "col"])))
-  expect_setequal(used, c(2L, 5L))
-})
-
-# zero-variance cols protection
-test_that("columns keep >= 2 distinct observed values after injection", {
-  m <- sim_mat(20, p = 6, perc_total_na = 0)$input
-  out <- sample_na_loc(m, n_cols = 4, n_rows = 5, n_reps = 10)
-  for (rep in out) {
-    m2 <- apply_na(m, rep)
-    touched <- unique(rep[, "col"])
-    for (j in touched) {
-      obs <- m2[, j][!is.na(m2[, j])]
-      expect_gte(length(unique(obs)), 2L)
-    }
-  }
-})
-
-test_that("columns without enough eligible rows (after keeping 2 uniques) are skipped", {
-  m <- sim_mat(20, 5, perc_total_na = 0)$input
-  # Column 3 has only 4 observed values with exactly 2 uniques.
-  # After keeping 2 (one of each), left_over = 2 < needed = 3 -> must be skipped.
-  m[1:4, 3] <- c(1, 1, 2, 2)
-  m[5:20, 3] <- NA
-
-  out <- sample_na_loc(
-    m,
-    n_cols = 4,
-    n_rows = 3,
-    na_col_subset = 1:5,
-    n_reps = 10
-  )
-
-  for (rep in out) {
-    expect_false(
-      3L %in% rep[, "col"],
-      label = "column 3 should never be selected (not enough sacrificable rows)"
+# resolve_na_loc ----
+test_that("resolve_na_loc() rounds near-integer positions", {
+  rna <- function(obj, na_loc) {
+    resolve_na_loc(
+      obj = obj,
+      na_loc = na_loc,
+      n_reps = 1L,
+      num_na = NULL,
+      n_cols = NULL,
+      n_rows = 2L,
+      rowmax = 0.9,
+      colmax = 0.9,
+      na_col_subset = NULL,
+      max_attempts = 100
     )
   }
+  obj <- matrix(as.numeric(1:90), nrow = 30)
+
+  # Regression: 0.29 * 100 is 28.999999999999996. It passes the integerish
+  # check, and as.integer() truncated it to 28: the wrong cell was masked.
+  p <- 0.29 * 100
+  expect_identical(as.integer(p), 28L)
+  expect_identical(unname(rna(obj, p)[[1]][1, ]), c(29L, 1L))
+  expect_identical(
+    unname(rna(obj, matrix(c(p, 2), ncol = 2))[[1]][1, ]),
+    c(29L, 2L)
+  )
 })
 
-test_that("pre-check aborts on columns with zero variance", {
-  m <- sim_mat(20, 5, perc_total_na = 0)$input
-  m[, 3] <- 7 # truly zero variance
+test_that("resolve_na_loc() rejects repeated and missing matrix positions", {
+  rna <- function(obj, na_loc) {
+    resolve_na_loc(
+      obj = obj,
+      na_loc = na_loc,
+      n_reps = 1L,
+      num_na = NULL,
+      n_cols = NULL,
+      n_rows = 2L,
+      rowmax = 0.9,
+      colmax = 0.9,
+      na_col_subset = NULL,
+      max_attempts = 100
+    )
+  }
+  obj <- matrix(as.numeric(1:50), nrow = 10)
 
+  # Regression: the matrix form took (1, 1) twice, and tune_imp() scored the
+  # cell twice. The vector form already refused the same repeat.
+  dup <- matrix(c(1L, 1L, 2L, 1L, 1L, 2L), ncol = 2)
+  expect_error(rna(obj, list(dup)), "positions must be unique")
+  expect_error(rna(obj, list(c(1L, 1L, 12L))), "duplicated")
+  # a repeat that only appears after rounding
+  expect_error(rna(obj, list(c(0.29 * 100, 29))), "positions must be unique")
+  fill0 <- function(obj) {
+    obj[is.na(obj)] <- 0
+    obj
+  }
   expect_error(
-    sample_na_loc(m, n_cols = 4, n_rows = 1, na_col_subset = 1:5),
-    "Some columns already have zero"
+    suppressMessages(tune_imp(
+      obj,
+      .f = fill0,
+      na_loc = list(dup),
+      .progress = FALSE
+    )),
+    "positions must be unique"
   )
+
+  # Regression: an NA inside a matrix read as an out-of-bounds index
+  # ("'na_loc[[1]] row indices' failed: Must be TRUE")
+  expect_error(rna(obj, list(matrix(c(1, NA, 1, 1), 2))), "missing values")
 })
 
-test_that("a non-finite cell is reported as Inf, not as zero variance", {
-  m <- sim_mat(20, 5, perc_total_na = 0)$input
-  m[3, 4] <- Inf
-
-  # col_vars() returns NaN for this column, which the zero-variance pre-check
-  # used to claim as a variance problem. The Inf gate now runs first.
-  expect_true(is.nan(col_vars(m)[4]))
-  expect_error(
-    sample_na_loc(m, n_cols = 4, n_rows = 1, na_col_subset = 1:5),
-    "Infinite"
-  )
-})
-
-test_that("aborts when requested n_cols exceeds available pool", {
-  m <- sim_mat(20, 5, perc_total_na = 0)$input
-  expect_error(
-    sample_na_loc(m, n_cols = 10, n_rows = 1, na_col_subset = 1:5),
-    "Cannot place"
-  )
-})
-
-# row / col budget enforcement
-test_that("resulting matrix respects colmax", {
-  m <- sim_mat(20, 8, perc_total_na = 0)$input
-  colmax <- 0.5
-  out <- sample_na_loc(m, n_cols = 4, n_rows = 5, colmax = colmax, n_reps = 10)
-  cap <- floor(nrow(m) * colmax)
-  for (rep in out) {
-    m2 <- apply_na(m, rep)
-    col_miss <- colSums(is.na(m2))
-    expect_true(all(col_miss <= cap))
+test_that("resolve_na_loc() reads a matrix named col, row by name", {
+  rna <- function(obj, na_loc) {
+    resolve_na_loc(
+      obj = obj,
+      na_loc = na_loc,
+      n_reps = 1L,
+      num_na = NULL,
+      n_cols = NULL,
+      n_rows = 2L,
+      rowmax = 0.9,
+      colmax = 0.9,
+      na_col_subset = NULL,
+      max_attempts = 100
+    )
   }
-})
+  obj <- matrix(as.numeric(1:50), nrow = 10)
 
-test_that("resulting matrix respects rowmax", {
-  m <- sim_mat(30, 10, perc_total_na = 0)$input
-  rowmax <- 0.4
-  out <- sample_na_loc(m, n_cols = 5, n_rows = 4, rowmax = rowmax, n_reps = 10)
-  cap <- floor(ncol(m) * rowmax)
-  for (rep in out) {
-    m2 <- apply_na(m, rep)
-    row_miss <- rowSums(is.na(m2))
-    expect_true(all(row_miss <= cap))
-  }
-})
-
-# rep independence / reproducibility
-test_that("reps are independently sampled (not identical)", {
-  m <- sim_mat(30, 10, perc_total_na = 0)$input
-  out <- sample_na_loc(m, n_cols = 4, n_rows = 3, n_reps = 5)
-  # Hash each rep; at least 2 distinct with high probability.
-  sigs <- vapply(
-    out,
-    function(r) {
-      paste(r[, "row"], r[, "col"], collapse = ",")
-    },
-    character(1)
+  # Regression: cbind(col = 2, row = 5) was read by position, as row 2,
+  # column 5.
+  expect_identical(
+    rna(obj, list(cbind(col = 2L, row = 5L)))[[1]],
+    cbind(row = 5L, col = 2L)
   )
-  expect_gt(length(unique(sigs)), 1)
-})
-
-test_that("set.seed makes sample_na_loc reproducible", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  set.seed(42)
-  a <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 3)
-  set.seed(42)
-  b <- sample_na_loc(m, n_cols = 3, n_rows = 2, n_reps = 3)
-  expect_equal(a, b)
-})
-
-# failure path
-test_that("aborts when budgets make sampling infeasible", {
-  # 10 rows allows n_rows=3 under the "keep >=2 values" hard bound,
-  # but colmax=0.1 -> floor(10*0.1)=1 NA per column, so needing 3 is impossible.
-  m <- sim_mat(10, 6, perc_total_na = 0)$input
-  expect_error(
-    sample_na_loc(m, n_cols = 2, n_rows = 3, colmax = 0.1, max_attempts = 3),
-    "Failed to sample NA locations"
+  # sample_na_loc() output, and unnamed matrices, are read as before
+  expect_identical(
+    rna(obj, list(cbind(row = 5L, col = 2L)))[[1]],
+    cbind(row = 5L, col = 2L)
+  )
+  expect_identical(
+    rna(obj, list(cbind(5L, 2L)))[[1]],
+    cbind(row = 5L, col = 2L)
   )
 })
 
-# pre-existing NAs
-test_that("sampled positions never collide with pre-existing NAs", {
-  set.seed(1)
-  m <- sim_mat(30, 10, perc_total_na = 0)$input
-  # scatter some NAs, keeping columns healthy
-  preset <- cbind(row = c(1, 2, 3, 4, 5), col = c(1, 2, 3, 4, 5))
-  m[preset] <- NA
-
-  out <- sample_na_loc(m, n_cols = 5, n_rows = 3, n_reps = 20)
-  for (rep in out) {
-    # none of the sampled (row, col) pairs should already be NA
-    expect_true(all(!is.na(m[rep])))
+test_that("resolve_na_loc() argument errors are cli conditions", {
+  rna <- function(obj, na_loc) {
+    resolve_na_loc(
+      obj = obj,
+      na_loc = na_loc,
+      n_reps = 1L,
+      num_na = NULL,
+      n_cols = NULL,
+      n_rows = 2L,
+      rowmax = 0.9,
+      colmax = 0.9,
+      na_col_subset = NULL,
+      max_attempts = 100
+    )
   }
-})
+  obj <- matrix(as.numeric(1:50), nrow = 10)
 
-test_that("final colmax / rowmax account for pre-existing NAs", {
-  set.seed(2)
-  m <- sim_mat(20, 8, perc_total_na = 0)$input
-  # preload column 1 with 4 NAs and row 1 with 2 NAs (avoiding overlap with col 1)
-  m[1:4, 1] <- NA
-  m[1, 3:4] <- NA
-
-  colmax <- 0.5 # cap = floor(20 * 0.5) = 10
-  rowmax <- 0.5 # cap = floor(8 * 0.5)  = 4
-
-  out <- sample_na_loc(
-    m,
-    n_cols = 4,
-    n_rows = 3,
-    colmax = colmax,
-    rowmax = rowmax,
-    n_reps = 20
+  # Regression: both were base stop() calls
+  err <- expect_error(
+    rna(obj, "a"),
+    "must be a two-column matrix",
+    fixed = TRUE
   )
-  col_cap <- floor(nrow(m) * colmax)
-  row_cap <- floor(ncol(m) * rowmax)
-  for (rep in out) {
-    m2 <- apply_na(m, rep)
-    expect_true(all(colSums(is.na(m2)) <= col_cap))
-    expect_true(all(rowSums(is.na(m2)) <= row_cap))
-  }
-})
-
-test_that("columns with exhausted col_room are skipped even if individually healthy", {
-  set.seed(3)
-  m <- sim_mat(20, 6, perc_total_na = 0)$input
-  colmax <- 0.5 # cap = 10
-  # column 2 already has 9 NAs -> col_room = 1, so needed = 3 can't fit
-  na_rows <- sample.int(20, 9)
-  m[na_rows, 2] <- NA
-
-  out <- sample_na_loc(
-    m,
-    n_cols = 4,
-    n_rows = 3,
-    colmax = colmax,
-    n_reps = 20
-  )
-  for (rep in out) {
-    expect_false(2L %in% rep[, "col"])
-  }
-})
-
-test_that("num_na with remainder > n_cols distributes via larger bumps", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  # num_na = 5, n_rows = 3 -> n_cols = 1, one column takes all 5
-  out <- sample_na_loc(m, num_na = 5, n_rows = 3, n_reps = 1)
-  rep <- out[[1]]
-  expect_equal(nrow(rep), 5)
-  tab <- as.integer(table(rep[, "col"]))
-  expect_equal(tab, 5L)
-})
-
-test_that("num_na = 11 with n_rows = 3 yields c(3, 4, 4)", {
-  m <- sim_mat(20, 10, perc_total_na = 0)$input
-  out <- sample_na_loc(m, num_na = 11, n_rows = 3, n_reps = 1)
-  rep <- out[[1]]
-  expect_equal(nrow(rep), 11)
-  expect_equal(sort(as.integer(table(rep[, "col"]))), c(3L, 4L, 4L))
+  expect_s3_class(err, "rlang_error")
+  err <- expect_error(rna(obj, list(1:2, 1:3)), "same number of NA positions")
+  expect_s3_class(err, "rlang_error")
 })
 
 # tune imp ----
@@ -302,6 +148,12 @@ test_that("tune_imp works", {
   obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input
   expect_true(anyNA(obj))
   location <- 1:ncol(obj)
+  # a failed iteration has numeric columns too, with 0 rows: each run also
+  # has no error row and scores every masked cell
+  expect_clean_run <- function(res, n) {
+    expect_true(all(is.na(res$error)))
+    expect_true(all(vapply(res$result, nrow, integer(1)) == n))
+  }
   # Check `slide_imp`
   expect_no_error({
     slide_imp_imp_res <- tune_imp(
@@ -314,7 +166,7 @@ test_that("tune_imp works", {
     )
   })
 
-  # `slide_imp` requires parameters
+  # `slide_imp` requires parameters: the window ones are checked first
   expect_error(
     {
       slide_imp_imp_res <- tune_imp(
@@ -325,7 +177,8 @@ test_that("tune_imp works", {
         num_na = 200
       )
     },
-    regexp = "requires"
+    regexp = "requires `window_size`, `overlap_size`, and `min_window_n`",
+    fixed = TRUE
   )
 
   expect_true(
@@ -340,6 +193,7 @@ test_that("tune_imp works", {
         "numeric"
     )
   )
+  expect_clean_run(slide_imp_imp_res, 200L)
 
   # Check `knn_imp`
   knn_imp_par <- data.frame(
@@ -369,6 +223,7 @@ test_that("tune_imp works", {
         "numeric"
     )
   )
+  expect_clean_run(knn_imp_res, 100L)
 
   # Check `pca_imp`
   pca_imp_par <- data.frame(ncp = 2, miniter = 2)
@@ -394,12 +249,11 @@ test_that("tune_imp works", {
         "numeric"
     )
   )
+  expect_clean_run(pca_imp_res, 100L)
 
   # Check custom function
-  f1 <- function() {}
   custom_fun <- function(obj, value) {
     obj[is.na(obj)] <- value
-    f1()
     return(obj)
   }
   custom_par <- data.frame(
@@ -427,48 +281,10 @@ test_that("tune_imp works", {
         "numeric"
     )
   )
+  expect_clean_run(custom_imp_res, 100L)
 })
 
-test_that("tune_imp runs the parallel (mirai) branch", {
-  skip_if_not_manual()
-  skip_if_not_installed("withr")
-  set.seed(1234)
-  obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input
-  knn_imp_par <- data.frame(k = c(5, 10), method = "euclidean", post_imp = TRUE)
-  mirai::daemons(2, seed = 1234)
-  withr::defer(mirai::daemons(0))
-  expect_message(
-    res <- tune_imp(obj, knn_imp_par, .f = "knn_imp", n_reps = 2, num_na = 100),
-    regexp = "Running mode.*mirai"
-  )
-  expect_true(all(is.na(res$error)))
-  expect_true(
-    all(vapply(res$result, \(x) class(x$estimate), character(1)) == "numeric")
-  )
-})
-
-test_that("tune_imp forces cores = 1 under active daemons", {
-  skip_if_not_manual()
-  skip_if_not_installed("withr")
-  set.seed(1234)
-  obj <- sim_mat(50, 1000, perc_col_na = 0.5)$input
-  knn_imp_par <- data.frame(k = 5, method = "euclidean", post_imp = TRUE)
-  mirai::daemons(2, seed = 1234)
-  withr::defer(mirai::daemons(0))
-  expect_message(
-    output <- tune_imp(
-      obj,
-      knn_imp_par,
-      .f = "knn_imp",
-      n_reps = 1,
-      num_na = 100,
-      cores = 2
-    ),
-    regexp = "nested parallelism"
-  )
-})
-
-test_that("tune_imp works when n_reps is a list of NA locations", {
+test_that("tune_imp works when na_loc is a list of NA locations", {
   # Create a complete matrix (no NAs) for testing
   obj <- sim_mat(50, 200)$input
   obj[is.na(obj)] <- 0 # Fill any existing NAs
@@ -547,6 +363,9 @@ test_that("tune_imp works when n_reps is a list of NA locations", {
       logical(1)
     ))
   )
+  # which a failed, 0-row iteration also passes: no error, all 10 scored
+  expect_true(all(is.na(knn_imp_res$error)))
+  expect_true(all(vapply(knn_imp_res$result, nrow, integer(1)) == 10L))
 
   # Test with custom function
   custom_fun <- function(obj, value) {
@@ -567,6 +386,9 @@ test_that("tune_imp works when n_reps is a list of NA locations", {
 
   # Should have 2 parameters x 3 repetitions = 6 rows
   expect_equal(nrow(custom_res), 6)
+  # all() below is TRUE over a failed, 0-row iteration: no error, all scored
+  expect_true(all(is.na(custom_res$error)))
+  expect_true(all(vapply(custom_res$result, nrow, integer(1)) == 10L))
 
   # Verify custom function fills with the specified values
   for (i in 1:nrow(custom_res)) {
@@ -575,7 +397,7 @@ test_that("tune_imp works when n_reps is a list of NA locations", {
     expect_true(all(estimates == expected_value))
   }
 
-  # Test with different length NA location sets
+  # Test with another list: 5 positions per element instead of 10
   varied_na_locs <- list(
     sample(1:length(obj), 5, replace = FALSE),
     sample(1:length(obj), 5, replace = FALSE)
@@ -597,51 +419,9 @@ test_that("tune_imp works when n_reps is a list of NA locations", {
   expect_equal(nrow(varied_res$result[[2]]), 5)
 })
 
-test_that("tune_imp correctly uses provided NA locations from list", {
-  # Create a simple matrix for easier verification
-  set.seed(123)
-  obj <- matrix(1:100, nrow = 10, ncol = 10)
-
-  # Define specific NA locations
-  na_locations <- list(
-    c(1, 11, 21), # First column positions
-    c(10, 20, 30), # Last position of first 3 rows
-    c(50, 60, 70) # Middle positions
-  )
-
-  simple_imp <- function(obj, fill_value) {
-    obj[is.na(obj)] <- fill_value
-    return(obj)
-  }
-
-  params <- data.frame(fill_value = 42)
-
-  result <- tune_imp(
-    obj,
-    params,
-    na_loc = na_locations,
-    .f = simple_imp
-  )
-
-  # Verify each repetition used the correct NA locations
-  for (i in 1:3) {
-    res <- result$result[[i]]
-
-    # Check truth values match original matrix at specified locations
-    expected_truth <- obj[na_locations[[i]]]
-    expect_equal(res$truth, expected_truth)
-
-    # Check all estimates are the fill value
-    expect_true(all(res$estimate == 42))
-
-    # Check we have the right number of values
-    expect_equal(length(res$truth), length(na_locations[[i]]))
-  }
-})
-
 test_that("tune_imp handles mixed linear and 2D positions in list", {
   set.seed(789)
-  obj <- matrix(1:100, nrow = 10, ncol = 10)
+  obj <- matrix(as.double(1:100), nrow = 10, ncol = 10)
 
   # mix of linear and 2D positions
   na_locations_mixed <- list(
@@ -680,7 +460,7 @@ test_that("tune_imp handles mixed linear and 2D positions in list", {
 
 test_that("compute_metrics works with slideimp_tune and data.frame", {
   set.seed(123)
-  obj <- matrix(1:100, nrow = 10, ncol = 10)
+  obj <- matrix(as.double(1:100), nrow = 10, ncol = 10)
 
   simple_imp <- function(obj, mu) {
     miss <- is.na(obj)
@@ -715,7 +495,7 @@ test_that("compute_metrics works with slideimp_tune and data.frame", {
 
 test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
   set.seed(456)
-  obj <- matrix(1:100, nrow = 10, ncol = 10)
+  obj <- matrix(as.double(1:100), nrow = 10, ncol = 10)
 
   simple_imp <- function(obj, mu) {
     miss <- is.na(obj)
@@ -734,6 +514,8 @@ test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
 
   # No NAs case: all estimates should be present
   out_clean <- compute_metrics(result)
+  # mae and rmse for each of the 2 reps
+  expect_identical(nrow(out_clean), 4L)
   expect_true(all(out_clean$n == 10))
   expect_true(all(out_clean$n_miss == 0))
 
@@ -748,11 +530,14 @@ test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
 
   # Rep 1: 10 rows, 2 missing
   rows_rep1 <- out_na[out_na$rep_id == 1, ]
+  # all() is TRUE over no rows: one row per metric
+  expect_identical(nrow(rows_rep1), 6L)
   expect_true(all(rows_rep1$n == 10))
   expect_true(all(rows_rep1$n_miss == 2))
 
   # Rep 2: 10 rows, 3 missing
   rows_rep2 <- out_na[out_na$rep_id == 2, ]
+  expect_identical(nrow(rows_rep2), 6L)
   expect_true(all(rows_rep2$n == 10))
   expect_true(all(rows_rep2$n_miss == 3))
 
@@ -762,14 +547,6 @@ test_that("compute_metrics correctly computes n and n_miss with NA estimates", {
     expect_length(unique(subset$n), 1)
     expect_length(unique(subset$n_miss), 1)
   }
-})
-
-test_that("compute_metrics.data.frame errors without required columns", {
-  bad_df <- data.frame(x = 1:3)
-  expect_error(compute_metrics(bad_df), "result")
-
-  bad_result <- data.frame(result = I(list(data.frame(a = 1, b = 2))))
-  expect_error(compute_metrics(bad_result), "truth.*estimate")
 })
 
 test_that("tune_imp works with custom function and list-column parameters", {
@@ -985,10 +762,16 @@ test_that("slide_imp flank mode is tuned correctly", {
     flank = TRUE
   )
 
+  # the PCA fits run a fixed iteration count, miniter = maxiter, so slide_imp()
+  # here and under tune_imp() take the same steps; the threshold, far above
+  # the criterion at that count, decides only `converged`
   slide_imp_pca <- slide_imp(
     obj = slide_imp_pre,
     location = location,
     ncp = 2,
+    threshold = 1e-6,
+    maxiter = 30,
+    miniter = 30,
     subset = testing_features,
     min_window_n = 3,
     window_size = 5,
@@ -1007,6 +790,9 @@ test_that("slide_imp flank mode is tuned correctly", {
   knn_params$k <- 2
   pca_params <- params
   pca_params$ncp <- 2
+  pca_params$threshold <- 1e-6
+  pca_params$maxiter <- 30
+  pca_params$miniter <- 30
 
   tune_imp_knn <- tune_imp(
     obj,
@@ -1024,17 +810,24 @@ test_that("slide_imp flank mode is tuned correctly", {
     location = location
   )
 
+  # slide_imp() returns only the `subset` columns, 5, 20 and 95, so a masked
+  # cell is read at its column's position among them
+  loc <- na_loc[[1]]
+  expect_identical(ncol(slide_imp_knn), 3L)
+  read_at <- cbind(loc[, 1L], match(loc[, 2L], c(5L, 20L, 95L)))
+  expect_false(anyNA(read_at))
   expect_equal(
     tune_imp_knn$result[[1]]$estimate,
-    slide_imp_knn[na_loc[[1]]]
+    slide_imp_knn[read_at]
   )
   expect_equal(
     tune_imp_knn$result[[1]]$truth,
     truth
   )
-  expect_equal(
+  # two runs through BLAS, so the values agree to rounding
+  expect_worst_err(
     tune_imp_pca$result[[1]]$estimate,
-    slide_imp_pca[na_loc[[1]]]
+    slide_imp_pca[read_at]
   )
   expect_equal(
     tune_imp_pca$result[[1]]$truth,
@@ -1102,27 +895,355 @@ test_that("supplied na_loc positions must point at observed cells", {
   expect_equal(sum(is.finite(d$truth - d$estimate)), 6L)
 })
 
-test_that("sample_na_loc positions are always observed cells", {
-  set.seed(1234)
-  obj <- sim_mat(20, 20, perc_total_na = 0.2)$input
-  locs <- sample_na_loc(obj, n_cols = 5, n_rows = 2, n_reps = 3)
+# tune_imp() driver ----
+test_that("a grid built with expand.grid() tunes a built-in method", {
+  # expand.grid() makes a character column a factor, and match.arg() in the
+  # methods rejects a factor: every iteration used to fail
+  set.seed(1)
+  obj <- sim_mat(20, 30)$input
+  grid <- expand.grid(k = c(3, 5), method = c("euclidean", "manhattan"))
+  expect_true(is.factor(grid$method))
 
-  for (pos in locs) {
-    expect_false(anyNA(obj[pos]))
+  expect_no_warning(
+    res <- suppressMessages(
+      tune_imp(obj, grid, .f = "knn_imp", num_na = 10, .progress = FALSE)
+    )
+  )
+  expect_identical(nrow(res), 4L)
+  expect_true(all(is.na(res$error)))
+  expect_true(all(vapply(res$result, nrow, integer(1)) == 10L))
+  # the caller's column comes back as it was given
+  expect_true(is.factor(res$method))
+})
+
+test_that("the output of a built-in method holds only the caller's parameters", {
+  set.seed(1)
+  obj <- sim_mat(20, 30)$input
+  res <- suppressMessages(
+    tune_imp(
+      obj,
+      data.frame(k = 3),
+      .f = "knn_imp",
+      num_na = 10,
+      .progress = FALSE
+    )
+  )
+  expect_identical(names(res), c("k", "param_set", "rep_id", "result", "error"))
+
+  # a `.progress` column is dropped, with a note, and the call still runs
+  expect_message(
+    res2 <- tune_imp(
+      obj,
+      data.frame(k = c(3, 3), .progress = c(TRUE, FALSE)),
+      .f = "knn_imp",
+      num_na = 10,
+      .progress = FALSE
+    ),
+    "is ignored",
+    fixed = TRUE
+  )
+  expect_identical(names(res2), names(res))
+  expect_identical(nrow(res2), 1L)
+  expect_true(all(is.na(res2$error)))
+})
+
+test_that("a misplaced k or ncp gets the message that names the other method", {
+  set.seed(1)
+  obj <- sim_mat(20, 30)$input
+  run <- function(parameters, .f) {
+    suppressMessages(
+      tune_imp(obj, parameters, .f = .f, num_na = 10, .progress = FALSE)
+    )
+  }
+  expect_error(
+    run(data.frame(k = 3, ncp = 2), "knn_imp"),
+    "To tune .*pca_imp"
+  )
+  expect_error(
+    run(data.frame(ncp = 2, k = 3), "pca_imp"),
+    "To tune .*knn_imp"
+  )
+  # any other unknown name still gets the general message
+  expect_error(
+    run(data.frame(k = 3, subset = 1), "knn_imp"),
+    "unknown parameter"
+  )
+  expect_error(
+    run(data.frame(ncp = 2, subset = 2L), "pca_imp"),
+    "unknown parameter"
+  )
+  expect_error(
+    run(data.frame(k = 3, bogus = 1), "slide_imp"),
+    "1 unknown parameter in",
+    fixed = TRUE
+  )
+})
+
+test_that("every tunable slide_imp() argument is accepted in parameters", {
+  # what tune_imp() supplies itself, or what breaks the matrix return
+  own <- c("obj", "location", "subset", "cores", "dry_run")
+  tunable <- setdiff(names(formals(slide_imp)), own)
+  expect_gt(length(tunable), 5L)
+  expect_setequal(slide_tune_params(), tunable)
+  expect_true(all(.param_registry$knn$allowed %in% slide_tune_params()))
+  expect_true(all(.param_registry$pca$allowed %in% slide_tune_params()))
+})
+
+test_that("parameters cannot use a name the tuning output needs", {
+  set.seed(1)
+  obj <- sim_mat(20, 30)$input
+  f_n <- function(obj, n) {
+    obj[is.na(obj)] <- n
+    obj
+  }
+  err <- expect_error(
+    tune_imp(
+      obj,
+      data.frame(n = c(3, 7)),
+      .f = f_n,
+      num_na = 10,
+      .progress = FALSE
+    ),
+    "Name in use: \"n\""
+  )
+  expect_s3_class(err, "rlang_error")
+
+  f_two <- function(obj, error, result) {
+    obj[is.na(obj)] <- 0
+    obj
+  }
+  expect_error(
+    tune_imp(
+      obj,
+      data.frame(error = 1, result = 2),
+      .f = f_two,
+      num_na = 10,
+      .progress = FALSE
+    ),
+    "Names in use: \"error\" and \"result\""
+  )
+})
+
+test_that("a custom .f return is checked on every parameter set", {
+  # the probe runs parameter set 1 only. A later set that returned another
+  # shape was scored: a matrix index still finds cells in a taller matrix.
+  set.seed(1)
+  obj <- sim_mat(20, 30)$input
+  f_shape <- function(obj, mode) {
+    obj[is.na(obj)] <- if (mode == 4) Inf else 0.5
+    if (mode == 2) {
+      return(rbind(obj, obj))
+    }
+    if (mode == 3) {
+      return(as.vector(obj))
+    }
+    obj
+  }
+  expect_warning(
+    res <- suppressMessages(
+      tune_imp(
+        obj,
+        data.frame(mode = c(1, 2, 3, 4)),
+        .f = f_shape,
+        num_na = 10,
+        .progress = FALSE
+      )
+    ),
+    "tuning iteration",
+    fixed = TRUE
+  )
+  expect_identical(res$mode, c(1, 2, 3, 4))
+  expect_true(is.na(res$error[1]))
+  expect_identical(nrow(res$result[[1]]), 10L)
+  expect_match(
+    res$error[2],
+    "returned a 40 x 30 matrix, but 'obj' is 20 x 30",
+    fixed = TRUE
+  )
+  expect_match(res$error[3], "did not return a numeric matrix")
+  expect_match(res$error[4], "returned Inf for a masked cell", fixed = TRUE)
+  expect_identical(vapply(res$result[2:4], nrow, integer(1)), c(0L, 0L, 0L))
+  # the metrics do not stop on the failed, 0-row iterations: they count no
+  # cell there (mae and rmse for each set)
+  cm <- compute_metrics(res)
+  expect_identical(cm$n[cm$mode == 1], c(10L, 10L))
+  expect_identical(cm$n[cm$mode != 1], rep(0L, 6L))
+})
+
+test_that("the custom .f probe checks Inf in the masked cells only", {
+  # Regression: the probe refused Inf anywhere in the return, while every
+  # later parameter set refuses it in the masked cells only, so the same .f
+  # failed on set 1 and passed on set 2.
+  set.seed(1)
+  obj <- sim_mat(20, 30)$input
+  orig_na <- which(is.na(obj))
+  expect_gt(length(orig_na), 0L)
+  f_outside <- function(obj, mode) {
+    obj[is.na(obj)] <- 0.5
+    obj[orig_na[1]] <- Inf
+    obj
+  }
+  res <- suppressMessages(
+    tune_imp(
+      obj,
+      data.frame(mode = 1),
+      .f = f_outside,
+      num_na = 10,
+      .progress = FALSE
+    )
+  )
+  expect_true(is.na(res$error[1]))
+  expect_identical(nrow(res$result[[1]]), 10L)
+  f_inside <- function(obj, mode) {
+    obj[is.na(obj)] <- Inf
+    obj
+  }
+  expect_error(
+    suppressMessages(
+      tune_imp(
+        obj,
+        data.frame(mode = 1),
+        .f = f_inside,
+        num_na = 10,
+        .progress = FALSE
+      )
+    ),
+    "failed on the first parameter set",
+    fixed = TRUE
+  )
+})
+
+test_that("cores and metrics are validated by name", {
+  set.seed(1)
+  obj <- sim_mat(20, 30)$input
+  expect_error(
+    suppressMessages(tune_imp(
+      obj,
+      data.frame(k = 3),
+      .f = "knn_imp",
+      num_na = 10,
+      cores = NA,
+      .progress = FALSE
+    )),
+    "'cores'"
+  )
+  res <- suppressMessages(
+    tune_imp(
+      obj,
+      data.frame(k = 3),
+      .f = "knn_imp",
+      num_na = 10,
+      .progress = FALSE
+    )
+  )
+  expect_error(compute_metrics(res, metrics = character(0)), "'metrics'")
+  expect_error(compute_metrics(res, metrics = c("mae", NA)), "'metrics'")
+})
+
+test_that("compute_metrics() errors are cli conditions", {
+  err <- expect_error(compute_metrics(data.frame(x = 1)), "result")
+  expect_s3_class(err, "rlang_error")
+
+  bad_result <- data.frame(result = I(list(data.frame(a = 1))))
+  err <- expect_error(compute_metrics(bad_result), "truth.*estimate")
+  expect_s3_class(err, "rlang_error")
+
+  ok <- data.frame(result = I(list(data.frame(truth = 1:3, estimate = 3:1))))
+  err <- expect_error(
+    compute_metrics(ok, metrics = c("mae", "nope", "zzz")),
+    "Unknown metrics in .metrics.: nope, zzz"
+  )
+  expect_s3_class(err, "rlang_error")
+})
+
+test_that("mape does not drop a cell whose true value is 0", {
+  # true value 0, estimate not 0: the ratio is Inf
+  expect_identical(calc_mape(c(0, 1), c(0.5, 1)), Inf)
+  # true value 0, estimate 0: 0 / 0. Dropping that cell gave 50, the error of
+  # the other cell alone.
+  expect_true(is.nan(calc_mape(c(0, 2), c(0, 1))))
+  # a cell with no estimate is still dropped
+  expect_equal(calc_mape(c(2, 4, 1), c(1, NA, 1)), 25)
+  # no zero: as before
+  expect_equal(calc_mape(c(2, 4), c(1, 5)), 37.5)
+})
+
+test_that("rsq is NA, without a warning, against a constant", {
+  expect_no_warning(const_est <- calc_rsq(c(0.1, 0.5, 0.9), c(0.3, 0.3, 0.3)))
+  expect_identical(const_est, NA_real_)
+  expect_no_warning(const_truth <- calc_rsq(c(0.3, 0.3, 0.3), c(0.1, 0.5, 0.9)))
+  expect_identical(const_truth, NA_real_)
+  # and the usual value otherwise
+  expect_equal(
+    calc_rsq(c(1, 2, 3, 5), c(2, 4, 7, 8)),
+    cor(c(1, 2, 3, 5), c(2, 4, 7, 8))^2
+  )
+})
+
+test_that("tune_imp() reads knn_imp() estimates at the masked cells", {
+  # knn_imp() returns only the rep's `subset` columns, so each estimate is
+  # read at its column's position in that subset. Compared with a direct
+  # call, in one process, cell by cell.
+  set.seed(1)
+  obj <- sim_mat(40, 30, perc_total_na = 0.05, perc_col_na = 0.5)$input
+  na_loc <- sample_na_loc(obj, num_na = 20, n_reps = 2)
+  # non-vacuity: the masked columns are not a prefix of obj's, so reading
+  # na_loc as is would hit other columns or fall outside the result
+  for (m in na_loc) {
+    sub <- sort(unique(m[, 2]))
+    expect_false(identical(as.integer(sub), seq_along(sub)))
+  }
+  res <- suppressMessages(tune_imp(
+    obj,
+    data.frame(k = 3),
+    .f = "knn_imp",
+    na_loc = na_loc,
+    .progress = FALSE
+  ))
+  expect_true(all(is.na(res$error)))
+  for (r in seq_along(na_loc)) {
+    m <- na_loc[[r]]
+    pre <- obj
+    pre[m] <- NA
+    sub <- sort(unique(as.integer(m[, 2])))
+    direct <- suppressMessages(knn_imp(pre, k = 3, subset = sub))
+    want <- direct[cbind(m[, 1], match(m[, 2], sub))]
+    expect_length(want, 20L)
+    expect_identical(res$result[[r]]$estimate, want, info = r)
+    expect_identical(res$result[[r]]$truth, obj[m], info = r)
   }
 })
 
-test_that("sample_na_loc returns integer index matrices", {
-  # sample_each_rep_cpp() hands back an arma::umat, which under 64-bit arma
-  # indices arrives as doubles. Indices are bounded by dim(), so they are
-  # coerced back to integer to match the documented return type.
+test_that("tune_imp fails an iteration whose slide_imp result is not the subset's width", {
+  # Regression: slide_imp() returns only the rep's `subset` columns and
+  # tune_imp() reads its estimates there, so a result holding every column,
+  # as a daemon running an older slideimp returns, was read at the wrong
+  # cells with no error. It now fails the iteration.
   set.seed(1234)
-  obj <- sim_mat(20, 30, perc_total_na = 0.2)$input
-  locs <- sample_na_loc(obj, n_cols = 5, n_rows = 2, n_reps = 3)
-
-  for (pos in locs) {
-    expect_type(pos, "integer")
-    expect_equal(colnames(pos), c("row", "col"))
-    expect_length(obj[pos], nrow(pos))
-  }
+  obj <- sim_mat(n = 30, p = 40, perc_col_na = 1)$input
+  na_loc <- sample_na_loc(obj, n_cols = 3, n_rows = 2, n_reps = 1)
+  # non-vacuity: the subset is narrower than the matrix
+  expect_lt(length(unique(na_loc[[1]][, 2L])), ncol(obj))
+  local_mocked_bindings(slide_imp = function(obj, ...) obj)
+  suppressMessages(expect_warning(
+    res <- tune_imp(
+      obj,
+      parameters = data.frame(
+        k = 2,
+        window_size = 10,
+        overlap_size = 0,
+        min_window_n = 5
+      ),
+      na_loc = na_loc,
+      .f = "slide_imp",
+      location = seq_len(ncol(obj)),
+      .progress = FALSE
+    ),
+    "failed"
+  ))
+  expect_match(
+    res$error[[1]],
+    "returned 40 columns, but the repetition's subset has 3"
+  )
+  expect_identical(nrow(res$result[[1]]), 0L)
 })

@@ -1,9 +1,14 @@
 This package as a whole is licensed under GPL (>= 2).
 
-It contains code adapted from the carrier package
+It contains code from two other projects, each under its own licence,
+given below: code adapted from carrier, and the Spectra headers.
+
+## carrier
+
+Code adapted from the carrier package
 (https://github.com/r-lib/carrier), Copyright (c) Posit Software, PBC,
-released under the MIT License. The adapted code is in R/crate.R and
-tests/testthat/test-crate.R.
+released under the MIT License. The adapted code is in R/crate.R,
+tests/testthat/test-crate.R and tests/testthat/test-crate-manual.R.
 
 # MIT License
 
@@ -26,3 +31,26 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Spectra: src/Spectra/*
+
+Spectra, a header-only C++ library for large-scale eigenvalue problems.
+https://github.com/yixuan/spectra
+
+15 headers from commit db1d5cc3279752ca7ea3e33da44ba2a85e4e4a95 (four
+commits after tag v1.2.0), copied without modification.
+src/Spectra/MANIFEST lists each file with its git blob hash.
+
+Copyright (C) 2016-2025 Yixuan Qiu <yixuan.qiu@cos.name>
+
+src/Spectra/LinAlg/TridiagEigen.h is adapted from Eigen and also carries:
+
+Copyright (C) 2008-2010 Gael Guennebaud <gael.guennebaud@inria.fr>
+Copyright (C) 2010 Jitse Niesen <jitse@maths.leeds.ac.uk>
+
+License: Mozilla Public License, version 2.0 (MPL-2.0)
+https://mozilla.org/MPL/2.0/
+
+Every file carries the MPL-2.0 notice in its header. None is marked
+"Incompatible With Secondary Licenses", so MPL-2.0 section 3.3 permits
+distributing them as part of this GPL (>= 2) package.

@@ -7,27 +7,31 @@
 # Licensed under the MIT License (see inst/LICENSE.note)
 # -----------------------------------------------------------------------------
 
-#' Test whether an object is a crate
+#' Crate Class Check
 #' @noRd
 .is_crate <- function(x) inherits(x, "crate")
 
-#' Tag a function as a crate
+#' Crate Class Constructor
 #' @noRd
 .new_crate <- function(fn) {
   structure(fn, class = "crate")
 }
 
-#' Create a self-contained ("crated") function
+#' Self-Contained (Crated) Function
 #'
-#' Reduced base-R reimplementation of `carrier::crate()` for internal use.
-#' Isolates `.fn` in a child of `.parent_env` so that only the explicitly
-#' supplied objects are packaged with it when sent to parallel workers.
+#' Reduced base-R reimplementation of `carrier::crate()`. Isolates `.fn` in a
+#' child of `.parent_env`, so that only the supplied objects travel with it to
+#' parallel workers.
 #'
-#' @param .fn A function closure to isolate.
-#' @param ... Named, already-evaluated objects to package with `.fn`.
-#' @param .parent_env Parent environment of the crate's environment. Defaults
-#'   to [baseenv()] so nothing from the calling scope leaks in.
-#' @return A function of class `"crate"` whose enclosing environment holds only
+#' @param .fn A function. The closure to isolate.
+#' @param ... Named objects. Each name is unique, and each value is packaged
+#'   with `.fn` under that name.
+#' @param .parent_env An environment. The parent of the crate's environment.
+#'   Defaults to [baseenv()].
+#' @details A closure among the `...` objects is moved into the crate's
+#'   environment too, unless its environment is a namespace or it is already
+#'   a crate.
+#' @returns A function of class `"crate"` whose enclosing environment holds only
 #'   the supplied objects.
 #'
 #' @keywords internal
@@ -40,11 +44,11 @@
     length(vars) &&
       (is.null(nms) || anyNA(nms) || any(!nzchar(nms)) || anyDuplicated(nms))
   ) {
-    stop("All `...` arguments must be uniquely named.", call. = FALSE)
+    stop("'...' arguments to .crate() must be uniquely named", call. = FALSE)
   }
 
   if (typeof(.fn) != "closure") {
-    stop("`.fn` must be a function closure.", call. = FALSE)
+    stop("'.fn' passed to .crate() must be a function closure", call. = FALSE)
   }
 
   env <- new.env(parent = .parent_env)

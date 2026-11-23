@@ -4,7 +4,7 @@
 \alias{slideimp_resolve_group}
 \alias{slideimp_resolve_group.data.frame}
 \alias{slideimp_resolve_group.default}
-\title{Resolve a Group Specification to a Data Frame}
+\title{Resolution of a Group Specification}
 \usage{
 slideimp_resolve_group(x)
 
@@ -13,20 +13,18 @@ slideimp_resolve_group(x)
 \method{slideimp_resolve_group}{default}(x)
 }
 \arguments{
-\item{x}{A group specification. \code{slideimp} provides a method for
-\code{data.frame} objects. The optional \code{slideimp.extra} package provides a
-method for character platform names.}
+\item{x}{An object. The group specification: \code{slideimp} has a method for
+\code{data.frame}, and the optional \code{slideimp.extra} package adds one for a
+character platform name.}
 }
 \value{
-A data frame group specification, or an error for unsupported inputs.
+A data frame. The \code{data.frame} method returns \code{x} with duplicate
+rows removed.
 }
 \description{
-Convert a group specification to the canonical data-frame form expected by
-\code{\link[=prep_groups]{prep_groups()}}. This S3 generic is exported so that extension packages,
-such as \code{slideimp.extra}, can register additional methods.
-}
-\note{
-This is primarily an extension hook for \code{slideimp.extra}.
+Convert a group specification to the data frame that \code{\link[=prep_groups]{prep_groups()}}
+reads. This S3 generic is exported so that extension packages, such as
+\code{slideimp.extra}, can register methods for other classes.
 }
 \examples{
 df <- data.frame(feature = c("cg1", "cg2"), group = c(1, 1))

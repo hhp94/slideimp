@@ -2,18 +2,18 @@
 % Please edit documentation in R/print.R
 \name{print.slideimp_results}
 \alias{print.slideimp_results}
-\title{Print a \code{slideimp_results} Object}
+\title{Print Method for \code{slideimp_results} Objects}
 \usage{
 \method{print}{slideimp_results}(x, n = 6L, p = 6L, ...)
 }
 \arguments{
 \item{x}{A \code{slideimp_results} object.}
 
-\item{n}{Number of rows to print.}
+\item{n}{Integer. Number of rows to print.}
 
-\item{p}{Number of columns to print.}
+\item{p}{Integer. Number of columns to print.}
 
-\item{...}{Not used.}
+\item{...}{Further arguments passed to \code{\link[=print]{print()}} for the preview.}
 }
 \value{
 \code{x}, invisibly.

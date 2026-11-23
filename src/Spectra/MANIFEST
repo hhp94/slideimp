@@ -1,0 +1,25 @@
+Spectra headers vendored by dev/tool/vendor_spectra.R. Do not edit by hand;
+re-run the script. Hashes are git blob hashes of the upstream files, which
+are also the blob hashes in this repository (git ls-files -s src/Spectra).
+
+upstream: https://github.com/yixuan/spectra
+commit:   db1d5cc3279752ca7ea3e33da44ba2a85e4e4a95 (v1.2.0-4-gdb1d5cc, untagged)
+source:   include/Spectra/<path> -> src/Spectra/<path>
+license:  MPL-2.0, https://mozilla.org/MPL/2.0/
+patches:  none
+
+167b4421481bdc42f443974bd45e756e858432d8  SymEigsSolver.h
+c9e80245e99d3db6ebd1406f64dc9955c7fdf8a3  HermEigsBase.h
+3252638b28f75ac8eb789b9e96cff12bc92997dd  Util/Version.h
+a413f00160052e2acb496c2a95b8c81445eda836  Util/TypeTraits.h
+56040dff1d76471ea2c43d666ae67a99ea936245  Util/SelectionRule.h
+bd2108ad18ebd6e1b1025266d32d435037a52047  Util/CompInfo.h
+bbf855b36c9d98f6f55990316c73097ec7a5e91c  Util/SimpleRandom.h
+d31a14b70875a9ba77992af41dc7b5567c3de617  MatOp/DenseSymMatProd.h
+e9cd6db2f54d0aab59f43904ec41ec22e7c75972  MatOp/internal/ArnoldiOp.h
+69d4496f4f0be6ac9bfc7e89a86e81bffe7a56bb  LinAlg/Lanczos.h
+7a0dd241d4d6f15ccb9295e4eb6d85a06dbba2bf  LinAlg/Arnoldi.h
+921f0da09cde4747c06b5975aa85b49e0e9c328d  LinAlg/TridiagEigen.h
+f5b79acd4bb36ab530a73ea20f8fa81e256ab892  LinAlg/UpperHessenbergQR.h
+cbc8ee000629c25b9e1af50e0c093eafb023607a  LinAlg/Givens.h
+f527d667a2d9e02183b3c8e3303e263e2e99fad5  LinAlg/DoubleShiftQR.h

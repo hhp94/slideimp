@@ -2,7 +2,7 @@
 % Please edit documentation in R/sim_mat.R
 \name{sim_mat}
 \alias{sim_mat}
-\title{Simulate a Matrix with Metadata}
+\title{Simulated Numeric Matrix with Metadata}
 \usage{
 sim_mat(
   n = 100,
@@ -21,14 +21,14 @@ sim_mat(
 \item{p}{Integer. Number of columns, interpreted as features. Defaults to
 \code{100}.}
 
-\item{rho}{Numeric. Compound-symmetric column correlation before optional
-scaling. Defaults to \code{0.5}.}
+\item{rho}{Numeric. Correlation between every pair of columns before
+scaling, at least \code{0} and below \code{1}. Defaults to \code{0.5}.}
 
-\item{n_col_groups}{Integer. Number of groups to assign to features.
-Defaults to \code{2}.}
+\item{n_col_groups}{Integer. Number of group labels drawn at random for
+the features. Defaults to \code{2}.}
 
-\item{n_row_groups}{Integer. Number of groups to assign to samples.
-Defaults to \code{1}.}
+\item{n_row_groups}{Integer. Number of group labels drawn at random for
+the samples. Defaults to \code{1}.}
 
 \item{perc_total_na}{Numeric scalar between \code{0} and \code{1}. Proportion of all
 matrix cells to set to \code{NA}. Defaults to \code{0.1}.}
@@ -37,32 +37,29 @@ matrix cells to set to \code{NA}. Defaults to \code{0.1}.}
 across which injected \code{NA} values are spread. Defaults to \code{0.5}.}
 
 \item{beta}{Logical. If \code{TRUE}, scale values to the interval \verb{[0, 1]}
-column-wise.}
+column-wise. Defaults to \code{TRUE}.}
 }
 \value{
-An object of class \code{slideimp_sim}. This is a list containing:
+A \code{slideimp_sim} object, a list with:
 \itemize{
-\item \code{input}: a numeric matrix of dimension \eqn{n \times p} containing the
-simulated values and injected missing values.
+\item \code{input}: a numeric matrix of dimension \eqn{n \times p} that holds the
+simulated values and the injected \code{NA} values.
 \item \code{col_group}: a data frame with \eqn{p} rows mapping each \code{feature} to a
 \code{group}.
 \item \code{row_group}: a data frame with \eqn{n} rows mapping each \code{sample} to a
 \code{group}.
+\item \code{n_col_groups}, \code{n_row_groups}: the group counts as given.
 }
 }
 \description{
-\code{sim_mat()} generates random normal data with optional compound-symmetric
-column correlation. Values can optionally be scaled to the interval
-\verb{[0, 1]} column-wise. The function also creates feature metadata for columns
-and sample metadata for rows, and can inject \code{NA} values into a specified
-proportion of matrix cells across a specified proportion of columns.
-}
-\details{
-Generate a numeric matrix with optional row and column metadata and added
-missing values.
+\code{sim_mat()} generates random normal data with compound-symmetric column
+correlation, optionally scaled to \verb{[0, 1]} column-wise. It also builds
+feature metadata for the columns and sample metadata for the rows, and sets
+a proportion of the cells to \code{NA} across a proportion of the columns.
 }
 \examples{
 set.seed(123)
 sim_data <- sim_mat(n = 50, p = 10, rho = 0.5)
 sim_data
+
 }

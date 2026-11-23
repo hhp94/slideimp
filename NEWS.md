@@ -2,25 +2,123 @@
 
 ## Breaking changes
 
-* `Inf` and `-Inf` are now rejected on entry by every imputation function,
-before any other validation.
+* `Depends` is now `R (>= 4.4.0)` (was 4.3.0), for C++17.
+
+* Every function that takes `obj` requires a double matrix. 1.2.0 converted
+integer and logical matrices.
+
+* The `na_check` argument of `knn_imp()`, `pca_imp()`, `slide_imp()` and
+`group_imp()` is removed. Use `anyNA()` on the result instead.
+
+* `mean_imp_col()` is removed.
+
+* `col_vars()` loses its `cores` argument and runs on one thread.
+
+* `subset` now narrows the result in `knn_imp()`, `slide_imp()` and
+`group_imp()`: the result holds only the selected columns, in input order.
+In `knn_imp()`, an unknown name, a repeated name, names on an input without
+column names, and an empty `subset` are errors; 1.2.0 dropped an unknown
+name with a message and returned the input for an empty `subset`.
+`slide_imp()` refuses an unknown name and an empty `subset`, under
+`dry_run = TRUE` too. `tune_imp()` with `.f = "slide_imp"` scores the same
+cells as before.
 
 * `mat_miss()` returns an integer vector when `prop = FALSE` (still a double
 vector when `prop = TRUE`).
 
-* `tune_imp()` now errors when a supplied `na_loc` position points at a cell
-that is already `NA` or `NaN`. Positions from `sample_na_loc()` are unaffected.
+* `tune_imp()` errors when a supplied `na_loc` position points at a cell that
+is already `NA` or `NaN`. Positions from `sample_na_loc()` are unaffected.
+
+* Many errors, messages and `print()` notes are reworded. Code that matches
+on message text may need updating.
+
+## New features
+
+* Multiple imputation by Bayesian PCA, a reimplementation of the sampler of
+`missMDA::MIPCA()` (Audigier, Husson and Josse, 2016):
+
+  * `mipca()` draws multiple imputations of the missing values.
+  * `mipca_tune()` chooses the rank on held-out values, and `mipca_fit()`
+    fits at the tuned rank.
+  * `mipca_finalize()` and `update()` extend or finalize a resumable fit.
+  * `mipca_flank()`, `mipca_flank_plan()` and `mipca_flank_window()` impute
+    each column on a flanking window of its neighbors.
+  * `tf_identity()`, `tf_sv()` and `tf_biwhiten()` transform the data before
+    the fit; `spectra_opts()` sets the eigensolver; `abb_cols()` proposes
+    columns to draw by approximate Bayesian bootstrap.
+  * Results have `print()`, `summary()`, `as.matrix()`, `[` and `cbind()`
+    methods.
+
+* `pca_imp()` gains `subset`: the result holds only the selected columns,
+while every eligible column still takes part in the fit.
+
+## Changes in results
+
+* `knn_imp()` with `post_imp = TRUE` sets a cell that K-NN leaves missing to
+the mean of its column's observed values. 1.2.0 took a mean that included
+the K-NN imputed values. These cells change value, in `slide_imp()` and
+`group_imp()` with K-NN too.
+
+* The column means that `post_imp` and `on_infeasible = "mean"` set are now
+computed with base R's `.colMeans()`, so they can differ from 1.2.0's in the
+last bits.
+
+* `group_imp()`: every group now reads `obj` as it was passed. 1.2.0's
+sequential path wrote each group's imputed values into `obj` before the next
+group ran, so a later group could use them as observed values in its
+auxiliary columns.
+
+* `slide_imp()` and `group_imp()` with PCA: a window or group whose missing
+target values all lie in columns that `pca_imp()` leaves out is infeasible
+and goes through `on_infeasible`, as with K-NN. 1.2.0 fitted it and set the
+targets to their column means.
+
+* `slide_imp()` returns the observed cells of `obj` unchanged. Where three or
+more windows overlapped, 1.2.0 averaged every window's copy of a column,
+which could move an observed value in its last bit.
+
+* `pca_imp()` now calls R's BLAS and LAPACK directly instead of going through
+Armadillo, so its results differ from 1.2.0's in the last digits under the
+exact solver, and by up to about 1e-8 under LOBPCG.
+
+* `pca_imp()` on a matrix with no missing values returns a
+`slideimp_results` object like any other call, where 1.2.0 returned the
+input unchanged.
 
 ## Minor improvements and fixes
 
-* The package is now compiled with 64-bit Armadillo indices
-(`-DARMA_64BIT_WORD=1`).
+* `pca_imp()` no longer crashes the R session when `ncp` exceeds the rank of
+the completed data, as with replicate samples.
+
+* `pca_imp()`: finite input whose squares overflow stops with "the
+cross-product of the data is not finite; values this large overflow when
+squared, rescale the input", before either solver. A LAPACK failure reads
+"the symmetric eigensolver failed (LAPACK dsyevr, info = <n>)". The 1.2.0
+error "`eig_sym_sel` failed to converge" is gone.
+
+* `pca_imp()` refuses eligible columns holding more than
+`.Machine$integer.max` missing values.
 
 * `pca_imp()` scans for infinities once per call rather than once per
-`nb.init` initialization.
+`nb.init` initialization. When the input has more columns than rows, only
+the loadings of the columns being imputed are updated inside the EM loop.
 
-* Documented that `NA` and `NaN` are both treated as missing, and that
-infinities are rejected rather than imputed.
+* `pin_blas` in `group_imp()` and `tune_imp()` now defaults to `TRUE`,
+pinning BLAS and OpenMP threads to 1 on mirai daemons; a sequential run pins
+nothing. RhpcBLASctl moves from `Suggests` to `Imports`.
+
+* `tune_imp()` under mirai sends `obj` to each daemon once, with
+`mirai::everywhere()`, so memory grows with the number of daemons.
+bigmemory is no longer imported, and mirai must be `>= 2.5.0`. A new error
+reports when `obj` did not reach every daemon.
+
+* `tune_imp()` with `.f = "knn_imp"` or `"slide_imp"` fails an iteration when
+the result is not the width of the repetition's `subset`. That happens when a
+daemon runs an older slideimp; 1.2.0 read the wrong cells without an error.
+
+* `sample_na_loc()`, and so `tune_imp()`, no longer draws a column whose
+variance is above zero but below `.Machine$double.eps`, the threshold
+`pca_imp()` uses for eligibility.
 
 # slideimp 1.2.0
 

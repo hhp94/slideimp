@@ -1,3 +1,6 @@
 *.html
 *.R
 *.rds
+
+/.quarto/
+*_files

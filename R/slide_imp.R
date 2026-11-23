@@ -1,96 +1,232 @@
-# given a start and end vectors. Give the counts_vec that counts the number
-# of times that position is covered and also the regions where counts are > 1
-find_overlap_regions <- function(start, end) {
-  max_pos <- max(end)
-  delta <- rep(0, max_pos + 1)
-  delta[start] <- delta[start] + 1
-  valid_ends <- end + 1 <= max_pos + 1
-  delta[end[valid_ends] + 1] <- delta[end[valid_ends] + 1] - 1
-  counts_vec <- cumsum(delta)[seq_len(max_pos)]
-  # extract regions where counts > 1
-  overlaps <- counts_vec > 1
-  rle_over <- rle(overlaps)
-  # compute start and end positions of the TRUE runs
-  ends <- cumsum(rle_over$lengths)
-  starts <- ends - rle_over$lengths + 1
-  # return the region and counts_vec
-  return(
-    list(
-      region = cbind(
-        start = starts[rle_over$values],
-        end = ends[rle_over$values]
-      ),
-      counts_vec = counts_vec
+# Number of windows that cover each of the `n` columns. `start` and `end` are
+# 1-based inclusive column indices, one pair per window.
+#
+# Windows can end on the same column, so the ends are counted with tabulate():
+# an indexed update such as `delta[end + 1] <- delta[end + 1] - 1` applies a
+# repeated index once.
+count_window_cover <- function(start, end, n) {
+  bins <- n + 1L
+  cumsum(tabulate(start, bins) - tabulate(end + 1L, bins))[seq_len(n)]
+}
+
+# A window's value at each hole of its targets, column by column and by row
+# within a column, NA where the window left the hole. `res` is what
+# knn_imp_parts() or pca_imp_parts() returned for the window with its
+# targets as `subset`, or the mean fallback in the same form, and `holes`
+# is.na() of the window's targets. fill_imp_parts() writes the parts into a
+# copy of the targets, validating them in the window, so the copy is the
+# size of the targets.
+window_hole_values <- function(res, holes) {
+  fill_imp_parts(res)[holes]
+}
+
+# The row of each position `at` in a column-major matrix of `n_row` rows, as
+# integer, which a part's map must be. which() returns double positions for
+# a matrix past 2^31 - 1 cells, and the row taken from them would stay double.
+hole_row_index <- function(at, n_row) {
+  as.integer((at - 1) %% n_row + 1)
+}
+
+# The parts of a slide_imp() result, from the windows' values summed at the
+# holes of the `subset` columns. `acc` holds the sums, one per hole, column by
+# column in `subset` order and by row within a column; `hole_n` the holes of
+# each `subset` column, and `n_ran` the number of windows that ran with it as
+# a target. `seen` marks the `subset` columns some window held as a target,
+# and `rows` the rows of their holes, in the order of `acc`: the windows
+# read them, so no second pass over the input is needed. A hole's value is
+# its sum divided by its column's `n_ran`, which is exact for a column one
+# window ran over. A column no window ran over has no part, so it comes back
+# as it is. A sum holds NA where some window left the hole, and the hole
+# stays NA: such columns are one `left_na` part, whose map names the holes
+# every window filled, and the other columns one part that fills every
+# hole. `kind` is the parts' kind. The first check is on the arguments:
+# slide_imp() counts `n_ran` only at targets it has already marked in
+# `seen`, so from there it holds by construction.
+slide_parts <- function(subset, hole_n, acc, n_ran, seen, rows, kind) {
+  if (any(n_ran > 0L & !seen)) {
+    stop(
+      "slideimp internal, slide_imp: a window ran over a column no window held",
+      call. = FALSE
+    )
+  }
+  ran <- n_ran > 0L & hole_n > 0L
+  cols <- subset[ran]
+  if (length(cols) == 0L) {
+    return(list())
+  }
+  ran_hole <- rep.int(n_ran > 0L, hole_n)
+  values <- if (all(ran_hole)) acc else acc[ran_hole]
+  values <- values / rep.int(n_ran[ran], hole_n[ran])
+  ran_seen <- rep.int(n_ran[seen] > 0L, hole_n[seen])
+  map <- cbind(
+    row = if (all(ran_seen)) rows else rows[ran_seen],
+    col = rep.int(cols, hole_n[ran])
+  )
+  rm(ran_hole, ran_seen)
+  left <- is.na(values)
+  if (!any(left)) {
+    return(list(new_part(cols = cols, map = map, values = values, kind = kind)))
+  }
+  left_cols <- unique(map[left, "col"])
+  in_left <- map[, "col"] %in% left_cols
+  list(
+    new_part(
+      cols = setdiff(cols, left_cols),
+      map = map[!in_left, , drop = FALSE],
+      values = values[!in_left],
+      kind = kind
+    ),
+    new_part(
+      cols = left_cols,
+      map = map[in_left & !left, , drop = FALSE],
+      values = values[in_left & !left],
+      kind = kind,
+      left_na = TRUE
     )
   )
 }
 
+# The `dry_run = TRUE` return value. One row per window; `target` is present in
+# flank mode only.
+slide_window_tbl <- function(start, end, subset_local, target = NULL) {
+  out <- data.frame(
+    start = start,
+    end = end,
+    window_n = end - start + 1L
+  )
+  if (!is.null(target)) {
+    out$target <- target
+  }
+  out$subset_local <- subset_local
+  class(out) <- c("slideimp_tbl", "data.frame")
+  out
+}
+
+# The `dry_run = FALSE` return value: the shared constructor plus the
+# attributes only slide_imp() carries.
+slide_imp_results <- function(
+  result,
+  imp_method,
+  fallback,
+  on_infeasible,
+  flank,
+  post_imp,
+  solver = NULL,
+  solver_chosen = NA_character_,
+  solver_lock_window = NA_integer_,
+  mean_filled_cols = integer(0),
+  mean_filled_cells = mean_filled_cells_matrix()
+) {
+  out <- new_slideimp_results(
+    result,
+    imp_method,
+    fallback = fallback,
+    post_imp = post_imp,
+    mean_filled_cols = mean_filled_cols,
+    mean_filled_cells = mean_filled_cells
+  )
+  attr(out, "metacaller") <- "slide_imp"
+  attr(out, "fallback_action") <- on_infeasible
+  attr(out, "flank") <- flank
+  if (imp_method == "pca") {
+    attr(out, "solver_requested") <- solver
+    attr(out, "solver_chosen") <- solver_chosen
+    attr(out, "solver_lock_window") <- solver_lock_window
+  }
+  out
+}
+
 #' Sliding-Window K-NN or PCA Imputation
 #'
-#' Perform sliding-window K-NN or PCA imputation on a numeric matrix whose
-#' columns are meaningfully ordered. Not intended for Illumina DNA
-#' methylation microarrays, use [group_imp()] instead.
+#' Impute missing values in a numeric matrix whose columns are ordered by
+#' position, using K-NN or PCA imputation within sliding windows. For Illumina
+#' DNA methylation microarrays, use [group_imp()] instead.
 #'
 #' @inheritParams knn_imp
 #' @inheritParams pca_imp
 #'
-#' @param location A sorted numeric vector of length `ncol(obj)` giving the
-#'   position of each column, such as genomic coordinates.
-#' @param window_size Numeric. Window width in the same units as `location`.
-#' @param overlap_size Numeric. Overlap between consecutive windows in the
-#'   same units as `location`. Must be less than `window_size`. Ignored when
-#'   `flank = TRUE`.
-#' @param flank Logical. If `FALSE`, imputation uses sliding windows across the
-#'   full matrix. If `TRUE`, one window of width `window_size` is created for
-#'   each feature listed in `subset`; `overlap_size` is ignored. `subset` must
-#'   be supplied when `flank = TRUE`.
-#' @param min_window_n Integer. Minimum number of columns a window must contain
-#'   to be considered for imputation. For non-dry runs, the selected `k` or
-#'   `ncp` value must be feasible for the usable columns in each retained
-#'   window after applying `colmax`.
-#' @param subset Optional character or integer vector specifying columns to
-#'   impute. If `NULL`, all eligible columns are imputed. Required when
-#'   `flank = TRUE`.
-#' @param dry_run Logical. If `TRUE`, skip imputation and return a
-#'   `slideimp_tbl` describing the windows that would be used after all
-#'   filtering rules are applied. In this mode, `k` and `ncp` are not required.
-#' @param method Character or `NULL`. For K-NN imputation, one of
-#'   `"euclidean"` or `"manhattan"`. For PCA imputation, one of
-#'   `"regularized"` or `"EM"`. If `NULL`, the corresponding backend default
-#'   is used.
-#' @param cores Integer. Number of cores to use for K-NN imputation.
+#' @param location Numeric. The position of each column of `obj`, such as a
+#'   genomic coordinate, sorted in ascending order.
+#' @param window_size Numeric. The width of each window, in the units of
+#'   `location`. With `flank = TRUE`, the distance each window reaches on each
+#'   side of its feature.
+#' @param overlap_size Numeric. The overlap between consecutive windows, in the
+#'   units of `location`, less than `window_size`. Ignored when `flank = TRUE`.
+#' @param flank Logical. If `FALSE`, slide windows across all columns. If
+#'   `TRUE`, build one window around each column in `subset`, as described
+#'   under Details.
+#' @param min_window_n Integer. The smallest number of columns, at least `2`,
+#'   that a window needs to be kept. `k` and `ncp` must be less than
+#'   `min_window_n`.
+#' @param k Integer or `NULL`. Number of nearest neighbors for K-NN
+#'   imputation.
+#' @param ncp Integer or `NULL`. Number of components for PCA imputation.
+#' @param subset Optional character or integer vector. The columns to impute
+#'   and return, by name or by number, or `NULL` for every column. Must be
+#'   supplied when `flank = TRUE`. Defaults to `NULL`.
+#' @param dry_run Logical. If `TRUE`, return the windows that `min_window_n`
+#'   and `subset` leave, as a `slideimp_tbl`, without imputing. `k` and `ncp`
+#'   are not needed then.
+#' @param method Character or `NULL`. One of `"euclidean"` or `"manhattan"`
+#'   for K-NN imputation, or `"regularized"` or `"EM"` for PCA imputation.
+#'   `NULL` uses `"euclidean"` for K-NN and `"regularized"` for PCA.
 #' @param on_infeasible Character. One of `"skip"`, `"error"`, or `"mean"`.
-#'   Controls behavior when a window is infeasible for imputation, for example
-#'   when `k` or `ncp` exceeds the number of usable columns after applying
-#'   `colmax`.
+#'   The action for a window that is infeasible for imputation, for example
+#'   because `k` or `ncp` is too large for the columns that `colmax` leaves.
+#'   Defaults to `"skip"`.
 #'
 #' @details
-#' The sliding-window approach divides the input matrix into smaller segments
-#' based on `location` values and applies imputation to each window
-#' independently. Values in overlapping regions are averaged across windows to
-#' produce the final imputed result.
-#'
-#' Two windowing modes are supported:
+#' `slide_imp()` splits the columns of `obj` into windows by `location` and
+#' imputes each window on its own. There are two windowing modes:
 #'
 #' * `flank = FALSE`: greedily partition `location` into windows of width
 #'   `window_size` with the requested `overlap_size` between consecutive
-#'   windows.
-#' * `flank = TRUE`: create one window per feature in `subset`, centered on
-#'   that feature using the supplied `window_size`.
+#'   windows. A window that would add no column to the window before it is not
+#'   created. A column in more than one window takes the mean of their imputed
+#'   values.
+#' * `flank = TRUE`: create one window per feature in `subset`. Each window
+#'   covers the `location` values within `window_size` of that feature, on
+#'   both sides, so it spans twice `window_size`.
 #'
-#' Specify `k` and related arguments to use [knn_imp()], or `ncp` and related
-#' arguments to use [pca_imp()].
+#' Supply exactly one of `k` and `ncp`. `k` imputes each window with
+#' [knn_imp()], and `ncp` imputes it with [pca_imp()]. The arguments of the
+#' other method are ignored.
+#'
+#' The result holds the `subset` columns in the order they have in `obj`.
+#' In each window, every column the method can use takes part in the
+#' imputation, in `subset` or not: for K-NN every column within `colmax`, and
+#' for PCA every column within `colmax` whose variance is not zero. A name
+#' that is not in `colnames(obj)`, or a `subset` that selects no column, is an
+#' error.
+#'
+#' `on_infeasible = "skip"` does not impute an infeasible window, `"mean"`
+#' fills it with column means, and `"error"` stops at the first such window.
+#' With `"skip"` and `"mean"`, `slide_imp()` raises one warning of class
+#' `slideimp_fallback` that lists the affected windows.
+#'
+#' An infeasible window adds nothing to the `mean_filled_cols` and
+#' `mean_filled_cells` attributes. Where windows overlap, `mean_filled_cells`
+#' lists each cell that at least one window filled with its column mean.
+#'
+#' With `solver = "auto"`, the first window that completes the solver probe
+#' picks the solver, and every later window uses it.
+#'
+#' `slide_imp()` rejects a column with no observed values only when a window
+#' covers it. A column that no window covers is returned unchanged.
+#'
+#' @inheritSection slideimp-package Column mean fill
 #'
 #' @inheritSection slideimp-package Missing values and non-finite input
 #'
 #' @inheritSection pca_imp PCA Performance tips
 #'
-#' @returns If `dry_run = FALSE`, a numeric matrix of the same dimensions as
-#'   `obj`, with missing values imputed. The returned object has class
-#'   `slideimp_results`.
+#' @returns If `dry_run = FALSE`, a numeric matrix of class `slideimp_results`
+#'   with the rows of `obj` and the columns that `subset` selects, with
+#'   missing values imputed.
 #'
-#'   If `dry_run = TRUE`, a data frame of class `slideimp_tbl` with columns
-#'   `start`, `end`, and `window_n`, plus `subset_local` and, when
+#'   If `dry_run = TRUE`, a data frame of class `slideimp_tbl` with one row per
+#'   window and the columns `start` and `end` (the first and last column of
+#'   `obj` in the window), `window_n`, `subset_local` and, when
 #'   `flank = TRUE`, `target`.
 #'
 #' @examples
@@ -181,29 +317,26 @@ slide_imp <- function(
   .progress = TRUE,
   colmax = 0.9,
   post_imp = TRUE,
-  na_check = TRUE,
   on_infeasible = c("skip", "error", "mean")
 ) {
+  # conditions raised from inside a handler report this frame, not the handler
+  slide_env <- environment()
   checkmate::assert_flag(dry_run, .var.name = "dry_run", null.ok = FALSE)
-  # minimal pre-conditioning to avoid code fragility
+  # k/ncp are irrelevant to a dry run.
+  imp_method <- NA_character_
   if (!dry_run) {
     if (sum(c(is.null(k), is.null(ncp))) != 1L) {
-      stop(
-        "Specify either 'k' for K-NN imputation or 'ncp' for PCA imputation. Not both nor neither."
+      cli::cli_abort(
+        "Supply exactly one of {.arg k} (K-NN imputation) or {.arg ncp} (PCA imputation)."
       )
     }
     imp_method <- if (!is.null(k)) "knn" else "pca"
-  } else {
-    # k/ncp irrelevant when only computing window statistics
-    imp_method <- NA_character_
-  }
-  if (!dry_run) {
     on_infeasible <- match.arg(on_infeasible)
   }
   # Pre-conditioning ----
   checkmate::assert_matrix(
     obj,
-    mode = "numeric",
+    mode = "double",
     null.ok = FALSE,
     .var.name = "obj"
   )
@@ -230,16 +363,20 @@ slide_imp <- function(
     null.ok = FALSE,
     .var.name = "overlap_size"
   )
-  if (overlap_size >= window_size) {
-    stop("`overlap_size` must be strictly less than `window_size`.")
-  }
   checkmate::assert_flag(flank, .var.name = "flank", null.ok = FALSE)
   if (flank) {
-    stopifnot(
-      "`subset` must be provided when `flank = TRUE`." = !is.null(subset)
-    )
-    # subset is validated later on.
+    if (is.null(subset)) {
+      cli::cli_abort(
+        "Supply {.arg subset} when {.code flank = TRUE}."
+      )
+    }
+    # subset is validated later on. `overlap_size` is documented as ignored in
+    # this mode, so it is not compared against `window_size` either.
     overlap_size <- 0
+  } else if (overlap_size >= window_size) {
+    cli::cli_abort(
+      "{.arg overlap_size} must be strictly less than {.arg window_size}."
+    )
   }
   checkmate::assert_int(
     min_window_n,
@@ -268,22 +405,17 @@ slide_imp <- function(
       match.arg(method, c("regularized", "EM"))
     }
     solver <- match.arg(solver)
-    # every window is handed to pca_imp(), which caps `ncp` at
-    # `min(nrow(obj) - 2, n_elig - 1)` and raises `slideimp_infeasible` above
-    # it. The row half of that cap is knowable here and has to be enforced
-    # here: `nrow(obj) - 1L` passes this check and then makes EVERY window
-    # infeasible, which the default `on_infeasible = "skip"` turns into the
-    # input returned unimputed with no error and no warning. The column half
-    # depends on `colmax` and per-window variance, so `min_window_n - 1L` is
-    # the tightest static bound available for it.
+    # each window's pca_imp() caps `ncp` at `min(nrow(obj) - 2, n_elig - 1)`
+    # and raises `slideimp_infeasible` above it. The row half is enforced
+    # here, or every window is infeasible and "skip" returns the input
+    # unimputed. The column half depends on `colmax` and per-window variance,
+    # so `min_window_n - 1L` is the static bound for it.
     max_ncp <- min(min_window_n - 1L, ncol(obj) - 1L, nrow(obj) - 2L)
     if (max_ncp < 1L) {
       cli::cli_abort(
         c(
-          "PCA imputation is infeasible with the current data and settings.",
-          "i" = "Number of rows: {nrow(obj)}. PCA needs at least 3.",
-          "i" = "Number of columns: {ncol(obj)}.",
-          "i" = "{.arg min_window_n}: {min_window_n}."
+          "PCA imputation is infeasible: {.arg obj} needs at least 3 rows and 2 columns.",
+          "x" = "{.arg obj} has {nrow(obj)} row{?s} and {ncol(obj)} column{?s}."
         ),
         class = "slideimp_infeasible"
       )
@@ -294,71 +426,63 @@ slide_imp <- function(
       upper = max_ncp,
       .var.name = "ncp"
     )
-    # other PCA arguments, including `lobpcg_control`, are checked in pca_imp().
-    # do not resolve `lobpcg_control` here. The first successful PCA window needs
-    # the actual window size so pca_imp can apply solver = "auto". Its chosen
-    # concrete solver is then reused for later windows.
+    # other PCA arguments are checked in pca_imp(). `lobpcg_control` is not
+    # resolved here: solver = "auto" needs each window's size.
   }
 
   checkmate::assert_flag(.progress, .var.name = ".progress", null.ok = FALSE)
-  checkmate::assert_flag(na_check, .var.name = "na_check")
 
-  # resolve subset to sorted integer indices (needed before windowing when flank = TRUE)
-  subset <- resolve_subset(subset, obj, sort = TRUE)
-  if (is.null(subset)) {
-    return(obj)
-  }
+  # the columns the result holds, ascending: `result_cols` is NULL for every
+  # column, and `subset` then lists every column, for the windows. Needed
+  # before windowing when flank = TRUE. resolve_narrow_subset() refuses an
+  # unknown name and an empty `subset`, in this frame's name.
+  result_cols <- resolve_narrow_subset(subset, obj)
+  subset <- if (is.null(result_cols)) seq_len(ncol(obj)) else result_cols
 
   # windowing Logic ----
-  if (flank) {
-    windows <- find_windows_flank(location, subset, window_size)
-    start <- windows$start
-    end <- windows$end
-    # each window has exactly one target column; subset_local gives its local index
-    subset_list <- as.list(windows$subset_local)
+  windows <- if (flank) {
+    find_windows_flank(location, subset, window_size)
   } else {
-    windows <- find_windows(location, window_size, overlap_size)
-    start <- windows$start
-    end <- windows$end
+    find_windows(location, window_size, overlap_size)
   }
 
   # drop windows that are too small
-  window_n <- end - start + 1L
-  keep <- window_n >= min_window_n
+  keep <- windows$end - windows$start + 1L >= min_window_n
   if (!any(keep)) {
-    stop(
-      "All windows have fewer than `min_window_n` (",
-      min_window_n,
-      ") columns. Consider increasing `window_size` or decreasing `min_window_n`."
-    )
+    cli::cli_abort(c(
+      "All windows have fewer than {.arg min_window_n} ({min_window_n}) columns.",
+      "i" = "Increase {.arg window_size} or decrease {.arg min_window_n}."
+    ))
   }
   if (any(!keep) && .progress) {
-    message(
-      sprintf(
-        "Dropping %d window(s) with fewer than %d columns.",
-        sum(!keep),
-        min_window_n
-      )
+    n_drop <- sum(!keep)
+    cli::cli_inform(
+      "Dropping {n_drop} window{?s} with fewer than {min_window_n} columns."
     )
   }
-  start <- start[keep]
-  end <- end[keep]
+  start <- windows$start[keep]
+  end <- windows$end[keep]
 
+  # `target_j[i]` is the position in `subset` of window i's first target: a
+  # window's targets are consecutive in `subset`, so its holes are one run of
+  # `acc` below. findInterval() runs once over all windows, not per window: it
+  # costs a pass over `subset` per call.
   if (flank) {
-    subset_list <- subset_list[keep]
+    # each window has exactly one target column; subset_local gives its local index
+    subset_list <- as.list(windows$subset_local[keep])
     # track which original target columns (global indices) survived filtering
     target_cols <- subset[keep]
-  }
-
-  if (!flank) {
-    # build per-window local subset indices. Used by knn_imp; for pca it only
-    # drives the "drop windows that cover no subset columns" filter below so
-    # that non-flank behavior matches flank mode.
+    target_j <- which(keep)
+  } else {
+    # build per-window local subset indices, ascending: the `subset` each
+    # window passes to the backend. They also drive the "drop windows that
+    # cover no subset columns" filter below, so that non-flank behavior
+    # matches flank mode.
+    first <- findInterval(start - 1, subset) + 1
+    last <- findInterval(end, subset)
     subset_list <- lapply(seq_along(start), function(i) {
-      first <- findInterval(start[i] - 1, subset) + 1
-      last <- findInterval(end[i], subset)
-      if (first <= last) {
-        subset[first:last] - start[i] + 1
+      if (first[i] <= last[i]) {
+        subset[first[i]:last[i]] - start[i] + 1
       } else {
         integer(0)
       }
@@ -367,111 +491,141 @@ slide_imp <- function(
     # drop windows that cover no subset columns (parity with flank mode).
     keep_sub <- lengths(subset_list) > 0L
     if (!any(keep_sub)) {
-      stop(
-        "No windows cover any column in `subset`. Consider increasing `window_size`."
-      )
+      cli::cli_abort(c(
+        "No windows cover any column in {.arg subset}.",
+        "i" = "Increase {.arg window_size} or decrease {.arg min_window_n}."
+      ))
     }
     if (any(!keep_sub) && .progress) {
-      message(
-        sprintf(
-          "Dropping %d window(s) covering no `subset` columns.",
-          sum(!keep_sub)
-        )
+      n_drop_sub <- sum(!keep_sub)
+      cli::cli_inform(
+        "Dropping {n_drop_sub} window{?s} with no column in {.arg subset}."
       )
     }
     start <- start[keep_sub]
     end <- end[keep_sub]
     subset_list <- subset_list[keep_sub]
-
-    # overlap regions to average over (computed on surviving windows)
-    overlap <- find_overlap_regions(start, end)
+    target_j <- as.integer(first[keep_sub])
+    rm(first, last)
   }
 
-  # validate covered columns once (not a submatrix per window)
-  covered_cols <- collapse::funique(
-    sequence(end - start + 1L, from = start),
-    sort = TRUE
-  )
-
-  if (length(covered_cols) == ncol(obj)) {
-    check_finite(obj)
-  } else {
-    # Inf: whole matrix so the reported row/col refer to obj
-    check_inf(obj)
-    # all-NA: only columns a window will impute
-    check_finite(obj[, covered_cols, drop = FALSE])
-  }
+  # One scan of the whole matrix, before any window runs, so a dry run
+  # refuses what a full run does. Each window's scan is this one indexed
+  # (scan_cols()), and the variances serve only PCA windows. An Inf is
+  # refused wherever it sits, and a column with no observed value only where a
+  # window reads it.
+  scan <- col_scan(obj, var = identical(imp_method, "pca"))
+  covered_cols <- which(count_window_cover(start, end, ncol(obj)) > 0L)
+  refuse_nonfinite(scan, empty_j = covered_cols)
 
   # early return: window statistics only ----
   if (dry_run) {
-    out <- data.frame(
+    return(slide_window_tbl(
       start = start,
       end = end,
-      window_n = end - start + 1L
-    )
-    if (flank) {
-      out$target <- target_cols
-    }
-    out$subset_local <- subset_list
-    class(out) <- c("slideimp_tbl", "data.frame")
-    return(out)
+      subset_local = subset_list,
+      target = if (flank) target_cols else NULL
+    ))
   }
 
   # Sliding Imputation ----
-  result <- obj
-
-  copy_max_bytes <- 500 * 1024^2
-  copy_max_cols_per_chunk <- as.integer(
-    copy_max_bytes %/% (max(1L, nrow(result)) * 8)
-  )
-  copy_col_chunk <- min(10000L, max(1L, copy_max_cols_per_chunk))
-
-  if (length(subset) > 0L) {
-    for (s in seq(1L, length(subset), by = copy_col_chunk)) {
-      e <- min(s + copy_col_chunk - 1L, length(subset))
-      result[, subset[s:e]] <- 0
-    }
-  }
-
+  n_windows <- length(start)
   if (.progress) {
-    message("Step 1/2: Imputing")
-    n_windows <- length(start)
+    cli::cli_inform("Step 1/2: Imputing")
     n_steps <- max(1, round(n_windows / 20))
   }
 
+  # The windows hand back parts, and no matrix the size of `obj` is built
+  # until the one write at the end. `acc` holds one double per hole of the
+  # `subset` columns, column by column in `subset` order and by row within a
+  # column, and each window that runs adds its value at every hole of its
+  # targets, in window order, from 0. A hole the window left adds NA, so it
+  # stays NA. An observed cell is never written. `hole_off[j]`
+  # counts the holes before `subset[j]`, in double, since on a large input
+  # they can pass 2^31 - 1.
+  hole_n <- scan$n_miss[subset]
+  hole_off <- c(0, cumsum(as.double(hole_n)))
+  acc <- numeric(hole_off[[length(hole_off)]])
+  # The rows of those holes, kept from the first window that holds a column
+  # as a target, so the parts' maps need no second pass over `obj`. The
+  # windows run in order of `location`, and each one's targets are
+  # consecutive in `subset`, so a window's new targets are those after
+  # `n_seen`, the last `subset` column a window held. `hole_rows` holds one
+  # piece per window, in `subset` order, and `seen` marks the columns read.
+  hole_rows <- vector("list", length(start))
+  seen <- logical(length(subset))
+  n_seen <- 0L
+  # the number of windows that ran with each `subset` column as a target,
+  # which its holes' sums are divided by. A skipped window does not count; a
+  # mean-filled one does.
+  n_ran <- integer(length(subset))
+
   # meta data
   fallback_flags <- logical(length(start))
-  skipped_flags <- logical(length(start))
+  # what `post_imp` set to a column mean inside each window, numbered as the
+  # result's columns, which are `subset`. NULL for a window that recorded
+  # nothing, which is most.
+  mean_filled <- vector("list", length(start))
 
   # for PCA with solver = "auto", let the first successful PCA window choose
   # the concrete solver, then reuse that solver for the remaining windows.
   pca_solver_current <- if (imp_method == "pca") solver else NULL
-  pca_solver_lock_window <- NA
+  pca_solver_lock_window <- NA_integer_
   for (i in seq_along(start)) {
     if (.progress && (i %% n_steps == 0 || i == n_windows || i == 1)) {
-      message(sprintf(" Processing window %d of %d", i, n_windows))
+      cli::cli_inform("Processing window {i} of {n_windows}")
     }
     window_cols <- start[i]:end[i]
     sub_mat <- obj[, window_cols, drop = FALSE]
+    sub_scan <- scan_cols(scan, window_cols)
+    local_idx <- as.integer(subset_list[[i]])
+    # The window's targets are consecutive in `subset`, from its `j`-th
+    # column: a window takes every `subset` column it covers, and in flank
+    # mode its one target. Their holes are therefore one run of `acc`.
+    j <- target_j[[i]]
+    tj <- j - 1L + seq_along(local_idx)
+    if (any(subset[tj] != window_cols[local_idx])) {
+      stop(
+        "slideimp internal, slide_imp: the targets of window ",
+        i,
+        " are not consecutive in 'subset'",
+        call. = FALSE
+      )
+    }
+    holes <- is.na(sub_mat[, local_idx, drop = FALSE])
+    new_t <- tj > n_seen
+    if (any(new_t)) {
+      # the rows of the holes of the new targets, column by column, from
+      # their positions in `holes`
+      at_new <- which(holes[, new_t, drop = FALSE])
+      hole_rows[[i]] <- hole_row_index(at_new, nrow(holes))
+      seen[tj[new_t]] <- TRUE
+      n_seen <- tj[[length(tj)]]
+    }
 
-    imputed_window <- tryCatch(
+    # Both internals take the window's targets as `subset` and return parts
+    # in the window's numbering, which together cover the targets. A window
+    # whose targets are complete returns no part, through the internal's own
+    # early exit. An infeasible window under "skip" or "mean" is NULL here.
+    res <- tryCatch(
       suppressMessages(
         if (imp_method == "knn") {
-          knn_imp(
+          knn_imp_parts(
             obj = sub_mat,
+            scan = sub_scan,
             k = k,
             colmax = colmax,
             cores = cores,
             method = method,
             post_imp = post_imp,
             dist_pow = dist_pow,
-            na_check = FALSE,
             .progress = FALSE,
-            subset = subset_list[[i]]
+            subset = local_idx
           )
         } else {
-          pca_imp(
+          pca_imp_parts(
             obj = sub_mat,
+            scan = sub_scan,
             ncp = ncp,
             scale = scale,
             method = method,
@@ -484,176 +638,161 @@ slide_imp <- function(
             row.w = row.w,
             lobpcg_control = lobpcg_control,
             solver = pca_solver_current,
-            na_check = FALSE,
             colmax = colmax,
             post_imp = post_imp,
             clamp = clamp,
+            subset = local_idx,
             .progress = FALSE
           )
         }
       ),
       slideimp_infeasible = function(e) {
-        switch(
-          on_infeasible,
-          error = stop(e),
-          skip = structure(sub_mat, fallback = TRUE, skipped = TRUE),
-          mean = structure(
-            mean_imp_col(sub_mat, subset = subset_list[[i]], cores = cores),
-            fallback = TRUE
+        if (on_infeasible == "error") {
+          cli::cli_abort(
+            c(
+              if (flank) {
+                "Window {i} (target column {target_cols[i]}, columns {start[i]} to {end[i]}) is infeasible for imputation."
+              } else {
+                "Window {i} (columns {start[i]} to {end[i]}) is infeasible for imputation."
+              },
+              "i" = "Use {.code on_infeasible = \"skip\"} or {.code on_infeasible = \"mean\"} to handle infeasible windows."
+            ),
+            parent = e,
+            class = "slideimp_infeasible",
+            call = slide_env
           )
-        )
+        }
+        NULL
       }
     )
 
-    fallback_flags[i] <- isTRUE(attr(imputed_window, "fallback"))
-    skipped_flags[i] <- isTRUE(attr(imputed_window, "skipped"))
-
-    if (
-      imp_method == "pca" &&
-        solver == "auto" &&
-        pca_solver_current == "auto" &&
-        !fallback_flags[i]
-    ) {
-      # only a COMPLETED auto probe is a verdict worth reusing. pca_imp() also
-      # reports solver_chosen = "exact" when its own size heuristic demoted the
-      # window before the kernel ran (n_gram < 250, or k_eig / n_gram > 0.10),
-      # and when the EM loop ended before the probe finished. Pinning on either
-      # hands every later window a decision that was never made - and a pinned
-      # solver bypasses the per-window size demotion and the warmup_iters raise
-      # that solver = "auto" applies. Leaving `pca_solver_current` at "auto"
-      # lets the next window decide for itself, which costs nothing measurable:
-      # the probe is cheap relative to the window it is deciding about.
-      probed <- isTRUE(attr(imputed_window, "solver_probed", exact = TRUE))
-      chosen_solver <- attr(imputed_window, "solver_chosen", exact = TRUE)
-      if (
-        probed &&
-          is.character(chosen_solver) &&
-          length(chosen_solver) == 1L &&
-          chosen_solver %in% c("exact", "lobpcg")
-      ) {
-        pca_solver_current <- chosen_solver
-        pca_solver_lock_window <- i
+    if (is.null(res)) {
+      fallback_flags[i] <- TRUE
+      if (on_infeasible == "skip") {
+        next
       }
-    }
-
-    if (skipped_flags[i]) {
-      next
-    }
-
-    local_idx <- subset_list[[i]]
-
-    if (length(local_idx) > 0L) {
-      global_idx <- window_cols[local_idx]
-      result[, global_idx] <- result[, global_idx, drop = FALSE] +
-        imputed_window[, local_idx, drop = FALSE]
-    }
-  }
-
-  if (.progress) {
-    message("Step 2/2: Averaging overlapping regions")
-  }
-
-  if (flank) {
-    # in flank mode each target column is imputed exactly once, no averaging needed.
-    # Columns not targeted by any surviving window, or skipped, get original values.
-    skipped_targets <- target_cols[skipped_flags]
-    uncovered <- union(setdiff(subset, target_cols), skipped_targets)
-
-    if (length(uncovered) > 0) {
-      for (s in seq(1L, length(uncovered), by = copy_col_chunk)) {
-        e <- min(s + copy_col_chunk - 1L, length(uncovered))
-        cols <- uncovered[s:e]
-        result[, cols] <- obj[, cols, drop = FALSE]
-      }
-
-      if (.progress) {
-        message(sprintf(
-          "Note: %d column(s) not covered by any window; original values retained.",
-          length(uncovered)
-        ))
-      }
-    }
-  } else {
-    counts_vec <- overlap$counts_vec
-    if (length(counts_vec) < ncol(obj)) {
-      counts_vec <- c(counts_vec, rep(0L, ncol(obj) - length(counts_vec)))
-    }
-    # remove skipped-window contributions
-    if (any(skipped_flags)) {
-      for (i in which(skipped_flags)) {
-        cols_i <- start[i]:end[i]
-        counts_vec[cols_i] <- counts_vec[cols_i] - 1L
-      }
-    }
-    # average only target columns where multiple non-skipped windows overlap.
-    target_counts <- counts_vec[subset]
-
-    gt_1_idx <- subset[target_counts > 1L]
-    if (length(gt_1_idx) > 0) {
-      result[, gt_1_idx] <- sweep(
-        result[, gt_1_idx, drop = FALSE],
-        2,
-        counts_vec[gt_1_idx],
-        "/"
+      # on_infeasible = "mean": each hole of the targets set to its column
+      # mean, as the internals' own result, so the same door reads it
+      res <- list(
+        obj = sub_mat,
+        parts = list(fallback_part(
+          sub_mat,
+          local_idx[hole_n[tj] > 0L],
+          "mean"
+        )),
+        keep = local_idx
       )
     }
 
-    # restore original values for target columns not covered by any non-skipped window.
-    uncovered <- subset[target_counts == 0L]
-    if (length(uncovered) > 0) {
-      for (s in seq(1L, length(uncovered), by = copy_col_chunk)) {
-        e <- min(s + copy_col_chunk - 1L, length(uncovered))
-        cols <- uncovered[s:e]
-        result[, cols] <- obj[, cols, drop = FALSE]
-      }
-      if (.progress) {
-        message(sprintf(
-          "Note: %d column(s) not covered by any window; original values retained.",
-          length(uncovered)
-        ))
-      }
+    n_ran[tj] <- n_ran[tj] + 1L
+    n_holes <- hole_off[[j + length(local_idx)]] - hole_off[[j]]
+    if (n_holes > 0) {
+      at <- hole_off[[j]] + seq_len(n_holes)
+      acc[at] <- acc[at] + window_hole_values(res, holes)
     }
+
+    # a mean fallback chooses no solver and carries no record: `fallback`
+    # already reports it
+    if (fallback_flags[i]) {
+      next
+    }
+
+    # `pca_solver_current` starts at `solver` and leaves "auto" only here, so
+    # it is "auto" only while `solver = "auto"` has not locked
+    if (
+      imp_method == "pca" &&
+        pca_solver_current == "auto" &&
+        isTRUE(res$info$solver_probed)
+    ) {
+      # only a completed probe locks the solver. pca_imp() also reports
+      # solver_chosen = "exact" when its size heuristic demoted the window or
+      # the EM loop ended before the probe finished; locking on that would
+      # skip the per-window demotion and warmup_iters raise of "auto".
+      pca_solver_current <- res$info$solver_chosen
+      pca_solver_lock_window <- i
+    }
+
+    # The internals' result columns are the window's targets, and the
+    # window's `t`-th target is the result's column `tj[t]`.
+    info <- res$info
+    if (
+      length(info$mean_filled_cols) > 0L || nrow(info$mean_filled_cells) > 0L
+    ) {
+      mean_filled[[i]] <- mean_filled_record(info, tj)
+    }
+  }
+  rm(res, sub_mat, sub_scan, holes)
+  hole_rows <- unlist(hole_rows, use.names = FALSE)
+  if (is.null(hole_rows)) {
+    hole_rows <- integer(0)
   }
 
-  if (na_check) {
-    if (flank) {
-      # all requested targets, not just non-skipped ones
-      imputed_cols <- subset
-    } else {
-      imputed_cols <- subset
-    }
-    has_remaining_na <- FALSE
-    if (length(imputed_cols) > 0L) {
-      for (s in seq(1L, length(imputed_cols), by = copy_col_chunk)) {
-        e <- min(s + copy_col_chunk - 1L, length(imputed_cols))
-        if (anyNA(result[, imputed_cols[s:e], drop = FALSE])) {
-          has_remaining_na <- TRUE
-          break
-        }
-      }
-    }
-  } else {
-    has_remaining_na <- NULL
+  if (.progress) {
+    cli::cli_inform("Step 2/2: Averaging overlapping windows")
   }
+
+  # every window marks its targets in `seen` before it runs, and a window
+  # holds as a target every `subset` column it covers, so the columns no
+  # window covers are the ones never seen
+  n_no_window <- sum(!seen)
+
+  # one write: the averaged holes into one copy of the columns the result
+  # holds. A column no window ran over comes back as it is.
+  parts <- slide_parts(subset, hole_n, acc, n_ran, seen, hole_rows, imp_method)
+  rm(acc, hole_rows)
+  result <- fill_parts(obj, parts, keep = result_cols, n_miss = scan$n_miss)
+  rm(parts)
+
+  # skipped windows are reported by the warning below, not here.
+  if (.progress && n_no_window > 0L) {
+    cli::cli_inform(c(
+      "No window covers {n_no_window} requested column{?s}.",
+      "i" = "{cli::qty(n_no_window)}{?This column keeps/These columns keep} the original values."
+    ))
+  }
+
   fallback_windows <- which(fallback_flags)
-
-  class(result) <- c("slideimp_results", class(result))
-  attr(result, "imp_method") <- imp_method
-  attr(result, "metacaller") <- "slide_imp"
-  attr(result, "fallback") <- fallback_windows
-  attr(result, "fallback_action") <- on_infeasible # "skip" or "mean"
-  attr(result, "has_remaining_na") <- has_remaining_na
-  attr(result, "flank") <- flank
-  attr(result, "post_imp") <- post_imp
-  if (imp_method == "pca") {
-    attr(result, "solver_requested") <- solver
-    attr(result, "solver_chosen") <- if (solver == "auto") {
-      if (is.na(pca_solver_lock_window)) NA else pca_solver_current
-    } else {
-      solver
-    }
-    attr(result, "solver_lock_window") <- pca_solver_lock_window
+  n_fallback <- length(fallback_windows)
+  if (n_fallback > 0L) {
+    # raised whatever `.progress` says: the default `on_infeasible = "skip"`
+    # otherwise hands back unimputed columns with no condition at all.
+    cli::cli_warn(
+      c(
+        "{n_fallback} of {n_windows} window{?s} {cli::qty(n_fallback)}{?is/are} infeasible for imputation.",
+        "x" = if (on_infeasible == "skip") {
+          "{cli::qty(n_fallback)}Skipped window{?s}: {fmt_trunc(fallback_windows)}. Missing values in a skipped window can remain {.code NA}."
+        } else {
+          "{cli::qty(n_fallback)}Window{?s} filled with column means: {fmt_trunc(fallback_windows)}."
+        },
+        "i" = "Use {.code on_infeasible = \"error\"} to see why a window is infeasible."
+      ),
+      class = "slideimp_fallback"
+    )
   }
 
-  result
+  mean_filled <- combine_mean_filled(mean_filled, nrow(obj))
+
+  slide_imp_results(
+    result,
+    imp_method,
+    fallback = fallback_windows,
+    on_infeasible = on_infeasible, # "skip" or "mean"
+    flank = flank,
+    post_imp = post_imp,
+    solver = if (imp_method == "pca") solver else NULL,
+    # a pinned `solver`, or the one "auto" locked on; NA while "auto" never
+    # locked
+    solver_chosen = if (imp_method == "pca" && pca_solver_current != "auto") {
+      pca_solver_current
+    } else {
+      NA_character_
+    },
+    solver_lock_window = pca_solver_lock_window,
+    # a column's missing rate does not depend on the window, so a column held
+    # out by `colmax` is held out in every window that ran. A cell the method
+    # left can differ between windows: it is recorded when any window filled
+    # it with the column mean, even where another window's value is averaged in.
+    mean_filled_cols = mean_filled$cols,
+    mean_filled_cells = mean_filled$cells
+  )
 }

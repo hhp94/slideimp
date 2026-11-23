@@ -1,12 +1,12 @@
-#' Print a `slideimp_results` Object
+#' Print Method for `slideimp_results` Objects
 #'
 #' Print the output of [knn_imp()], [pca_imp()], [group_imp()], or
 #' [slide_imp()].
 #'
 #' @param x A `slideimp_results` object.
-#' @param n Number of rows to print.
-#' @param p Number of columns to print.
-#' @param ... Not used.
+#' @param n Integer. Number of rows to print.
+#' @param p Integer. Number of columns to print.
+#' @param ... Further arguments passed to [print()] for the preview.
 #'
 #' @returns `x`, invisibly.
 #'
@@ -20,7 +20,7 @@
 #' @method print slideimp_results
 #' @export
 print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
-  imp_method <- toupper(attr(x, "imp_method"))
+  imp_method <- method_label(attr(x, "imp_method"))
   metacaller <- attr(x, "metacaller")
   fallback <- attr(x, "fallback")
   fallback_action <- attr(x, "fallback_action")
@@ -41,8 +41,8 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
     } else {
       switch(
         fallback_action,
-        mean = "used mean imputation as fallback",
-        skip = "skipped imputation (insufficient eligible columns; original values retained)",
+        mean = "used mean imputation as a fallback",
+        skip = "skipped imputation (too few usable columns, input values kept)",
         "used a fallback"
       )
     }
@@ -65,9 +65,33 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
     )
   }
 
-  # remaining NA note
-  if (isTRUE(attr(x, "has_remaining_na"))) {
-    cat("Note: requested columns still contain NA values\n")
+  # column-mean notes: what `post_imp` filled. An absent attribute (an object
+  # saved without it) counts as empty.
+  n_mean_cols <- length(attr(x, "mean_filled_cols", exact = TRUE))
+  n_mean_cells <- NROW(attr(x, "mean_filled_cells", exact = TRUE))
+  if (n_mean_cols > 0L) {
+    cat(
+      "Note: ",
+      n_mean_cols,
+      if (n_mean_cols == 1L) " column was" else " columns were",
+      " excluded from imputation. Column means replaced ",
+      if (n_mean_cols == 1L) "its" else "their",
+      " missing values.\n",
+      "  See attribute \"mean_filled_cols\".\n",
+      sep = ""
+    )
+  }
+  if (n_mean_cells > 0L) {
+    cat(
+      "Note: ",
+      n_mean_cells,
+      if (n_mean_cells == 1L) " cell" else " cells",
+      " could not be imputed. Column means replaced ",
+      if (n_mean_cells == 1L) "it" else "them",
+      ".\n",
+      "  See attribute \"mean_filled_cells\".\n",
+      sep = ""
+    )
   }
   cat("\n")
 
@@ -87,13 +111,13 @@ print.slideimp_results <- function(x, n = 6L, p = 6L, ...) {
   invisible(x)
 }
 
-#' Print a `slideimp_sim` Object
+#' Print Method for `slideimp_sim` Objects
 #'
 #' Print the output of [sim_mat()].
 #'
 #' @param x A `slideimp_sim` object.
-#' @param n Number of rows of each component to show.
-#' @param p Number of columns of `input` to show.
+#' @param n Integer. Number of rows of each component to show.
+#' @param p Integer. Number of columns of `input` to show.
 #' @param ... Not used.
 #'
 #' @returns `x`, invisibly.
@@ -110,7 +134,12 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
   # $col_group
   cg_n <- nrow(x$col_group)
   cg_show <- min(n, cg_n)
-  cat("$col_group (", x$n_col_groups, " column groups)\n", sep = "")
+  cat(
+    "$col_group (",
+    x$n_col_groups,
+    if (x$n_col_groups == 1) " column group)\n" else " column groups)\n",
+    sep = ""
+  )
   print(x$col_group[seq_len(cg_show), , drop = FALSE])
   if (cg_show < cg_n) {
     cat(sprintf("# Showing %d of %d rows\n", cg_show, cg_n))
@@ -120,7 +149,12 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
   # $row_group
   rg_n <- nrow(x$row_group)
   rg_show <- min(n, rg_n)
-  cat("$row_group (", x$n_row_groups, " row groups)\n", sep = "")
+  cat(
+    "$row_group (",
+    x$n_row_groups,
+    if (x$n_row_groups == 1) " row group)\n" else " row groups)\n",
+    sep = ""
+  )
   print(x$row_group[seq_len(rg_show), , drop = FALSE])
   if (rg_show < rg_n) {
     cat(sprintf("# Showing %d of %d rows\n", rg_show, rg_n))
@@ -148,14 +182,14 @@ print.slideimp_sim <- function(x, n = 6L, p = 6L, ...) {
   invisible(x)
 }
 
-#' Print a `slideimp_tbl` Object
+#' Print Method for `slideimp_tbl` Objects
 #'
-#' Print `slideimp_tbl` objects, which inherit from `data.frame`, with compact
-#' display of list-columns.
+#' Print a `slideimp_tbl` data frame. Each cell of a list-column shows as its
+#' type and size.
 #'
 #' @param x A `slideimp_tbl` object.
-#' @param n Number of rows to show. If `NULL`, a default is used.
-#' @param ... Not used.
+#' @param n Integer or `NULL`. Number of rows to show, 10 if `NULL`.
+#' @param ... Further arguments passed to [print()] for the table.
 #'
 #' @returns `x`, invisibly.
 #'
@@ -199,7 +233,7 @@ print.slideimp_tbl <- function(x, n = NULL, ...) {
   }
   print(disp[seq_len(n_show), , drop = FALSE], row.names = FALSE, ...)
   if (nrow(x) > n_show) {
-    cat(sprintf("# ... with %d more rows\n", nrow(x) - n_show))
+    cat(sprintf("# Showing %d of %d rows\n", n_show, nrow(x)))
   }
   invisible(x)
 }

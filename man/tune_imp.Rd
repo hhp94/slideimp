@@ -2,7 +2,7 @@
 % Please edit documentation in R/tune_imp.R
 \name{tune_imp}
 \alias{tune_imp}
-\title{Tune Imputation Method Parameters}
+\title{Hyperparameter Tuning for Imputation Methods}
 \usage{
 tune_imp(
   obj,
@@ -20,85 +20,100 @@ tune_imp(
   .progress = TRUE,
   cores = 1,
   location = NULL,
-  pin_blas = FALSE
+  pin_blas = TRUE
 )
 }
 \arguments{
-\item{obj}{A numeric matrix.}
+\item{obj}{A double matrix.}
 
-\item{parameters}{A \code{data.frame} specifying parameter combinations to tune.
-Each column should be a parameter accepted by \code{.f}, excluding \code{obj}.
-List-columns are supported for complex parameters. Duplicate rows are
-removed. \code{NULL} is treated as a single parameter set with no additional
-arguments, which is useful for functions whose required arguments all have
-defaults.}
+\item{parameters}{A data frame or \code{NULL}. One row per parameter set, one
+column per argument of \code{.f} other than \code{obj}. List-columns hold arguments
+that are not scalars. Duplicate rows are removed. \code{NULL} is allowed only
+for a custom \code{.f}, which is then called with its defaults.}
 
-\item{.f}{One of \code{"knn_imp"}, \code{"pca_imp"}, or \code{"slide_imp"}, or a custom
-imputation function.}
+\item{.f}{Character or function. One of \code{"knn_imp"}, \code{"pca_imp"}, or
+\code{"slide_imp"}, or a custom imputation function, as described in Details.}
 
-\item{na_loc}{Optional predefined missing-value locations. Accepted formats
-are a two-column integer matrix of row and column indices, a numeric vector
-of linear positions, or a list whose elements are either of those formats.}
+\item{na_loc}{A matrix, numeric vector, list, or \code{NULL}. Positions to mask
+in place of sampled ones. A two-column matrix holds row and column
+indices, a numeric vector holds linear positions, and a list holds one of
+those per repetition.}
 
-\item{num_na}{Integer or \code{NULL}. Total number of missing values to inject per
-repetition. If supplied, \code{n_cols} is derived from \code{num_na} and \code{n_rows},
-and missing values are distributed as evenly as possible across columns.}
+\item{num_na}{Integer or \code{NULL}. Total number of missing values per
+repetition. When given, \code{n_cols} is ignored and the values are spread as
+evenly as possible over \code{num_na \%/\% n_rows} columns.}
 
 \item{n_reps}{Integer. Number of independent repetitions.}
 
-\item{n_cols}{Integer or \code{NULL}. Must be supplied when both \code{num_na} and
-\code{na_loc} are \code{NULL}, unless the automatic default applies.}
+\item{n_cols}{Integer or \code{NULL}. Number of columns that receive missing
+values.}
 
-\item{n_rows}{Integer. Target number of missing values to inject per selected
-column.}
+\item{n_rows}{Integer. Minimum number of missing values per selected column.}
 
-\item{rowmax}{Numeric scalar between \code{0} and \code{1}. Maximum allowed
-missing-data proportion per row after injection.}
+\item{rowmax}{Numeric scalar between \code{0} and \code{1}. Maximum proportion of
+missing values per row after injection.}
 
-\item{colmax}{Numeric scalar between \code{0} and \code{1}. Maximum allowed
-missing-data proportion per column after injection.}
+\item{colmax}{Numeric scalar between \code{0} and \code{1}. Maximum proportion of
+missing values per column after injection.}
 
-\item{na_col_subset}{Optional integer or character vector restricting which
-columns are eligible for missing-value injection.}
+\item{na_col_subset}{Optional character or integer vector. The columns that
+can receive missing values, by name or by number.}
 
-\item{max_attempts}{Integer. Maximum number of resampling attempts per
-repetition before giving up.}
+\item{max_attempts}{Integer. Maximum number of sampling attempts per
+repetition before an error.}
 
 \item{.progress}{Logical. If \code{TRUE}, show progress during tuning.}
 
-\item{cores}{Integer. Number of cores to use for K-NN and sliding-window
-K-NN imputation. For other methods, use \code{mirai::daemons()}.}
+\item{cores}{Integer. Number of cores for K-NN imputation, including
+\code{slide_imp()} with \code{k}. For other methods, use \code{mirai::daemons()}.}
 
-\item{location}{Numeric vector of column locations. Required when
-\code{.f = "slide_imp"}.}
+\item{location}{Numeric or \code{NULL}. The position of each column of \code{obj},
+sorted in ascending order. \code{.f = "slide_imp"} needs it, and the other
+methods ignore it.}
 
-\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 during parallel
-tuning to reduce thread contention.}
+\item{pin_blas}{Logical. If \code{TRUE}, pin BLAS threads to 1 on the \code{mirai}
+daemons in a parallel run. Defaults to \code{TRUE}.}
 }
 \value{
-A data frame of class \code{slideimp_tune} containing:
+A data frame of class \code{slideimp_tune} with these columns:
 \itemize{
-\item columns originally provided in \code{parameters};
-\item \code{param_set}, an integer ID for each unique parameter combination;
-\item \code{rep_id}, an integer repetition index;
-\item \code{result}, a list-column where each element is a data frame containing
-\code{truth} and \code{estimate} columns;
-\item \code{error}, a character column containing the error message if the
-iteration failed, otherwise \code{NA}.
+\item the columns of \code{parameters}.
+\item \code{param_set}, an integer ID for each unique parameter combination.
+\item \code{rep_id}, an integer repetition index.
+\item \code{result}, a list-column of data frames, each with \code{truth} and
+\code{estimate} columns.
+\item \code{error}, a character column with the error message of a failed
+iteration, or \code{NA}.
 }
 }
 \description{
-Tune method specific hyperparameters by repeatedly masking observed values,
+Tune method-specific hyperparameters by repeatedly masking observed values,
 imputing them, and comparing the imputed values with the original values.
 }
 \details{
-Built-in methods can be selected by passing \code{.f = "knn_imp"},
-\code{.f = "pca_imp"}, or \code{.f = "slide_imp"}. A custom function can also be
-supplied. Custom functions must accept \code{obj} as their first argument and
-return a numeric matrix with the same dimensions as \code{obj}.
+A custom \code{.f} must accept \code{obj} as its first argument and return a numeric
+matrix with the same dimensions as \code{obj} and no \code{Inf} values.
+\code{tune_imp()} calls it once with the first parameter set before tuning
+starts, and stops if that call fails. After that, an iteration that fails
+or breaks this rule is recorded in the \code{error} column.
 
-When \code{na_loc} is supplied, \code{num_na}, \code{n_cols}, \code{n_rows}, and \code{na_col_subset}
-are ignored.
+The columns of \code{parameters} for a custom function must not use the names
+of the columns that \code{tune_imp()} and \code{\link[=compute_metrics]{compute_metrics()}} add: \code{param_set},
+\code{rep_id}, \code{result}, \code{error}, \code{n}, \code{n_miss}, \code{.metric}, \code{.estimator}, and
+\code{.estimate}.
+
+When \code{mirai} daemons are set, a custom function runs on the daemons. It
+finds the packages attached on the daemons, but not the variables of the
+session that defined it. Pass such values through \code{parameters}.
+
+When \code{mirai} daemons are set, each daemon receives one copy of \code{obj}
+before tuning starts and keeps it until tuning ends. Each iteration masks
+cells in a second copy. Memory use therefore grows with the number of
+daemons.
+
+When \code{na_loc} is supplied, \code{num_na}, \code{n_reps}, \code{n_cols}, \code{n_rows}, \code{rowmax},
+\code{colmax}, \code{na_col_subset}, and \code{max_attempts} are ignored. The positions
+are not checked against \code{rowmax} or \code{colmax}.
 
 When \code{.f} is a character string, columns in \code{parameters} are validated
 against the selected method:
@@ -122,57 +137,56 @@ external packages such as \code{yardstick}.
 \section{Missing values and non-finite input}{
 
 
-\code{NA} and \code{NaN} are both treated as missing. No function in the package
-distinguishes between them.
+\code{obj} must be a double matrix. An integer or logical matrix is rejected,
+not converted. Convert one with \code{storage.mode(obj) <- "double"}.
 
-\code{Inf} and \code{-Inf} are rejected on entry and are never imputed. Locate them
-with \code{which(is.infinite(x), arr.ind = TRUE)}.
+\code{NA} and \code{NaN} are both treated as missing. The package does not
+distinguish between them.
 
-A column with no observed values (every cell \code{NA} or \code{NaN}) is also
-rejected.
+\code{Inf} and \code{-Inf} are rejected on entry, and so is a column with no
+observed values (every cell \code{NA} or \code{NaN}). Locate them with
+\code{which(is.infinite(obj), arr.ind = TRUE)} and
+\code{which(colSums(!is.na(obj)) == 0)}.
 }
 
 \section{Parallelization}{
 
 \itemize{
 \item K-NN: use the \code{cores} argument. If \code{mirai} daemons are active, \code{cores}
-is automatically set to \code{1} to avoid nested parallelism.
+is set to \code{1} to avoid nested parallelism.
 \item PCA: use \code{mirai::daemons()} instead of \code{cores}.
+\item With \code{mirai} daemons, each daemon runs BLAS on one thread unless
+\code{pin_blas = FALSE}.
 }
-
-When running PCA imputation in parallel with \code{mirai}, set \code{pin_blas = TRUE}
-in \code{\link[=tune_imp]{tune_imp()}} or \code{\link[=group_imp]{group_imp()}} to prevent BLAS threads from
-oversubscribing CPU cores. This relies on \code{RhpcBLASctl} and works with
-OpenBLAS and MKL (typical on Linux, and on Windows after an OpenBLAS swap).
-\code{pin_blas = TRUE} may have no effect on macOS.
 }
 
 \section{PCA Performance tips}{
 
-Speed comes from three levers: \code{solver} (through LOBPCG with warm-start),
-\code{threshold}, and \code{scale}. Tune these first, then accuracy parameters
-(\code{ncp}, \code{coeff.ridge}) on a representative subset.
+Three arguments set the speed: \code{solver}, \code{threshold}, and \code{scale}. Tune
+these first, then the accuracy arguments \code{ncp} and \code{coeff.ridge}, on a
+representative subset.
 
-\strong{Exact vs. LOBPCG with warm-start.} Whether \code{"lobpcg"} beats \code{"exact"}
-depends on size and low-rankness: \code{"lobpcg"} is preferred for large, approximately
-low-rank matrices with small \code{ncp}, and \code{"exact"} for small matrices
-(including \code{slide_imp()} windows), where it is faster and more robust.
-Separately, the warm-start makes each successive solve cheap: \code{pca_imp()}
-warm-starts LOBPCG with the previous eigenblock and search direction, so once
-imputed values stabilize, later solves converge in a few iterations. The
-payoff therefore grows with the number of EM iterations, independent of
-low-rankness. \code{solver = "auto"} (default) probes both and is a safe start.
+\strong{Exact vs. LOBPCG.} \code{"lobpcg"} suits large, approximately low-rank
+matrices with small \code{ncp}. \code{"exact"} suits small matrices, such as
+\code{slide_imp()} windows, where it is faster. It is also more reliable: it
+always converges, to eigenvectors exact to machine precision, while LOBPCG
+stops at the tolerance set in \code{\link[=lobpcg_control]{lobpcg_control()}} and can take many
+iterations, or reach \code{maxiter}, when the eigenvalues around the \code{ncp}-th one
+are close together. The warm start makes each later LOBPCG solve cheap:
+\code{pca_imp()} starts LOBPCG from the previous eigenblock and search direction,
+so once the imputed values stabilize, each solve takes a few iterations. The
+gain grows with the number of EM iterations, whatever the rank.
+\code{solver = "auto"}, the default, chooses between the two and is a safe start.
 
-\strong{Threshold.} The default \code{1e-6} is conservative; \code{1e-5} is often faster
-with very similar values.
+\strong{Threshold.} The default \code{1e-6} is conservative. \code{1e-5} is often faster
+and gives very similar values.
 
-\strong{Scale.} For columns on a common scale (e.g., DNAm beta values in
-\verb{[0, 1]}), \code{scale = FALSE} can be faster and more accurate.
+\strong{Scale.} For columns on a common scale, such as DNA methylation beta
+values in \verb{[0, 1]}, \code{scale = FALSE} can be faster and more accurate.
 
-\strong{Parallel and BLAS.} In parallel via \code{tune_imp()} or \code{group_imp()} with a
-multithreaded BLAS, set \code{pin_blas = TRUE} to avoid thread oversubscription.
-On Windows, the stock BLAS can be slow. Advanced users can swap in
-\href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS}.
+\strong{BLAS.} On Windows, the BLAS that ships with R can be slow, and
+\href{https://github.com/david-cortes/R-openblas-in-windows}{OpenBLAS} can
+replace it.
 
 See \href{https://hhp94.github.io/slideimp/articles/speeding-up-pca-imputation.html}{Speeding up PCA imputation}
 for the full workflow.
@@ -248,4 +262,7 @@ results_p <- tune_imp(
 
 mirai::daemons(0)
 \dontshow{\}) # examplesIf}
+}
+\seealso{
+\code{\link[=sample_na_loc]{sample_na_loc()}} to draw the \code{na_loc} locations in advance.
 }
