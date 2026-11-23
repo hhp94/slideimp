@@ -21,6 +21,12 @@
 !r_manual/
 !r_manual/R-exts.md
 
+# BibTeX of the references in vignettes/articles/multiple-imputation-beta.qmd
+!bib/
+!bib/citation-ba16_667.bib
+!bib/citation-ss7_457.bib
+!bib/citation-ss7_473.bib
+
 # helpers and checks named in .claude/CLAUDE.md
 !GSE286313.EPICv1_chr21.qs2
 !check_impute_knn.R

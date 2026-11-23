@@ -11,6 +11,12 @@ knitr:
 library(slideimp)
 ```
 
+::: {.callout-warning title="Experimental"}
+The Bayesian PCA sampler (`mipca()`, `mipca_tune()`, `mipca_fit()` and
+`mipca_flank()`) is experimental. Its arguments, defaults and output can
+change in a later release.
+:::
+
 `pca_imp()` and `knn_imp()` fill each missing value with one best guess. That
 is enough for many uses, but an analysis run on a singly imputed matrix treats
 the guesses as if they had been measured, so its standard errors come out too
@@ -131,7 +137,13 @@ matrix the saving is large.
 
 ## Check convergence
 
-`summary()` reports Rhat and ESS for a sample of the imputed cells.
+`summary()` reports Rhat and ESS for a sample of the imputed cells. Rhat
+compares the chains with each other
+([Gelman and Rubin 1992](https://doi.org/10.1214/ss/1177011136),
+[Vehtari et al. 2021](https://doi.org/10.1214/20-BA1221)). ESS, the effective
+sample size, estimates how many independent draws the chains are worth
+([Geyer 1992](https://doi.org/10.1214/ss/1177011137),
+[Vehtari et al. 2021](https://doi.org/10.1214/20-BA1221)).
 
 ```{r}
 summary(fit)
@@ -311,9 +323,23 @@ The fit holds the targets only, and `as.matrix()`, `summary()` and the pooling
 above work on it as on a fit from `mipca()`. `cbind()` joins the fits of
 several matrices, such as one per chromosome.
 
-## Reference
+## References
+
+<!-- BibTeX for the Rhat and ESS papers: dev/bib/. -->
 
 Audigier, V., Husson, F. and Josse, J. (2016). Multiple imputation for
 continuous variables using a Bayesian principal component analysis. *Journal
 of Statistical Computation and Simulation*, 86(11), 2140-2156.
 <https://doi.org/10.1080/00949655.2015.1104683>
+
+Gelman, A. and Rubin, D. B. (1992). Inference from iterative simulation using
+multiple sequences. *Statistical Science*, 7(4), 457-472.
+<https://doi.org/10.1214/ss/1177011136>
+
+Geyer, C. J. (1992). Practical Markov chain Monte Carlo. *Statistical
+Science*, 7(4), 473-483. <https://doi.org/10.1214/ss/1177011137>
+
+Vehtari, A., Gelman, A., Simpson, D., Carpenter, B. and Burkner, P.-C. (2021).
+Rank-normalization, folding, and localization: an improved R-hat for assessing
+convergence of MCMC. *Bayesian Analysis*, 16(2), 667-718.
+<https://doi.org/10.1214/20-BA1221>

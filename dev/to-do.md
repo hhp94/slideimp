@@ -70,4 +70,9 @@ Open, the maintainer's:
 - The data transformations (`transform`, such as `"logit_biwhiten"`) are
   experimental and may be dropped. If a release keeps them, explain in its
   documentation what each one does.
+- Rewrite `vignettes/articles/multiple-imputation-beta.qmd` down to the bare
+  minimum: bullet points and code chunks only, with a bullet at the top that
+  says the sampler is experimental. The current prose reads badly. README.qmd
+  and vignettes/slideimp.qmd link to it for tuning `nu`, convergence checks
+  and pooling the draws, so keep those three topics or change the links.
 

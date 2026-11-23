@@ -64,7 +64,8 @@ pak::pkg_install("hhp94/slideimp.extra")
 
 ## Citation
 
-To cite `{slideimp}`, use the Bioinformatics paper:
+If you find `{slideimp}` helpful in your work, please cite our
+Bioinformatics paper:
 
 ``` bibtex
 @article{10.1093/bioinformatics/btag318,
